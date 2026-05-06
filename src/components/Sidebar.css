@@ -458,6 +458,15 @@
   color: #fff;
 }
 
+.filter-pills-extra {
+  margin-top: 8px;
+  grid-template-columns: 1fr;
+}
+
+.filter-pills-extra .pill {
+  grid-column: auto;
+}
+
 /* ── Select ── */
 .sidebar-select {
   width: 100%;

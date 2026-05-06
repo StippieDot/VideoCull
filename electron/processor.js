@@ -10,9 +10,17 @@ const os = require('os');
 
 let currentToken = null;
 
+function parseFpsRational(value) {
+  if (!value || value === '0/0') return null;
+  const [rawNum, rawDen] = String(value).split('/');
+  const num = Number(rawNum);
+  const den = Number(rawDen);
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null;
+  return Math.round((num / den) * 100) / 100;
+}
+
 /**
- * Get video duration and creation_time via ffprobe.
- * Returns { duration: number, creationTime: number | null }
+ * Get duration, creation_time, codec, resolution, and fps via ffprobe.
  */
 function getVideoMetadata(filePath) {
   return new Promise((resolve, reject) => {
@@ -29,7 +37,24 @@ function getVideoMetadata(filePath) {
           if (!isNaN(parsed)) creationTime = parsed;
         }
       }
-      resolve({ duration, creationTime });
+
+      const streams = metadata?.streams ?? [];
+      const videoStream = streams.find((stream) => stream.codec_type === 'video');
+      const audioStream = streams.find((stream) => stream.codec_type === 'audio');
+      const fps =
+        parseFpsRational(videoStream?.avg_frame_rate) ??
+        parseFpsRational(videoStream?.r_frame_rate) ??
+        null;
+
+      resolve({
+        duration,
+        creationTime,
+        videoCodec: videoStream?.codec_name ?? null,
+        audioCodec: audioStream?.codec_name ?? null,
+        width: videoStream?.width ?? null,
+        height: videoStream?.height ?? null,
+        fps,
+      });
     });
   });
 }
@@ -58,6 +83,11 @@ function calculateTimestamps(duration, count, skipDelaySecs) {
   }
   
   return timestamps;
+}
+
+function expectedThumbnailCount(duration, count, skipDelaySecs) {
+  if (duration != null && duration > 0 && duration < skipDelaySecs) return 1;
+  return count;
 }
 
 const activeCommands = new Set();
@@ -135,33 +165,53 @@ function extractFrame(videoPath, timestamp, outputPath, config, token) {
  * Returns { thumbnails: string[], durationSecs: number }.
  */
 async function generateThumbnailsForVideo(video, thumbDir, config, token) {
-  const THUMB_COUNT = config.thumbsPerVideo || 6;
+  const THUMB_COUNT = Math.max(1, Number(config.thumbsPerVideo) || 6);
   const skipDelay = config.skipIntroDelaySecs !== undefined ? config.skipIntroDelaySecs : 3;
 
   const videoThumbDir = path.join(thumbDir, video.id);
   await fs.mkdir(videoThumbDir, { recursive: true });
+  let duration = video.durationSecs;
+  let creationTime = null;
+  let videoCodec = video.videoCodec ?? null;
+  let audioCodec = video.audioCodec ?? null;
+  let width = video.width ?? null;
+  let height = video.height ?? null;
+  let fps = video.fps ?? null;
+  const needsMetadata = () => !duration || !videoCodec || !width || !height || fps === null;
 
-  // Check if thumbnails already exist and are strictly valid for the current configuration
+  // Reuse cached thumbnail files only when the set is complete for the current
+  // thumbnail count. Partial sets usually mean a previous run was interrupted.
   try {
     const existing = await fs.readdir(videoThumbDir);
     const jpgs = existing.filter((f) => f.endsWith('.jpg')).sort();
-    if (jpgs.length === THUMB_COUNT) {
-      let duration = video.durationSecs;
-      let creationTime = null;
-      if (!duration) {
-        try {
-          const meta = await getVideoMetadata(video.path);
-          duration = meta.duration;
-          creationTime = meta.creationTime;
-        } catch { duration = 0; }
-      }
+    if (needsMetadata()) {
+      try {
+        const meta = await getVideoMetadata(video.path);
+        duration = meta.duration;
+        creationTime = meta.creationTime;
+        videoCodec = meta.videoCodec;
+        audioCodec = meta.audioCodec;
+        width = meta.width;
+        height = meta.height;
+        fps = meta.fps;
+      } catch { duration = duration ?? 0; }
+    }
+    const expectedCount = expectedThumbnailCount(duration, THUMB_COUNT, skipDelay);
+    const usableJpgs = jpgs.slice(0, expectedCount);
+    if (usableJpgs.length >= expectedCount) {
+      const usablePaths = usableJpgs.map((f) => path.join(videoThumbDir, f));
       return {
-        thumbnails: jpgs.slice(0, THUMB_COUNT).map((f) => path.join(videoThumbDir, f)),
+        thumbnails: usablePaths,
         durationSecs: duration,
         creationTime,
+        videoCodec,
+        audioCodec,
+        width,
+        height,
+        fps,
       };
     }
-    // Incomplete thumbnails — clean up and regenerate
+    // Incomplete thumbnails: clean up and regenerate the full set.
     for (const f of existing) {
       try { await fs.unlink(path.join(videoThumbDir, f)); } catch { /* ignore */ }
     }
@@ -170,14 +220,19 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token) {
   }
 
   // Get duration + metadata date
-  let duration;
-  let creationTime = null;
-  try {
-    const meta = await getVideoMetadata(video.path);
-    duration = meta.duration;
-    creationTime = meta.creationTime;
-  } catch {
-    duration = 0;
+  if (needsMetadata()) {
+    try {
+      const meta = await getVideoMetadata(video.path);
+      duration = meta.duration;
+      creationTime = meta.creationTime;
+      videoCodec = meta.videoCodec;
+      audioCodec = meta.audioCodec;
+      width = meta.width;
+      height = meta.height;
+      fps = meta.fps;
+    } catch {
+      duration = duration ?? 0;
+    }
   }
 
   const timestamps = calculateTimestamps(duration, THUMB_COUNT, skipDelay);
@@ -187,7 +242,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token) {
   // by processVideos(), so maxConcurrent now maps to active FFmpeg commands.
   for (let i = 0; i < timestamps.length; i++) {
     const timestamp = timestamps[i];
-    if (token.cancelled) return;
+    if (token.cancelled) throw new Error('Cancelled');
     const outputPath = path.join(videoThumbDir, `thumb_${String(i + 1).padStart(2, '0')}.jpg`);
     try {
       await extractFrame(video.path, timestamp, outputPath, config, token);
@@ -218,7 +273,41 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token) {
     } catch { /* truly can't generate thumbnails for this video */ }
   }
 
-  return { thumbnails: finalPaths, durationSecs: duration, creationTime };
+  return { thumbnails: finalPaths, durationSecs: duration, creationTime, videoCodec, audioCodec, width, height, fps };
+}
+
+async function readMetadataForVideo(video) {
+  let duration = video.durationSecs;
+  let creationTime = null;
+  let videoCodec = video.videoCodec ?? null;
+  let audioCodec = video.audioCodec ?? null;
+  let width = video.width ?? null;
+  let height = video.height ?? null;
+  let fps = video.fps ?? null;
+
+  try {
+    const meta = await getVideoMetadata(video.path);
+    duration = meta.duration;
+    creationTime = meta.creationTime;
+    videoCodec = meta.videoCodec;
+    audioCodec = meta.audioCodec;
+    width = meta.width;
+    height = meta.height;
+    fps = meta.fps;
+  } catch {
+    duration = duration ?? 0;
+  }
+
+  return {
+    thumbnails: video.thumbnails ?? [],
+    durationSecs: duration,
+    creationTime,
+    videoCodec,
+    audioCodec,
+    width,
+    height,
+    fps,
+  };
 }
 
 /**
@@ -245,6 +334,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady)
   currentToken = token;
   const total = videos.length;
   let current = 0;
+  const targetThumbCount = Math.max(1, Number(config.thumbsPerVideo) || 6);
 
   const concurrentLimit = getConcurrentLimit(config);
   const cooldownMs = getGpuCooldownMs(config);
@@ -265,11 +355,33 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady)
             const video = queue.shift();
             if (!video) break;
             try {
+              const hasCompleteCachedThumbs = Array.isArray(video.thumbnails) && video.thumbnails.length >= targetThumbCount;
+              const needsMetadataOnly = hasCompleteCachedThumbs && (
+                !video.videoCodec ||
+                !video.width ||
+                !video.height ||
+                video.fps === null ||
+                video.fps === undefined
+              );
               const videoThumbRoot = typeof thumbDir === 'function' ? thumbDir(video) : thumbDir;
-              const result = await generateThumbnailsForVideo(video, videoThumbRoot, config, token);
+              const result = needsMetadataOnly
+                ? await readMetadataForVideo(video)
+                : await generateThumbnailsForVideo(video, videoThumbRoot, config, token);
               current++;
               if (onProgress) onProgress({ current, total });
-              if (onVideoReady) onVideoReady(video.id, result.thumbnails, result.durationSecs, result.creationTime);
+              if (onVideoReady) {
+                await onVideoReady(
+                  video.id,
+                  result.thumbnails,
+                  result.durationSecs,
+                  result.creationTime,
+                  result.videoCodec,
+                  result.audioCodec,
+                  result.width,
+                  result.height,
+                  result.fps
+                );
+              }
             } catch (err) {
               if (err.message === 'Cancelled') break;
               current++;

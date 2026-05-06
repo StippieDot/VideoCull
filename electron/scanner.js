@@ -63,6 +63,14 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
             duplicateHash: makeDuplicateHash(stat.size, null),
             status: 'pending',
             thumbnails: [],
+            rating: 0,
+            favorite: false,
+            compatible: true,
+            videoCodec: null,
+            audioCodec: null,
+            width: null,
+            height: null,
+            fps: null,
           };
 
           videos.push(video);

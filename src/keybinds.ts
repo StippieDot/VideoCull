@@ -23,8 +23,10 @@ export interface ShortcutDef {
 export type KeybindSettingKey =
   | 'keyKeep' | 'keyDelete' | 'keySkip' | 'keyReset' | 'keyUndo' | 'keyPlay'
   | 'keyPrevVideo' | 'keyNextVideo' | 'keyEnterPlay' | 'keyExternalPlayer'
+  | 'keyNextUndecided'
   | 'keySeekBack' | 'keySeekForward' | 'keySpeedDown' | 'keySpeedUp'
   | 'keyBookmark' | 'keyShowHelp'
+  | 'keyGlobalMute'
   | 'keyPreviewSeekBack' | 'keyPreviewSeekForward';
 
 export const ALL_SHORTCUTS: ShortcutDef[] = [
@@ -41,6 +43,7 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   { id: 'keyPlay',               description: 'Play / Pause',              group: 'Review mode' },
   { id: 'keyEnterPlay',          description: 'Play / Pause (alternate)',  group: 'Review mode' },
   { id: 'keyExternalPlayer',     description: 'Open in external player',   group: 'Review mode' },
+  { id: 'keyNextUndecided',      description: 'Next undecided',            group: 'Review mode' },
   // While playing
   { id: 'keySeekBack',           description: 'Rewind 5s',                 group: 'Review mode', context: 'playing' },
   { id: 'keySeekForward',        description: 'Forward 5s',                group: 'Review mode', context: 'playing' },
@@ -52,6 +55,7 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   { id: 'keyPreviewSeekForward', description: 'Forward 5s',                group: 'Preview' },
   // Global
   { id: 'keyShowHelp',           description: 'Show keyboard shortcuts',   group: 'Global' },
+  { id: 'keyGlobalMute',         description: 'Toggle global mute',        group: 'Global' },
 ];
 
 // Fixed shortcuts that are never configurable (displayed in help only)

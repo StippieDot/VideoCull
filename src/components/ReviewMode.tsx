@@ -1,10 +1,10 @@
 import { useEffect, useCallback, useState, useRef, useMemo, memo, type CSSProperties } from 'react';
 import useStore from '../store';
 import ThumbnailStrip from './ThumbnailStrip';
-import { formatSize, formatDuration, formatDate, calcThumbGrid } from '../utils';
+import { formatSize, formatDuration, formatDate, calcThumbGrid, formatCodecLabel, formatFps, formatResolutionLabel } from '../utils';
 import {
   Check, Trash2, SkipForward, Undo2, X, Play,
-  ChevronLeft, ChevronRight, HardDrive, Clock, Calendar, Bookmark, RotateCcw
+  ChevronLeft, ChevronRight, HardDrive, Clock, Calendar, Bookmark, RotateCcw, Heart, Star
 } from 'lucide-react';
 import '@videojs/react/video/minimal-skin.css';
 import { createPlayer, videoFeatures } from '@videojs/react';
@@ -47,6 +47,9 @@ export default function ReviewMode() {
   const settings = useStore((s) => s.settings);
   const addBookmark = useStore((s) => s.addBookmark);
   const removeBookmark = useStore((s) => s.removeBookmark);
+  const setVideoRating = useStore((s) => s.setVideoRating);
+  const toggleFavorite = useStore((s) => s.toggleFavorite);
+  const features = useStore((s) => s.settings.features);
 
   const video = filteredVideos[reviewIndex] ?? null;
   const total = filteredVideos.length;
@@ -372,13 +375,50 @@ export default function ReviewMode() {
             </div>
           )}
 
-          <div className="review-filename">{video.filename}</div>
+          <div className="review-title-row">
+            <div className="review-filename">{video.filename}</div>
+            {features.favorites && (
+              <button
+                className={`review-favorite-btn ${video.favorite ? 'active' : ''}`}
+                onClick={() => toggleFavorite(video.id)}
+                title={video.favorite ? 'Remove from favorites' : 'Add to favorites'}
+                aria-label={video.favorite ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <Heart size={15} fill={video.favorite ? 'currentColor' : 'none'} />
+              </button>
+            )}
+          </div>
 
           <div className="review-meta-row">
             <span className="review-meta-item"><HardDrive size={13} />{formatSize(video.sizeBytes)}</span>
             <span className="review-meta-item"><Clock size={13} />{formatDuration(video.durationSecs)}</span>
             <span className="review-meta-item"><Calendar size={13} />{formatDate(video.metadataDate || video.date)}</span>
+            {features.codecBadges && formatResolutionLabel(video.width, video.height) && (
+              <span className="review-meta-item review-meta-badge">{formatResolutionLabel(video.width, video.height)}</span>
+            )}
+            {features.codecBadges && formatCodecLabel(video.videoCodec) && (
+              <span className="review-meta-item review-meta-badge">{formatCodecLabel(video.videoCodec)}</span>
+            )}
+            {features.codecBadges && formatFps(video.fps) && (
+              <span className="review-meta-item review-meta-badge">{formatFps(video.fps)}</span>
+            )}
           </div>
+
+          {features.ratings && (
+            <div className={`review-stars ${(video.rating ?? 0) > 0 ? 'has-rating' : ''}`}>
+              {([1, 2, 3, 4, 5] as const).map((rating) => (
+                <button
+                  key={rating}
+                  className={`review-star-btn ${(video.rating ?? 0) >= rating ? 'active' : ''}`}
+                  onClick={() => setVideoRating(video.id, video.rating === rating ? 0 : rating)}
+                  title={`Rate ${rating} star${rating > 1 ? 's' : ''}`}
+                  aria-label={`Rate ${rating} star${rating > 1 ? 's' : ''}`}
+                >
+                  <Star size={15} fill={(video.rating ?? 0) >= rating ? 'currentColor' : 'none'} />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <button

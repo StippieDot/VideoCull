@@ -88,6 +88,31 @@
   flex-shrink: 0;
 }
 
+.grid-next-folder-btn {
+  position: absolute;
+  bottom: 20px;
+  right: 16px;
+  z-index: 12;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(10, 10, 15, 0.78);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
+}
+
+.grid-next-folder-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
 .grid-batch-bar {
   position: absolute;
   left: 50%;

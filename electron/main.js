@@ -129,6 +129,10 @@ function sendToRenderer(channel, payload) {
   }
 }
 
+function folderDisplayName(folderPath) {
+  return path.basename(path.resolve(folderPath)) || folderPath;
+}
+
 function setVideoFullscreenMenuState(fullscreen) {
   if (!mainWindow || mainWindow.isDestroyed()) return false;
   menuBarHiddenForVideoFullscreen = Boolean(fullscreen);
@@ -555,6 +559,47 @@ async function movePathIfPresent(source, target) {
   return true;
 }
 
+function isSqliteCorruptionError(err) {
+  return (
+    err?.code === 'SQLITE_CORRUPT' ||
+    err?.code === 'SQLITE_CORRUPT_INDEX' ||
+    err?.code === 'SQLITE_NOTADB' ||
+    /database disk image is malformed|file is not a database/i.test(String(err?.message || err))
+  );
+}
+
+async function quarantineCorruptCacheDb(folderPath, cacheOptions, reason) {
+  const cachePaths = getCachePaths(folderPath, cacheOptions);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  log.warn(`[cache] Corrupt DB detected for ${folderPath}; quarantining cache. Reason: ${reason}`);
+
+  cache.closeDb();
+
+  for (const sourcePath of collectCacheSidecars(cachePaths.dbPath)) {
+    try {
+      await fs.access(sourcePath);
+    } catch {
+      continue;
+    }
+
+    const targetPath = `${sourcePath}.corrupt-${stamp}`;
+    try {
+      await fs.rename(sourcePath, targetPath);
+      log.warn(`[cache] Moved corrupt cache file: ${sourcePath} -> ${targetPath}`);
+    } catch (err) {
+      log.warn(`[cache] Failed to quarantine corrupt cache file ${sourcePath}:`, err);
+    }
+  }
+
+  sendToRenderer('app-notification', {
+    title: `Cache rebuilt: ${folderDisplayName(folderPath)}`,
+    detail: 'Damaged DB was quarantined; cached decisions there may be missing.',
+    kind: 'warning',
+    dedupeKey: `corrupt-cache:${folderPath}`,
+    durationMs: 8000,
+  });
+}
+
 function collectCacheSidecars(dbPath) {
   return [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
 }
@@ -617,6 +662,28 @@ function loadCacheMapWithAbsoluteThumbs(db, cacheRootDir) {
   return map;
 }
 
+async function openCacheDbWithRecovery(folderPath, cacheOptions) {
+  try {
+    return cache.openDb(folderPath, cacheOptions);
+  } catch (err) {
+    if (!isSqliteCorruptionError(err)) throw err;
+    await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
+    return cache.openDb(folderPath, cacheOptions);
+  }
+}
+
+async function loadCacheMapWithRecovery(folderPath, cacheOptions, cacheRootDir) {
+  let db = await openCacheDbWithRecovery(folderPath, cacheOptions);
+  try {
+    return loadCacheMapWithAbsoluteThumbs(db, cacheRootDir);
+  } catch (err) {
+    if (!isSqliteCorruptionError(err)) throw err;
+    await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
+    db = cache.openDb(folderPath, cacheOptions);
+    return loadCacheMapWithAbsoluteThumbs(db, cacheRootDir);
+  }
+}
+
 function getVideoFolderPath(video) {
   return path.dirname(video.path);
 }
@@ -633,6 +700,13 @@ function groupVideosByFolder(videos) {
   return groups;
 }
 
+function mergeCacheMap(targetMap, sourceMap, scannedIds = null, { overwrite = false } = {}) {
+  for (const [videoId, cached] of sourceMap) {
+    if (scannedIds && !scannedIds.has(videoId)) continue;
+    if (overwrite || !targetMap.has(videoId)) targetMap.set(videoId, cached);
+  }
+}
+
 async function prepareCacheFolder(folderPath, cacheOptions) {
   const cachePaths = getCachePaths(folderPath, cacheOptions);
   activeCacheRoots.add(cachePaths.cacheRootDir);
@@ -645,12 +719,44 @@ async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false }
   const groups = groupVideosByFolder(videos);
   for (const [folderPath, folderVideos] of groups) {
     const cachePaths = await prepareCacheFolder(folderPath, cacheOptions);
-    const db = cache.openDb(folderPath, cacheOptions);
     const payload = folderVideos.map((video) => videoForDb(video, cachePaths.cacheRootDir));
-    if (atomic && payload.length <= ATOMIC_SAVE_SYNC_LIMIT) {
-      cache.saveCache(db, payload);
-    } else {
-      await cache.saveCacheChunked(db, payload);
+
+    const writePayload = async () => {
+      const db = await openCacheDbWithRecovery(folderPath, cacheOptions);
+      if (atomic && payload.length <= ATOMIC_SAVE_SYNC_LIMIT) {
+        cache.saveCache(db, payload);
+      } else {
+        await cache.saveCacheChunked(db, payload);
+      }
+    };
+
+    try {
+      await writePayload();
+    } catch (err) {
+      if (!isSqliteCorruptionError(err)) throw err;
+      await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
+      await writePayload();
+    }
+  }
+}
+
+async function loadOwnerFolderCachesIntoMap(videos, rootDirPath, cacheOptions, cachedMap) {
+  const scannedIds = new Set(videos.map((video) => video.id));
+  const ownerFolders = Array.from(new Set(
+    videos
+      .map((video) => getVideoFolderPath(video))
+      .filter((folderPath) => !isSameFolderSync(folderPath, rootDirPath))
+  ));
+
+  for (const ownerFolder of ownerFolders) {
+    try {
+      const ownerPaths = await prepareCacheFolder(ownerFolder, cacheOptions);
+      const ownerMap = await loadCacheMapWithRecovery(ownerFolder, cacheOptions, ownerPaths.cacheRootDir);
+      // Owner-folder caches are the canonical location after P3. Let them win
+      // over stale parent rows if both exist.
+      mergeCacheMap(cachedMap, ownerMap, scannedIds, { overwrite: true });
+    } catch (err) {
+      log.warn(`[scan-directory] Failed to load owner cache for ${ownerFolder}:`, err);
     }
   }
 }
@@ -682,7 +788,7 @@ async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOpti
   let movedCount = 0;
   for (const [targetFolder, videos] of byTargetFolder) {
     const targetPaths = await prepareCacheFolder(targetFolder, cacheOptions);
-    const targetDb = cache.openDb(targetFolder, cacheOptions);
+    const targetDb = await openCacheDbWithRecovery(targetFolder, cacheOptions);
     cache.saveCache(targetDb, videos.map((video) => videoForDb(video, targetPaths.cacheRootDir)));
     cache.deleteVideosByIds(parentDb, videos.map((video) => video.id));
     movedCount += videos.length;
@@ -963,11 +1069,17 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   const cachePaths = await prepareCacheFolder(dirPath, cacheOptions);
 
   // Open SQLite DB for this directory (creates schema if first time)
-  const db = cache.openDb(dirPath, cacheOptions);
+  let db = await openCacheDbWithRecovery(dirPath, cacheOptions);
 
   // Import old JSON cache if present (first launch after update)
   await cache.migrateJsonIfNeeded(dirPath, db);
-  await splitDescendantRowsFromParentDb(dirPath, db, cacheOptions, cachePaths.cacheRootDir);
+  try {
+    await splitDescendantRowsFromParentDb(dirPath, db, cacheOptions, cachePaths.cacheRootDir);
+  } catch (err) {
+    if (!isSqliteCorruptionError(err)) throw err;
+    await quarantineCorruptCacheDb(dirPath, cacheOptions, err.code || err.message);
+    db = await openCacheDbWithRecovery(dirPath, cacheOptions);
+  }
 
   let knownCacheFolders = await getKnownCacheFolders();
   const parentCacheFolders = knownCacheFolders.filter((folderPath) => isFolderInsideSync(dirPath, folderPath));
@@ -975,7 +1087,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     try {
       const parentPaths = getCachePaths(parentFolder, cacheOptions);
       activeCacheRoots.add(parentPaths.cacheRootDir);
-      const parentDb = cache.openDb(parentFolder, cacheOptions);
+      const parentDb = await openCacheDbWithRecovery(parentFolder, cacheOptions);
       await splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOptions, parentPaths.cacheRootDir);
     } catch (err) {
       log.warn(`[scan-directory] Failed to split parent cache for ${parentFolder}:`, err);
@@ -984,18 +1096,15 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
 
   // Load existing cache entries for merging. Known subfolder caches are folded in
   // so opening a parent preserves decisions made when a child folder was opened alone.
-  const cachedMap = loadCacheMapWithAbsoluteThumbs(db, cachePaths.cacheRootDir);
+  const cachedMap = await loadCacheMapWithRecovery(dirPath, cacheOptions, cachePaths.cacheRootDir);
   knownCacheFolders = await getKnownCacheFolders();
   const childCacheFolders = knownCacheFolders.filter((folderPath) => isFolderInsideSync(folderPath, dirPath));
   for (const childFolder of childCacheFolders) {
     try {
       const childPaths = getCachePaths(childFolder, cacheOptions);
       activeCacheRoots.add(childPaths.cacheRootDir);
-      const childDb = cache.openDb(childFolder, cacheOptions);
-      const childMap = loadCacheMapWithAbsoluteThumbs(childDb, childPaths.cacheRootDir);
-      for (const [videoId, cached] of childMap) {
-        if (!cachedMap.has(videoId)) cachedMap.set(videoId, cached);
-      }
+      const childMap = await loadCacheMapWithRecovery(childFolder, cacheOptions, childPaths.cacheRootDir);
+      mergeCacheMap(cachedMap, childMap);
     } catch (err) {
       log.warn(`[scan-directory] Failed to reuse subfolder cache for ${childFolder}:`, err);
     }
@@ -1038,6 +1147,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   const videos = await scanDirectory(dirPath, includeSubfolders, (progress) => {
     sendToRenderer('scan-progress', progress);
   });
+  await loadOwnerFolderCachesIntoMap(videos, dirPath, cacheOptions, cachedMap);
 
   // Merge with cache: preserve status, thumbnails, bookmarks from SQLite.
   // Thumbnail paths are resolved to absolute here so the renderer can use them directly.
@@ -1052,9 +1162,31 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
         duplicateHash: cached.duplicateHash || v.duplicateHash,
         metadataDate: cached.metadataDate ?? null,
         bookmarks: cached.bookmarks,
+        rating: cached.rating ?? 0,
+        favorite: Boolean(cached.favorite),
+        compatible: cached.compatible !== false,
+        videoCodec: cached.videoCodec ?? null,
+        audioCodec: cached.audioCodec ?? null,
+        width: cached.width ?? null,
+        height: cached.height ?? null,
+        fps: cached.fps ?? null,
       };
     }
-    return { ...v, status: 'pending', thumbnails: [], metadataDate: null, bookmarks: [] };
+    return {
+      ...v,
+      status: 'pending',
+      thumbnails: [],
+      metadataDate: null,
+      bookmarks: [],
+      rating: 0,
+      favorite: false,
+      compatible: true,
+      videoCodec: null,
+      audioCodec: null,
+      width: null,
+      height: null,
+      fps: null,
+    };
   });
 
   // Persist each video to the cache owned by its immediate parent folder.
@@ -1110,9 +1242,23 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
   } catch (e) {
     // Defaults are fine
   }
+  const targetThumbCount = Math.max(1, Number(config.thumbsPerVideo) || 6);
+  const skipIntroDelaySecs = config.skipIntroDelaySecs !== undefined ? Number(config.skipIntroDelaySecs) : 3;
+  const expectedThumbCount = (video) => (
+    video.durationSecs != null && video.durationSecs > 0 && video.durationSecs < skipIntroDelaySecs
+      ? 1
+      : targetThumbCount
+  );
 
-  const THUMB_COUNT = config.thumbsPerVideo || 6;
-  const needThumbs = safeVideos.filter((v) => !v.thumbnails || v.thumbnails.length !== THUMB_COUNT);
+  const needThumbs = safeVideos.filter((v) => (
+    !v.thumbnails ||
+    v.thumbnails.length < expectedThumbCount(v) ||
+    !v.videoCodec ||
+    !v.width ||
+    !v.height ||
+    v.fps === null ||
+    v.fps === undefined
+  ));
 
   let readyBatch = [];
   let lastProgress = null;
@@ -1136,8 +1282,18 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
   try {
     await processVideos(needThumbs, (video) => thumbRootByFolder.get(getVideoFolderPath(video)), config, (progress) => {
       lastProgress = progress;
-    }, (videoId, thumbnails, durationSecs, creationTime) => {
-      readyBatch.push({ videoId, thumbnails, durationSecs, metadataDate: creationTime });
+    }, (videoId, thumbnails, durationSecs, creationTime, videoCodec, audioCodec, width, height, fps) => {
+      readyBatch.push({
+        videoId,
+        thumbnails,
+        durationSecs,
+        metadataDate: creationTime,
+        videoCodec,
+        audioCodec,
+        width,
+        height,
+        fps,
+      });
     });
   } finally {
     clearInterval(batchInterval);

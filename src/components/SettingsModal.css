@@ -197,6 +197,44 @@ input[type="range"] {
   line-height: 1.4;
 }
 
+/* Features tab */
+.feature-toggle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feature-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+}
+
+.feature-toggle-row:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.feature-toggle-row input {
+  margin-top: 2px;
+}
+
+.feature-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.feature-toggle-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 .mt-4 {
   margin-top: 16px;
 }

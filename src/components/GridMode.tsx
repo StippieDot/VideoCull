@@ -4,8 +4,8 @@ import type { ListImperativeAPI } from 'react-window';
 import type { Video } from '../types';
 import useStore from '../store';
 import VideoCard from './VideoCard';
-import { formatSize } from '../utils';
-import { Check, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
+import { formatSize, isWebSupported } from '../utils';
+import { Check, ChevronDown, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
 import './GridMode.css';
 
 const BASE_CARD_WIDTH = 450;
@@ -41,7 +41,9 @@ interface GridRowData {
   selectedIds: Set<string>;
   isSelectionMode: boolean;
   handleCardClick: (video: Video, event: ReactMouseEvent) => void;
+  handleCardPlay: (video: Video, event: ReactMouseEvent) => void;
   onReviewFolder: (folderPath: string) => void;
+  persistCurrentScroll: () => void;
   toggleSelection: (video: Video, event: ReactMouseEvent) => void;
 }
 
@@ -81,7 +83,9 @@ function Row({ index, style, ariaAttributes, ...data }: { index: number; style: 
     selectedIds,
     isSelectionMode,
     handleCardClick,
+    handleCardPlay,
     onReviewFolder,
+    persistCurrentScroll,
     toggleSelection,
   } = data;
   const item = rows[index];
@@ -95,7 +99,10 @@ function Row({ index, style, ariaAttributes, ...data }: { index: number; style: 
           <span className="grid-group-size">{formatSize(item.totalSize)}</span>
           <button
             className="grid-group-review-btn"
-            onClick={() => onReviewFolder(item.folderPath)}
+            onClick={() => {
+              persistCurrentScroll();
+              onReviewFolder(item.folderPath);
+            }}
             title={`Review ${item.label}`}
           >
             <Play size={11} />
@@ -125,6 +132,7 @@ function Row({ index, style, ariaAttributes, ...data }: { index: number; style: 
             isSelected={selectedIds.has(video.id)}
             showSelectionControls={isSelectionMode}
             onClick={handleCardClick}
+            onPlay={handleCardPlay}
             onToggleSelect={toggleSelection}
           />
         </div>
@@ -135,9 +143,11 @@ function Row({ index, style, ariaAttributes, ...data }: { index: number; style: 
 
 export default function GridMode({ onReviewFolder }: GridModeProps) {
   const filteredVideos = useStore((s) => s.filteredVideos);
+  const videos = useStore((s) => s.videos);
   const setReviewMode = useStore((s) => s.setReviewMode);
   const setReviewIndex = useStore((s) => s.setReviewIndex);
   const setVideoStatusesBatch = useStore((s) => s.setVideoStatusesBatch);
+  const pushToast = useStore((s) => s.pushToast);
   const selectedIds = useStore((s) => s.gridSelectionIds);
   const selectionAnchorId = useStore((s) => s.gridSelectionAnchorId);
   const setGridSelectionIds = useStore((s) => s.setGridSelectionIds);
@@ -150,6 +160,7 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<ListImperativeAPI | null>(null);
   const restoredScrollRef = useRef(false);
+  const visibleRowsRef = useRef({ startIndex: 0, stopIndex: 0 });
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const isSelectionMode = selectedIds.size > 0;
 
@@ -182,7 +193,16 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
   const columnCount = Math.max(1, Math.floor((dimensions.width + GAP) / (cardWidth + GAP)));
 
   // Build flat row items: headers + card rows
-  const { rows, rowStructureKey } = useMemo(() => {
+  const folderSizeByPath = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const video of videos) {
+      const folderPath = getFolderPath(video);
+      map.set(folderPath, (map.get(folderPath) ?? 0) + video.sizeBytes);
+    }
+    return map;
+  }, [videos]);
+
+  const { rows, rowStructureKey, headerIndexes } = useMemo(() => {
     if (!groupByFolder) {
       // No grouping — just chunk into rows of cards
       const result: RowItem[] = [];
@@ -193,7 +213,7 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
       const structureKey = result
         .map((row) => (row.type === 'cards' ? `c:${row.videos.length}` : 'h'))
         .join('|');
-      return { rows: result, rowStructureKey: structureKey };
+      return { rows: result, rowStructureKey: structureKey, headerIndexes: [] as number[] };
     }
 
     // Group by folder
@@ -218,16 +238,18 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     }
 
     const result: RowItem[] = [];
+    const nextHeaderIndexes: number[] = [];
     for (const group of groups) {
       // Only show headers if there are multiple groups
       if (groups.length > 1) {
-        const totalSize = group.videos.reduce((sum, v) => sum + v.sizeBytes, 0);
+        const folderPath = getFolderPath(group.videos[0]);
+        nextHeaderIndexes.push(result.length);
         result.push({
           type: 'header',
           label: group.label,
-          folderPath: getFolderPath(group.videos[0]),
+          folderPath,
           count: group.videos.length,
-          totalSize,
+          totalSize: folderSizeByPath.get(folderPath) ?? group.videos.reduce((sum, v) => sum + v.sizeBytes, 0),
         });
       }
       for (let i = 0; i < group.videos.length; i += columnCount) {
@@ -238,8 +260,8 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     const structureKey = result
       .map((row) => (row.type === 'header' ? `h:${row.label}` : `c:${row.videos.length}`))
       .join('|');
-    return { rows: result, rowStructureKey: structureKey };
-  }, [filteredVideos, columnCount, groupByFolder, directories]);
+    return { rows: result, rowStructureKey: structureKey, headerIndexes: nextHeaderIndexes };
+  }, [filteredVideos, columnCount, groupByFolder, directories, folderSizeByPath]);
 
   useEffect(() => {
     if (selectedIds.size > 0) {
@@ -264,6 +286,20 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSelectionMode, clearGridSelection]);
+
+  const getRowTop = useCallback((rowIndex: number) => {
+    let top = 0;
+    for (let i = 0; i < rowIndex; i += 1) {
+      top += rows[i]?.type === 'header' ? HEADER_HEIGHT : cardHeight + GAP;
+    }
+    return top;
+  }, [cardHeight, rows]);
+
+  const persistCurrentScroll = useCallback(() => {
+    const element = listRef.current?.element;
+    if (!element) return;
+    persistedGridScroll = { directory, offset: element.scrollTop };
+  }, [directory]);
 
   useLayoutEffect(() => {
     if (restoredScrollRef.current) return;
@@ -382,17 +418,38 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     const state = useStore.getState();
     const idx = state.filteredVideos.findIndex((v) => v.id === video.id);
     if (idx >= 0) {
+      persistCurrentScroll();
       state.setReviewIndex(idx);
       state.setReviewMode(true);
     }
-  }, [isSelectionMode, toggleSelection]);
+  }, [isSelectionMode, persistCurrentScroll, toggleSelection]);
+
+  const handleCardPlay = useCallback((video: Video, event: ReactMouseEvent) => {
+    persistCurrentScroll();
+    if (isWebSupported(video.path) && !event.ctrlKey) {
+      useStore.getState().enterReviewAndPlay(video.id);
+    } else if (window.electronAPI) {
+      window.electronAPI.openVideo(video.path);
+    }
+  }, [persistCurrentScroll]);
 
   const handleBatchStatus = useCallback((status: 'keep' | 'delete' | 'skipped' | 'pending') => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     setVideoStatusesBatch(ids, status);
     clearGridSelection();
-  }, [selectedIds, setVideoStatusesBatch, clearGridSelection]);
+    const statusLabel = status === 'skipped'
+      ? 'Skipped'
+      : status === 'pending'
+        ? 'Pending'
+        : status.charAt(0).toUpperCase() + status.slice(1);
+    pushToast({
+      title: status === 'pending' ? 'Selection reset' : 'Batch updated',
+      detail: `${ids.length} ${ids.length === 1 ? 'video' : 'videos'} marked ${statusLabel}.`,
+      kind: 'success',
+      dedupeKey: `batch-status:${status}:${ids.join('|')}`,
+    });
+  }, [selectedIds, setVideoStatusesBatch, clearGridSelection, pushToast]);
 
   const handleClearSelection = useCallback(() => {
     clearGridSelection();
@@ -404,6 +461,18 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     persistedGridScroll = { directory, offset: event.currentTarget.scrollTop };
   }, [directory]);
 
+  const handleRowsRendered = useCallback((visibleRows: { startIndex: number; stopIndex: number }) => {
+    visibleRowsRef.current = visibleRows;
+  }, []);
+
+  const handleNextFolder = useCallback(() => {
+    if (headerIndexes.length === 0) return;
+    const currentStart = visibleRowsRef.current.startIndex;
+    const nextHeaderIndex = headerIndexes.find((index) => index > currentStart) ?? headerIndexes[0];
+    listRef.current?.scrollToRow({ index: nextHeaderIndex, align: 'start', behavior: 'smooth' });
+    persistedGridScroll = { directory, offset: getRowTop(nextHeaderIndex) };
+  }, [directory, getRowTop, headerIndexes]);
+
   const itemData = useMemo<GridRowData>(() => ({
     rows,
     columnWidth,
@@ -411,9 +480,11 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     selectedIds,
     isSelectionMode,
     handleCardClick,
+    handleCardPlay,
     onReviewFolder,
+    persistCurrentScroll,
     toggleSelection,
-  }), [rows, columnWidth, cardHeight, selectedIds, isSelectionMode, handleCardClick, onReviewFolder, toggleSelection]);
+  }), [rows, columnWidth, cardHeight, selectedIds, isSelectionMode, handleCardClick, handleCardPlay, onReviewFolder, persistCurrentScroll, toggleSelection]);
 
   return (
     <div className="grid-mode" ref={containerRef}>
@@ -423,16 +494,22 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
         </div>
       ) : (
         <List
-          key={rowStructureKey}
           listRef={listRef}
           rowCount={rows.length}
           rowComponent={Row}
           rowHeight={getItemSize}
           rowProps={itemData}
           overscanCount={2}
+          onRowsRendered={handleRowsRendered}
           onScroll={handleScroll}
           style={{ height: dimensions.height, width: dimensions.width }}
         />
+      )}
+
+      {headerIndexes.length > 1 && (
+        <button className="grid-next-folder-btn" onClick={handleNextFolder} title="Go to next folder" aria-label="Go to next folder">
+          <ChevronDown size={15} />
+        </button>
       )}
 
       {selectedIds.size > 0 && (

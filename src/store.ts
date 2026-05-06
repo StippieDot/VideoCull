@@ -3,8 +3,9 @@ import type {
   Video, VideoStatus, VideoStats, VideoStore,
   ScanProgress, ThumbProgress, UndoEntry,
   StatusFilter, SortField, SortOrder, FolderSortField,
+  ToastInput, ToastKind,
 } from './types';
-import { DEFAULT_KEYBINDS, migrateSettings, pruneRecentDirectories } from './keybind-defaults';
+import { DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, pruneRecentDirectories } from './keybind-defaults';
 
 function getFolder(v: Video): string {
   const sep = v.path.includes('/') ? '/' : '\\';
@@ -13,7 +14,7 @@ function getFolder(v: Video): string {
   return parts.length >= 2 ? parts.slice(0, -1).join(sep) : '';
 }
 
-function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'minDurationFilter' | 'folderFilterPath' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
+function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'minDurationFilter' | 'folderFilterPath' | 'ratedFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
   let filtered = [...state.videos];
 
   if (state.statusFilter !== 'all') {
@@ -32,6 +33,18 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
     filtered = filtered.filter((v) => getFolder(v) === state.folderFilterPath);
   }
 
+  if (state.ratedFilter) {
+    filtered = filtered.filter((v) => (v.rating ?? 0) > 0);
+  }
+
+  if (state.favoritesFilter) {
+    filtered = filtered.filter((v) => Boolean(v.favorite));
+  }
+
+  if (state.incompatibleFilter) {
+    filtered = filtered.filter((v) => v.compatible === false);
+  }
+
   const getSortCmp = (a: Video, b: Video): number => {
     switch (state.sortBy) {
       case 'name':
@@ -45,6 +58,12 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
         const dateB = b.metadataDate || b.date || 0;
         return dateA - dateB;
       }
+      case 'rating':
+        return (a.rating ?? 0) - (b.rating ?? 0);
+      case 'resolution':
+        return ((a.width ?? 0) * (a.height ?? 0)) - ((b.width ?? 0) * (b.height ?? 0));
+      case 'fps':
+        return (a.fps ?? 0) - (b.fps ?? 0);
     }
   };
 
@@ -53,7 +72,7 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
     let folderSizeMap: Map<string, number> | null = null;
     if (state.folderSortBy === 'size') {
       folderSizeMap = new Map();
-      for (const v of filtered) {
+      for (const v of state.videos) {
         const folder = getFolder(v);
         folderSizeMap.set(folder, (folderSizeMap.get(folder) || 0) + v.sizeBytes);
       }
@@ -123,6 +142,31 @@ function uniqueDirectories(dirs: string[]): string[] {
   }
   return result;
 }
+
+function folderLabel(pathValue: string | null | undefined): string {
+  if (!pathValue) return 'folder';
+  const parts = pathValue.split(/[/\\]/).filter(Boolean);
+  return parts.slice(-1)[0] || pathValue;
+}
+
+function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+type NotifyFn = (toast: ToastInput | string, kind?: ToastKind) => void;
+let notifyToast: NotifyFn | null = null;
+
+function notify(toast: ToastInput | string, kind?: ToastKind) {
+  notifyToast?.(toast, kind);
+}
+
+const DEFAULT_TOAST_DURATION_MS = 4200;
+const IMPORTANT_TOAST_DURATION_MS = 7000;
+const TOAST_DEDUPE_WINDOW_MS = 2500;
+const MAX_VISIBLE_TOASTS = 5;
+let toastIdCounter = 0;
+const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const recentToastByKey = new Map<string, number>();
 
 const SAVE_RETRY_DELAY_MS = 750;
 const MAX_SAVE_RETRY_ATTEMPTS = 3;
@@ -251,6 +295,12 @@ function flushRetryQueue() {
           attempts: retryAttempts,
           count: retryPayload.length,
         });
+        notify({
+          title: 'Decisions not saved',
+          detail: `${plural(retryPayload.length, 'change')} could be lost for "${folderLabel(directory)}".`,
+          kind: 'error',
+          dedupeKey: `save-exhausted:${directory}`,
+        });
         resetRetryQueue();
         return;
       }
@@ -259,6 +309,14 @@ function flushRetryQueue() {
         attempt: retryAttempts,
         count: retryPayload.length,
       });
+      if (retryAttempts === 1) {
+        notify({
+          title: 'Saving decisions delayed',
+          detail: `Retrying ${plural(retryPayload.length, 'change')} for "${folderLabel(directory)}".`,
+          kind: 'warning',
+          dedupeKey: `save-delayed:${directory}`,
+        });
+      }
       scheduleRetryFlush();
     })
     .catch((err) => {
@@ -278,6 +336,12 @@ function flushRetryQueue() {
       retryAttempts += 1;
       if (retryAttempts >= MAX_SAVE_RETRY_ATTEMPTS) {
         console.error('[store] saveCache retry failed permanently', err);
+        notify({
+          title: 'Decisions not saved',
+          detail: `${plural(retryPayload.length, 'change')} could be lost for "${folderLabel(directory)}".`,
+          kind: 'error',
+          dedupeKey: `save-exhausted:${directory}`,
+        });
         resetRetryQueue();
         return;
       }
@@ -286,6 +350,14 @@ function flushRetryQueue() {
         attempt: retryAttempts,
         count: retryPayload.length,
       });
+      if (retryAttempts === 1) {
+        notify({
+          title: 'Saving decisions delayed',
+          detail: `Retrying ${plural(retryPayload.length, 'change')} for "${folderLabel(directory)}".`,
+          kind: 'warning',
+          dedupeKey: `save-delayed:${directory}`,
+        });
+      }
       scheduleRetryFlush();
     });
 }
@@ -321,10 +393,22 @@ function persistChangedVideos(directory: string | null, directories: string[], v
         }
 
         console.warn('[store] saveCache returned false for partial save', { count: rootVideos.length });
+        notify({
+          title: 'Saving decisions delayed',
+          detail: `Retrying ${plural(rootVideos.length, 'change')} for "${folderLabel(root)}".`,
+          kind: 'warning',
+          dedupeKey: `save-delayed:${root}`,
+        });
         enqueueRetryVideos(root, rootVideos, requestToken);
       })
       .catch((err) => {
         console.error('[store] saveCache failed for partial save', err);
+        notify({
+          title: 'Saving decisions delayed',
+          detail: `Retrying ${plural(rootVideos.length, 'change')} for "${folderLabel(root)}".`,
+          kind: 'warning',
+          dedupeKey: `save-delayed:${root}`,
+        });
         enqueueRetryVideos(root, rootVideos, requestToken);
       });
   }
@@ -348,6 +432,12 @@ function persistChangedVideosAtomic(directory: string | null, directories: strin
       .then((ok) => {
         if (!ok) {
           console.warn('[store] saveCacheAtomic returned false; falling back to queued save', { count: rootVideos.length });
+          notify({
+            title: 'Saving decisions delayed',
+            detail: `Retrying ${plural(rootVideos.length, 'change')} for "${folderLabel(root)}".`,
+            kind: 'warning',
+            dedupeKey: `save-delayed:${root}`,
+          });
           persistChangedVideos(root, [root], rootVideos);
           return;
         }
@@ -360,6 +450,12 @@ function persistChangedVideosAtomic(directory: string | null, directories: strin
       })
       .catch((err) => {
         console.error('[store] saveCacheAtomic failed', err);
+        notify({
+          title: 'Saving decisions delayed',
+          detail: `Retrying ${plural(rootVideos.length, 'change')} for "${folderLabel(root)}".`,
+          kind: 'warning',
+          dedupeKey: `save-delayed:${root}`,
+        });
         persistChangedVideos(root, [root], rootVideos);
     });
   }
@@ -390,6 +486,9 @@ const useStore = create<VideoStore>((set, get) => ({
   minSizeFilter: 0,
   minDurationFilter: 0,
   folderFilterPath: null,
+  ratedFilter: false,
+  favoritesFilter: false,
+  incompatibleFilter: false,
   groupByFolder: true,
   folderSortBy: 'name',
   folderSortOrder: 'asc',
@@ -424,11 +523,16 @@ const useStore = create<VideoStore>((set, get) => ({
     recentDirectories: [],
     recentDirectoryTimestamps: {},
     autoUpdates: true,
+    globalMute: false,
+    features: { ...DEFAULT_FEATURES },
     ...DEFAULT_KEYBINDS,
   },
 
   // ── Statistics ──
   stats: { total: 0, pending: 0, skipped: 0, keep: 0, delete: 0, totalSize: 0, deleteSize: 0 },
+
+  // ── Notifications ──
+  toasts: [],
 
   // ── Actions ──
   setDirectory: (dir: string | null) => {
@@ -537,11 +641,17 @@ const useStore = create<VideoStore>((set, get) => ({
     for (const item of batch) {
       const vIdx = videos.findIndex((v) => v.id === item.videoId);
       if (vIdx >= 0) {
-        videos[vIdx] = { 
-          ...videos[vIdx], 
-          thumbnails: item.thumbnails, 
-          durationSecs: item.durationSecs ?? videos[vIdx].durationSecs, 
-          metadataDate: item.metadataDate ?? videos[vIdx].metadataDate 
+        videos[vIdx] = {
+          ...videos[vIdx],
+          thumbnails: item.thumbnails,
+          durationSecs: item.durationSecs ?? videos[vIdx].durationSecs,
+          metadataDate: item.metadataDate ?? videos[vIdx].metadataDate,
+          videoCodec: item.videoCodec ?? videos[vIdx].videoCodec,
+          audioCodec: item.audioCodec ?? videos[vIdx].audioCodec,
+          width: item.width ?? videos[vIdx].width,
+          height: item.height ?? videos[vIdx].height,
+          fps: item.fps ?? videos[vIdx].fps,
+          compatible: item.compatible ?? videos[vIdx].compatible,
         };
         changedVideos.set(item.videoId, videos[vIdx]);
         changed = true;
@@ -634,6 +744,34 @@ const useStore = create<VideoStore>((set, get) => ({
     persistChangedVideosAtomic(stateNow.directory, stateNow.directories, changedVideos);
   },
 
+  setVideoRating: (videoId, rating) => {
+    let updatedVideo: Video | null = null;
+    const videos = get().videos.map((video) => {
+      if (video.id !== videoId || video.rating === rating) return video;
+      updatedVideo = { ...video, rating };
+      return updatedVideo;
+    });
+    if (!updatedVideo) return;
+    const state = { ...get(), videos };
+    set({ videos, filteredVideos: computeFiltered(state) });
+    const stateNow = get();
+    persistChangedVideos(stateNow.directory, stateNow.directories, [updatedVideo]);
+  },
+
+  toggleFavorite: (videoId) => {
+    let updatedVideo: Video | null = null;
+    const videos = get().videos.map((video) => {
+      if (video.id !== videoId) return video;
+      updatedVideo = { ...video, favorite: !video.favorite };
+      return updatedVideo;
+    });
+    if (!updatedVideo) return;
+    const state = { ...get(), videos };
+    set({ videos, filteredVideos: computeFiltered(state) });
+    const stateNow = get();
+    persistChangedVideos(stateNow.directory, stateNow.directories, [updatedVideo]);
+  },
+
   undo: () => {
     const stack = [...get().undoStack];
     if (stack.length === 0) return;
@@ -691,6 +829,21 @@ const useStore = create<VideoStore>((set, get) => ({
   setFolderFilterPath: (folderFilterPath: string | null) => {
     const state = { ...get(), folderFilterPath };
     set({ folderFilterPath, filteredVideos: computeFiltered(state), reviewIndex: 0 });
+  },
+
+  setRatedFilter: (ratedFilter: boolean) => {
+    const state = { ...get(), ratedFilter };
+    set({ ratedFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
+  },
+
+  setFavoritesFilter: (favoritesFilter: boolean) => {
+    const state = { ...get(), favoritesFilter };
+    set({ favoritesFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
+  },
+
+  setIncompatibleFilter: (incompatibleFilter: boolean) => {
+    const state = { ...get(), incompatibleFilter };
+    set({ incompatibleFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
   },
 
   setGroupByFolder: (groupByFolder: boolean) => {
@@ -820,23 +973,124 @@ const useStore = create<VideoStore>((set, get) => ({
     }
   },
 
+  pushToast: (toast, kind = 'info') => {
+    const input: ToastInput = typeof toast === 'string'
+      ? { title: toast, kind }
+      : { ...toast, kind: toast.kind ?? kind };
+    const now = Date.now();
+
+    if (input.dedupeKey) {
+      const lastShown = recentToastByKey.get(input.dedupeKey) ?? 0;
+      if (now - lastShown < TOAST_DEDUPE_WINDOW_MS) return;
+      recentToastByKey.set(input.dedupeKey, now);
+    }
+
+    const toastKind = input.kind ?? 'info';
+    const id = ++toastIdCounter;
+    const duration = input.durationMs
+      ?? (toastKind === 'error' || toastKind === 'warning' ? IMPORTANT_TOAST_DURATION_MS : DEFAULT_TOAST_DURATION_MS);
+
+    set((state) => ({
+      toasts: [
+        ...state.toasts.slice(-(MAX_VISIBLE_TOASTS - 1)),
+        {
+          id,
+          title: input.title,
+          detail: input.detail,
+          kind: toastKind,
+          createdAt: now,
+        },
+      ],
+    }));
+
+    const timer = setTimeout(() => {
+      toastTimers.delete(id);
+      get().dismissToast(id);
+    }, duration);
+    toastTimers.set(id, timer);
+  },
+
+  dismissToast: (id) => {
+    const timer = toastTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimers.delete(id);
+    }
+    set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) }));
+  },
+
+  clearToasts: () => {
+    for (const timer of toastTimers.values()) clearTimeout(timer);
+    toastTimers.clear();
+    recentToastByKey.clear();
+    set({ toasts: [] });
+  },
+
   // ── Settings ──
   setIsSettingsModalOpen: (val: boolean) => set({ isSettingsModalOpen: val }),
   updateSettings: (newSettings) => {
     const state = get();
-    const mergedSettings = { ...state.settings, ...newSettings };
+    const mergedSettings = {
+      ...state.settings,
+      ...newSettings,
+      features: {
+        ...state.settings.features,
+        ...(newSettings.features ?? {}),
+      },
+    };
+    const nextSortBy =
+      (!mergedSettings.features.ratings && state.sortBy === 'rating') ||
+      (!mergedSettings.features.codecBadges && (state.sortBy === 'resolution' || state.sortBy === 'fps'))
+        ? 'name'
+        : (newSettings.defaultSortBy ?? state.sortBy);
     const newState = {
       ...state,
       settings: mergedSettings,
       cardScale: newSettings.defaultCardScale ?? state.cardScale,
-      sortBy: newSettings.defaultSortBy ?? state.sortBy,
+      sortBy: nextSortBy,
       sortOrder: newSettings.defaultSortOrder ?? state.sortOrder,
-      groupByFolder: newSettings.defaultGroupByFolder ?? state.groupByFolder
+      groupByFolder: newSettings.defaultGroupByFolder ?? state.groupByFolder,
+      ratedFilter: mergedSettings.features.ratings ? state.ratedFilter : false,
+      favoritesFilter: mergedSettings.features.favorites ? state.favoritesFilter : false,
+      incompatibleFilter: mergedSettings.features.compatibilityCheck ? state.incompatibleFilter : false,
     };
     set({
       ...newState,
       filteredVideos: computeFiltered(newState)
     });
+
+    if (nextSortBy !== state.sortBy) {
+      get().pushToast({
+        title: 'Sort reset',
+        detail: `${state.sortBy === 'rating' ? 'Rating' : 'Media'} sort was disabled, so sorting changed to Name.`,
+        kind: 'warning',
+        dedupeKey: 'settings-sort-reset',
+      });
+    }
+    if (state.ratedFilter && !mergedSettings.features.ratings) {
+      get().pushToast({
+        title: 'Filter cleared',
+        detail: 'Rated-only filter was cleared because Ratings is disabled.',
+        kind: 'warning',
+        dedupeKey: 'settings-rated-filter-cleared',
+      });
+    }
+    if (state.favoritesFilter && !mergedSettings.features.favorites) {
+      get().pushToast({
+        title: 'Filter cleared',
+        detail: 'Favorites filter was cleared because Favorites is disabled.',
+        kind: 'warning',
+        dedupeKey: 'settings-favorites-filter-cleared',
+      });
+    }
+    if (state.incompatibleFilter && !mergedSettings.features.compatibilityCheck) {
+      get().pushToast({
+        title: 'Filter cleared',
+        detail: 'Incompatible filter was cleared because compatibility checks are disabled.',
+        kind: 'warning',
+        dedupeKey: 'settings-incompatible-filter-cleared',
+      });
+    }
   },
   saveSettings: async () => {
     const s = get().settings;
@@ -891,5 +1145,7 @@ const useStore = create<VideoStore>((set, get) => ({
     }
   },
 }));
+
+notifyToast = (toast, kind) => useStore.getState().pushToast(toast, kind);
 
 export default useStore;

@@ -300,7 +300,7 @@ function saveCache(db, videos) {
         v.duplicateHash ?? null,
         Date.now()
       );
-      if (v.thumbnails?.length) {
+      if (Array.isArray(v.thumbnails)) {
         deleteThumbs.run(v.id);
         for (let i = 0; i < v.thumbnails.length; i++) {
           insertThumb.run(v.id, i, v.thumbnails[i]);
@@ -368,7 +368,7 @@ async function saveCacheChunked(db, videos, onProgress) {
         v.duplicateHash ?? null,
         Date.now()
       );
-      if (v.thumbnails?.length) {
+      if (Array.isArray(v.thumbnails)) {
         deleteThumbs.run(v.id);
         for (let i = 0; i < v.thumbnails.length; i++) {
           insertThumb.run(v.id, i, v.thumbnails[i]);

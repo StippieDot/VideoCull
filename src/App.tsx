@@ -9,13 +9,8 @@ import SettingsModal from './components/SettingsModal';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { UpdateInfo } from './types';
+import { formatRecentPath } from './utils';
 import './App.css';
-
-type Toast = {
-  id: number;
-  message: string;
-  kind: 'info' | 'error';
-};
 
 export default function App() {
   const directory = useStore((s) => s.directory);
@@ -32,7 +27,15 @@ export default function App() {
   const updateVideoThumbnailsBatch = useStore((s) => s.updateVideoThumbnailsBatch);
   const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
+  const thumbsPerVideo = useStore((s) => s.settings.thumbsPerVideo);
+  const skipIntroDelaySecs = useStore((s) => s.settings.skipIntroDelaySecs);
+  const toasts = useStore((s) => s.toasts);
+  const pushToast = useStore((s) => s.pushToast);
+  const dismissToast = useStore((s) => s.dismissToast);
   const scanIdRef = useRef(0);
+  const genProgressBaseRef = useRef(0);
+  const genProgressTotalRef = useRef(0);
+  const genProgressPhaseRef = useRef<'thumbnails' | 'metadata' | 'media'>('thumbnails');
   const isPrivateRef = useRef(false);
   const dragDepthRef = useRef(0);
   const folderReviewPathRef = useRef<string | null>(null);
@@ -41,10 +44,8 @@ export default function App() {
   const [isPrivate, setIsPrivate] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropModalPath, setDropModalPath] = useState<string | null>(null);
-  const [settingsTab, setSettingsTab] = useState<'interface' | 'keybindings' | 'cache' | 'processing' | 'updates'>('interface');
+  const [settingsTab, setSettingsTab] = useState<'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates'>('interface');
   const [settingsTabRequestId, setSettingsTabRequestId] = useState(0);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const toastIdRef = useRef(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
 
@@ -61,19 +62,7 @@ export default function App() {
     setDropModalPath(pickedPath);
   }, []);
 
-  const pushToast = useCallback((message: string, kind: Toast['kind'] = 'info') => {
-    const id = ++toastIdRef.current;
-    setToasts((prev) => [...prev, { id, message, kind }]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }, []);
-
-  const dismissToast = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  const openSettings = useCallback((tab: 'interface' | 'keybindings' | 'cache' | 'processing' | 'updates' = 'interface') => {
+  const openSettings = useCallback((tab: 'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates' = 'interface') => {
     setSettingsTab(tab);
     setSettingsTabRequestId((prev) => prev + 1);
     useStore.getState().setIsSettingsModalOpen(true);
@@ -98,23 +87,90 @@ export default function App() {
       const allVideos = scannedGroups.flatMap((group) => group.videos);
       setVideos(allVideos);
       setIsScanning(false);
-      const needThumbsTotal = allVideos.filter((v) => !v.thumbnails || v.thumbnails.length === 0).length;
+      const folderLabel = dirPaths.length === 1 ? formatRecentPath(dirPaths[0]) : `${dirPaths.length} folders`;
+      pushToast({
+        title: dirPaths.length === 1 ? 'Folder loaded' : 'Folders loaded',
+        detail: `${allVideos.length} ${allVideos.length === 1 ? 'video' : 'videos'} found in ${folderLabel}.`,
+        kind: 'success',
+        dedupeKey: `scan-loaded:${dirPaths.join('|')}`,
+      });
+      const expectedThumbCount = (v: typeof allVideos[number]) => (
+        v.durationSecs !== null && v.durationSecs !== undefined && v.durationSecs > 0 && v.durationSecs < skipIntroDelaySecs
+          ? 1
+          : thumbsPerVideo
+      );
+      const needsThumbnails = (v: typeof allVideos[number]) => (
+        !v.thumbnails ||
+        v.thumbnails.length < expectedThumbCount(v)
+      );
+      const needsMetadata = (v: typeof allVideos[number]) => (
+        !v.videoCodec ||
+        !v.width ||
+        !v.height ||
+        v.fps === null ||
+        v.fps === undefined
+      );
+      const needsThumbnailOrMetadata = (v: typeof allVideos[number]) => needsThumbnails(v) || needsMetadata(v);
+      const needThumbsTotal = allVideos.filter(needsThumbnailOrMetadata).length;
       if (needThumbsTotal > 0) {
+        const thumbnailTaskCount = allVideos.filter(needsThumbnails).length;
+        const thumbnailTaskIds = new Set(allVideos.filter(needsThumbnails).map((v) => v.id));
+        const phase = thumbnailTaskCount === 0
+          ? 'metadata'
+          : thumbnailTaskCount === needThumbsTotal
+            ? 'thumbnails'
+            : 'media';
+        let completedTasks = 0;
+        genProgressBaseRef.current = 0;
+        genProgressTotalRef.current = needThumbsTotal;
+        genProgressPhaseRef.current = phase;
         setIsGenerating(true);
-        setGenProgress({ current: 0, total: needThumbsTotal });
+        setGenProgress({ current: 0, total: needThumbsTotal, phase });
         for (const group of scannedGroups) {
-          const needThumbs = group.videos.filter((v) => !v.thumbnails || v.thumbnails.length === 0);
+          const needThumbs = group.videos.filter(needsThumbnailOrMetadata);
           if (needThumbs.length === 0) continue;
+          genProgressBaseRef.current = completedTasks;
           await window.electronAPI.generateThumbnails(needThumbs, group.dirPath);
+          completedTasks += needThumbs.length;
+          if (scanId === scanIdRef.current) {
+            setGenProgress({ current: completedTasks, total: needThumbsTotal, phase });
+          }
         }
-        if (scanId === scanIdRef.current) setIsGenerating(false);
+        if (scanId === scanIdRef.current) {
+          setIsGenerating(false);
+          if (thumbnailTaskCount > 0) {
+            const currentVideos = useStore.getState().videos;
+            const stillIncomplete = currentVideos.filter((v) => (
+              thumbnailTaskIds.has(v.id) &&
+              (!v.thumbnails || v.thumbnails.length < expectedThumbCount(v))
+            )).length;
+            pushToast(stillIncomplete > 0
+              ? {
+                title: 'Some thumbnails failed',
+                detail: `${stillIncomplete} ${stillIncomplete === 1 ? 'video still has' : 'videos still have'} fewer than ${thumbsPerVideo} frames.`,
+                kind: 'warning',
+                dedupeKey: `thumbs-incomplete:${dirPaths.join('|')}`,
+              }
+              : {
+                title: 'Thumbnails updated',
+                detail: `${thumbnailTaskCount} ${thumbnailTaskCount === 1 ? 'video was' : 'videos were'} rebuilt to ${thumbsPerVideo} frames.`,
+                kind: 'success',
+                dedupeKey: `thumbs-updated:${dirPaths.join('|')}`,
+              });
+          }
+        }
       }
     } catch (err) {
       console.error('Scan failed:', err);
       setIsScanning(false);
       setIsGenerating(false);
+      pushToast({
+        title: 'Scan failed',
+        detail: dirPaths.length === 1 ? formatRecentPath(dirPaths[0]) : `${dirPaths.length} folders`,
+        kind: 'error',
+      });
     }
-  }, [includeSubfolders, setVideos, setIsScanning, setScanProgress, setIsGenerating, setGenProgress]);
+  }, [includeSubfolders, thumbsPerVideo, skipIntroDelaySecs, setVideos, setIsScanning, setScanProgress, setIsGenerating, setGenProgress, pushToast]);
 
   useEffect(() => {
     void useStore.getState().loadSettings();
@@ -133,8 +189,18 @@ export default function App() {
     if (!window.electronAPI) return;
 
     const unsub1 = window.electronAPI.onScanProgress((progress) => setScanProgress(progress));
-    const unsub2 = window.electronAPI.onThumbProgress((progress) => setGenProgress(progress));
+    const unsub2 = window.electronAPI.onThumbProgress((progress) => {
+      const total = genProgressTotalRef.current || progress.total;
+      setGenProgress({
+        current: Math.min(total, genProgressBaseRef.current + progress.current),
+        total,
+        phase: genProgressPhaseRef.current,
+      });
+    });
     const unsub3 = window.electronAPI.onThumbReadyBatch((batch) => updateVideoThumbnailsBatch(batch));
+    const unsubNotifications = window.electronAPI.onAppNotification
+      ? window.electronAPI.onAppNotification((notification) => pushToast(notification))
+      : () => {};
 
     const unsub4 = window.electronAPI.onMenuAction(async (action) => {
       if (isPrivateRef.current) return;
@@ -151,11 +217,32 @@ export default function App() {
           if (state.directories.length > 0) {
             const confirmed = window.confirm('Are you sure you want to clear the cache for all loaded folders? All manual review decisions will be lost.');
             if (confirmed) {
+              let clearedCount = 0;
+              let failedCount = 0;
               for (const dir of state.directories) {
-                await window.electronAPI.clearCache(dir);
+                const ok = await window.electronAPI.clearCache(dir);
+                if (ok) {
+                  clearedCount += 1;
+                } else {
+                  failedCount += 1;
+                  pushToast({
+                    title: 'Cache clear failed',
+                    detail: formatRecentPath(dir),
+                    kind: 'error',
+                    dedupeKey: `cache-clear-failed:${dir}`,
+                  });
+                }
               }
+              pushToast({
+                title: failedCount > 0 ? 'Cache clear incomplete' : 'Cache cleared',
+                detail: failedCount > 0
+                  ? `${clearedCount} cleared, ${failedCount} failed.`
+                  : `${clearedCount} ${clearedCount === 1 ? 'folder' : 'folders'} will be rebuilt.`,
+                kind: failedCount > 0 ? 'warning' : 'success',
+                dedupeKey: `cache-cleared:${state.directories.join('|')}`,
+              });
               state.setVideos([]);
-              handleScan(state.directories);
+              void handleScan(state.directories);
             }
           }
           break;
@@ -171,12 +258,31 @@ export default function App() {
             state.removeDeletedVideos(deletedPaths);
             const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;
             const permanentFailureCount = results.filter((r) => r.method === 'permanent' && !r.success).length;
-            if (permanentSuccessCount > 0 && permanentFailureCount > 0) {
-              pushToast('Some files were permanently deleted, but some still failed.', 'error');
+            const failedCount = results.filter((r) => !r.success).length;
+            if (permanentSuccessCount > 0 && failedCount > 0) {
+              pushToast({
+                title: 'Delete partly failed',
+                detail: `${deletedPaths.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped Recycle Bin.`,
+                kind: 'error',
+              });
             } else if (permanentSuccessCount > 0) {
-              pushToast('Some files were permanently deleted because the Recycle Bin was unavailable.', 'error');
-            } else if (permanentFailureCount > 0) {
-              pushToast('Some files could not be deleted.', 'error');
+              pushToast({
+                title: 'Permanently deleted',
+                detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped Recycle Bin.`,
+                kind: 'warning',
+              });
+            } else if (permanentFailureCount > 0 || failedCount > 0) {
+              pushToast({
+                title: 'Delete failed',
+                detail: `${failedCount} ${failedCount === 1 ? 'file could' : 'files could'} not be removed.`,
+                kind: 'error',
+              });
+            } else {
+              pushToast({
+                title: 'Moved to Recycle Bin',
+                detail: `${deletedPaths.length} ${deletedPaths.length === 1 ? 'video' : 'videos'} removed from the library.`,
+                kind: 'success',
+              });
             }
           }
           break;
@@ -229,6 +335,7 @@ export default function App() {
       unsub1();
       unsub2();
       unsub3();
+      unsubNotifications();
       unsub4();
       window.removeEventListener('keydown', handleKeyDown);
     };
@@ -305,7 +412,12 @@ export default function App() {
     useStore.getState().addDirectory(dropModalPath);
     setDropModalPath(null);
     setTimeout(() => {
-      pushToast('Folder added to the current session.', 'info');
+      pushToast({
+        title: 'Folder added',
+        detail: formatRecentPath(dropModalPath),
+        kind: 'success',
+        dedupeKey: `folder-added:${dropModalPath}`,
+      });
     }, 50);
   }, [dropModalPath, pushToast]);
 
@@ -342,7 +454,11 @@ export default function App() {
     setScanProgress({ found: 0, currentFile: '' });
     setGenProgress({ current: 0, total: 0 });
     useStore.getState().setDirectory(null);
-    pushToast('Closed current session.', 'info');
+    pushToast({
+      title: 'Session closed',
+      detail: 'Loaded folders and generated work were cancelled.',
+      kind: 'info',
+    });
   }, [pushToast, setGenProgress, setIsGenerating, setIsScanning, setScanProgress]);
 
   return (
@@ -433,8 +549,15 @@ export default function App() {
       {!isPrivate && (
         <div className="toast-stack" aria-live="polite" aria-atomic="true">
           {toasts.map((toast) => (
-            <div key={toast.id} className={`toast toast-${toast.kind}`} role="status">
-              <span>{toast.message}</span>
+            <div
+              key={toast.id}
+              className={`toast toast-${toast.kind}`}
+              role={toast.kind === 'error' || toast.kind === 'warning' ? 'alert' : 'status'}
+            >
+              <span className="toast-copy">
+                <span className="toast-title">{toast.title}</span>
+                {toast.detail && <span className="toast-detail">{toast.detail}</span>}
+              </span>
               <button className="toast-close" onClick={() => dismissToast(toast.id)} aria-label="Dismiss notification">x</button>
             </div>
           ))}

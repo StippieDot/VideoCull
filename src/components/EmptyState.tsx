@@ -1,11 +1,12 @@
 import useStore from '../store';
 import { FolderOpen, Film, Settings, X } from 'lucide-react';
+import type { ToastInput, ToastKind } from '../types';
 import { formatKeybind } from '../keybinds';
 import { formatRelativeTime, formatRecentPath } from '../utils';
 import './EmptyState.css';
 
 interface EmptyStateProps {
-  onNotify: (message: string, kind?: 'info' | 'error') => void;
+  onNotify: (toast: ToastInput | string, kind?: ToastKind) => void;
 }
 
 export default function EmptyState({ onNotify }: EmptyStateProps) {
@@ -34,7 +35,12 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
     const result = await window.electronAPI.validateDroppedPath(dir);
     if (!result.valid || !result.isDirectory) {
       removeRecentDirectory(dir);
-      onNotify('This recent folder is no longer available.', 'error');
+      onNotify({
+        title: 'Recent unavailable',
+        detail: formatRecentPath(dir),
+        kind: 'error',
+        dedupeKey: `recent-unavailable:${dir}`,
+      });
       return;
     }
     setDirectory(dir);
@@ -42,7 +48,12 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
 
   const handleRemoveRecent = (dir: string) => {
     removeRecentDirectory(dir);
-    onNotify('Removed recent folder.', 'info');
+    onNotify({
+      title: 'Recent removed',
+      detail: formatRecentPath(dir),
+      kind: 'info',
+      dedupeKey: `recent-removed:${dir}`,
+    });
   };
 
   return (
@@ -79,8 +90,13 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
             <button
               className="empty-recents-clear"
               onClick={() => {
+                const removedCount = recentDirectories.length;
                 clearRecentDirectories();
-                onNotify('Cleared recent folders.', 'info');
+                onNotify({
+                  title: 'Recents cleared',
+                  detail: `${removedCount} ${removedCount === 1 ? 'entry' : 'entries'} removed.`,
+                  kind: 'info',
+                });
               }}
             >
               Clear all

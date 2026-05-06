@@ -77,3 +77,41 @@ export const WEB_SUPPORTED_EXTS = ['.mp4', '.webm', '.ogg', '.mov', '.mkv', '.m4
 export function isWebSupported(path: string): boolean {
   return WEB_SUPPORTED_EXTS.some((ext) => path.toLowerCase().endsWith(ext));
 }
+
+const CODEC_DISPLAY: Record<string, string> = {
+  h264: 'H.264',
+  avc: 'H.264',
+  avc1: 'H.264',
+  hevc: 'H.265',
+  h265: 'H.265',
+  hvc1: 'H.265',
+  av1: 'AV1',
+  av01: 'AV1',
+  vp8: 'VP8',
+  vp9: 'VP9',
+  theora: 'Theora',
+  prores: 'ProRes',
+  mpeg4: 'MPEG-4',
+  mpeg2video: 'MPEG-2',
+  wmv3: 'WMV',
+  vc1: 'VC-1',
+  h263: 'H.263',
+};
+
+export function formatCodecLabel(codec: string | null | undefined): string {
+  if (!codec) return '';
+  return CODEC_DISPLAY[codec.toLowerCase()] ?? codec.toUpperCase();
+}
+
+export function formatResolutionLabel(width: number | null | undefined, height: number | null | undefined): string {
+  if (!width || !height) return '';
+  if (width >= 3840) return '4K';
+  if (width >= 1920) return '1080p';
+  if (width >= 1280) return '720p';
+  return `${height}p`;
+}
+
+export function formatFps(fps: number | null | undefined): string {
+  if (!fps) return '';
+  return `${Number.isInteger(fps) ? fps : fps.toFixed(2)}fps`;
+}

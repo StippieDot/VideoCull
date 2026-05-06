@@ -14,6 +14,14 @@ export interface Video {
   thumbnails: string[];
   osThumbnail?: string | null;
   bookmarks?: number[]; // seconds into the video
+  rating: 0 | 1 | 2 | 3 | 4 | 5;
+  favorite: boolean;
+  compatible: boolean;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
 }
 
 // ── Progress Events ────────────────────────────────────────────────
@@ -25,6 +33,7 @@ export interface ScanProgress {
 export interface ThumbProgress {
   current: number;
   total: number;
+  phase?: 'thumbnails' | 'metadata' | 'media';
 }
 
 export interface ThumbReadyEvent {
@@ -32,6 +41,12 @@ export interface ThumbReadyEvent {
   thumbnails: string[];
   durationSecs: number;
   metadataDate?: number | null;
+  videoCodec?: string | null;
+  audioCodec?: string | null;
+  width?: number | null;
+  height?: number | null;
+  fps?: number | null;
+  compatible?: boolean;
 }
 
 // ── Delete Result ──────────────────────────────────────────────────
@@ -53,12 +68,40 @@ export interface VideoStats {
   deleteSize: number;
 }
 
+export type ToastKind = 'info' | 'success' | 'warning' | 'error';
+
+export interface ToastNotification {
+  id: number;
+  title: string;
+  detail?: string;
+  kind: ToastKind;
+  createdAt: number;
+}
+
+export interface ToastInput {
+  title: string;
+  detail?: string;
+  kind?: ToastKind;
+  dedupeKey?: string;
+  durationMs?: number;
+}
+
 // ── Sort & Filter ──────────────────────────────────────────────────
-export type SortField = 'name' | 'size' | 'duration' | 'date';
+export type SortField = 'name' | 'size' | 'duration' | 'date' | 'rating' | 'resolution' | 'fps';
 export type FolderSortField = 'name' | 'size';
 export type SortOrder = 'asc' | 'desc';
 export type StatusFilter = 'all' | VideoStatus;
 export type CacheLocationMode = 'centralised' | 'per-drive' | 'distributed';
+
+export interface FeatureSettings {
+  ratings: boolean;
+  favorites: boolean;
+  analytics: boolean;
+  codecBadges: boolean;
+  compatibilityCheck: boolean;
+  globalMute: boolean;
+  nextUndecided: boolean;
+}
 
 // ── Undo Entry ─────────────────────────────────────────────────────
 export interface UndoEntry {
@@ -88,6 +131,8 @@ export interface AppSettings {
   recentDirectories: string[];
   recentDirectoryTimestamps: Record<string, number>;
   autoUpdates: boolean;
+  globalMute: boolean;
+  features: FeatureSettings;
   // Review mode — context-independent
   keyKeep: Keybind;
   keyDelete: Keybind;
@@ -97,6 +142,7 @@ export interface AppSettings {
   keyPlay: Keybind;
   keyEnterPlay: Keybind;
   keyExternalPlayer: Keybind;
+  keyNextUndecided: Keybind;
   // Review mode — not playing
   keyPrevVideo: Keybind;
   keyNextVideo: Keybind;
@@ -111,6 +157,7 @@ export interface AppSettings {
   keyPreviewSeekForward: Keybind;
   // Global
   keyShowHelp: Keybind;
+  keyGlobalMute: Keybind;
 }
 
 // ── Store State ────────────────────────────────────────────────────
@@ -139,6 +186,9 @@ export interface VideoStore {
   minSizeFilter: number;
   minDurationFilter: number;
   folderFilterPath: string | null;
+  ratedFilter: boolean;
+  favoritesFilter: boolean;
+  incompatibleFilter: boolean;
   groupByFolder: boolean;
   folderSortBy: FolderSortField;
   folderSortOrder: SortOrder;
@@ -162,6 +212,9 @@ export interface VideoStore {
   // Statistics
   stats: VideoStats;
 
+  // Notifications
+  toasts: ToastNotification[];
+
   // Actions
   setDirectory: (dir: string | null) => void;
   addDirectory: (dir: string) => void;
@@ -178,6 +231,9 @@ export interface VideoStore {
   setMinSizeFilter: (minSize: number) => void;
   setMinDurationFilter: (seconds: number) => void;
   setFolderFilterPath: (folderPath: string | null) => void;
+  setRatedFilter: (val: boolean) => void;
+  setFavoritesFilter: (val: boolean) => void;
+  setIncompatibleFilter: (val: boolean) => void;
   setGroupByFolder: (val: boolean) => void;
   setFolderSortBy: (sortBy: FolderSortField) => void;
   setFolderSortOrder: (order: SortOrder) => void;
@@ -200,6 +256,11 @@ export interface VideoStore {
   clearRecentDirectories: () => void;
   removeRecentDirectory: (dir: string) => void;
   setVideoStatusesBatch: (videoIds: string[], status: VideoStatus) => void;
+  setVideoRating: (videoId: string, rating: 0 | 1 | 2 | 3 | 4 | 5) => void;
+  toggleFavorite: (videoId: string) => void;
+  pushToast: (toast: ToastInput | string, kind?: ToastKind) => void;
+  dismissToast: (id: number) => void;
+  clearToasts: () => void;
 
   // Settings Actions
   setIsSettingsModalOpen: (val: boolean) => void;
@@ -256,6 +317,7 @@ export interface ElectronAPI {
   checkForUpdates: () => Promise<void>;
   installUpdate: () => Promise<void>;
   onUpdateStatus: (callback: (data: UpdateInfo) => void) => () => void;
+  onAppNotification: (callback: (data: ToastInput) => void) => () => void;
 }
 
 // ── Global augmentation ────────────────────────────────────────────

@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import type { StatusFilter } from '../types';
+import type { StatusFilter, ToastInput, ToastKind } from '../types';
+import type { SortField } from '../types';
 import useStore from '../store';
 import { formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
-  ArrowUpDown, HardDrive, FileVideo, Check, X, Clock, SkipForward, Maximize2, Settings, ChevronDown
+  ArrowUpDown, HardDrive, FileVideo, Check, X, Clock, SkipForward, Maximize2, Settings, ChevronDown,
+  Heart, Star, AlertTriangle
 } from 'lucide-react';
 import './Sidebar.css';
 
 interface SidebarProps {
   onRescan: () => void;
   onDirectoryPicked: (path: string) => void;
-  onNotify: (message: string, kind?: 'info' | 'error') => void;
+  onNotify: (toast: ToastInput | string, kind?: ToastKind) => void;
   onOpenSettings: () => void;
   onCloseSession: () => void;
 }
@@ -32,6 +34,13 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
   const setMinSizeFilter = useStore((s) => s.setMinSizeFilter);
   const minDurationFilter = useStore((s) => s.minDurationFilter);
   const setMinDurationFilter = useStore((s) => s.setMinDurationFilter);
+  const ratedFilter = useStore((s) => s.ratedFilter);
+  const setRatedFilter = useStore((s) => s.setRatedFilter);
+  const favoritesFilter = useStore((s) => s.favoritesFilter);
+  const setFavoritesFilter = useStore((s) => s.setFavoritesFilter);
+  const incompatibleFilter = useStore((s) => s.incompatibleFilter);
+  const setIncompatibleFilter = useStore((s) => s.setIncompatibleFilter);
+  const features = useStore((s) => s.settings.features);
   const stats = useStore((s) => s.stats);
   const isScanning = useStore((s) => s.isScanning);
   const scanProgress = useStore((s) => s.scanProgress);
@@ -75,7 +84,12 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
     const result = await window.electronAPI.validateDroppedPath(dir);
     if (!result.valid || !result.isDirectory) {
       removeRecentDirectory(dir);
-      onNotify('This recent folder is no longer available.', 'error');
+      onNotify({
+        title: 'Recent unavailable',
+        detail: formatRecentPath(dir),
+        kind: 'error',
+        dedupeKey: `recent-unavailable:${dir}`,
+      });
       return;
     }
     onDirectoryPicked(dir);
@@ -84,7 +98,12 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
 
   const handleRemoveRecent = (dir: string) => {
     removeRecentDirectory(dir);
-    onNotify('Removed recent folder.', 'info');
+    onNotify({
+      title: 'Recent removed',
+      detail: formatRecentPath(dir),
+      kind: 'info',
+      dedupeKey: `recent-removed:${dir}`,
+    });
   };
 
 
@@ -105,15 +124,39 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
       useStore.getState().removeDeletedVideos(succeeded);
       const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;
       const permanentFailureCount = results.filter((r) => r.method === 'permanent' && !r.success).length;
-      if (permanentSuccessCount > 0 && permanentFailureCount > 0) {
-        onNotify('Some files were permanently deleted, but some still failed.', 'error');
+      const failedCount = results.filter((r) => !r.success).length;
+      if (permanentSuccessCount > 0 && failedCount > 0) {
+        onNotify({
+          title: 'Delete partly failed',
+          detail: `${succeeded.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped Recycle Bin.`,
+          kind: 'error',
+        });
       } else if (permanentSuccessCount > 0) {
-        onNotify('Some files were permanently deleted because the Recycle Bin was unavailable.', 'error');
-      } else if (permanentFailureCount > 0) {
-        onNotify('Some files could not be deleted.', 'error');
+        onNotify({
+          title: 'Permanently deleted',
+          detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped Recycle Bin.`,
+          kind: 'warning',
+        });
+      } else if (permanentFailureCount > 0 || failedCount > 0) {
+        onNotify({
+          title: 'Delete failed',
+          detail: `${failedCount} ${failedCount === 1 ? 'file could' : 'files could'} not be removed.`,
+          kind: 'error',
+        });
+      } else {
+        onNotify({
+          title: 'Moved to Recycle Bin',
+          detail: `${succeeded.length} ${succeeded.length === 1 ? 'video' : 'videos'} removed, ${formatSize(stats.deleteSize)} freed.`,
+          kind: 'success',
+        });
       }
     } catch (err) {
       console.error('Delete failed:', err);
+      onNotify({
+        title: 'Delete failed',
+        detail: 'The file operation did not complete.',
+        kind: 'error',
+      });
     }
     setIsDeleting(false);
   };
@@ -149,6 +192,14 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
   const reviewLabel = filteredVideos.length === videos.length
     ? `Review ${filteredVideos.length} ${filteredVideos.length === 1 ? 'video' : 'videos'}`
     : `Review ${filteredVideos.length} filtered`;
+
+  const hasIncompatibleVideos = videos.some((v) => v.compatible === false);
+  const generationLabel =
+    genProgress.phase === 'metadata'
+      ? 'Metadata...'
+      : genProgress.phase === 'media'
+        ? 'Media data...'
+        : 'Thumbnails...';
 
   return (
     <aside className="sidebar">
@@ -225,9 +276,14 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
             <button
               className="recents-clear-btn"
               onClick={() => {
+                const removedCount = recentDirectories.length;
                 clearRecentDirectories();
                 setShowRecents(false);
-                onNotify('Cleared recent folders.', 'info');
+                onNotify({
+                  title: 'Recents cleared',
+                  detail: `${removedCount} ${removedCount === 1 ? 'entry' : 'entries'} removed.`,
+                  kind: 'info',
+                });
               }}
             >
               Clear all recent folders
@@ -260,7 +316,7 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
           )}
           {isGenerating && (
             <div className="progress-info">
-              <span className="progress-label">Thumbnails…</span>
+              <span className="progress-label">{generationLabel}</span>
               <div className="progress-bar-track">
                 <div
                   className="progress-bar-fill"
@@ -331,6 +387,38 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
                   </button>
                 ))}
               </div>
+
+              {(features.ratings || features.favorites || (features.compatibilityCheck && hasIncompatibleVideos)) && (
+                <div className="filter-pills filter-pills-extra">
+                  {features.favorites && (
+                    <button
+                      className={`pill ${favoritesFilter ? 'pill-active' : ''}`}
+                      onClick={() => setFavoritesFilter(!favoritesFilter)}
+                      title="Show only favorite videos"
+                    >
+                      <Heart size={12} /> Favorites
+                    </button>
+                  )}
+                  {features.ratings && (
+                    <button
+                      className={`pill ${ratedFilter ? 'pill-active' : ''}`}
+                      onClick={() => setRatedFilter(!ratedFilter)}
+                      title="Show only rated videos"
+                    >
+                      <Star size={12} /> Rated only
+                    </button>
+                  )}
+                  {features.compatibilityCheck && hasIncompatibleVideos && (
+                    <button
+                      className={`pill pill-delete ${incompatibleFilter ? 'pill-active' : ''}`}
+                      onClick={() => setIncompatibleFilter(!incompatibleFilter)}
+                      title="Show only videos that need the external player"
+                    >
+                      <AlertTriangle size={12} /> Incompatible
+                    </button>
+                  )}
+                </div>
+              )}
 
               <div className="filter-field">
                 <label className="filter-input-label" htmlFor="size-filter">File size</label>
@@ -416,12 +504,15 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
                       <select
                         className="sidebar-select"
                         value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as 'name' | 'size' | 'duration' | 'date')}
+                        onChange={(e) => setSortBy(e.target.value as SortField)}
                       >
                         <option value="name">Name</option>
                         <option value="size">Size</option>
                         <option value="duration">Duration</option>
                         <option value="date">Date</option>
+                        {features.ratings && <option value="rating">Rating</option>}
+                        {features.codecBadges && <option value="resolution">Resolution</option>}
+                        {features.codecBadges && <option value="fps">FPS</option>}
                       </select>
                       <button
                         className="btn btn-icon"
@@ -438,12 +529,15 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
                   <select
                     className="sidebar-select"
                     value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as 'name' | 'size' | 'duration' | 'date')}
+                    onChange={(e) => setSortBy(e.target.value as SortField)}
                   >
                     <option value="name">Name</option>
                     <option value="size">Size</option>
                     <option value="duration">Duration</option>
                     <option value="date">Date</option>
+                    {features.ratings && <option value="rating">Rating</option>}
+                    {features.codecBadges && <option value="resolution">Resolution</option>}
+                    {features.codecBadges && <option value="fps">FPS</option>}
                   </select>
                   <button
                     className="btn btn-icon"

@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import useStore from '../store';
 import { X, RotateCcw, RefreshCw, FileDown, Database } from 'lucide-react';
-import type { AppSettings, UpdateInfo } from '../types';
+import type { AppSettings, ToastInput, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
@@ -10,7 +10,17 @@ import './SettingsModal.css';
 
 const KEYBIND_GROUPS: ShortcutGroup[] = ['Review mode', 'Preview', 'Global'];
 
-type SettingsTab = 'interface' | 'keybindings' | 'cache' | 'processing' | 'updates';
+type SettingsTab = 'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates';
+
+const FEATURE_TOGGLES = [
+  { key: 'ratings', label: '5-star rating', description: 'Show rating controls on video cards and in review mode.' },
+  { key: 'favorites', label: 'Favorites', description: 'Show the heart toggle and favorites filter.' },
+  { key: 'analytics', label: 'Analytics screen', description: 'Show storage analytics entry points.' },
+  { key: 'codecBadges', label: 'Codec / resolution badges', description: 'Show resolution, codec, and FPS metadata.' },
+  { key: 'compatibilityCheck', label: 'Incompatible codec indicator', description: 'Flag videos that need the external player.' },
+  { key: 'globalMute', label: 'Global mute toggle', description: 'Persist a single mute switch for all in-app video playback.' },
+  { key: 'nextUndecided', label: 'Next Undecided jump', description: 'Enable the review-mode shortcut that jumps to pending videos.' },
+] as const;
 
 interface SettingsModalProps {
   initialTab?: SettingsTab;
@@ -23,6 +33,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const globalSettings = useStore((s) => s.settings);
   const updateSettings = useStore((s) => s.updateSettings);
   const saveSettings = useStore((s) => s.saveSettings);
+  const pushToast = useStore((s) => s.pushToast);
   const directory = useStore((s) => s.directory);
   const directories = useStore((s) => s.directories);
   const videos = useStore((s) => s.videos);
@@ -74,6 +85,16 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     setLocalSettings((prev) => ({ ...prev, [key]: val }));
   };
 
+  const handleFeatureChange = (key: keyof AppSettings['features'], val: boolean) => {
+    setLocalSettings((prev) => ({
+      ...prev,
+      features: {
+        ...prev.features,
+        [key]: val,
+      },
+    }));
+  };
+
   const handleCacheLocationChange = async (val: string) => {
     if (val === 'distributed') {
       const confirmed = await window.electronAPI.confirmDistributedMode();
@@ -97,24 +118,73 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   );
 
   const handleSave = async () => {
+    let cacheToast: ToastInput | null = null;
     if (window.electronAPI?.migrateCacheSettings && cacheSettingsChanged(globalSettings, localSettings)) {
       setCacheMessage('Preparing cache migration...');
       const result = await window.electronAPI.migrateCacheSettings(globalSettings, localSettings, directories);
       if (result.status === 'cancelled') {
         setCacheMessage('Cache storage change cancelled.');
+        pushToast({
+          title: 'Cache migration cancelled',
+          detail: 'Preferences were not saved.',
+          kind: 'info',
+        });
         return;
       }
       if (result.status === 'error') {
         setCacheMessage(result.errors[0] || 'Cache migration failed.');
+        pushToast({
+          title: 'Cache migration failed',
+          detail: (result.errors[0] || 'No cache files were moved.').slice(0, 120),
+          kind: 'error',
+        });
         return;
       }
       if (result.status === 'partial') {
         setCacheMessage(`Cache migration partially completed. ${result.errors.length} item(s) need attention.`);
+        cacheToast = {
+          title: 'Cache migration partial',
+          detail: `${result.migrated} moved, ${result.errors.length} ${result.errors.length === 1 ? 'issue' : 'issues'} left.`,
+          kind: 'warning',
+        };
+      } else if (result.status === 'migrated') {
+        cacheToast = {
+          title: 'Cache migrated',
+          detail: `${result.migrated} ${result.migrated === 1 ? 'cache folder' : 'cache folders'} moved.`,
+          kind: 'success',
+        };
+      } else if (result.status === 'fresh') {
+        cacheToast = {
+          title: 'Cache reset',
+          detail: 'New cache location will start fresh.',
+          kind: 'warning',
+        };
+      } else if (result.status === 'no-cache') {
+        cacheToast = {
+          title: 'Cache location saved',
+          detail: 'No existing cache needed migration.',
+          kind: 'success',
+        };
       }
     }
-    updateSettings(localSettings);
-    await saveSettings();
-    close();
+    try {
+      updateSettings(localSettings);
+      await saveSettings();
+      close();
+      pushToast(cacheToast ?? {
+        title: 'Preferences saved',
+        detail: 'Settings applied immediately.',
+        kind: 'success',
+        dedupeKey: 'preferences-saved',
+      });
+    } catch (err) {
+      console.error('Failed to save preferences:', err);
+      pushToast({
+        title: 'Preferences not saved',
+        detail: 'Settings could not be written to disk.',
+        kind: 'error',
+      });
+    }
   };
 
   const handleExportReport = async () => {
@@ -190,6 +260,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
         <div className="settings-body">
           <div className="settings-sidebar">
             <button className={`tab-btn ${activeTab === 'interface' ? 'active' : ''}`} onClick={() => setActiveTab('interface')}>Interface</button>
+            <button className={`tab-btn ${activeTab === 'features' ? 'active' : ''}`} onClick={() => setActiveTab('features')}>Features</button>
             <button className={`tab-btn ${activeTab === 'cache' ? 'active' : ''}`} onClick={() => setActiveTab('cache')}>Cache</button>
             <button className={`tab-btn ${activeTab === 'processing' ? 'active' : ''}`} onClick={() => setActiveTab('processing')}>Processing</button>
             <button className={`tab-btn ${activeTab === 'keybindings' ? 'active' : ''}`} onClick={() => setActiveTab('keybindings')}>Keybindings</button>
@@ -219,6 +290,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                       <option value="size">Size</option>
                       <option value="date">Date</option>
                       <option value="duration">Duration</option>
+                      {localSettings.features.ratings && <option value="rating">Rating</option>}
+                      {localSettings.features.codecBadges && <option value="resolution">Resolution</option>}
+                      {localSettings.features.codecBadges && <option value="fps">FPS</option>}
                     </select>
                     <select value={localSettings.defaultSortOrder} onChange={(e) => handleChange('defaultSortOrder', e.target.value)}>
                       <option value="asc">Ascending</option>
@@ -246,6 +320,26 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                   </button>
                   <span className="help-text">Choose filtered or all videos when exporting.</span>
                   {exportMessage && <span className="help-text">{exportMessage}</span>}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'features' && (
+              <div className="settings-form">
+                <div className="feature-toggle-list">
+                  {FEATURE_TOGGLES.map((feature) => (
+                    <label key={feature.key} className="feature-toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={localSettings.features[feature.key]}
+                        onChange={(e) => handleFeatureChange(feature.key, e.target.checked)}
+                      />
+                      <span className="feature-toggle-copy">
+                        <span className="feature-toggle-label">{feature.label}</span>
+                        <span className="help-text">{feature.description}</span>
+                      </span>
+                    </label>
+                  ))}
                 </div>
               </div>
             )}
@@ -309,7 +403,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     <option value={6}>6 Frames</option>
                     <option value={9}>9 Frames</option>
                   </select>
-                  <span className="help-text">Number of preview shots extracted evenly per video. (Requires Clear Cache &amp; Rescan to apply)</span>
+                  <span className="help-text">Number of preview shots extracted evenly per video. Videos with fewer cached shots are rebuilt on the next scan.</span>
                 </div>
 
                 <div className="form-group">

@@ -1,6 +1,16 @@
 import { kb } from './keybinds';
 import type { Keybind, KeybindSettingKey } from './keybinds';
-import type { AppSettings } from './types';
+import type { AppSettings, FeatureSettings } from './types';
+
+export const DEFAULT_FEATURES: FeatureSettings = {
+  ratings: true,
+  favorites: true,
+  analytics: true,
+  codecBadges: true,
+  compatibilityCheck: true,
+  globalMute: true,
+  nextUndecided: true,
+};
 
 export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keyKeep:               kb('k'),
@@ -13,12 +23,14 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keyNextVideo:          kb('arrowright'),
   keyEnterPlay:          kb('enter'),
   keyExternalPlayer:     kb('enter', { ctrl: true }),
+  keyNextUndecided:      kb('tab'),
   keySeekBack:           kb('arrowleft'),
   keySeekForward:        kb('arrowright'),
   keySpeedDown:          kb('['),
   keySpeedUp:            kb(']'),
   keyBookmark:           kb('b'),
   keyShowHelp:           kb('?'),
+  keyGlobalMute:         kb('m'),
   keyPreviewSeekBack:    kb('arrowleft'),
   keyPreviewSeekForward: kb('arrowright'),
 };
@@ -62,6 +74,22 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
 
   if (result.autoUpdates === undefined || result.autoUpdates === null) {
     result.autoUpdates = true;
+  }
+
+  if (typeof result.globalMute !== 'boolean') {
+    result.globalMute = false;
+  }
+
+  if (!result.features || typeof result.features !== 'object' || Array.isArray(result.features)) {
+    result.features = { ...DEFAULT_FEATURES };
+  } else {
+    const rawFeatures = result.features as Record<string, unknown>;
+    result.features = Object.fromEntries(
+      Object.entries(DEFAULT_FEATURES).map(([key, defaultValue]) => [
+        key,
+        typeof rawFeatures[key] === 'boolean' ? rawFeatures[key] : defaultValue,
+      ])
+    );
   }
 
   delete result.appMode;
