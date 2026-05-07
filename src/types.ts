@@ -55,6 +55,7 @@ export interface DeleteResult {
   success: boolean;
   error?: string;
   method?: 'trash' | 'permanent';
+  removedFolder?: string;
 }
 
 // ── Statistics ─────────────────────────────────────────────────────

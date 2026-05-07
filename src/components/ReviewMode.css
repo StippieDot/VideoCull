@@ -502,11 +502,76 @@
 
 /* ── Finished ── */
 .review-finished {
+  width: min(520px, calc(100vw - 32px));
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg), var(--glass-glow);
   text-align: center;
   color: var(--text-secondary);
 }
+
+.review-finished-kicker {
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .review-finished h2 {
   font-size: 24px;
   color: var(--text-primary);
   margin-bottom: 8px;
+}
+
+.review-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.review-summary-item {
+  padding: 12px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-app);
+}
+
+.review-summary-item span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.review-summary-item label {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.review-summary-item.summary-keep span {
+  color: var(--color-keep);
+}
+
+.review-summary-item.summary-delete span {
+  color: var(--color-delete);
+}
+
+.review-summary-item.summary-skip span {
+  color: var(--color-skip);
+}
+
+.review-summary-delete-size {
+  margin-top: 14px;
+  color: var(--color-delete);
+  font-size: 13px;
+  font-weight: 600;
 }

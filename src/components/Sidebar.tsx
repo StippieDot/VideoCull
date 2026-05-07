@@ -125,16 +125,20 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
       const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;
       const permanentFailureCount = results.filter((r) => r.method === 'permanent' && !r.success).length;
       const failedCount = results.filter((r) => !r.success).length;
+      const removedFolderCount = new Set(results.map((r) => r.removedFolder).filter(Boolean)).size;
+      const folderDetail = removedFolderCount > 0
+        ? ` ${removedFolderCount} empty ${removedFolderCount === 1 ? 'folder was' : 'folders were'} removed.`
+        : '';
       if (permanentSuccessCount > 0 && failedCount > 0) {
         onNotify({
           title: 'Delete partly failed',
-          detail: `${succeeded.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped Recycle Bin.`,
+          detail: `${succeeded.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped Recycle Bin.${folderDetail}`,
           kind: 'error',
         });
       } else if (permanentSuccessCount > 0) {
         onNotify({
           title: 'Permanently deleted',
-          detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped Recycle Bin.`,
+          detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped Recycle Bin.${folderDetail}`,
           kind: 'warning',
         });
       } else if (permanentFailureCount > 0 || failedCount > 0) {
@@ -146,7 +150,7 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
       } else {
         onNotify({
           title: 'Moved to Recycle Bin',
-          detail: `${succeeded.length} ${succeeded.length === 1 ? 'video' : 'videos'} removed, ${formatSize(stats.deleteSize)} freed.`,
+          detail: `${succeeded.length} ${succeeded.length === 1 ? 'video' : 'videos'} removed, ${formatSize(stats.deleteSize)} freed.${folderDetail}`,
           kind: 'success',
         });
       }

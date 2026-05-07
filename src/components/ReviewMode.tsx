@@ -37,10 +37,12 @@ const VideoPlayer = memo(({ videoUrl, videoRef }: {
 ));
 
 export default function ReviewMode() {
+  const allVideos = useStore((s) => s.videos);
   const filteredVideos = useStore((s) => s.filteredVideos);
   const reviewIndex = useStore((s) => s.reviewIndex);
   const setReviewIndex = useStore((s) => s.setReviewIndex);
   const setReviewMode = useStore((s) => s.setReviewMode);
+  const folderFilterPath = useStore((s) => s.folderFilterPath);
   const setVideoStatus = useStore((s) => s.setVideoStatus);
   const undo = useStore((s) => s.undo);
   const undoStack = useStore((s) => s.undoStack);
@@ -51,17 +53,42 @@ export default function ReviewMode() {
   const toggleFavorite = useStore((s) => s.toggleFavorite);
   const features = useStore((s) => s.settings.features);
 
-  const video = filteredVideos[reviewIndex] ?? null;
-  const total = filteredVideos.length;
+  const scopeIdsRef = useRef<string[] | null>(null);
+  if (scopeIdsRef.current === null) {
+    scopeIdsRef.current = filteredVideos.map((item) => item.id);
+  }
+
+  const reviewVideos = useMemo(() => {
+    const byId = new Map(allVideos.map((item) => [item.id, item]));
+    return (scopeIdsRef.current ?? []).map((id) => byId.get(id)).filter((item): item is typeof allVideos[number] => Boolean(item));
+  }, [allVideos]);
+
+  const video = reviewVideos[reviewIndex] ?? null;
+  const total = reviewVideos.length;
   const bookmarks = video?.bookmarks ?? [];
   const { decidedCount, remainingCount, progressPct } = useMemo(() => {
-    const decided = filteredVideos.reduce((sum, item) => (
+    const decided = reviewVideos.reduce((sum, item) => (
       item.status === 'pending' ? sum : sum + 1
     ), 0);
-    const remaining = Math.max(0, filteredVideos.length - decided);
-    const pct = filteredVideos.length > 0 ? (decided / filteredVideos.length) * 100 : 0;
+    const remaining = Math.max(0, reviewVideos.length - decided);
+    const pct = reviewVideos.length > 0 ? (decided / reviewVideos.length) * 100 : 0;
     return { decidedCount: decided, remainingCount: remaining, progressPct: pct };
-  }, [filteredVideos]);
+  }, [reviewVideos]);
+  const summary = useMemo(() => ({
+    keep: reviewVideos.filter((item) => item.status === 'keep').length,
+    delete: reviewVideos.filter((item) => item.status === 'delete').length,
+    skipped: reviewVideos.filter((item) => item.status === 'skipped').length,
+    pending: reviewVideos.filter((item) => item.status === 'pending').length,
+    deleteSize: reviewVideos
+      .filter((item) => item.status === 'delete')
+      .reduce((sum, item) => sum + item.sizeBytes, 0),
+  }), [reviewVideos]);
+  const scopeLabel = useMemo(() => {
+    if (folderFilterPath) {
+      return folderFilterPath.split(/[/\\]/).filter(Boolean).slice(-1)[0] || folderFilterPath;
+    }
+    return total === allVideos.length ? 'session' : 'filtered selection';
+  }, [allVideos.length, folderFilterPath, total]);
 
   const lastVideoIdRef = useRef<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -141,7 +168,7 @@ export default function ReviewMode() {
   }, [isPlaying]); // intentionally excludes playbackSpeed — only apply once on start
 
   const advance = useCallback(() => {
-    if (reviewIndex < total - 1) setReviewIndex(reviewIndex + 1);
+    if (reviewIndex < total) setReviewIndex(reviewIndex + 1);
   }, [reviewIndex, total, setReviewIndex]);
 
   const goBack = useCallback(() => {
@@ -274,9 +301,33 @@ export default function ReviewMode() {
     return (
       <div className="review-mode">
         <div className="review-finished">
-          <h2>All done!</h2>
-          <p>You've reviewed all videos in this filter.</p>
-          <button className="btn btn-accent" onClick={close} style={{ marginTop: 16 }}>
+          <div className="review-finished-kicker">Review complete</div>
+          <h2>{scopeLabel}</h2>
+          <p>{total} {total === 1 ? 'video' : 'videos'} in this review scope.</p>
+          <div className="review-summary-grid">
+            <div className="review-summary-item summary-keep">
+              <span>{summary.keep}</span>
+              <label>Keep</label>
+            </div>
+            <div className="review-summary-item summary-delete">
+              <span>{summary.delete}</span>
+              <label>Delete</label>
+            </div>
+            <div className="review-summary-item summary-skip">
+              <span>{summary.skipped}</span>
+              <label>Skipped</label>
+            </div>
+            <div className="review-summary-item">
+              <span>{summary.pending}</span>
+              <label>Pending</label>
+            </div>
+          </div>
+          {summary.deleteSize > 0 && (
+            <div className="review-summary-delete-size">
+              {formatSize(summary.deleteSize)} marked for deletion
+            </div>
+          )}
+          <button className="btn btn-accent" onClick={close} style={{ marginTop: 18 }}>
             Back to Grid
           </button>
         </div>
@@ -424,7 +475,7 @@ export default function ReviewMode() {
         <button
           className="review-nav review-nav-right"
           onClick={(e) => { e.currentTarget.blur(); advance(); }}
-          disabled={reviewIndex >= total - 1}
+          disabled={reviewIndex >= total}
         >
           <ChevronRight size={28} />
         </button>

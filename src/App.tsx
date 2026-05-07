@@ -377,16 +377,20 @@ export default function App() {
             const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;
             const permanentFailureCount = results.filter((r) => r.method === 'permanent' && !r.success).length;
             const failedCount = results.filter((r) => !r.success).length;
+            const removedFolderCount = new Set(results.map((r) => r.removedFolder).filter(Boolean)).size;
+            const folderDetail = removedFolderCount > 0
+              ? ` ${removedFolderCount} empty ${removedFolderCount === 1 ? 'folder was' : 'folders were'} removed.`
+              : '';
             if (permanentSuccessCount > 0 && failedCount > 0) {
               pushToast({
                 title: 'Delete partly failed',
-                detail: `${deletedPaths.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped Recycle Bin.`,
+                detail: `${deletedPaths.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped Recycle Bin.${folderDetail}`,
                 kind: 'error',
               });
             } else if (permanentSuccessCount > 0) {
               pushToast({
                 title: 'Permanently deleted',
-                detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped Recycle Bin.`,
+                detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped Recycle Bin.${folderDetail}`,
                 kind: 'warning',
               });
             } else if (permanentFailureCount > 0 || failedCount > 0) {
@@ -398,7 +402,7 @@ export default function App() {
             } else {
               pushToast({
                 title: 'Moved to Recycle Bin',
-                detail: `${deletedPaths.length} ${deletedPaths.length === 1 ? 'video' : 'videos'} removed from the library.`,
+                detail: `${deletedPaths.length} ${deletedPaths.length === 1 ? 'video' : 'videos'} removed from the library.${folderDetail}`,
                 kind: 'success',
               });
             }

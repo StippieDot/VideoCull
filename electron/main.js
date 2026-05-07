@@ -882,6 +882,31 @@ async function mapWithConcurrency(items, limit, worker) {
   return results;
 }
 
+async function removeEmptyDeletedVideoFolders(deletedFilePaths) {
+  const folders = Array.from(new Set(deletedFilePaths.map((filePath) => path.dirname(filePath))))
+    .sort((a, b) => b.length - a.length);
+  const removed = [];
+
+  for (const folderPath of folders) {
+    const resolved = path.resolve(folderPath);
+    if (resolved === path.parse(resolved).root) continue;
+    if (!await isPathWithinAnyDir(resolved, currentScanDirs)) continue;
+
+    try {
+      const entries = await fs.readdir(resolved);
+      if (entries.length > 0) continue;
+      await fs.rmdir(resolved);
+      removed.push(resolved);
+    } catch (err) {
+      if (err.code !== 'ENOENT' && err.code !== 'ENOTEMPTY') {
+        log.warn(`[batch-delete] Failed to remove empty folder ${resolved}: ${err.message}`);
+      }
+    }
+  }
+
+  return removed;
+}
+
 function buildReportHtml(videos, dirPath) {
   const sortedVideos = [...videos].sort((a, b) => a.filename.localeCompare(b.filename));
 
@@ -1407,7 +1432,19 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
   results.push(...trashResults);
 
   const failedTrash = trashResults.filter((result) => !result.success).map((result) => result.path);
-  if (failedTrash.length === 0) return results;
+  if (failedTrash.length === 0) {
+    const removedFolders = await removeEmptyDeletedVideoFolders(
+      trashResults.filter((result) => result.success).map((result) => result.path)
+    );
+    const pendingFolders = new Set(removedFolders);
+    return results.map((result) => {
+      if (!result.success) return result;
+      const folderPath = path.resolve(path.dirname(result.path));
+      if (!pendingFolders.has(folderPath)) return result;
+      pendingFolders.delete(folderPath);
+      return { ...result, removedFolder: folderPath };
+    });
+  }
 
   const { response } = await dialog.showMessageBox(mainWindow, {
     type: 'warning',
@@ -1435,7 +1472,18 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
   for (const result of permanentResults) {
     merged.set(result.path, result);
   }
-  return Array.from(merged.values());
+  const mergedResults = Array.from(merged.values());
+  const removedFolders = await removeEmptyDeletedVideoFolders(
+    mergedResults.filter((result) => result.success).map((result) => result.path)
+  );
+  const pendingFolders = new Set(removedFolders);
+  return mergedResults.map((result) => {
+    if (!result.success) return result;
+    const folderPath = path.resolve(path.dirname(result.path));
+    if (!pendingFolders.has(folderPath)) return result;
+    pendingFolders.delete(folderPath);
+    return { ...result, removedFolder: folderPath };
+  });
 });
 
 ipcMain.handle('export-report', async (_event, videos, dirPath) => {
