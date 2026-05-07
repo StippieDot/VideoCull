@@ -5,7 +5,7 @@ import type { Video } from '../types';
 import useStore from '../store';
 import VideoCard from './VideoCard';
 import { formatSize, isWebSupported } from '../utils';
-import { Check, ChevronDown, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
+import { Check, ChevronDown, RefreshCw, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
 import './GridMode.css';
 
 const BASE_CARD_WIDTH = 450;
@@ -32,6 +32,7 @@ type RowItem = HeaderRow | CardsRow;
 
 interface GridModeProps {
   onReviewFolder: (folderPath: string) => void;
+  onRegenerateThumbnails: (videos: Video[]) => Promise<void>;
 }
 
 interface GridRowData {
@@ -141,7 +142,7 @@ function Row({ index, style, ariaAttributes, ...data }: { index: number; style: 
   );
 }
 
-export default function GridMode({ onReviewFolder }: GridModeProps) {
+export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: GridModeProps) {
   const filteredVideos = useStore((s) => s.filteredVideos);
   const videos = useStore((s) => s.videos);
   const setReviewMode = useStore((s) => s.setReviewMode);
@@ -157,6 +158,8 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
   const groupByFolder = useStore((s) => s.groupByFolder);
   const directory = useStore((s) => s.directory);
   const directories = useStore((s) => s.directories);
+  const isScanning = useStore((s) => s.isScanning);
+  const isGenerating = useStore((s) => s.isGenerating);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<ListImperativeAPI | null>(null);
   const restoredScrollRef = useRef(false);
@@ -451,6 +454,15 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
     });
   }, [selectedIds, setVideoStatusesBatch, clearGridSelection, pushToast]);
 
+  const handleBatchRegenerateThumbnails = useCallback(async () => {
+    const ids = new Set(selectedIds);
+    if (ids.size === 0 || isScanning || isGenerating) return;
+    const selectedVideos = videos.filter((video) => ids.has(video.id));
+    if (selectedVideos.length === 0) return;
+    await onRegenerateThumbnails(selectedVideos);
+    clearGridSelection();
+  }, [clearGridSelection, isGenerating, isScanning, onRegenerateThumbnails, selectedIds, videos]);
+
   const handleClearSelection = useCallback(() => {
     clearGridSelection();
   }, [clearGridSelection]);
@@ -531,6 +543,15 @@ export default function GridMode({ onReviewFolder }: GridModeProps) {
             <button className="btn btn-ghost grid-batch-btn grid-batch-reset" onClick={() => handleBatchStatus('pending')}>
               <RotateCcw size={14} />
               Reset
+            </button>
+            <button
+              className="btn btn-ghost grid-batch-btn grid-batch-regenerate"
+              onClick={handleBatchRegenerateThumbnails}
+              disabled={isScanning || isGenerating}
+              title="Regenerate thumbnails for selected videos"
+            >
+              <RefreshCw size={14} />
+              Thumbs
             </button>
             <button className="btn btn-ghost grid-batch-btn grid-batch-clear" onClick={handleClearSelection}>
               <X size={14} />

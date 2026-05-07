@@ -8,6 +8,28 @@ const Database = require('better-sqlite3');
 
 const OLD_CACHE_FILE = '.video-cull-cache.json';
 
+function thumbnailIndex(filePath) {
+  const basename = path.basename(filePath);
+  const match = basename.match(/thumb[_-]?(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function compareThumbnailPaths(a, b) {
+  const aIndex = thumbnailIndex(a);
+  const bIndex = thumbnailIndex(b);
+  if (aIndex !== null && bIndex !== null && aIndex !== bIndex) {
+    return aIndex - bIndex;
+  }
+  return path.basename(a).localeCompare(path.basename(b), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+function orderedThumbnails(thumbnails) {
+  return Array.isArray(thumbnails) ? [...thumbnails].sort(compareThumbnailPaths) : [];
+}
+
 // ── Path helpers ──────────────────────────────────────────────────────────
 
 /**
@@ -207,7 +229,7 @@ function loadCacheVideos(db) {
   let withThumbs = 0;
   let nonPending = 0;
   for (const row of rows) {
-    const thumbs = thumbsByVideoId.get(row.id) ?? [];
+    const thumbs = orderedThumbnails(thumbsByVideoId.get(row.id));
     if (thumbs.length > 0) withThumbs++;
     if (row.status && row.status !== 'pending') nonPending++;
     map.set(row.id, {
@@ -302,8 +324,9 @@ function saveCache(db, videos) {
       );
       if (Array.isArray(v.thumbnails)) {
         deleteThumbs.run(v.id);
-        for (let i = 0; i < v.thumbnails.length; i++) {
-          insertThumb.run(v.id, i, v.thumbnails[i]);
+        const thumbs = orderedThumbnails(v.thumbnails);
+        for (let i = 0; i < thumbs.length; i++) {
+          insertThumb.run(v.id, i, thumbs[i]);
         }
       }
     }
@@ -370,8 +393,9 @@ async function saveCacheChunked(db, videos, onProgress) {
       );
       if (Array.isArray(v.thumbnails)) {
         deleteThumbs.run(v.id);
-        for (let i = 0; i < v.thumbnails.length; i++) {
-          insertThumb.run(v.id, i, v.thumbnails[i]);
+        const thumbs = orderedThumbnails(v.thumbnails);
+        for (let i = 0; i < thumbs.length; i++) {
+          insertThumb.run(v.id, i, thumbs[i]);
         }
       }
     }

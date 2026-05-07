@@ -7,6 +7,26 @@ import type {
 } from './types';
 import { DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, pruneRecentDirectories } from './keybind-defaults';
 
+function thumbnailIndex(filePath: string): number | null {
+  const basename = filePath.split(/[\\/]/).pop() ?? filePath;
+  const match = basename.match(/thumb[_-]?(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function orderedThumbnails(thumbnails: string[] | undefined): string[] {
+  if (!Array.isArray(thumbnails)) return [];
+  return [...thumbnails].sort((a, b) => {
+    const aIndex = thumbnailIndex(a);
+    const bIndex = thumbnailIndex(b);
+    if (aIndex !== null && bIndex !== null && aIndex !== bIndex) {
+      return aIndex - bIndex;
+    }
+    const aBase = a.split(/[\\/]/).pop() ?? a;
+    const bBase = b.split(/[\\/]/).pop() ?? b;
+    return aBase.localeCompare(bBase, undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
+
 function getFolder(v: Video): string {
   const sep = v.path.includes('/') ? '/' : '\\';
   const parts = v.path.split(sep);
@@ -626,11 +646,15 @@ const useStore = create<VideoStore>((set, get) => ({
   setIncludeSubfolders: (val: boolean) => set({ includeSubfolders: val }),
 
   setVideos: (videos: Video[]) => {
-    const state = { ...get(), videos };
+    const orderedVideos = videos.map((video) => ({
+      ...video,
+      thumbnails: orderedThumbnails(video.thumbnails),
+    }));
+    const state = { ...get(), videos: orderedVideos };
     set({
-      videos,
+      videos: orderedVideos,
       filteredVideos: computeFiltered(state),
-      stats: computeStats(videos),
+      stats: computeStats(orderedVideos),
     });
   },
 
@@ -643,7 +667,7 @@ const useStore = create<VideoStore>((set, get) => ({
       if (vIdx >= 0) {
         videos[vIdx] = {
           ...videos[vIdx],
-          thumbnails: item.thumbnails,
+          thumbnails: orderedThumbnails(item.thumbnails),
           durationSecs: item.durationSecs ?? videos[vIdx].durationSecs,
           metadataDate: item.metadataDate ?? videos[vIdx].metadataDate,
           videoCodec: item.videoCodec ?? videos[vIdx].videoCodec,

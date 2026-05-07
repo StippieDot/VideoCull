@@ -2,7 +2,6 @@ import { X } from 'lucide-react';
 import useStore from '../store';
 import { ALL_SHORTCUTS, FIXED_SHORTCUTS, formatKeybind, type ShortcutGroup } from '../keybinds';
 import type { Keybind } from '../keybinds';
-import './ShortcutsHelp.css';
 
 interface Props {
   onClose: () => void;

@@ -66,15 +66,17 @@ function getVideoMetadata(filePath) {
 function calculateTimestamps(duration, count, skipDelaySecs) {
   if (duration <= 0) return [0];
 
-  // For very short videos (< 3 sec), take a single frame at 50%
-  if (duration < skipDelaySecs) {
+  const start = skipDelaySecs;
+  const end = duration * 0.97;
+
+  // For very short videos, or videos where the intro skip would pass the safe
+  // capture range, take a single frame in the middle.
+  if (duration < skipDelaySecs || end <= start) {
     return [duration * 0.5];
   }
 
   // Normal videos:
   const timestamps = [];
-  const start = skipDelaySecs;
-  const end = duration * 0.97;
 
   const step = (end - start) / count;
   for (let i = 0; i < count; i++) {
@@ -86,11 +88,32 @@ function calculateTimestamps(duration, count, skipDelaySecs) {
 }
 
 function expectedThumbnailCount(duration, count, skipDelaySecs) {
-  if (duration != null && duration > 0 && duration < skipDelaySecs) return 1;
+  if (duration != null && duration > 0) {
+    const end = duration * 0.97;
+    if (duration < skipDelaySecs || end <= skipDelaySecs) return 1;
+  }
   return count;
 }
 
 const activeCommands = new Set();
+
+function thumbnailIndex(filePath) {
+  const basename = path.basename(filePath);
+  const match = basename.match(/thumb[_-]?(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function compareThumbnailPaths(a, b) {
+  const aIndex = thumbnailIndex(a);
+  const bIndex = thumbnailIndex(b);
+  if (aIndex !== null && bIndex !== null && aIndex !== bIndex) {
+    return aIndex - bIndex;
+  }
+  return path.basename(a).localeCompare(path.basename(b), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -122,33 +145,42 @@ function getGpuCooldownBatchSize(config = {}, concurrentLimit) {
  */
 function extractFrame(videoPath, timestamp, outputPath, config, token) {
   return new Promise((resolve, reject) => {
-    let command = ffmpeg(videoPath).seekInput(timestamp).frames(1);
-
-    // Apply Hardware Acceleration flag if needed
-    if (config.hardwareAccel) {
-      command = command.inputOptions(['-hwaccel', 'auto']);
-    }
-
     const outOpts = ['-q:v', '5'];
     // Limit CPU threads to prevent massive spikes when processing parallel
     if (config.cpuThreadsLimited !== false) {
       outOpts.push('-threads', '1');
     }
 
-    command = command.outputOptions(outOpts).videoFilters(`scale=320:-1`);
+    const createCommand = (seekTime) => {
+      let command = ffmpeg(videoPath).seekInput(seekTime).frames(1);
+      if (config.hardwareAccel) {
+        command = command.inputOptions(['-hwaccel', 'auto']);
+      }
+      return command.outputOptions(outOpts).videoFilters(`scale=320:-1`);
+    };
 
-    const runCommand = (cmd, retried = false) => {
+    const attempts = Array.from(new Set([
+      timestamp,
+      Math.max(0, timestamp + 0.25),
+      Math.max(0, timestamp - 0.25),
+      Math.max(0, timestamp + 0.75),
+      Math.max(0, timestamp - 0.75),
+    ]));
+
+    const runCommand = (attemptIndex = 0) => {
+      if (token.cancelled) {
+        reject(new Error('Cancelled'));
+        return;
+      }
+      const seekTime = attempts[attemptIndex];
+      const cmd = createCommand(seekTime);
       activeCommands.add(cmd);
       cmd.output(outputPath)
         .on('end', () => { activeCommands.delete(cmd); resolve(outputPath); })
         .on('error', (err) => {
           activeCommands.delete(cmd);
-          // Retry at timestamp 0 as fallback (only once, and only if not cancelled)
-          if (timestamp > 0 && !retried && !token.cancelled) {
-            let retry = ffmpeg(videoPath).seekInput(0).frames(1);
-            if (config.hardwareAccel) retry = retry.inputOptions(['-hwaccel', 'auto']);
-            retry.outputOptions(outOpts).videoFilters(`scale=320:-1`);
-            runCommand(retry, true);
+          if (attemptIndex < attempts.length - 1 && !token.cancelled) {
+            runCommand(attemptIndex + 1);
           } else {
             reject(err);
           }
@@ -156,7 +188,7 @@ function extractFrame(videoPath, timestamp, outputPath, config, token) {
         .run();
     };
 
-    runCommand(command);
+    runCommand();
   });
 }
 
@@ -164,7 +196,7 @@ function extractFrame(videoPath, timestamp, outputPath, config, token) {
  * Generate all thumbnails for a single video.
  * Returns { thumbnails: string[], durationSecs: number }.
  */
-async function generateThumbnailsForVideo(video, thumbDir, config, token) {
+async function generateThumbnailsForVideo(video, thumbDir, config, token, options = {}) {
   const THUMB_COUNT = Math.max(1, Number(config.thumbsPerVideo) || 6);
   const skipDelay = config.skipIntroDelaySecs !== undefined ? config.skipIntroDelaySecs : 3;
 
@@ -179,39 +211,41 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token) {
   let fps = video.fps ?? null;
   const needsMetadata = () => !duration || !videoCodec || !width || !height || fps === null;
 
-  // Reuse cached thumbnail files only when the set is complete for the current
-  // thumbnail count. Partial sets usually mean a previous run was interrupted.
   try {
     const existing = await fs.readdir(videoThumbDir);
-    const jpgs = existing.filter((f) => f.endsWith('.jpg')).sort();
-    if (needsMetadata()) {
-      try {
-        const meta = await getVideoMetadata(video.path);
-        duration = meta.duration;
-        creationTime = meta.creationTime;
-        videoCodec = meta.videoCodec;
-        audioCodec = meta.audioCodec;
-        width = meta.width;
-        height = meta.height;
-        fps = meta.fps;
-      } catch { duration = duration ?? 0; }
+    if (!options.forceRegenerate) {
+      // Reuse cached thumbnail files only when the set is complete for the current
+      // thumbnail count. Partial sets usually mean a previous run was interrupted.
+      const jpgs = existing.filter((f) => f.endsWith('.jpg')).sort(compareThumbnailPaths);
+      if (needsMetadata()) {
+        try {
+          const meta = await getVideoMetadata(video.path);
+          duration = meta.duration;
+          creationTime = meta.creationTime;
+          videoCodec = meta.videoCodec;
+          audioCodec = meta.audioCodec;
+          width = meta.width;
+          height = meta.height;
+          fps = meta.fps;
+        } catch { duration = duration ?? 0; }
+      }
+      const expectedCount = expectedThumbnailCount(duration, THUMB_COUNT, skipDelay);
+      const usableJpgs = jpgs.slice(0, expectedCount);
+      if (usableJpgs.length >= expectedCount) {
+        const usablePaths = usableJpgs.map((f) => path.join(videoThumbDir, f));
+        return {
+          thumbnails: usablePaths,
+          durationSecs: duration,
+          creationTime,
+          videoCodec,
+          audioCodec,
+          width,
+          height,
+          fps,
+        };
+      }
     }
-    const expectedCount = expectedThumbnailCount(duration, THUMB_COUNT, skipDelay);
-    const usableJpgs = jpgs.slice(0, expectedCount);
-    if (usableJpgs.length >= expectedCount) {
-      const usablePaths = usableJpgs.map((f) => path.join(videoThumbDir, f));
-      return {
-        thumbnails: usablePaths,
-        durationSecs: duration,
-        creationTime,
-        videoCodec,
-        audioCodec,
-        width,
-        height,
-        fps,
-      };
-    }
-    // Incomplete thumbnails: clean up and regenerate the full set.
+    // Incomplete or explicitly requested regeneration: clean up and rebuild.
     for (const f of existing) {
       try { await fs.unlink(path.join(videoThumbDir, f)); } catch { /* ignore */ }
     }
@@ -329,7 +363,7 @@ function getConcurrentLimit(config = {}) {
   return 3;
 }
 
-async function processVideos(videos, thumbDir, config, onProgress, onVideoReady) {
+async function processVideos(videos, thumbDir, config, onProgress, onVideoReady, options = {}) {
   const token = { cancelled: false };
   currentToken = token;
   const total = videos.length;
@@ -355,7 +389,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady)
             const video = queue.shift();
             if (!video) break;
             try {
-              const hasCompleteCachedThumbs = Array.isArray(video.thumbnails) && video.thumbnails.length >= targetThumbCount;
+              const hasCompleteCachedThumbs = !options.forceRegenerate && Array.isArray(video.thumbnails) && video.thumbnails.length >= targetThumbCount;
               const needsMetadataOnly = hasCompleteCachedThumbs && (
                 !video.videoCodec ||
                 !video.width ||
@@ -366,7 +400,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady)
               const videoThumbRoot = typeof thumbDir === 'function' ? thumbDir(video) : thumbDir;
               const result = needsMetadataOnly
                 ? await readMetadataForVideo(video)
-                : await generateThumbnailsForVideo(video, videoThumbRoot, config, token);
+                : await generateThumbnailsForVideo(video, videoThumbRoot, config, token, options);
               current++;
               if (onProgress) onProgress({ current, total });
               if (onVideoReady) {

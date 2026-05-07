@@ -39,7 +39,7 @@ export interface ThumbProgress {
 export interface ThumbReadyEvent {
   videoId: string;
   thumbnails: string[];
-  durationSecs: number;
+  durationSecs?: number;
   metadataDate?: number | null;
   videoCodec?: string | null;
   audioCodec?: string | null;
@@ -288,7 +288,7 @@ export interface ElectronAPI {
   scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<Video[]>;
   resetLoadedDirectories: () => Promise<boolean>;
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;
-  generateThumbnails: (videos: Video[], dirPath: string) => Promise<boolean>;
+  generateThumbnails: (videos: Video[], dirPath: string, options?: { force?: boolean }) => Promise<boolean>;
   cancelGeneration: () => Promise<boolean>;
   getOSThumbnail: (filePath: string) => Promise<string | null>;
   onThumbProgress: (callback: (data: ThumbProgress) => void) => () => void;

@@ -93,6 +93,9 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
       ref={cardRef}
       className={`video-card ${statusClass} ${isSelected ? 'card-selected' : ''} ${features.favorites ? 'has-favorite-control' : ''} ${showSelectionControls ? 'has-selection-control' : ''}`}
       style={style}
+      onMouseDown={(e) => {
+        if (e.shiftKey) e.preventDefault();
+      }}
       onClick={(e) => onClick?.(video, e)}
     >
       <div className="card-thumb-area">

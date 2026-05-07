@@ -8,7 +8,7 @@ import EmptyState from './components/EmptyState';
 import SettingsModal from './components/SettingsModal';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
-import type { UpdateInfo } from './types';
+import type { UpdateInfo, Video } from './types';
 import { formatRecentPath } from './utils';
 import './App.css';
 
@@ -85,20 +85,31 @@ export default function App() {
       }
       if (scanId !== scanIdRef.current) return;
       const allVideos = scannedGroups.flatMap((group) => group.videos);
-      setVideos(allVideos);
+      const expectedThumbCount = (v: typeof allVideos[number]) => {
+        if (v.durationSecs !== null && v.durationSecs !== undefined && v.durationSecs > 0) {
+          const end = v.durationSecs * 0.97;
+          if (v.durationSecs < skipIntroDelaySecs || end <= skipIntroDelaySecs) return 1;
+        }
+        return thumbsPerVideo;
+      };
+      const normalizeVideoThumbs = (video: typeof allVideos[number]) => ({
+        ...video,
+        thumbnails: video.thumbnails?.slice(0, expectedThumbCount(video)) ?? [],
+      });
+      const normalizedGroups = scannedGroups.map((group) => ({
+        ...group,
+        videos: group.videos.map(normalizeVideoThumbs),
+      }));
+      const normalizedVideos = normalizedGroups.flatMap((group) => group.videos);
+      setVideos(normalizedVideos);
       setIsScanning(false);
       const folderLabel = dirPaths.length === 1 ? formatRecentPath(dirPaths[0]) : `${dirPaths.length} folders`;
       pushToast({
         title: dirPaths.length === 1 ? 'Folder loaded' : 'Folders loaded',
-        detail: `${allVideos.length} ${allVideos.length === 1 ? 'video' : 'videos'} found in ${folderLabel}.`,
+        detail: `${normalizedVideos.length} ${normalizedVideos.length === 1 ? 'video' : 'videos'} found in ${folderLabel}.`,
         kind: 'success',
         dedupeKey: `scan-loaded:${dirPaths.join('|')}`,
       });
-      const expectedThumbCount = (v: typeof allVideos[number]) => (
-        v.durationSecs !== null && v.durationSecs !== undefined && v.durationSecs > 0 && v.durationSecs < skipIntroDelaySecs
-          ? 1
-          : thumbsPerVideo
-      );
       const needsThumbnails = (v: typeof allVideos[number]) => (
         !v.thumbnails ||
         v.thumbnails.length < expectedThumbCount(v)
@@ -111,10 +122,10 @@ export default function App() {
         v.fps === undefined
       );
       const needsThumbnailOrMetadata = (v: typeof allVideos[number]) => needsThumbnails(v) || needsMetadata(v);
-      const needThumbsTotal = allVideos.filter(needsThumbnailOrMetadata).length;
+      const needThumbsTotal = normalizedVideos.filter(needsThumbnailOrMetadata).length;
       if (needThumbsTotal > 0) {
-        const thumbnailTaskCount = allVideos.filter(needsThumbnails).length;
-        const thumbnailTaskIds = new Set(allVideos.filter(needsThumbnails).map((v) => v.id));
+        const thumbnailTaskCount = normalizedVideos.filter(needsThumbnails).length;
+        const thumbnailTaskIds = new Set(normalizedVideos.filter(needsThumbnails).map((v) => v.id));
         const phase = thumbnailTaskCount === 0
           ? 'metadata'
           : thumbnailTaskCount === needThumbsTotal
@@ -126,7 +137,7 @@ export default function App() {
         genProgressPhaseRef.current = phase;
         setIsGenerating(true);
         setGenProgress({ current: 0, total: needThumbsTotal, phase });
-        for (const group of scannedGroups) {
+        for (const group of normalizedGroups) {
           const needThumbs = group.videos.filter(needsThumbnailOrMetadata);
           if (needThumbs.length === 0) continue;
           genProgressBaseRef.current = completedTasks;
@@ -171,6 +182,113 @@ export default function App() {
       });
     }
   }, [includeSubfolders, thumbsPerVideo, skipIntroDelaySecs, setVideos, setIsScanning, setScanProgress, setIsGenerating, setGenProgress, pushToast]);
+
+  const handleRegenerateThumbnails = useCallback(async (selectedVideos: Video[]) => {
+    if (!window.electronAPI || !directory || selectedVideos.length === 0) return;
+
+    const uniqueSelected = Array.from(new Map(selectedVideos.map((video) => [video.id, video])).values());
+    const selectedIds = new Set(uniqueSelected.map((video) => video.id));
+    const previousVideos = useStore.getState().videos;
+    const clearedVideos = previousVideos.map((video) => (
+      selectedIds.has(video.id) ? { ...video, thumbnails: [] } : video
+    ));
+    const clearedSelectedVideos = clearedVideos.filter((video) => selectedIds.has(video.id));
+
+    setVideos(clearedVideos);
+    const clearedSaved = await window.electronAPI.saveCacheAtomic(directory, clearedSelectedVideos);
+    if (!clearedSaved) {
+      setVideos(previousVideos);
+      pushToast({
+        title: 'Regeneration cancelled',
+        detail: 'Could not safely clear the selected thumbnail cache.',
+        kind: 'error',
+        dedupeKey: `thumbs-regenerate-clear:${Array.from(selectedIds).join('|')}`,
+      });
+      return;
+    }
+
+    const expectedThumbCount = (video: Video) => {
+      if (video.durationSecs !== null && video.durationSecs !== undefined && video.durationSecs > 0) {
+        const end = video.durationSecs * 0.97;
+        if (video.durationSecs < skipIntroDelaySecs || end <= skipIntroDelaySecs) return 1;
+      }
+      return thumbsPerVideo;
+    };
+
+    const countIncompleteSelected = () => useStore.getState().videos.filter((video) => (
+      selectedIds.has(video.id) &&
+      (!video.thumbnails || video.thumbnails.length < expectedThumbCount(video))
+    )).length;
+
+    const waitForStoreThumbnailUpdate = () => new Promise<number>((resolve) => {
+      const currentIncomplete = countIncompleteSelected();
+      if (currentIncomplete === 0) {
+        resolve(0);
+        return;
+      }
+
+      let unsubscribe: (() => void) | null = null;
+      const timeout = window.setTimeout(() => {
+        unsubscribe?.();
+        resolve(countIncompleteSelected());
+      }, 2000);
+
+      unsubscribe = useStore.subscribe(() => {
+        const incomplete = countIncompleteSelected();
+        if (incomplete === 0) {
+          window.clearTimeout(timeout);
+          unsubscribe?.();
+          resolve(0);
+        }
+      });
+    });
+
+    genProgressBaseRef.current = 0;
+    genProgressTotalRef.current = uniqueSelected.length;
+    genProgressPhaseRef.current = 'thumbnails';
+    setIsGenerating(true);
+    setGenProgress({ current: 0, total: uniqueSelected.length, phase: 'thumbnails' });
+
+    try {
+      const ok = await window.electronAPI.generateThumbnails(clearedSelectedVideos, directory, { force: true });
+      if (!ok) {
+        pushToast({
+          title: 'Regeneration failed',
+          detail: `${uniqueSelected.length} selected ${uniqueSelected.length === 1 ? 'video was' : 'videos were'} not processed.`,
+          kind: 'error',
+          dedupeKey: `thumbs-regenerate-failed:${Array.from(selectedIds).join('|')}`,
+        });
+        return;
+      }
+
+      const incomplete = await waitForStoreThumbnailUpdate();
+
+      pushToast(incomplete > 0
+        ? {
+          title: 'Some thumbnails failed',
+          detail: `${incomplete} selected ${incomplete === 1 ? 'video still has' : 'videos still have'} fewer frames than expected.`,
+          kind: 'warning',
+          dedupeKey: `thumbs-regenerate-incomplete:${Array.from(selectedIds).join('|')}`,
+        }
+        : {
+          title: 'Thumbnails regenerated',
+          detail: `${uniqueSelected.length} selected ${uniqueSelected.length === 1 ? 'video was' : 'videos were'} rebuilt.`,
+          kind: 'success',
+          dedupeKey: `thumbs-regenerated:${Array.from(selectedIds).join('|')}`,
+        });
+    } catch (err) {
+      console.error('Thumbnail regeneration failed:', err);
+      pushToast({
+        title: 'Regeneration failed',
+        detail: `${uniqueSelected.length} selected ${uniqueSelected.length === 1 ? 'video was' : 'videos were'} not processed.`,
+        kind: 'error',
+      });
+    } finally {
+      setIsGenerating(false);
+      genProgressBaseRef.current = 0;
+      genProgressTotalRef.current = 0;
+    }
+  }, [directory, setVideos, setIsGenerating, setGenProgress, pushToast, skipIntroDelaySecs, thumbsPerVideo]);
 
   useEffect(() => {
     void useStore.getState().loadSettings();
@@ -463,7 +581,7 @@ export default function App() {
 
   return (
     <div
-      className={`app-layout${isDragOver ? ' drag-over' : ''}`}
+      className={`app-layout${isDragOver ? ' drag-over' : ''}${reviewMode ? ' review-active' : ''}`}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -483,7 +601,12 @@ export default function App() {
 
       <main className="app-main">
         {!directory && !isScanning && videos.length === 0 && <EmptyState onNotify={pushToast} />}
-        {directory && videos.length > 0 && !reviewMode && <GridMode onReviewFolder={handleReviewFolder} />}
+        {directory && videos.length > 0 && !reviewMode && (
+          <GridMode
+            onReviewFolder={handleReviewFolder}
+            onRegenerateThumbnails={handleRegenerateThumbnails}
+          />
+        )}
         {reviewMode && <ReviewMode />}
         {isScanning && videos.length === 0 && (
           <div className="scanning-overlay">

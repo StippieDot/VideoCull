@@ -166,6 +166,15 @@
   color: var(--text-primary);
 }
 
+.grid-batch-regenerate:hover {
+  color: var(--accent);
+}
+
+.grid-batch-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .grid-batch-clear:hover {
   color: var(--text-primary);
 }

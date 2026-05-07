@@ -10,6 +10,7 @@
   transition: border-color var(--transition), box-shadow var(--transition), transform var(--spring);
   box-shadow: var(--shadow-sm);
   transform: translateZ(0); /* Hardware accel */
+  user-select: none;
 }
 .video-card:hover {
   border-color: var(--border-active);

@@ -1202,7 +1202,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
 const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
 
 // 3. Generate thumbnails for videos that don't have them
-ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
+ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = {}) => {
   // Cancel any in-progress generation before starting a new one
   cancelProcessing();
 
@@ -1244,21 +1244,26 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
   }
   const targetThumbCount = Math.max(1, Number(config.thumbsPerVideo) || 6);
   const skipIntroDelaySecs = config.skipIntroDelaySecs !== undefined ? Number(config.skipIntroDelaySecs) : 3;
-  const expectedThumbCount = (video) => (
-    video.durationSecs != null && video.durationSecs > 0 && video.durationSecs < skipIntroDelaySecs
-      ? 1
-      : targetThumbCount
-  );
+  const expectedThumbCount = (video) => {
+    if (video.durationSecs != null && video.durationSecs > 0) {
+      const end = video.durationSecs * 0.97;
+      if (video.durationSecs < skipIntroDelaySecs || end <= skipIntroDelaySecs) return 1;
+    }
+    return targetThumbCount;
+  };
 
-  const needThumbs = safeVideos.filter((v) => (
-    !v.thumbnails ||
-    v.thumbnails.length < expectedThumbCount(v) ||
-    !v.videoCodec ||
-    !v.width ||
-    !v.height ||
-    v.fps === null ||
-    v.fps === undefined
-  ));
+  const forceRegenerate = Boolean(options?.force);
+  const needThumbs = forceRegenerate
+    ? safeVideos
+    : safeVideos.filter((v) => (
+      !v.thumbnails ||
+      v.thumbnails.length < expectedThumbCount(v) ||
+      !v.videoCodec ||
+      !v.width ||
+      !v.height ||
+      v.fps === null ||
+      v.fps === undefined
+    ));
 
   let readyBatch = [];
   let lastProgress = null;
@@ -1294,7 +1299,7 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath) => {
         height,
         fps,
       });
-    });
+    }, { forceRegenerate });
   } finally {
     clearInterval(batchInterval);
     activeBatchIntervals.delete(batchInterval);
