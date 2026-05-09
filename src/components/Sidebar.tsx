@@ -6,7 +6,7 @@ import { formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, HardDrive, FileVideo, Check, X, Clock, SkipForward, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle
+  Heart, Star, AlertTriangle, Volume2, VolumeX
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -16,9 +16,23 @@ interface SidebarProps {
   onNotify: (toast: ToastInput | string, kind?: ToastKind) => void;
   onOpenSettings: () => void;
   onCloseSession: () => void;
+  globalMute: boolean;
+  globalMuteEnabled: boolean;
+  globalMuteLabel: string;
+  onToggleGlobalMute: () => void;
 }
 
-export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenSettings, onCloseSession }: SidebarProps) {
+export default function Sidebar({
+  onRescan,
+  onDirectoryPicked,
+  onNotify,
+  onOpenSettings,
+  onCloseSession,
+  globalMute,
+  globalMuteEnabled,
+  globalMuteLabel,
+  onToggleGlobalMute,
+}: SidebarProps) {
   const directory = useStore((s) => s.directory);
   const directories = useStore((s) => s.directories);
   const setDirectory = useStore((s) => s.setDirectory);
@@ -198,6 +212,7 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
     : `Review ${filteredVideos.length} filtered`;
 
   const hasIncompatibleVideos = videos.some((v) => v.compatible === false);
+  const incompatibleCount = videos.filter((v) => v.compatible === false).length;
   const generationLabel =
     genProgress.phase === 'metadata'
       ? 'Metadata...'
@@ -212,6 +227,16 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
           <FileVideo size={22} />
           Video Cull
         </h1>
+        {globalMuteEnabled && (
+          <button
+            className={`sidebar-mute-btn ${globalMute ? 'active' : ''}`}
+            onClick={onToggleGlobalMute}
+            title={`${globalMute ? 'Unmute' : 'Mute'} in-app playback (${globalMuteLabel})`}
+            aria-label={globalMute ? 'Unmute in-app playback' : 'Mute in-app playback'}
+          >
+            {globalMute ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          </button>
+        )}
       </div>
 
       <section className="sidebar-section sidebar-session-section">
@@ -418,7 +443,7 @@ export default function Sidebar({ onRescan, onDirectoryPicked, onNotify, onOpenS
                       onClick={() => setIncompatibleFilter(!incompatibleFilter)}
                       title="Show only videos that need the external player"
                     >
-                      <AlertTriangle size={12} /> Incompatible
+                      <AlertTriangle size={12} /> Incompatible ({incompatibleCount})
                     </button>
                   )}
                 </div>

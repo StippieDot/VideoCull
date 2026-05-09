@@ -15,12 +15,17 @@
 .sidebar-header {
   padding: 20px 18px 12px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .sidebar-logo {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
@@ -28,6 +33,27 @@
 }
 .sidebar-logo svg {
   color: var(--accent);
+}
+
+.sidebar-mute-btn {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  transition: var(--transition);
+}
+
+.sidebar-mute-btn:hover,
+.sidebar-mute-btn.active {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
 }
 
 /* ── Sections ── */

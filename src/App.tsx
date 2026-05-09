@@ -1,6 +1,6 @@
 ﻿import { useEffect, useCallback, useRef, useState } from 'react';
 import useStore from './store';
-import { matchesKeybind } from './keybinds';
+import { formatKeybind, matchesKeybind } from './keybinds';
 import Sidebar from './components/Sidebar';
 import GridMode from './components/GridMode';
 import ReviewMode from './components/ReviewMode';
@@ -9,7 +9,8 @@ import SettingsModal from './components/SettingsModal';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { UpdateInfo, Video } from './types';
-import { formatRecentPath } from './utils';
+import { detectVideoCompatibility, formatRecentPath } from './utils';
+import { Volume2, VolumeX } from 'lucide-react';
 import './App.css';
 
 export default function App() {
@@ -19,6 +20,9 @@ export default function App() {
   const filteredVideos = useStore((s) => s.filteredVideos);
   const reviewMode = useStore((s) => s.reviewMode);
   const isScanning = useStore((s) => s.isScanning);
+  const globalMute = useStore((s) => s.settings.globalMute);
+  const globalMuteEnabled = useStore((s) => s.settings.features.globalMute);
+  const globalMuteKeybind = useStore((s) => s.settings.keyGlobalMute);
   const setVideos = useStore((s) => s.setVideos);
   const setIsScanning = useStore((s) => s.setIsScanning);
   const setScanProgress = useStore((s) => s.setScanProgress);
@@ -39,12 +43,13 @@ export default function App() {
   const isPrivateRef = useRef(false);
   const dragDepthRef = useRef(0);
   const folderReviewPathRef = useRef<string | null>(null);
+  const settingsSaveQueueRef = useRef(Promise.resolve());
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropModalPath, setDropModalPath] = useState<string | null>(null);
-  const [settingsTab, setSettingsTab] = useState<'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates'>('interface');
+  const [settingsTab, setSettingsTab] = useState<'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about'>('interface');
   const [settingsTabRequestId, setSettingsTabRequestId] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
@@ -62,11 +67,32 @@ export default function App() {
     setDropModalPath(pickedPath);
   }, []);
 
-  const openSettings = useCallback((tab: 'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates' = 'interface') => {
+  const openSettings = useCallback((tab: 'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about' = 'interface') => {
     setSettingsTab(tab);
     setSettingsTabRequestId((prev) => prev + 1);
     useStore.getState().setIsSettingsModalOpen(true);
   }, []);
+
+  const toggleGlobalMute = useCallback(() => {
+    const state = useStore.getState();
+    if (!state.settings.features.globalMute) return;
+    const nextGlobalMute = !state.settings.globalMute;
+    state.updateSettings({ globalMute: nextGlobalMute });
+    if (window.electronAPI) {
+      settingsSaveQueueRef.current = settingsSaveQueueRef.current
+        .catch(() => undefined)
+        .then(() => window.electronAPI?.saveConfig(useStore.getState().settings))
+        .catch((err) => {
+          console.warn('[app] Failed to save global mute setting:', err);
+        });
+    }
+    pushToast({
+      title: nextGlobalMute ? 'Muted' : 'Audio on',
+      detail: nextGlobalMute ? 'In-app video playback is muted.' : 'In-app video playback can use audio.',
+      kind: 'info',
+      dedupeKey: 'global-mute-toggle',
+    });
+  }, [pushToast]);
 
   // Scan directory when selected
   const handleScan = useCallback(async (dirPaths: string[]) => {
@@ -95,13 +121,22 @@ export default function App() {
       const normalizeVideoThumbs = (video: typeof allVideos[number]) => ({
         ...video,
         thumbnails: video.thumbnails?.slice(0, expectedThumbCount(video)) ?? [],
+        compatible: detectVideoCompatibility(video.containerFormat, video.videoCodec, video.path),
       });
-      const normalizedGroups = scannedGroups.map((group) => ({
-        ...group,
-        videos: group.videos.map(normalizeVideoThumbs),
-      }));
+      const normalizedGroups = scannedGroups.map((group) => {
+        const videos = group.videos.map(normalizeVideoThumbs);
+        const compatibilityChanged = videos.filter((video, index) => video.compatible !== group.videos[index].compatible);
+        return { ...group, videos, compatibilityChanged };
+      });
       const normalizedVideos = normalizedGroups.flatMap((group) => group.videos);
       setVideos(normalizedVideos);
+      for (const group of normalizedGroups) {
+        if (group.compatibilityChanged.length > 0) {
+          void window.electronAPI.saveCacheAtomic(group.dirPath, group.compatibilityChanged).catch((err) => {
+            console.warn('[app] Failed to persist compatibility updates:', err);
+          });
+        }
+      }
       setIsScanning(false);
       const folderLabel = dirPaths.length === 1 ? formatRecentPath(dirPaths[0]) : `${dirPaths.length} folders`;
       pushToast({
@@ -116,6 +151,7 @@ export default function App() {
       );
       const needsMetadata = (v: typeof allVideos[number]) => (
         !v.videoCodec ||
+        !v.containerFormat ||
         !v.width ||
         !v.height ||
         v.fps === null ||
@@ -315,7 +351,18 @@ export default function App() {
         phase: genProgressPhaseRef.current,
       });
     });
-    const unsub3 = window.electronAPI.onThumbReadyBatch((batch) => updateVideoThumbnailsBatch(batch));
+    const unsub3 = window.electronAPI.onThumbReadyBatch((batch) => {
+      const videosById = new Map(useStore.getState().videos.map((item) => [item.id, item]));
+      updateVideoThumbnailsBatch(batch.map((item) => {
+        const existing = videosById.get(item.videoId);
+        const containerFormat = item.containerFormat ?? existing?.containerFormat ?? null;
+        const videoCodec = item.videoCodec ?? existing?.videoCodec ?? null;
+        return {
+          ...item,
+          compatible: detectVideoCompatibility(containerFormat, videoCodec, existing?.path),
+        };
+      }));
+    });
     const unsubNotifications = window.electronAPI.onAppNotification
       ? window.electronAPI.onAppNotification((notification) => pushToast(notification))
       : () => {};
@@ -444,7 +491,12 @@ export default function App() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (document.body.hasAttribute('data-capturing-keybind')) return;
       const s = useStore.getState().settings;
-      if (matchesKeybind(e, s.keyShowHelp)) {
+      const modalOpen = useStore.getState().isSettingsModalOpen || showShortcutsHelp;
+      if (!modalOpen && s.features.globalMute && matchesKeybind(e, s.keyGlobalMute)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        toggleGlobalMute();
+      } else if (matchesKeybind(e, s.keyShowHelp)) {
         e.preventDefault();
         setShowShortcutsHelp((v) => !v);
       } else if (e.key === 'Escape') {
@@ -461,7 +513,7 @@ export default function App() {
       unsub4();
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast]);
+  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, showShortcutsHelp]);
 
   useEffect(() => {
     window.electronAPI?.setExportReportAvailable(Boolean(directory && videos.length > 0 && !isScanning));
@@ -593,6 +645,16 @@ export default function App() {
     >
       <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
+      {reviewMode && globalMuteEnabled && !isPrivate && (
+        <button
+          className={`app-global-mute ${globalMute ? 'active' : ''}`}
+          onClick={toggleGlobalMute}
+          title={`${globalMute ? 'Unmute' : 'Mute'} in-app playback (${formatKeybind(globalMuteKeybind)})`}
+          aria-label={globalMute ? 'Unmute in-app playback' : 'Mute in-app playback'}
+        >
+          {globalMute ? <VolumeX size={17} /> : <Volume2 size={17} />}
+        </button>
+      )}
       {directory && (
         <Sidebar
           onRescan={() => directories.length > 0 && handleScan(directories)}
@@ -600,6 +662,10 @@ export default function App() {
           onNotify={pushToast}
           onOpenSettings={() => openSettings('interface')}
           onCloseSession={() => void handleCloseSession()}
+          globalMute={globalMute}
+          globalMuteEnabled={globalMuteEnabled && !isPrivate}
+          globalMuteLabel={formatKeybind(globalMuteKeybind)}
+          onToggleGlobalMute={toggleGlobalMute}
         />
       )}
 

@@ -51,6 +51,7 @@ function getVideoMetadata(filePath) {
         creationTime,
         videoCodec: videoStream?.codec_name ?? null,
         audioCodec: audioStream?.codec_name ?? null,
+        containerFormat: metadata?.format?.format_name ?? null,
         width: videoStream?.width ?? null,
         height: videoStream?.height ?? null,
         fps,
@@ -206,10 +207,11 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
   let creationTime = null;
   let videoCodec = video.videoCodec ?? null;
   let audioCodec = video.audioCodec ?? null;
+  let containerFormat = video.containerFormat ?? null;
   let width = video.width ?? null;
   let height = video.height ?? null;
   let fps = video.fps ?? null;
-  const needsMetadata = () => !duration || !videoCodec || !width || !height || fps === null;
+  const needsMetadata = () => !duration || !videoCodec || !containerFormat || !width || !height || fps === null;
 
   try {
     const existing = await fs.readdir(videoThumbDir);
@@ -224,6 +226,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
           creationTime = meta.creationTime;
           videoCodec = meta.videoCodec;
           audioCodec = meta.audioCodec;
+          containerFormat = meta.containerFormat;
           width = meta.width;
           height = meta.height;
           fps = meta.fps;
@@ -239,6 +242,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
           creationTime,
           videoCodec,
           audioCodec,
+          containerFormat,
           width,
           height,
           fps,
@@ -261,6 +265,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
       creationTime = meta.creationTime;
       videoCodec = meta.videoCodec;
       audioCodec = meta.audioCodec;
+      containerFormat = meta.containerFormat;
       width = meta.width;
       height = meta.height;
       fps = meta.fps;
@@ -307,7 +312,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     } catch { /* truly can't generate thumbnails for this video */ }
   }
 
-  return { thumbnails: finalPaths, durationSecs: duration, creationTime, videoCodec, audioCodec, width, height, fps };
+  return { thumbnails: finalPaths, durationSecs: duration, creationTime, videoCodec, audioCodec, containerFormat, width, height, fps };
 }
 
 async function readMetadataForVideo(video) {
@@ -315,6 +320,7 @@ async function readMetadataForVideo(video) {
   let creationTime = null;
   let videoCodec = video.videoCodec ?? null;
   let audioCodec = video.audioCodec ?? null;
+  let containerFormat = video.containerFormat ?? null;
   let width = video.width ?? null;
   let height = video.height ?? null;
   let fps = video.fps ?? null;
@@ -325,6 +331,7 @@ async function readMetadataForVideo(video) {
     creationTime = meta.creationTime;
     videoCodec = meta.videoCodec;
     audioCodec = meta.audioCodec;
+    containerFormat = meta.containerFormat;
     width = meta.width;
     height = meta.height;
     fps = meta.fps;
@@ -338,6 +345,7 @@ async function readMetadataForVideo(video) {
     creationTime,
     videoCodec,
     audioCodec,
+    containerFormat,
     width,
     height,
     fps,
@@ -392,6 +400,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
               const hasCompleteCachedThumbs = !options.forceRegenerate && Array.isArray(video.thumbnails) && video.thumbnails.length >= targetThumbCount;
               const needsMetadataOnly = hasCompleteCachedThumbs && (
                 !video.videoCodec ||
+                !video.containerFormat ||
                 !video.width ||
                 !video.height ||
                 video.fps === null ||
@@ -411,6 +420,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
                   result.creationTime,
                   result.videoCodec,
                   result.audioCodec,
+                  result.containerFormat,
                   result.width,
                   result.height,
                   result.fps

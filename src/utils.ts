@@ -72,10 +72,44 @@ export function formatRecentPath(p: string): string {
   return p;
 }
 
-export const WEB_SUPPORTED_EXTS = ['.mp4', '.webm', '.ogg', '.mov', '.mkv', '.m4v'];
+export const WEB_SUPPORTED_EXTS = ['.mp4', '.webm', '.ogg', '.ogv', '.mov', '.mkv', '.m4v'];
+const BUILT_IN_UNSUPPORTED_EXTS = new Set([
+  '.wmv', '.asf', '.avi', '.flv', '.ts', '.mts', '.m2ts', '.mpg', '.mpeg', '.vob', '.divx',
+]);
+const BUILT_IN_UNSUPPORTED_CODECS = new Set([
+  'wmv1', 'wmv2', 'wmv3', 'vc1', 'msmpeg4v1', 'msmpeg4v2', 'msmpeg4v3', 'mpeg2video',
+]);
+const BUILT_IN_SUPPORTED_CODECS = new Set([
+  'h264', 'avc', 'avc1', 'hevc', 'h265', 'hvc1', 'av1', 'av01', 'vp8', 'vp9', 'theora',
+]);
 
 export function isWebSupported(path: string): boolean {
   return WEB_SUPPORTED_EXTS.some((ext) => path.toLowerCase().endsWith(ext));
+}
+
+function extensionFromPath(path: string | null | undefined): string {
+  const match = (path ?? '').toLowerCase().match(/\.[^.\\/]+$/);
+  return match?.[0] ?? '';
+}
+
+function hasAnyFormat(containerFormat: string | null | undefined, tokens: string[]): boolean {
+  const parts = (containerFormat ?? '').toLowerCase().split(',').map((part) => part.trim());
+  return tokens.some((token) => parts.includes(token));
+}
+
+export function detectVideoCompatibility(
+  containerFormat: string | null | undefined,
+  videoCodec: string | null | undefined,
+  path?: string | null
+): boolean {
+  const ext = extensionFromPath(path);
+  const codec = (videoCodec ?? '').toLowerCase();
+
+  if (BUILT_IN_UNSUPPORTED_EXTS.has(ext) || BUILT_IN_UNSUPPORTED_CODECS.has(codec)) return false;
+  if (WEB_SUPPORTED_EXTS.includes(ext)) return true;
+  if (BUILT_IN_SUPPORTED_CODECS.has(codec) && hasAnyFormat(containerFormat, ['mp4', 'mov', 'matroska', 'webm', 'ogg'])) return true;
+  if (hasAnyFormat(containerFormat, ['asf', 'avi', 'flv', 'mpegts', 'mpeg', 'vob'])) return false;
+  return false;
 }
 
 const CODEC_DISPLAY: Record<string, string> = {
@@ -93,7 +127,7 @@ const CODEC_DISPLAY: Record<string, string> = {
   prores: 'ProRes',
   mpeg4: 'MPEG-4',
   mpeg2video: 'MPEG-2',
-  wmv3: 'WMV',
+  wmv3: 'WMV3',
   vc1: 'VC-1',
   h263: 'H.263',
 };

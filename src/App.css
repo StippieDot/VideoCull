@@ -25,6 +25,31 @@
   flex-direction: column;
 }
 
+.app-global-mute {
+  position: fixed;
+  top: 72px;
+  right: 28px;
+  z-index: 115;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm), var(--glass-glow);
+  transition: var(--transition);
+}
+
+.app-global-mute:hover,
+.app-global-mute.active {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+  border-color: var(--border-hover);
+}
+
 /* ── Drag & Drop UI ─────────────────────────────────────────────────── */
 .drag-overlay {
   position: fixed;

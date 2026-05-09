@@ -18,6 +18,12 @@ let activeCacheRoots = new Set();
 let isQuitting = false;
 const activeBatchIntervals = new Set();
 let menuBarHiddenForVideoFullscreen = false;
+const ALLOWED_EXTERNAL_URLS = new Set([
+  'https://github.com/stippie-dot/VideoCull',
+  'https://github.com/stippie-dot/VideoCull/releases',
+  'https://github.com/sponsors/stippie-dot',
+  'https://paypal.me/stippiedot',
+]);
 
 // Set of known valid video paths, populated on every scan-directory call.
 // All IPC handlers that accept file paths validate against this set.
@@ -1192,6 +1198,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
         compatible: cached.compatible !== false,
         videoCodec: cached.videoCodec ?? null,
         audioCodec: cached.audioCodec ?? null,
+        containerFormat: cached.containerFormat ?? null,
         width: cached.width ?? null,
         height: cached.height ?? null,
         fps: cached.fps ?? null,
@@ -1208,6 +1215,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
       compatible: true,
       videoCodec: null,
       audioCodec: null,
+      containerFormat: null,
       width: null,
       height: null,
       fps: null,
@@ -1284,6 +1292,7 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
       !v.thumbnails ||
       v.thumbnails.length < expectedThumbCount(v) ||
       !v.videoCodec ||
+      !v.containerFormat ||
       !v.width ||
       !v.height ||
       v.fps === null ||
@@ -1312,7 +1321,7 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
   try {
     await processVideos(needThumbs, (video) => thumbRootByFolder.get(getVideoFolderPath(video)), config, (progress) => {
       lastProgress = progress;
-    }, (videoId, thumbnails, durationSecs, creationTime, videoCodec, audioCodec, width, height, fps) => {
+    }, (videoId, thumbnails, durationSecs, creationTime, videoCodec, audioCodec, containerFormat, width, height, fps) => {
       readyBatch.push({
         videoId,
         thumbnails,
@@ -1320,6 +1329,7 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
         metadataDate: creationTime,
         videoCodec,
         audioCodec,
+        containerFormat,
         width,
         height,
         fps,
@@ -1677,6 +1687,12 @@ ipcMain.handle('open-in-explorer', async (_event, filePath) => {
 
 // 11. App version
 ipcMain.handle('get-app-version', () => app.getVersion());
+
+ipcMain.handle('open-external-url', async (_event, url) => {
+  if (!ALLOWED_EXTERNAL_URLS.has(url)) return false;
+  await shell.openExternal(url);
+  return true;
+});
 
 // 12. Auto-updater IPC
 ipcMain.handle('check-for-updates', () => {

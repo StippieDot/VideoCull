@@ -61,6 +61,7 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
   };
 
   const isWeb = isWebSupported(video.path);
+  const canPlayInReview = isWeb && (!features.compatibilityCheck || video.compatible !== false);
   const resolutionLabel = formatResolutionLabel(video.width, video.height);
   const codecLabel = formatCodecLabel(video.videoCodec);
   const fpsLabel = formatFps(video.fps);
@@ -81,7 +82,7 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
       onPlay(video, e);
       return;
     }
-    if (isWeb && !e.ctrlKey) {
+    if (canPlayInReview && !e.ctrlKey) {
       enterReviewAndPlay(video.id);
     } else if (window.electronAPI) {
       window.electronAPI.openVideo(video.path);
@@ -142,7 +143,7 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
           <button 
             className="card-action-btn card-play-btn" 
             onClick={handlePlay} 
-            title={isWeb ? "Play in review mode (Ctrl+Click for external player)" : "Play externally"}
+            title={canPlayInReview ? "Play in review mode (Ctrl+Click for external player)" : "Open in external player"}
           >
             <Play size={20} />
           </button>

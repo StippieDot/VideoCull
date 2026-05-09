@@ -147,6 +147,7 @@ const SCHEMA = `
     compatible        INTEGER DEFAULT 1,
     video_codec       TEXT,
     audio_codec       TEXT,
+    container_format  TEXT,
     width             INTEGER,
     height            INTEGER,
     bookmarks         TEXT,
@@ -165,6 +166,10 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_videos_duplicate_hash ON videos(duplicate_hash);
   CREATE INDEX IF NOT EXISTS idx_videos_metadata_date ON videos(metadata_date);
 `;
+
+const VIDEO_SCHEMA_COLUMNS = {
+  container_format: 'TEXT',
+};
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
 
@@ -186,10 +191,19 @@ function openDb(folderPath, cacheOptions) {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+  ensureVideoSchemaColumns(db);
 
   _dbByPath.set(dbPath, db);
   log.info(`[cache] Opened DB for: ${folderPath}`);
   return db;
+}
+
+function ensureVideoSchemaColumns(db) {
+  const existingColumns = new Set(db.prepare('PRAGMA table_info(videos)').all().map((row) => row.name));
+  for (const [columnName, columnType] of Object.entries(VIDEO_SCHEMA_COLUMNS)) {
+    if (existingColumns.has(columnName)) continue;
+    db.exec(`ALTER TABLE videos ADD COLUMN ${columnName} ${columnType}`);
+  }
 }
 
 function closeDbPath(dbPath) {
@@ -250,6 +264,7 @@ function loadCacheVideos(db) {
       compatible: row.compatible !== 0,
       videoCodec: row.video_codec ?? null,
       audioCodec: row.audio_codec ?? null,
+      containerFormat: row.container_format ?? null,
       width: row.width ?? null,
       height: row.height ?? null,
       osThumbnail: row.os_thumbnail_path ?? null,
@@ -279,9 +294,9 @@ function saveCache(db, videos) {
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
        duration_secs, fps, status, rating, favorite, compatible,
-       video_codec, audio_codec, width, height, bookmarks,
+       video_codec, audio_codec, container_format, width, height, bookmarks,
        os_thumbnail_path, duplicate_hash, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       filename    = excluded.filename,
       path        = excluded.path,
@@ -296,6 +311,7 @@ function saveCache(db, videos) {
       compatible = excluded.compatible,
       video_codec = COALESCE(excluded.video_codec, video_codec),
       audio_codec = COALESCE(excluded.audio_codec, audio_codec),
+      container_format = COALESCE(excluded.container_format, container_format),
       width = COALESCE(excluded.width, width),
       height = COALESCE(excluded.height, height),
       bookmarks   = excluded.bookmarks,
@@ -315,7 +331,7 @@ function saveCache(db, videos) {
         v.date ?? null, v.metadataDate ?? null,
         v.durationSecs ?? null, v.fps ?? null, v.status,
         v.rating ?? 0, v.favorite ? 1 : 0, v.compatible === false ? 0 : 1,
-        v.videoCodec ?? null, v.audioCodec ?? null,
+        v.videoCodec ?? null, v.audioCodec ?? null, v.containerFormat ?? null,
         v.width ?? null, v.height ?? null,
         v.bookmarks?.length ? JSON.stringify(v.bookmarks) : null,
         v.osThumbnail ?? null,
@@ -346,9 +362,9 @@ async function saveCacheChunked(db, videos, onProgress) {
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
        duration_secs, fps, status, rating, favorite, compatible,
-       video_codec, audio_codec, width, height, bookmarks,
+       video_codec, audio_codec, container_format, width, height, bookmarks,
        os_thumbnail_path, duplicate_hash, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       filename    = excluded.filename,
       path        = excluded.path,
@@ -363,6 +379,7 @@ async function saveCacheChunked(db, videos, onProgress) {
       compatible = excluded.compatible,
       video_codec = COALESCE(excluded.video_codec, video_codec),
       audio_codec = COALESCE(excluded.audio_codec, audio_codec),
+      container_format = COALESCE(excluded.container_format, container_format),
       width = COALESCE(excluded.width, width),
       height = COALESCE(excluded.height, height),
       bookmarks   = excluded.bookmarks,
@@ -384,7 +401,7 @@ async function saveCacheChunked(db, videos, onProgress) {
         v.date ?? null, v.metadataDate ?? null,
         v.durationSecs ?? null, v.fps ?? null, v.status,
         v.rating ?? 0, v.favorite ? 1 : 0, v.compatible === false ? 0 : 1,
-        v.videoCodec ?? null, v.audioCodec ?? null,
+        v.videoCodec ?? null, v.audioCodec ?? null, v.containerFormat ?? null,
         v.width ?? null, v.height ?? null,
         v.bookmarks?.length ? JSON.stringify(v.bookmarks) : null,
         v.osThumbnail ?? null,

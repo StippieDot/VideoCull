@@ -18,9 +18,10 @@ const Player = createPlayer({ features: videoFeatures });
 // Memoized so it never re-renders due to currentTime/bookmark state updates in the parent.
 // Frequent re-renders of the @videojs/react Player stack while the native decoder is active
 // can trigger a 0xC0000005 access violation in Chromium's media pipeline.
-const VideoPlayer = memo(({ videoUrl, videoRef }: {
+const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
   videoUrl: string;
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  muted: boolean;
 }) => (
   <Player.Provider>
     <MinimalVideoSkin>
@@ -29,12 +30,18 @@ const VideoPlayer = memo(({ videoUrl, videoRef }: {
         className="video-player"
         src={videoUrl}
         autoPlay
+        muted={muted}
         playsInline
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       />
     </MinimalVideoSkin>
   </Player.Provider>
-));
+), (prev, next) => prev.videoUrl === next.videoUrl && prev.videoRef === next.videoRef);
+
+function isFocusableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement) || target === document.body) return false;
+  return Boolean(target.closest('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'));
+}
 
 export default function ReviewMode() {
   const allVideos = useStore((s) => s.videos);
@@ -52,6 +59,8 @@ export default function ReviewMode() {
   const setVideoRating = useStore((s) => s.setVideoRating);
   const toggleFavorite = useStore((s) => s.toggleFavorite);
   const features = useStore((s) => s.settings.features);
+  const pushToast = useStore((s) => s.pushToast);
+  const effectiveGlobalMute = features.globalMute && settings.globalMute;
 
   const scopeIdsRef = useRef<string[] | null>(null);
   if (scopeIdsRef.current === null) {
@@ -105,6 +114,7 @@ export default function ReviewMode() {
     if (!video) return false;
     return isWebSupported(video.path);
   }, [video]);
+  const canPlayInReview = isSupported && (!features.compatibilityCheck || video?.compatible !== false);
 
   const videoUrl = useMemo(() => (
     video ? `video://local/${encodeURIComponent(video.path)}` : ''
@@ -167,6 +177,12 @@ export default function ReviewMode() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying]); // intentionally excludes playbackSpeed — only apply once on start
 
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = effectiveGlobalMute;
+    }
+  }, [effectiveGlobalMute]);
+
   const advance = useCallback(() => {
     if (reviewIndex < total) setReviewIndex(reviewIndex + 1);
   }, [reviewIndex, total, setReviewIndex]);
@@ -174,6 +190,28 @@ export default function ReviewMode() {
   const goBack = useCallback(() => {
     if (reviewIndex > 0) setReviewIndex(reviewIndex - 1);
   }, [reviewIndex, setReviewIndex]);
+
+  const jumpToNextUndecided = useCallback(() => {
+    if (total === 0) return;
+    const start = reviewIndex + 1;
+    const nextIndex = reviewVideos.findIndex((item, index) => index >= start && item.status === 'pending');
+    const wrappedIndex = nextIndex >= 0
+      ? nextIndex
+      : reviewVideos.findIndex((item, index) => index < start && index !== reviewIndex && item.status === 'pending');
+
+    if (wrappedIndex >= 0) {
+      setIsPlaying(false);
+      setReviewIndex(wrappedIndex);
+      return;
+    }
+
+    pushToast({
+      title: 'No undecided videos',
+      detail: 'Every other video in this review scope already has a decision.',
+      kind: 'info',
+      dedupeKey: 'review-next-undecided-empty',
+    });
+  }, [pushToast, reviewIndex, reviewVideos, setReviewIndex, total]);
 
   const markKeep = useCallback(() => {
     if (!video) return;
@@ -202,12 +240,12 @@ export default function ReviewMode() {
 
   const handlePlay = useCallback(() => {
     if (!video) return;
-    if (isSupported) {
+    if (canPlayInReview) {
       setIsPlaying((prev) => !prev);
     } else if (window.electronAPI) {
       window.electronAPI.openVideo(video.path);
     }
-  }, [video, isSupported]);
+  }, [video, canPlayInReview]);
 
   const close = useCallback(() => setReviewMode(false), [setReviewMode]);
 
@@ -222,6 +260,8 @@ export default function ReviewMode() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (document.querySelector('.settings-overlay, .shortcuts-overlay')) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       // Stand down while the keybind recorder is capturing
       if (document.body.hasAttribute('data-capturing-keybind')) return;
@@ -284,6 +324,12 @@ export default function ReviewMode() {
         if (window.electronAPI && video?.path) window.electronAPI.openVideo(video.path);
         return;
       }
+      if (s.features.nextUndecided && matchesKeybind(e, s.keyNextUndecided)) {
+        if (isFocusableKeyboardTarget(e.target)) return;
+        e.preventDefault();
+        jumpToNextUndecided();
+        return;
+      }
       if (matchesKeybind(e, s.keyEnterPlay)) { e.preventDefault(); handlePlay(); return; }
       if (matchesKeybind(e, s.keyKeep))      { e.preventDefault(); markKeep(); return; }
       if (matchesKeybind(e, s.keyDelete))    { e.preventDefault(); markDelete(); return; }
@@ -295,7 +341,7 @@ export default function ReviewMode() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [markKeep, markDelete, skip, resetStatus, handleUndo, close, goBack, advance, handlePlay, isPlaying, video, addBookmarkNow]);
+  }, [markKeep, markDelete, skip, resetStatus, handleUndo, close, goBack, advance, handlePlay, isPlaying, video, addBookmarkNow, jumpToNextUndecided]);
 
   if (!video) {
     return (
@@ -375,6 +421,7 @@ export default function ReviewMode() {
                 <VideoPlayer
                   videoUrl={videoUrl}
                   videoRef={videoRef}
+                  muted={effectiveGlobalMute}
                 />
                 {playbackSpeed !== 1 && (
                   <div className="review-speed-badge">{playbackSpeed}x</div>
@@ -505,9 +552,13 @@ export default function ReviewMode() {
           <kbd>{formatKeybind(settings.keyDelete)}</kbd>
         </button>
 
-        <button className="review-action-btn review-btn-play" onClick={handlePlay} title={`Play (${formatKeybind(settings.keyPlay)})`}>
+        <button
+          className="review-action-btn review-btn-play"
+          onClick={handlePlay}
+          title={`${canPlayInReview ? 'Play' : 'Open in external player'} (${formatKeybind(settings.keyPlay)})`}
+        >
           <Play size={20} />
-          <span>Play</span>
+          <span>{canPlayInReview ? 'Play' : 'Open External'}</span>
           <kbd>{formatKeybind(settings.keyPlay)}</kbd>
         </button>
 

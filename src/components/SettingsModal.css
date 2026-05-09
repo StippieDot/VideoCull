@@ -439,6 +439,83 @@ input[type="range"] {
   transition: filter 0.15s;
 }
 
+/* About tab */
+.about-panel {
+  gap: 20px;
+}
+
+.about-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.about-mark {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.about-header h3 {
+  margin: 0 0 5px;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.about-link-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.about-link-btn,
+.about-support-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.about-link-btn {
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.about-link-btn span {
+  flex: 1;
+  text-align: left;
+}
+
+.about-support-row {
+  display: flex;
+  gap: 10px;
+}
+
+.about-support-btn {
+  padding: 8px 12px;
+}
+
+.about-link-btn:hover,
+.about-support-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
 .btn-install-update:hover {
   filter: brightness(1.15);
 }

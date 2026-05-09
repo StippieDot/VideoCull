@@ -672,6 +672,7 @@ const useStore = create<VideoStore>((set, get) => ({
           metadataDate: item.metadataDate ?? videos[vIdx].metadataDate,
           videoCodec: item.videoCodec ?? videos[vIdx].videoCodec,
           audioCodec: item.audioCodec ?? videos[vIdx].audioCodec,
+          containerFormat: item.containerFormat ?? videos[vIdx].containerFormat,
           width: item.width ?? videos[vIdx].width,
           height: item.height ?? videos[vIdx].height,
           fps: item.fps ?? videos[vIdx].fps,

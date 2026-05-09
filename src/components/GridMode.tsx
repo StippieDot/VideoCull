@@ -158,6 +158,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const groupByFolder = useStore((s) => s.groupByFolder);
   const directory = useStore((s) => s.directory);
   const directories = useStore((s) => s.directories);
+  const compatibilityCheckEnabled = useStore((s) => s.settings.features.compatibilityCheck);
   const isScanning = useStore((s) => s.isScanning);
   const isGenerating = useStore((s) => s.isGenerating);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -429,12 +430,13 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
   const handleCardPlay = useCallback((video: Video, event: ReactMouseEvent) => {
     persistCurrentScroll();
-    if (isWebSupported(video.path) && !event.ctrlKey) {
+    const canPlayInReview = isWebSupported(video.path) && (!compatibilityCheckEnabled || video.compatible !== false);
+    if (canPlayInReview && !event.ctrlKey) {
       useStore.getState().enterReviewAndPlay(video.id);
     } else if (window.electronAPI) {
       window.electronAPI.openVideo(video.path);
     }
-  }, [persistCurrentScroll]);
+  }, [compatibilityCheckEnabled, persistCurrentScroll]);
 
   const handleBatchStatus = useCallback((status: 'keep' | 'delete' | 'skipped' | 'pending') => {
     const ids = Array.from(selectedIds);

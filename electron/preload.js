@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   chooseReportScope: () => ipcRenderer.invoke('choose-report-scope'),
   setExportReportAvailable: (enabled) => ipcRenderer.send('set-export-report-available', enabled),
   openVideo: (filePath) => ipcRenderer.invoke('open-video', filePath),
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   setVideoFullscreen: (fullscreen) => ipcRenderer.invoke('set-video-fullscreen', fullscreen),
 
   // Menu events

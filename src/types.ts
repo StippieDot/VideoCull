@@ -19,6 +19,7 @@ export interface Video {
   compatible: boolean;
   videoCodec: string | null;
   audioCodec: string | null;
+  containerFormat: string | null;
   width: number | null;
   height: number | null;
   fps: number | null;
@@ -43,6 +44,7 @@ export interface ThumbReadyEvent {
   metadataDate?: number | null;
   videoCodec?: string | null;
   audioCodec?: string | null;
+  containerFormat?: string | null;
   width?: number | null;
   height?: number | null;
   fps?: number | null;
@@ -303,6 +305,7 @@ export interface ElectronAPI {
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
   setExportReportAvailable: (enabled: boolean) => void;
   openVideo: (filePath: string) => Promise<void>;
+  openExternalUrl: (url: string) => Promise<boolean>;
   setVideoFullscreen: (fullscreen: boolean) => Promise<boolean>;
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;

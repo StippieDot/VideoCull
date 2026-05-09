@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import useStore from '../store';
-import { X, RotateCcw, RefreshCw, FileDown, Database } from 'lucide-react';
+import { X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake } from 'lucide-react';
 import type { AppSettings, ToastInput, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
@@ -10,7 +10,14 @@ import './SettingsModal.css';
 
 const KEYBIND_GROUPS: ShortcutGroup[] = ['Review mode', 'Preview', 'Global'];
 
-type SettingsTab = 'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates';
+type SettingsTab = 'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about';
+
+const ABOUT_LINKS = {
+  repo: 'https://github.com/stippie-dot/VideoCull',
+  releases: 'https://github.com/stippie-dot/VideoCull/releases',
+  sponsors: 'https://github.com/sponsors/stippie-dot',
+  paypal: 'https://paypal.me/stippiedot',
+} as const;
 
 const FEATURE_TOGGLES = [
   { key: 'ratings', label: '5-star rating', description: 'Show rating controls on video cards and in review mode.' },
@@ -47,6 +54,13 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const [exportMessage, setExportMessage] = useState<string>('');
   const [cacheMessage, setCacheMessage] = useState<string>('');
   const [autoConcurrency, setAutoConcurrency] = useState<number | null>(null);
+  const appVersionLabel = __APP_VERSION__ || appVersion || '...';
+
+  const openExternal = (url: string) => {
+    void window.electronAPI?.openExternalUrl(url).catch((err) => {
+      console.warn('[settings] Failed to open external URL:', err);
+    });
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -268,6 +282,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
               Updates
               {updateInfo.status === 'ready' && <span className="update-dot" />}
             </button>
+            <button className={`tab-btn ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>About</button>
           </div>
 
           <div className="settings-content">
@@ -525,7 +540,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 <div className="settings-form">
                   <div className="form-group">
                     <label>Current Version</label>
-                    <span className="version-display">v{appVersion || '…'}</span>
+                    <span className="version-display">v{appVersionLabel}</span>
                   </div>
 
                   <div className="form-group">
@@ -575,6 +590,42 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 </div>
               );
             })()}
+
+            {activeTab === 'about' && (
+              <div className="settings-form about-panel">
+                <div className="about-header">
+                  <div className="about-mark">VC</div>
+                  <div>
+                    <h3>Video Cull</h3>
+                    <span className="version-display">v{appVersionLabel}</span>
+                  </div>
+                </div>
+
+                <div className="about-link-grid">
+                  <button className="about-link-btn" onClick={() => openExternal(ABOUT_LINKS.repo)}>
+                    <Code2 size={16} />
+                    <span>GitHub Repository</span>
+                    <ExternalLink size={13} />
+                  </button>
+                  <button className="about-link-btn" onClick={() => openExternal(ABOUT_LINKS.releases)}>
+                    <RefreshCw size={16} />
+                    <span>Releases / Changelog</span>
+                    <ExternalLink size={13} />
+                  </button>
+                </div>
+
+                <div className="about-support-row">
+                  <button className="about-support-btn" onClick={() => openExternal(ABOUT_LINKS.sponsors)}>
+                    <HeartHandshake size={15} />
+                    GitHub Sponsors
+                  </button>
+                  <button className="about-support-btn" onClick={() => openExternal(ABOUT_LINKS.paypal)}>
+                    <HeartHandshake size={15} />
+                    PayPal
+                  </button>
+                </div>
+              </div>
+            )}
 
           </div>
         </div>

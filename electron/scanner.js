@@ -68,6 +68,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
             compatible: true,
             videoCodec: null,
             audioCodec: null,
+            containerFormat: null,
             width: null,
             height: null,
             fps: null,
