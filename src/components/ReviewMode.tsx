@@ -49,6 +49,7 @@ export default function ReviewMode() {
   const reviewIndex = useStore((s) => s.reviewIndex);
   const setReviewIndex = useStore((s) => s.setReviewIndex);
   const setReviewMode = useStore((s) => s.setReviewMode);
+  const setActiveReviewVideoPath = useStore((s) => s.setActiveReviewVideoPath);
   const folderFilterPath = useStore((s) => s.folderFilterPath);
   const setVideoStatus = useStore((s) => s.setVideoStatus);
   const undo = useStore((s) => s.undo);
@@ -103,6 +104,7 @@ export default function ReviewMode() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
+  const [audioDecodeError, setAudioDecodeError] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const dynamicAspectRatio = useMemo(() => {
@@ -119,6 +121,10 @@ export default function ReviewMode() {
   const videoUrl = useMemo(() => (
     video ? `video://local/${encodeURIComponent(video.path)}` : ''
   ), [video]);
+
+  useEffect(() => {
+    return () => setActiveReviewVideoPath(null);
+  }, [setActiveReviewVideoPath]);
 
   useEffect(() => {
     if (!isPlaying || !window.electronAPI?.setVideoFullscreen) return;
@@ -155,6 +161,7 @@ export default function ReviewMode() {
       setIsPlaying(false);
     }
     setCurrentTime(0);
+    setAudioDecodeError(false);
   }, [video?.id]);
 
   // When playback starts: apply persisted speed, then sync speed changes back from the player
@@ -182,6 +189,19 @@ export default function ReviewMode() {
       videoRef.current.muted = effectiveGlobalMute;
     }
   }, [effectiveGlobalMute]);
+
+  // Show an overlay when Chromium can't decode the audio stream (AC3/EAC3/DTS etc.)
+  // Muting doesn't prevent decoding — only an external player can handle these codecs.
+  useEffect(() => {
+    if (!isPlaying) return;
+    const el = videoRef.current;
+    if (!el) return;
+    const onError = () => {
+      if (el.error?.code === MediaError.MEDIA_ERR_DECODE) setAudioDecodeError(true);
+    };
+    el.addEventListener('error', onError);
+    return () => el.removeEventListener('error', onError);
+  }, [isPlaying]);
 
   const advance = useCallback(() => {
     if (reviewIndex < total) setReviewIndex(reviewIndex + 1);
@@ -276,6 +296,7 @@ export default function ReviewMode() {
         else close();
         return;
       }
+      if (isFocusableKeyboardTarget(e.target)) return;
 
       // Playing-context shortcuts
       if (isPlaying) {
@@ -425,6 +446,17 @@ export default function ReviewMode() {
                 />
                 {playbackSpeed !== 1 && (
                   <div className="review-speed-badge">{playbackSpeed}x</div>
+                )}
+                {audioDecodeError && (
+                  <div className="review-decode-error-overlay">
+                    <p>Audio codec not supported by the built-in player</p>
+                    <div className="review-decode-error-actions">
+                      <button onClick={() => { void window.electronAPI.openVideo(video.path); }}>
+                        Open in external player
+                      </button>
+                      <button onClick={() => setAudioDecodeError(false)}>Dismiss</button>
+                    </div>
+                  </div>
                 )}
               </>
             ) : (
