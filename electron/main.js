@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, nativeImage, Menu } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
@@ -18,6 +18,8 @@ let activeCacheRoots = new Set();
 let isQuitting = false;
 const activeBatchIntervals = new Set();
 let menuBarHiddenForVideoFullscreen = false;
+let scanGeneration = 0;
+let updateReadyToInstall = false;
 const ALLOWED_EXTERNAL_URLS = new Set([
   'https://github.com/stippie-dot/VideoCull',
   'https://github.com/stippie-dot/VideoCull/releases',
@@ -28,6 +30,58 @@ const ALLOWED_EXTERNAL_URLS = new Set([
 // Set of known valid video paths, populated on every scan-directory call.
 // All IPC handlers that accept file paths validate against this set.
 const knownVideoPaths = new Set();
+const knownVideoIdsByPath = new Map();
+const SERVABLE_VIDEO_EXTENSIONS = new Set([
+  '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm', '.flv', '.m4v', '.ts', '.mts',
+]);
+// Valid video ID format: 16 hex characters (MD5-derived from path+size in scanner.js)
+const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
+
+// Mirrors detectVideoCompatibility in src/utils.ts — kept in sync manually.
+// Used in scan-directory to re-evaluate compatibility from cached codec/format data,
+// so that stale `compatible = false` values from old buggy logic are fixed on rescan.
+const COMPAT_UNSUPPORTED_EXTS = new Set([
+  '.wmv', '.asf', '.avi', '.flv', '.ts', '.mts', '.m2ts', '.mpg', '.mpeg', '.vob', '.divx',
+]);
+const COMPAT_UNSUPPORTED_CODECS = new Set([
+  'wmv1', 'wmv2', 'wmv3', 'vc1', 'msmpeg4v1', 'msmpeg4v2', 'msmpeg4v3', 'mpeg2video',
+  'prores', 'h263', 'dvvideo', 'theora',
+]);
+const COMPAT_SUPPORTED_CODECS = new Set([
+  'h264', 'avc', 'avc1', 'hevc', 'h265', 'hvc1', 'av1', 'av01', 'vp8', 'vp9', 'mpeg4', 'mp4v',
+]);
+const COMPAT_SUPPORTED_FORMATS = ['mp4', 'mov', 'matroska', 'webm', 'ogg', '3gp', '3g2', 'm4a', 'mj2'];
+const COMPAT_WEB_EXTS = ['.mp4', '.webm', '.ogg', '.ogv', '.mov', '.mkv', '.m4v'];
+
+function hasAnyCompatFormat(containerFormat, tokens) {
+  const parts = (containerFormat || '').toLowerCase().split(',').map((p) => p.trim());
+  return tokens.some((t) => parts.includes(t));
+}
+
+function detectCompatibility(containerFormat, videoCodec, filePath) {
+  const extMatch = (filePath || '').match(/\.[^.\\/]+$/);
+  const ext = extMatch ? extMatch[0].toLowerCase() : '';
+  const codec = (videoCodec || '').toLowerCase();
+
+  if (COMPAT_UNSUPPORTED_EXTS.has(ext) || COMPAT_UNSUPPORTED_CODECS.has(codec)) return false;
+  if (codec) {
+    if (!COMPAT_SUPPORTED_CODECS.has(codec)) return false;
+    if (hasAnyCompatFormat(containerFormat, COMPAT_SUPPORTED_FORMATS)) return true;
+    if (hasAnyCompatFormat(containerFormat, ['asf', 'avi', 'flv', 'mpegts', 'mpeg', 'vob'])) return false;
+    return COMPAT_WEB_EXTS.includes(ext);
+  }
+  if (hasAnyCompatFormat(containerFormat, COMPAT_SUPPORTED_FORMATS)) return true;
+  if (COMPAT_WEB_EXTS.includes(ext) && !containerFormat) return true;
+  if (hasAnyCompatFormat(containerFormat, ['asf', 'avi', 'flv', 'mpegts', 'mpeg', 'vob'])) return false;
+  return false;
+}
+
+class ScanSupersededError extends Error {
+  constructor() {
+    super('Scan superseded');
+    this.name = 'ScanSupersededError';
+  }
+}
 
 /**
  * Returns true if `candidate` resolves to `baseDir` or a path inside it.
@@ -178,8 +232,8 @@ function createWindow() {
 
 // â”€â”€ Custom Protocol for serving thumbnail images and videos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const customProtocolSchemes = [
-  { scheme: 'thumb', privileges: { standard: true, secure: true, bypassCSP: true, stream: true, supportFetchAPI: true, corsEnabled: true } },
-  { scheme: 'video', privileges: { standard: true, secure: true, bypassCSP: true, stream: true, supportFetchAPI: true, corsEnabled: true } },
+  { scheme: 'thumb', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } },
+  { scheme: 'video', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } },
 ];
 protocol.registerSchemesAsPrivileged(customProtocolSchemes);
 
@@ -232,8 +286,8 @@ app.whenReady().then(() => {
       filePath = filePath.replace(/^\//, '');
     }
 
-    // Security: only serve files inside the current scan directory
-    if (currentScanDirs.size === 0 || !await isPathWithinAnyDir(filePath, currentScanDirs)) {
+    // Security: only stream videos discovered by the scanner for this session.
+    if (!knownVideoPaths.has(filePath) || !isServableVideoPath(filePath)) {
       return new Response('Access Denied', { status: 403 });
     }
 
@@ -243,6 +297,9 @@ app.whenReady().then(() => {
       // We use a large highWaterMark (5MB) to drastically reduce IPC overhead and prevent buffering.
       const { Readable } = require('stream');
       const stats = statSync(filePath);
+      if (!stats.isFile()) {
+        return new Response('Access Denied', { status: 403 });
+      }
       const fileSize = stats.size;
       const range = request.headers.get('range');
 
@@ -713,18 +770,23 @@ function mergeCacheMap(targetMap, sourceMap, scannedIds = null, { overwrite = fa
   }
 }
 
-async function prepareCacheFolder(folderPath, cacheOptions) {
+function publishScanCacheRoots(cacheRoots) {
+  for (const cacheRoot of cacheRoots) activeCacheRoots.add(cacheRoot);
+}
+
+async function prepareCacheFolder(folderPath, cacheOptions, { publish = true, cacheRoots = null } = {}) {
   const cachePaths = getCachePaths(folderPath, cacheOptions);
-  activeCacheRoots.add(cachePaths.cacheRootDir);
+  if (publish) activeCacheRoots.add(cachePaths.cacheRootDir);
+  else cacheRoots?.add(cachePaths.cacheRootDir);
   await registerCacheFolder(folderPath, cachePaths);
   await fs.mkdir(cachePaths.thumbRootDir, { recursive: true });
   return cachePaths;
 }
 
-async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false } = {}) {
+async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false, publish = true, cacheRoots = null } = {}) {
   const groups = groupVideosByFolder(videos);
   for (const [folderPath, folderVideos] of groups) {
-    const cachePaths = await prepareCacheFolder(folderPath, cacheOptions);
+    const cachePaths = await prepareCacheFolder(folderPath, cacheOptions, { publish, cacheRoots });
     const payload = folderVideos.map((video) => videoForDb(video, cachePaths.cacheRootDir));
 
     const writePayload = async () => {
@@ -746,7 +808,7 @@ async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false }
   }
 }
 
-async function loadOwnerFolderCachesIntoMap(videos, rootDirPath, cacheOptions, cachedMap) {
+async function loadOwnerFolderCachesIntoMap(videos, rootDirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots) {
   const scannedIds = new Set(videos.map((video) => video.id));
   const ownerFolders = Array.from(new Set(
     videos
@@ -756,18 +818,22 @@ async function loadOwnerFolderCachesIntoMap(videos, rootDirPath, cacheOptions, c
 
   for (const ownerFolder of ownerFolders) {
     try {
-      const ownerPaths = await prepareCacheFolder(ownerFolder, cacheOptions);
+      assertScanCurrent(scanToken);
+      const ownerPaths = await prepareCacheFolder(ownerFolder, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
+      assertScanCurrent(scanToken);
       const ownerMap = await loadCacheMapWithRecovery(ownerFolder, cacheOptions, ownerPaths.cacheRootDir);
+      assertScanCurrent(scanToken);
       // Owner-folder caches are the canonical location after P3. Let them win
       // over stale parent rows if both exist.
       mergeCacheMap(cachedMap, ownerMap, scannedIds, { overwrite: true });
     } catch (err) {
+      if (err instanceof ScanSupersededError) throw err;
       log.warn(`[scan-directory] Failed to load owner cache for ${ownerFolder}:`, err);
     }
   }
 }
 
-async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOptions, parentCacheRootDir) {
+async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOptions, parentCacheRootDir, scanToken = null, scanCacheRoots = null) {
   const cachedVideos = cache.loadCacheVideos(parentDb);
   const byTargetFolder = new Map();
 
@@ -793,8 +859,15 @@ async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOpti
 
   let movedCount = 0;
   for (const [targetFolder, videos] of byTargetFolder) {
-    const targetPaths = await prepareCacheFolder(targetFolder, cacheOptions);
+    if (scanToken !== null) assertScanCurrent(scanToken);
+    const targetPaths = await prepareCacheFolder(
+      targetFolder,
+      cacheOptions,
+      scanToken !== null ? { publish: false, cacheRoots: scanCacheRoots } : {}
+    );
+    if (scanToken !== null) assertScanCurrent(scanToken);
     const targetDb = await openCacheDbWithRecovery(targetFolder, cacheOptions);
+    if (scanToken !== null) assertScanCurrent(scanToken);
     cache.saveCache(targetDb, videos.map((video) => videoForDb(video, targetPaths.cacheRootDir)));
     cache.deleteVideosByIds(parentDb, videos.map((video) => video.id));
     movedCount += videos.length;
@@ -871,6 +944,47 @@ async function isValidLoadedPath(filePath) {
   return isPathWithinAnyDir(filePath, currentScanDirs);
 }
 
+function assertScanCurrent(token) {
+  if (token !== scanGeneration) {
+    throw new ScanSupersededError();
+  }
+}
+
+function isServableVideoPath(filePath) {
+  return SERVABLE_VIDEO_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+function isKnownVideoRecord(video) {
+  return Boolean(video?.path && knownVideoIdsByPath.get(video.path) === video.id);
+}
+
+async function validateCacheSavePayload(dirPath, videos) {
+  if (!dirPath || typeof dirPath !== 'string' || !currentScanDirs.has(dirPath)) {
+    log.warn('[save-cache] Rejected save for unloaded directory:', dirPath);
+    return [];
+  }
+  if (!Array.isArray(videos)) return [];
+
+  const safeVideos = [];
+  for (const video of videos) {
+    if (!video || !VALID_VIDEO_ID.test(String(video.id || ''))) {
+      log.warn(`[save-cache] Rejected video with invalid id: ${video?.id}`);
+      continue;
+    }
+    if (!isKnownVideoRecord(video)) {
+      log.warn(`[save-cache] Rejected mismatched or unknown video record: ${video.path}`);
+      continue;
+    }
+    if (!await isPathWithinDir(video.path, dirPath)) {
+      log.warn(`[save-cache] Rejected path outside save root: ${video.path}`);
+      continue;
+    }
+    safeVideos.push(video);
+  }
+
+  return safeVideos;
+}
+
 async function mapWithConcurrency(items, limit, worker) {
   const results = new Array(items.length);
   let nextIndex = 0;
@@ -888,39 +1002,119 @@ async function mapWithConcurrency(items, limit, worker) {
   return results;
 }
 
-async function removeEmptyDeletedVideoFolders(deletedFilePaths) {
+async function collectDeletionCacheTargets(filePaths) {
+  const targets = [];
+  for (const filePath of filePaths) {
+    const knownId = knownVideoIdsByPath.get(filePath);
+    if (!knownId) continue;
+    targets.push({
+      id: knownId,
+      filePath,
+      folderPath: path.dirname(filePath),
+    });
+  }
+  return targets;
+}
+
+async function removeDeletedVideoCacheArtifacts(targets) {
+  if (targets.length === 0) return;
+  const cacheOptions = await getCacheOptions();
+  const byFolder = new Map();
+  for (const target of targets) {
+    const group = byFolder.get(target.folderPath) ?? [];
+    group.push(target.id);
+    byFolder.set(target.folderPath, group);
+  }
+
+  for (const [folderPath, ids] of byFolder) {
+    try {
+      const uniqueIds = Array.from(new Set(ids));
+      const cachePaths = getCachePaths(folderPath, cacheOptions);
+      const dbExists = await fs.access(cachePaths.dbPath).then(() => true).catch(() => false);
+      if (dbExists) {
+        const db = await openCacheDbWithRecovery(folderPath, cacheOptions);
+        cache.deleteVideosByIds(db, uniqueIds);
+      }
+      for (const id of uniqueIds) {
+        const thumbDir = path.join(cachePaths.thumbRootDir, id);
+        try {
+          await fs.access(thumbDir);
+          await shell.trashItem(thumbDir);
+        } catch (err) {
+          if (err?.code !== 'ENOENT') {
+            try {
+              const quarantinedPath = await quarantineCacheDirectory(cachePaths.cacheRootDir, thumbDir, id);
+              log.warn(`[batch-delete] Recycle Bin unavailable for thumbnail cache; moved to ${quarantinedPath}`);
+            } catch (quarantineErr) {
+              log.warn(`[batch-delete] Failed to move thumbnail cache to Recycle Bin or quarantine: ${thumbDir}`, quarantineErr);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      log.warn(`[batch-delete] Failed to remove deleted-video cache for ${folderPath}:`, err);
+    }
+  }
+}
+
+async function quarantineCacheDirectory(cacheRootDir, sourcePath, label) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const quarantineRoot = path.join(cacheRootDir, '.deleted-thumbs');
+  const targetPath = path.join(quarantineRoot, `${label}-${stamp}`);
+  await fs.mkdir(quarantineRoot, { recursive: true });
+  try {
+    await fs.rename(sourcePath, targetPath);
+  } catch (err) {
+    if (err.code !== 'EXDEV') throw err;
+    await fs.cp(sourcePath, targetPath, { recursive: true, force: true });
+    await fs.rm(sourcePath, { recursive: true, force: true });
+  }
+  return targetPath;
+}
+
+async function trashEmptyDeletedVideoFolders(deletedFilePaths) {
   const folders = Array.from(new Set(deletedFilePaths.map((filePath) => path.dirname(filePath))))
     .sort((a, b) => b.length - a.length);
-  const removed = [];
-
+  const trashed = new Set();
   for (const folderPath of folders) {
     const resolved = path.resolve(folderPath);
     if (resolved === path.parse(resolved).root) continue;
     if (!await isPathWithinAnyDir(resolved, currentScanDirs)) continue;
-
     try {
       const entries = await fs.readdir(resolved);
       if (entries.length > 0) continue;
-      await fs.rmdir(resolved);
-      removed.push(resolved);
+      await shell.trashItem(resolved);
+      trashed.add(resolved);
     } catch (err) {
       if (err.code !== 'ENOENT' && err.code !== 'ENOTEMPTY') {
-        log.warn(`[batch-delete] Failed to remove empty folder ${resolved}: ${err.message}`);
+        log.warn(`[batch-delete] Failed to trash empty folder ${resolved}: ${err.message}`);
       }
     }
   }
-
-  return removed;
+  return trashed;
 }
 
-function buildReportHtml(videos, dirPath) {
+function normalizeReportRoots(dirPaths) {
+  return (Array.isArray(dirPaths) ? dirPaths : [dirPaths])
+    .filter((dirPath) => typeof dirPath === 'string' && dirPath.length > 0)
+    .map((dirPath) => path.resolve(dirPath));
+}
+
+function buildReportHtml(videos, dirPaths) {
+  const roots = normalizeReportRoots(dirPaths);
   const sortedVideos = [...videos].sort((a, b) => a.filename.localeCompare(b.filename));
 
   const getRelativeFolder = (videoPath) => {
     const folder = path.dirname(videoPath);
-    const rel = path.relative(dirPath, folder).replace(/\\/g, '/');
-    if (!rel || rel === '.') return 'Root';
-    return rel;
+    const root = roots.find((candidate) => {
+      const relative = path.relative(candidate, folder);
+      return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+    });
+    if (!root) return folder;
+    const rel = path.relative(root, folder).replace(/\\/g, '/');
+    const rootName = roots.length > 1 ? (path.basename(root) || root) : '';
+    if (!rel || rel === '.') return rootName ? `${rootName} / Root` : 'Root';
+    return rootName ? `${rootName} / ${rel}` : rel;
   };
 
   const groupByFolder = (items) => {
@@ -1029,7 +1223,7 @@ function buildReportHtml(videos, dirPath) {
     <div class="wrap">
       <header class="hero">
         <h1>Video Cull Report</h1>
-        <p>${escapeHtml(dirPath)}</p>
+        <p>${escapeHtml(roots.length === 1 ? roots[0] : `${roots.length} folders`)}</p>
         <p>Exported ${escapeHtml(new Date().toLocaleString())}</p>
       </header>
 
@@ -1073,17 +1267,21 @@ ipcMain.handle('validate-dropped-path', async (_event, droppedPath) => {
 });
 
 ipcMain.handle('reset-loaded-directories', async () => {
+  scanGeneration += 1;
   cancelProcessing();
   currentScanDir = null;
   currentScanDirs = new Set();
   activeCacheRoots = new Set();
   knownVideoPaths.clear();
+  knownVideoIdsByPath.clear();
   cache.closeDb();
   return true;
 });
 
 // 2. Scan directory for video files
 ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
+  const scanToken = ++scanGeneration;
+  const scanCacheRoots = new Set();
   log.info(`[scan-directory] called for: ${dirPath}`);
   // Security: Validate dirPath
   try {
@@ -1093,34 +1291,41 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     throw new Error('Invalid directory path');
   }
 
-  currentScanDir = currentScanDir || dirPath;
-  currentScanDirs.add(dirPath);
-
   const cacheOptions = await getCacheOptions();
-  const cachePaths = await prepareCacheFolder(dirPath, cacheOptions);
+  assertScanCurrent(scanToken);
+  const cachePaths = await prepareCacheFolder(dirPath, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
+  assertScanCurrent(scanToken);
 
   // Open SQLite DB for this directory (creates schema if first time)
   let db = await openCacheDbWithRecovery(dirPath, cacheOptions);
+  assertScanCurrent(scanToken);
 
   // Import old JSON cache if present (first launch after update)
   await cache.migrateJsonIfNeeded(dirPath, db);
+  assertScanCurrent(scanToken);
   try {
-    await splitDescendantRowsFromParentDb(dirPath, db, cacheOptions, cachePaths.cacheRootDir);
+    await splitDescendantRowsFromParentDb(dirPath, db, cacheOptions, cachePaths.cacheRootDir, scanToken, scanCacheRoots);
+    assertScanCurrent(scanToken);
   } catch (err) {
     if (!isSqliteCorruptionError(err)) throw err;
     await quarantineCorruptCacheDb(dirPath, cacheOptions, err.code || err.message);
     db = await openCacheDbWithRecovery(dirPath, cacheOptions);
+    assertScanCurrent(scanToken);
   }
 
   let knownCacheFolders = await getKnownCacheFolders();
+  assertScanCurrent(scanToken);
   const parentCacheFolders = knownCacheFolders.filter((folderPath) => isFolderInsideSync(dirPath, folderPath));
   for (const parentFolder of parentCacheFolders) {
     try {
+      assertScanCurrent(scanToken);
       const parentPaths = getCachePaths(parentFolder, cacheOptions);
-      activeCacheRoots.add(parentPaths.cacheRootDir);
+      scanCacheRoots.add(parentPaths.cacheRootDir);
       const parentDb = await openCacheDbWithRecovery(parentFolder, cacheOptions);
-      await splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOptions, parentPaths.cacheRootDir);
+      await splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOptions, parentPaths.cacheRootDir, scanToken, scanCacheRoots);
+      assertScanCurrent(scanToken);
     } catch (err) {
+      if (err instanceof ScanSupersededError) throw err;
       log.warn(`[scan-directory] Failed to split parent cache for ${parentFolder}:`, err);
     }
   }
@@ -1128,15 +1333,20 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   // Load existing cache entries for merging. Known subfolder caches are folded in
   // so opening a parent preserves decisions made when a child folder was opened alone.
   const cachedMap = await loadCacheMapWithRecovery(dirPath, cacheOptions, cachePaths.cacheRootDir);
+  assertScanCurrent(scanToken);
   knownCacheFolders = await getKnownCacheFolders();
+  assertScanCurrent(scanToken);
   const childCacheFolders = knownCacheFolders.filter((folderPath) => isFolderInsideSync(folderPath, dirPath));
   for (const childFolder of childCacheFolders) {
     try {
+      assertScanCurrent(scanToken);
       const childPaths = getCachePaths(childFolder, cacheOptions);
-      activeCacheRoots.add(childPaths.cacheRootDir);
+      scanCacheRoots.add(childPaths.cacheRootDir);
       const childMap = await loadCacheMapWithRecovery(childFolder, cacheOptions, childPaths.cacheRootDir);
       mergeCacheMap(cachedMap, childMap);
+      assertScanCurrent(scanToken);
     } catch (err) {
+      if (err instanceof ScanSupersededError) throw err;
       log.warn(`[scan-directory] Failed to reuse subfolder cache for ${childFolder}:`, err);
     }
   }
@@ -1147,6 +1357,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   // Runs once per folder; subsequent scans find nothing to move and are instant.
   const oldThumbBase = path.join(dirPath, THUMB_DIR);
   const oldVideoIds = await fs.readdir(oldThumbBase).catch(() => []);
+  assertScanCurrent(scanToken);
   if (oldVideoIds.length > 0) {
     const newThumbRoot = cachePaths.thumbRootDir;
     log.info(`[scan-directory] Migrating ${oldVideoIds.length} thumb dirs from ${oldThumbBase} â†’ ${newThumbRoot}`);
@@ -1168,6 +1379,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
           // ENOENT = already gone, ignore
         }
       }));
+      assertScanCurrent(scanToken);
     }
     // Remove old base dir if now empty
     const remaining = await fs.readdir(oldThumbBase).catch(() => ['x']);
@@ -1176,9 +1388,11 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   }
 
   const videos = await scanDirectory(dirPath, includeSubfolders, (progress) => {
-    sendToRenderer('scan-progress', progress);
+    if (scanToken === scanGeneration) sendToRenderer('scan-progress', progress);
   });
-  await loadOwnerFolderCachesIntoMap(videos, dirPath, cacheOptions, cachedMap);
+  assertScanCurrent(scanToken);
+  await loadOwnerFolderCachesIntoMap(videos, dirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots);
+  assertScanCurrent(scanToken);
 
   // Merge with cache: preserve status, thumbnails, bookmarks from SQLite.
   // Thumbnail paths are resolved to absolute here so the renderer can use them directly.
@@ -1195,13 +1409,13 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
         bookmarks: cached.bookmarks,
         rating: cached.rating ?? 0,
         favorite: Boolean(cached.favorite),
-        compatible: cached.compatible !== false,
         videoCodec: cached.videoCodec ?? null,
         audioCodec: cached.audioCodec ?? null,
         containerFormat: cached.containerFormat ?? null,
         width: cached.width ?? null,
         height: cached.height ?? null,
         fps: cached.fps ?? null,
+        compatible: detectCompatibility(cached.containerFormat ?? null, cached.videoCodec ?? null, v.path),
       };
     }
     return {
@@ -1212,7 +1426,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
       bookmarks: [],
       rating: 0,
       favorite: false,
-      compatible: true,
+      compatible: detectCompatibility(null, null, v.path),
       videoCodec: null,
       audioCodec: null,
       containerFormat: null,
@@ -1223,16 +1437,22 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   });
 
   // Persist each video to the cache owned by its immediate parent folder.
-  await saveVideosByParentFolder(merged, cacheOptions);
+  await saveVideosByParentFolder(merged, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
+  assertScanCurrent(scanToken);
 
-  // Populate the known-paths whitelist for this loaded session
-  merged.forEach((v) => knownVideoPaths.add(v.path));
+  // Commit loaded-directory globals only after the scan is still current.
+  currentScanDir = currentScanDir || dirPath;
+  currentScanDirs.add(dirPath);
+  publishScanCacheRoots(scanCacheRoots);
+
+  // Populate the known-paths whitelist for this loaded session.
+  merged.forEach((v) => {
+    knownVideoPaths.add(v.path);
+    knownVideoIdsByPath.set(v.path, v.id);
+  });
 
   return merged;
 });
-
-// Valid video ID format: 16 hex characters (MD5-derived from path+size in scanner.js)
-const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
 
 // 3. Generate thumbnails for videos that don't have them
 ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = {}) => {
@@ -1251,8 +1471,8 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
       log.warn(`[generate-thumbnails] Rejected video with invalid id: ${v.id}`);
       return false;
     }
-    if (!knownVideoPaths.has(v.path)) {
-      log.warn(`[generate-thumbnails] Rejected unknown path: ${v.path}`);
+    if (!isKnownVideoRecord(v)) {
+      log.warn(`[generate-thumbnails] Rejected mismatched or unknown video record: ${v.path}`);
       return false;
     }
     return true;
@@ -1354,8 +1574,10 @@ ipcMain.handle('cancel-generation', async () => {
 ipcMain.handle('save-cache', async (event, dirPath, videos) => {
   if (!dirPath || typeof dirPath !== 'string') return false;
   try {
+    const safeVideos = await validateCacheSavePayload(dirPath, videos);
+    if (safeVideos.length === 0) return false;
     const cacheOptions = await getCacheOptions();
-    await saveVideosByParentFolder(videos, cacheOptions);
+    await saveVideosByParentFolder(safeVideos, cacheOptions);
     return true;
   } catch (err) {
     log.error('[save-cache] Error saving cache:', err);
@@ -1366,11 +1588,13 @@ ipcMain.handle('save-cache', async (event, dirPath, videos) => {
 ipcMain.handle('save-cache-atomic', async (_event, dirPath, videos) => {
   if (!dirPath || typeof dirPath !== 'string') return false;
   try {
+    const safeVideos = await validateCacheSavePayload(dirPath, videos);
+    if (safeVideos.length === 0) return false;
     const cacheOptions = await getCacheOptions();
-    if (videos.length > ATOMIC_SAVE_SYNC_LIMIT) {
-      log.warn(`[save-cache-atomic] ${videos.length} videos exceeds sync transaction limit; using chunked save to keep UI responsive.`);
+    if (safeVideos.length > ATOMIC_SAVE_SYNC_LIMIT) {
+      log.warn(`[save-cache-atomic] ${safeVideos.length} videos exceeds sync transaction limit; using chunked save to keep UI responsive.`);
     }
-    await saveVideosByParentFolder(videos, cacheOptions, { atomic: true });
+    await saveVideosByParentFolder(safeVideos, cacheOptions, { atomic: true });
     return true;
   } catch (err) {
     log.error('[save-cache-atomic] Error saving cache:', err);
@@ -1430,6 +1654,7 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
   }
 
   if (validPaths.length === 0) return results;
+  const cacheTargets = await collectDeletionCacheTargets(validPaths);
 
   const trashResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
     try {
@@ -1443,16 +1668,18 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
 
   const failedTrash = trashResults.filter((result) => !result.success).map((result) => result.path);
   if (failedTrash.length === 0) {
-    const removedFolders = await removeEmptyDeletedVideoFolders(
-      trashResults.filter((result) => result.success).map((result) => result.path)
-    );
-    const pendingFolders = new Set(removedFolders);
-    return results.map((result) => {
-      if (!result.success) return result;
-      const folderPath = path.resolve(path.dirname(result.path));
-      if (!pendingFolders.has(folderPath)) return result;
-      pendingFolders.delete(folderPath);
-      return { ...result, removedFolder: folderPath };
+    const successful = new Set(trashResults.filter((result) => result.success).map((result) => result.path));
+    await removeDeletedVideoCacheArtifacts(cacheTargets.filter((target) => successful.has(target.filePath)));
+    for (const filePath of successful) {
+      knownVideoPaths.delete(filePath);
+      knownVideoIdsByPath.delete(filePath);
+    }
+    const trashedFolders1 = await trashEmptyDeletedVideoFolders(Array.from(successful));
+    if (trashedFolders1.size === 0) return results;
+    return results.map((r) => {
+      if (!r.success) return r;
+      const folder = path.resolve(path.dirname(r.path));
+      return trashedFolders1.has(folder) ? { ...r, removedFolder: folder } : r;
     });
   }
 
@@ -1467,7 +1694,21 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
     noLink: true,
   });
 
-  if (response === 0) return results;
+  if (response === 0) {
+    const successfulPaths = new Set(results.filter((result) => result.success).map((result) => result.path));
+    await removeDeletedVideoCacheArtifacts(cacheTargets.filter((target) => successfulPaths.has(target.filePath)));
+    for (const filePath of successfulPaths) {
+      knownVideoPaths.delete(filePath);
+      knownVideoIdsByPath.delete(filePath);
+    }
+    const trashedFolders2 = await trashEmptyDeletedVideoFolders(Array.from(successfulPaths));
+    if (trashedFolders2.size === 0) return results;
+    return results.map((r) => {
+      if (!r.success) return r;
+      const folder = path.resolve(path.dirname(r.path));
+      return trashedFolders2.has(folder) ? { ...r, removedFolder: folder } : r;
+    });
+  }
 
   const permanentResults = await mapWithConcurrency(failedTrash, 5, async (filePath) => {
     try {
@@ -1483,21 +1724,24 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
     merged.set(result.path, result);
   }
   const mergedResults = Array.from(merged.values());
-  const removedFolders = await removeEmptyDeletedVideoFolders(
-    mergedResults.filter((result) => result.success).map((result) => result.path)
-  );
-  const pendingFolders = new Set(removedFolders);
-  return mergedResults.map((result) => {
-    if (!result.success) return result;
-    const folderPath = path.resolve(path.dirname(result.path));
-    if (!pendingFolders.has(folderPath)) return result;
-    pendingFolders.delete(folderPath);
-    return { ...result, removedFolder: folderPath };
+  const successfulPaths = new Set(mergedResults.filter((result) => result.success).map((result) => result.path));
+  await removeDeletedVideoCacheArtifacts(cacheTargets.filter((target) => successfulPaths.has(target.filePath)));
+  for (const filePath of successfulPaths) {
+    knownVideoPaths.delete(filePath);
+    knownVideoIdsByPath.delete(filePath);
+  }
+  const trashedFolders3 = await trashEmptyDeletedVideoFolders(Array.from(successfulPaths));
+  if (trashedFolders3.size === 0) return mergedResults;
+  return mergedResults.map((r) => {
+    if (!r.success) return r;
+    const folder = path.resolve(path.dirname(r.path));
+    return trashedFolders3.has(folder) ? { ...r, removedFolder: folder } : r;
   });
 });
 
-ipcMain.handle('export-report', async (_event, videos, dirPath) => {
-  if (!dirPath || !Array.isArray(videos) || videos.length === 0) return 'error';
+ipcMain.handle('export-report', async (_event, videos, dirPaths) => {
+  const roots = normalizeReportRoots(dirPaths);
+  if (roots.length === 0 || !Array.isArray(videos) || videos.length === 0) return 'error';
 
   const defaultFileName = `videocull-report-${new Date().toISOString().slice(0, 10)}.html`;
   const result = await dialog.showSaveDialog(mainWindow, {
@@ -1510,7 +1754,7 @@ ipcMain.handle('export-report', async (_event, videos, dirPath) => {
   if (result.canceled || !result.filePath) return 'cancelled';
 
   try {
-    const html = buildReportHtml(videos, dirPath);
+    const html = buildReportHtml(videos, roots);
     await fs.writeFile(result.filePath, html, 'utf8');
     return 'saved';
   } catch (err) {
@@ -1567,17 +1811,18 @@ ipcMain.handle('confirm-distributed-mode', async () => {
   });
   return response === 0;
 });
-ipcMain.handle('migrate-cache-settings', async (_event, oldSettings, newSettings, loadedDirs = []) => {
-  if (!cacheRelevantSettingsChanged(oldSettings, newSettings)) {
+ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSettings) => {
+  const persistedSettings = await readJsonFile(CONFIG_FILE, {});
+  if (!cacheRelevantSettingsChanged(persistedSettings, newSettings)) {
     return { status: 'unchanged', migrated: 0, errors: [] };
   }
 
-  const knownFolders = await getKnownCacheFolders(Array.isArray(loadedDirs) ? loadedDirs : []);
+  const knownFolders = await getKnownCacheFolders(Array.from(currentScanDirs));
   if (knownFolders.length === 0) {
     return { status: 'no-cache', migrated: 0, errors: [] };
   }
 
-  const fromOptions = normalizeCacheSettings(oldSettings);
+  const fromOptions = normalizeCacheSettings(persistedSettings);
   const toOptions = normalizeCacheSettings(newSettings);
   const targetRoots = new Set(knownFolders.map((folderPath) => cache.resolveCachePaths(folderPath, toOptions).cacheRootDir));
   for (const targetRoot of targetRoots) {
@@ -1640,17 +1885,6 @@ ipcMain.handle('migrate-cache-settings', async (_event, oldSettings, newSettings
 });
 
 
-// 7. Get OS native thumbnail
-ipcMain.handle('get-os-thumbnail', async (_event, filePath) => {
-  if (!knownVideoPaths.has(filePath)) return null;
-  try {
-    const thumb = await nativeImage.createThumbnailFromPath(filePath, { width: 300, height: 200 });
-    return thumb.toDataURL();
-  } catch (err) {
-    return null;
-  }
-});
-
 // 8. Open video in default system player
 ipcMain.handle('open-video', async (_event, filePath) => {
   if (!knownVideoPaths.has(filePath)) return;
@@ -1695,12 +1929,29 @@ ipcMain.handle('open-external-url', async (_event, url) => {
 });
 
 // 12. Auto-updater IPC
-ipcMain.handle('check-for-updates', () => {
-  if (!isDev) autoUpdater.checkForUpdates();
+ipcMain.handle('check-for-updates', async () => {
+  if (isDev) {
+    return { ok: false, status: 'disabled-dev' };
+  }
+
+  try {
+    updateReadyToInstall = false;
+    await autoUpdater.checkForUpdates();
+    return { ok: true, status: 'checking' };
+  } catch (err) {
+    log.error('[auto-updater] manual check failed:', err);
+    sendToRenderer('update-status', { status: 'error', message: err.message });
+    return { ok: false, status: 'error', error: err.message };
+  }
 });
 
 ipcMain.handle('install-update', () => {
+  if (!updateReadyToInstall) {
+    log.warn('[auto-updater] install-update rejected because no downloaded update is ready');
+    return false;
+  }
   autoUpdater.quitAndInstall(false, true);
+  return true;
 });
 
 // â”€â”€ Auto-updater setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1710,14 +1961,17 @@ function setupAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
+    updateReadyToInstall = false;
     sendToRenderer('update-status', { status: 'checking' });
   });
 
   autoUpdater.on('update-available', (info) => {
+    updateReadyToInstall = false;
     sendToRenderer('update-status', { status: 'available', version: info.version });
   });
 
   autoUpdater.on('update-not-available', () => {
+    updateReadyToInstall = false;
     sendToRenderer('update-status', { status: 'up-to-date' });
   });
 
@@ -1729,10 +1983,12 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    updateReadyToInstall = true;
     sendToRenderer('update-status', { status: 'ready', version: info.version });
   });
 
   autoUpdater.on('error', (err) => {
+    updateReadyToInstall = false;
     log.error('[auto-updater] error:', err);
     sendToRenderer('update-status', { status: 'error', message: err.message });
   });
@@ -1740,13 +1996,18 @@ function setupAutoUpdater() {
   // Check shortly after launch (if auto-updates are enabled in settings)
   setTimeout(async () => {
     try {
-      const configPath = path.join(app.getPath('userData'), CONFIG_FILE);
-      const data = await require('fs').promises.readFile(configPath, 'utf8');
-      const config = JSON.parse(data);
-      if (config.autoUpdates === false) return;
-    } catch {
-      // No config yet â€” default is enabled
+      try {
+        const configPath = path.join(app.getPath('userData'), CONFIG_FILE);
+        const data = await require('fs').promises.readFile(configPath, 'utf8');
+        const config = JSON.parse(data);
+        if (config.autoUpdates === false) return;
+      } catch {
+        // No config yet â€” default is enabled
+      }
+      await autoUpdater.checkForUpdates();
+    } catch (err) {
+      log.error('[auto-updater] startup check failed:', err);
+      sendToRenderer('update-status', { status: 'error', message: err.message });
     }
-    autoUpdater.checkForUpdates();
   }, 5000);
 }

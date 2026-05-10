@@ -13,6 +13,28 @@ import { detectVideoCompatibility, formatRecentPath } from './utils';
 import { Volume2, VolumeX } from 'lucide-react';
 import './App.css';
 
+function normalizeFsPath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+function isPathInsideRoot(filePath: string, rootPath: string): boolean {
+  const file = normalizeFsPath(filePath);
+  const root = normalizeFsPath(rootPath);
+  return file === root || file.startsWith(`${root}/`);
+}
+
+function groupVideosByLoadedRoot(videos: Video[], roots: string[], fallbackRoot: string | null): Map<string, Video[]> {
+  const groups = new Map<string, Video[]>();
+  for (const video of videos) {
+    const root = roots.find((candidate) => isPathInsideRoot(video.path, candidate)) ?? fallbackRoot;
+    if (!root) continue;
+    const group = groups.get(root) ?? [];
+    group.push(video);
+    groups.set(root, group);
+  }
+  return groups;
+}
+
 export default function App() {
   const directory = useStore((s) => s.directory);
   const directories = useStore((s) => s.directories);
@@ -81,7 +103,9 @@ export default function App() {
     if (window.electronAPI) {
       settingsSaveQueueRef.current = settingsSaveQueueRef.current
         .catch(() => undefined)
-        .then(() => window.electronAPI?.saveConfig(useStore.getState().settings))
+        .then(async () => {
+          await window.electronAPI?.saveConfig(useStore.getState().settings);
+        })
         .catch((err) => {
           console.warn('[app] Failed to save global mute setting:', err);
         });
@@ -92,6 +116,43 @@ export default function App() {
       kind: 'info',
       dedupeKey: 'global-mute-toggle',
     });
+  }, [pushToast]);
+
+  const handleExportReport = useCallback(async () => {
+    if (!window.electronAPI) return;
+    const state = useStore.getState();
+    if (!state.directory || state.videos.length === 0 || state.isScanning) return;
+
+    const scope = await window.electronAPI.chooseReportScope();
+    if (!scope) return;
+
+    const payload = scope === 'filtered' ? state.filteredVideos : state.videos;
+    if (payload.length === 0) {
+      pushToast({
+        title: 'Nothing to export',
+        detail: scope === 'filtered' ? 'No videos match the current filters.' : 'No videos are loaded.',
+        kind: 'warning',
+        dedupeKey: `export-empty:${scope}`,
+      });
+      return;
+    }
+
+    const roots = state.directories.length > 0 ? state.directories : [state.directory];
+    const result = await window.electronAPI.exportReport(payload, roots);
+    if (result === 'saved') {
+      pushToast({
+        title: 'Report exported',
+        detail: `${payload.length} ${payload.length === 1 ? 'video' : 'videos'} included.`,
+        kind: 'success',
+        dedupeKey: `export-saved:${scope}:${payload.length}`,
+      });
+    } else if (result === 'error') {
+      pushToast({
+        title: 'Export failed',
+        detail: 'The report could not be written.',
+        kind: 'error',
+      });
+    }
   }, [pushToast]);
 
   // Scan directory when selected
@@ -130,13 +191,15 @@ export default function App() {
       });
       const normalizedVideos = normalizedGroups.flatMap((group) => group.videos);
       setVideos(normalizedVideos);
-      for (const group of normalizedGroups) {
-        if (group.compatibilityChanged.length > 0) {
-          void window.electronAPI.saveCacheAtomic(group.dirPath, group.compatibilityChanged).catch((err) => {
+      await Promise.all(normalizedGroups
+        .filter((group) => group.compatibilityChanged.length > 0)
+        .map((group) => window.electronAPI.saveCacheAtomic(group.dirPath, group.compatibilityChanged)
+          .then((ok) => {
+            if (!ok) console.warn('[app] Compatibility update save was rejected:', group.dirPath);
+          })
+          .catch((err) => {
             console.warn('[app] Failed to persist compatibility updates:', err);
-          });
-        }
-      }
+          })));
       setIsScanning(false);
       const folderLabel = dirPaths.length === 1 ? formatRecentPath(dirPaths[0]) : `${dirPaths.length} folders`;
       pushToast({
@@ -208,6 +271,7 @@ export default function App() {
         }
       }
     } catch (err) {
+      if (scanId !== scanIdRef.current) return;
       console.error('Scan failed:', err);
       setIsScanning(false);
       setIsGenerating(false);
@@ -231,8 +295,13 @@ export default function App() {
     const clearedSelectedVideos = clearedVideos.filter((video) => selectedIds.has(video.id));
 
     setVideos(clearedVideos);
-    const clearedSaved = await window.electronAPI.saveCacheAtomic(directory, clearedSelectedVideos);
-    if (!clearedSaved) {
+    const clearedGroups = groupVideosByLoadedRoot(clearedSelectedVideos, directories, directory);
+    const clearResults = await Promise.all(
+      Array.from(clearedGroups.entries()).map(([root, videosForRoot]) => (
+        window.electronAPI!.saveCacheAtomic(root, videosForRoot)
+      ))
+    );
+    if (clearResults.some((ok) => !ok)) {
       setVideos(previousVideos);
       pushToast({
         title: 'Regeneration cancelled',
@@ -286,15 +355,21 @@ export default function App() {
     setGenProgress({ current: 0, total: uniqueSelected.length, phase: 'thumbnails' });
 
     try {
-      const ok = await window.electronAPI.generateThumbnails(clearedSelectedVideos, directory, { force: true });
-      if (!ok) {
-        pushToast({
-          title: 'Regeneration failed',
-          detail: `${uniqueSelected.length} selected ${uniqueSelected.length === 1 ? 'video was' : 'videos were'} not processed.`,
-          kind: 'error',
-          dedupeKey: `thumbs-regenerate-failed:${Array.from(selectedIds).join('|')}`,
-        });
-        return;
+      let completedGroups = 0;
+      for (const [root, videosForRoot] of clearedGroups) {
+        genProgressBaseRef.current = completedGroups;
+        const ok = await window.electronAPI.generateThumbnails(videosForRoot, root, { force: true });
+        if (!ok) {
+          pushToast({
+            title: 'Regeneration failed',
+            detail: `${videosForRoot.length} selected ${videosForRoot.length === 1 ? 'video was' : 'videos were'} not processed in ${formatRecentPath(root)}.`,
+            kind: 'error',
+            dedupeKey: `thumbs-regenerate-failed:${Array.from(selectedIds).join('|')}`,
+          });
+          return;
+        }
+        completedGroups += videosForRoot.length;
+        setGenProgress({ current: completedGroups, total: uniqueSelected.length, phase: 'thumbnails' });
       }
 
       const incomplete = await waitForStoreThumbnailUpdate();
@@ -324,7 +399,7 @@ export default function App() {
       genProgressBaseRef.current = 0;
       genProgressTotalRef.current = 0;
     }
-  }, [directory, setVideos, setIsGenerating, setGenProgress, pushToast, skipIntroDelaySecs, thumbsPerVideo]);
+  }, [directory, directories, setVideos, setIsGenerating, setGenProgress, pushToast, skipIntroDelaySecs, thumbsPerVideo]);
 
   useEffect(() => {
     void useStore.getState().loadSettings();
@@ -459,17 +534,17 @@ export default function App() {
         case 'zoom-in': { state.setCardScale(Math.min(state.cardScale + 0.1, 1.5)); break; }
         case 'zoom-out': { state.setCardScale(Math.max(state.cardScale - 0.1, 0.5)); break; }
         case 'reveal-video': {
-          if (state.reviewMode && state.filteredVideos[state.reviewIndex])
-            window.electronAPI.openInExplorer(state.filteredVideos[state.reviewIndex].path);
+          if (state.reviewMode && state.activeReviewVideoPath)
+            window.electronAPI.openInExplorer(state.activeReviewVideoPath);
           break;
         }
         case 'play-external': {
-          if (state.reviewMode && state.filteredVideos[state.reviewIndex])
-            window.electronAPI.openVideo(state.filteredVideos[state.reviewIndex].path);
+          if (state.reviewMode && state.activeReviewVideoPath)
+            window.electronAPI.openVideo(state.activeReviewVideoPath);
           break;
         }
         case 'export-report': {
-          openSettings('interface');
+          await handleExportReport();
           break;
         }
       }
@@ -488,7 +563,12 @@ export default function App() {
         return;
       }
 
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLSelectElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      ) return;
       if (document.body.hasAttribute('data-capturing-keybind')) return;
       const s = useStore.getState().settings;
       const modalOpen = useStore.getState().isSettingsModalOpen || showShortcutsHelp;
@@ -513,7 +593,7 @@ export default function App() {
       unsub4();
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, showShortcutsHelp]);
+  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, handleExportReport, showShortcutsHelp]);
 
   useEffect(() => {
     window.electronAPI?.setExportReportAvailable(Boolean(directory && videos.length > 0 && !isScanning));

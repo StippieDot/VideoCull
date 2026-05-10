@@ -517,6 +517,7 @@ const useStore = create<VideoStore>((set, get) => ({
   reviewMode: false,
   reviewIndex: 0,
   reviewAutoPlay: false,
+  activeReviewVideoPath: null,
   gridSelectionIds: new Set(),
   gridSelectionAnchorId: null,
   // ── Card sizing ──
@@ -691,16 +692,6 @@ const useStore = create<VideoStore>((set, get) => ({
 
     const stateNow = get();
     persistChangedVideos(stateNow.directory, stateNow.directories, Array.from(changedVideos.values()));
-  },
-
-  setOSThumbnail: (videoId: string, osThumbnail: string) => {
-    const videos = get().videos.map((v) =>
-      v.id === videoId ? { ...v, osThumbnail } : v
-    );
-    set({
-      videos,
-      filteredVideos: computeFiltered({ ...get(), videos }),
-    });
   },
 
   setVideoStatus: (videoId: string, status: VideoStatus) => {
@@ -893,9 +884,24 @@ const useStore = create<VideoStore>((set, get) => ({
   setGenProgress: (genProgress: ThumbProgress) => set({ genProgress }),
 
   // ── View ──
-  setReviewMode: (reviewMode: boolean) => set({ reviewMode }),
-  setReviewIndex: (reviewIndex: number) => set({ reviewIndex }),
+  setReviewMode: (reviewMode: boolean) => {
+    const state = get();
+    set({
+      reviewMode,
+      activeReviewVideoPath: reviewMode
+        ? state.filteredVideos[state.reviewIndex]?.path ?? state.activeReviewVideoPath
+        : null,
+    });
+  },
+  setReviewIndex: (reviewIndex: number) => {
+    const state = get();
+    set({
+      reviewIndex,
+      activeReviewVideoPath: state.reviewMode ? state.filteredVideos[reviewIndex]?.path ?? null : state.activeReviewVideoPath,
+    });
+  },
   setReviewAutoPlay: (reviewAutoPlay: boolean) => set({ reviewAutoPlay }),
+  setActiveReviewVideoPath: (activeReviewVideoPath: string | null) => set({ activeReviewVideoPath }),
   setGridSelectionIds: (gridSelectionIds) => set((state) => ({
     gridSelectionIds: typeof gridSelectionIds === 'function'
       ? gridSelectionIds(state.gridSelectionIds)
@@ -906,7 +912,12 @@ const useStore = create<VideoStore>((set, get) => ({
   enterReviewAndPlay: (videoId: string) => {
     const idx = get().filteredVideos.findIndex((v) => v.id === videoId);
     if (idx < 0) return;
-    set({ reviewMode: true, reviewIndex: idx, reviewAutoPlay: true });
+    set({
+      reviewMode: true,
+      reviewIndex: idx,
+      reviewAutoPlay: true,
+      activeReviewVideoPath: get().filteredVideos[idx]?.path ?? null,
+    });
   },
   setCardScale: (cardScale: number) => set({ cardScale }),
 
@@ -1120,7 +1131,8 @@ const useStore = create<VideoStore>((set, get) => ({
   saveSettings: async () => {
     const s = get().settings;
     if (window.electronAPI) {
-      await window.electronAPI.saveConfig(s);
+      const ok = await window.electronAPI.saveConfig(s);
+      if (!ok) throw new Error('saveConfig returned false');
     }
   },
   loadSettings: async () => {

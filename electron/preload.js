@@ -21,7 +21,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateThumbnails: (videos, dirPath, options) =>
     ipcRenderer.invoke('generate-thumbnails', videos, dirPath, options),
   cancelGeneration: () => ipcRenderer.invoke('cancel-generation'),
-  getOSThumbnail: (filePath) => ipcRenderer.invoke('get-os-thumbnail', filePath),
   onThumbProgress: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('thumb-progress', handler);
@@ -47,7 +46,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Actions
   batchDelete: (filePaths) => ipcRenderer.invoke('batch-delete', filePaths),
-  exportReport: (videos, dirPath) => ipcRenderer.invoke('export-report', videos, dirPath),
+  exportReport: (videos, dirPaths) => ipcRenderer.invoke('export-report', videos, dirPaths),
   chooseReportScope: () => ipcRenderer.invoke('choose-report-scope'),
   setExportReportAvailable: (enabled) => ipcRenderer.send('set-export-report-available', enabled),
   openVideo: (filePath) => ipcRenderer.invoke('open-video', filePath),

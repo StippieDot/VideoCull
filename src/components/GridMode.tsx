@@ -20,6 +20,7 @@ interface HeaderRow {
   label: string;
   folderPath: string;
   count: number;
+  filteredSize: number;
   totalSize: number;
 }
 
@@ -76,6 +77,10 @@ function getFolderPath(video: Video): string {
   return video.path.substring(0, video.path.lastIndexOf(sep));
 }
 
+function formatFolderSize(bytes: number): string {
+  return formatSize(bytes).replace(/\.0\s/, ' ').replace(/\s/g, '');
+}
+
 function Row({ index, style, ariaAttributes, ...data }: { index: number; style: CSSProperties; ariaAttributes: AriaAttributes & { role: 'listitem' } } & GridRowData) {
   const {
     rows,
@@ -97,7 +102,16 @@ function Row({ index, style, ariaAttributes, ...data }: { index: number; style: 
         <span className="grid-group-label">{item.label}</span>
         <span className="grid-group-meta">
           <span className="grid-group-count">{item.count}</span>
-          <span className="grid-group-size">{formatSize(item.totalSize)}</span>
+          <span
+            className="grid-group-size"
+            title={item.filteredSize !== item.totalSize
+              ? `${formatSize(item.filteredSize)} filtered / ${formatSize(item.totalSize)} total`
+              : formatSize(item.totalSize)}
+          >
+            {item.filteredSize !== item.totalSize
+              ? `${formatFolderSize(item.filteredSize)}/${formatFolderSize(item.totalSize)}`
+              : formatFolderSize(item.totalSize)}
+          </span>
           <button
             className="grid-group-review-btn"
             onClick={() => {
@@ -253,6 +267,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
           label: group.label,
           folderPath,
           count: group.videos.length,
+          filteredSize: group.videos.reduce((sum, v) => sum + v.sizeBytes, 0),
           totalSize: folderSizeByPath.get(folderPath) ?? group.videos.reduce((sum, v) => sum + v.sizeBytes, 0),
         });
       }

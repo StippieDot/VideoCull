@@ -257,8 +257,9 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     // Directory doesn't exist yet
   }
 
-  // Get duration + metadata date
-  if (needsMetadata()) {
+  // Get duration + metadata. On force-regenerate always re-run FFprobe so that
+  // codec/format/compatibility are guaranteed fresh, not read from a stale cache.
+  if (options.forceRegenerate || needsMetadata()) {
     try {
       const meta = await getVideoMetadata(video.path);
       duration = meta.duration;
@@ -377,6 +378,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
   const total = videos.length;
   let current = 0;
   const targetThumbCount = Math.max(1, Number(config.thumbsPerVideo) || 6);
+  const skipDelay = config.skipIntroDelaySecs !== undefined ? config.skipIntroDelaySecs : 3;
 
   const concurrentLimit = getConcurrentLimit(config);
   const cooldownMs = getGpuCooldownMs(config);
@@ -397,7 +399,8 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
             const video = queue.shift();
             if (!video) break;
             try {
-              const hasCompleteCachedThumbs = !options.forceRegenerate && Array.isArray(video.thumbnails) && video.thumbnails.length >= targetThumbCount;
+              const expectedCount = expectedThumbnailCount(video.durationSecs, targetThumbCount, skipDelay);
+              const hasCompleteCachedThumbs = !options.forceRegenerate && Array.isArray(video.thumbnails) && video.thumbnails.length >= expectedCount;
               const needsMetadataOnly = hasCompleteCachedThumbs && (
                 !video.videoCodec ||
                 !video.containerFormat ||

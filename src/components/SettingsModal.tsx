@@ -216,7 +216,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
       return;
     }
 
-    const result = await window.electronAPI.exportReport(payload, directory);
+    const result = await window.electronAPI.exportReport(payload, directories.length > 0 ? directories : [directory]);
     if (result === 'saved') {
       setExportMessage(`Exported ${scope} report (${payload.length} videos).`);
     } else if (result === 'cancelled') {

@@ -78,10 +78,12 @@ const BUILT_IN_UNSUPPORTED_EXTS = new Set([
 ]);
 const BUILT_IN_UNSUPPORTED_CODECS = new Set([
   'wmv1', 'wmv2', 'wmv3', 'vc1', 'msmpeg4v1', 'msmpeg4v2', 'msmpeg4v3', 'mpeg2video',
+  'prores', 'h263', 'dvvideo', 'theora',
 ]);
 const BUILT_IN_SUPPORTED_CODECS = new Set([
-  'h264', 'avc', 'avc1', 'hevc', 'h265', 'hvc1', 'av1', 'av01', 'vp8', 'vp9', 'theora',
+  'h264', 'avc', 'avc1', 'hevc', 'h265', 'hvc1', 'av1', 'av01', 'vp8', 'vp9', 'mpeg4', 'mp4v',
 ]);
+const BUILT_IN_SUPPORTED_FORMATS = ['mp4', 'mov', 'matroska', 'webm', 'ogg', '3gp', '3g2', 'm4a', 'mj2'];
 
 export function isWebSupported(path: string): boolean {
   return WEB_SUPPORTED_EXTS.some((ext) => path.toLowerCase().endsWith(ext));
@@ -106,8 +108,14 @@ export function detectVideoCompatibility(
   const codec = (videoCodec ?? '').toLowerCase();
 
   if (BUILT_IN_UNSUPPORTED_EXTS.has(ext) || BUILT_IN_UNSUPPORTED_CODECS.has(codec)) return false;
-  if (WEB_SUPPORTED_EXTS.includes(ext)) return true;
-  if (BUILT_IN_SUPPORTED_CODECS.has(codec) && hasAnyFormat(containerFormat, ['mp4', 'mov', 'matroska', 'webm', 'ogg'])) return true;
+  if (codec) {
+    if (!BUILT_IN_SUPPORTED_CODECS.has(codec)) return false;
+    if (hasAnyFormat(containerFormat, BUILT_IN_SUPPORTED_FORMATS)) return true;
+    if (hasAnyFormat(containerFormat, ['asf', 'avi', 'flv', 'mpegts', 'mpeg', 'vob'])) return false;
+    return WEB_SUPPORTED_EXTS.includes(ext);
+  }
+  if (hasAnyFormat(containerFormat, BUILT_IN_SUPPORTED_FORMATS)) return true;
+  if (WEB_SUPPORTED_EXTS.includes(ext) && !containerFormat) return true;
   if (hasAnyFormat(containerFormat, ['asf', 'avi', 'flv', 'mpegts', 'mpeg', 'vob'])) return false;
   return false;
 }

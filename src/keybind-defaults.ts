@@ -29,7 +29,7 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keySpeedDown:          kb('['),
   keySpeedUp:            kb(']'),
   keyBookmark:           kb('b'),
-  keyShowHelp:           kb('?'),
+  keyShowHelp:           kb('?', { shift: true }),
   keyGlobalMute:         kb('m'),
   keyPreviewSeekBack:    kb('arrowleft'),
   keyPreviewSeekForward: kb('arrowright'),
@@ -61,6 +61,10 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     if (result[key] === undefined || result[key] === null) {
       result[key] = defaultBind;
     }
+  }
+  const helpBind = result.keyShowHelp as Keybind | undefined;
+  if (helpBind?.key === '?' && helpBind.shift === false && helpBind.ctrl === false && helpBind.alt === false) {
+    result.keyShowHelp = DEFAULT_KEYBINDS.keyShowHelp;
   }
 
   // Ensure recentDirectories is an array (handle old config)

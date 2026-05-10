@@ -10,6 +10,8 @@
     "dev:electron": "wait-on http://localhost:5173 && node -e \"setTimeout(()=>require('child_process').execSync('electron .', {stdio:'inherit',cwd:process.cwd()}),1000)\"",
     "dev": "concurrently -k -n vite,electron -c cyan,green \"npm run dev:vite\" \"npm run dev:electron\"",
     "build": "vite build",
+    "check:ipc": "node scripts/check-ipc-contract.js",
+    "cleanup:cache": "node scripts/cleanup-cache-clutter.js",
     "package": "vite build && electron-builder --win --publish never",
     "rebuild": "electron-rebuild -f -w better-sqlite3"
   },

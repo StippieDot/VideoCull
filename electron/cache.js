@@ -30,6 +30,17 @@ function orderedThumbnails(thumbnails) {
   return Array.isArray(thumbnails) ? [...thumbnails].sort(compareThumbnailPaths) : [];
 }
 
+function parseBookmarks(rawBookmarks, videoId) {
+  if (!rawBookmarks) return [];
+  try {
+    const parsed = JSON.parse(rawBookmarks);
+    return Array.isArray(parsed) ? parsed.filter((value) => Number.isFinite(value)) : [];
+  } catch {
+    log.warn(`[cache] Ignoring corrupt bookmarks for video ${videoId}`);
+    return [];
+  }
+}
+
 // ── Path helpers ──────────────────────────────────────────────────────────
 
 /**
@@ -168,7 +179,24 @@ const SCHEMA = `
 `;
 
 const VIDEO_SCHEMA_COLUMNS = {
+  size_bytes: 'INTEGER',
+  file_date: 'INTEGER',
+  metadata_date: 'INTEGER',
+  duration_secs: 'REAL',
+  fps: 'REAL',
+  duplicate_hash: 'TEXT',
+  status: "TEXT DEFAULT 'pending'",
+  rating: 'INTEGER DEFAULT 0',
+  favorite: 'INTEGER DEFAULT 0',
+  compatible: 'INTEGER DEFAULT 1',
+  video_codec: 'TEXT',
+  audio_codec: 'TEXT',
   container_format: 'TEXT',
+  width: 'INTEGER',
+  height: 'INTEGER',
+  bookmarks: 'TEXT',
+  os_thumbnail_path: 'TEXT',
+  updated_at: 'INTEGER',
 };
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
@@ -257,7 +285,7 @@ function loadCacheVideos(db) {
       fps: row.fps ?? null,
       metadataDate: row.metadata_date ?? null,
       thumbnails: thumbs,
-      bookmarks: row.bookmarks ? JSON.parse(row.bookmarks) : [],
+      bookmarks: parseBookmarks(row.bookmarks, row.id),
       duplicateHash: row.duplicate_hash ?? null,
       rating: row.rating ?? 0,
       favorite: Boolean(row.favorite),

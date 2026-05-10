@@ -204,6 +204,7 @@ export interface VideoStore {
   reviewMode: boolean;
   reviewIndex: number;
   reviewAutoPlay: boolean;
+  activeReviewVideoPath: string | null;
   gridSelectionIds: Set<string>;
   gridSelectionAnchorId: string | null;
   // Card sizing
@@ -225,7 +226,6 @@ export interface VideoStore {
   setIncludeSubfolders: (val: boolean) => void;
   setVideos: (videos: Video[]) => void;
   updateVideoThumbnailsBatch: (batch: ThumbReadyEvent[]) => void;
-  setOSThumbnail: (videoId: string, thumbData: string) => void;
   setVideoStatus: (videoId: string, status: VideoStatus) => void;
   undo: () => void;
   setStatusFilter: (filter: StatusFilter) => void;
@@ -247,6 +247,7 @@ export interface VideoStore {
   setReviewMode: (val: boolean) => void;
   setReviewIndex: (idx: number) => void;
   setReviewAutoPlay: (val: boolean) => void;
+  setActiveReviewVideoPath: (path: string | null) => void;
   setGridSelectionIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   setGridSelectionAnchorId: (videoId: string | null) => void;
   clearGridSelection: () => void;
@@ -293,7 +294,6 @@ export interface ElectronAPI {
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;
   generateThumbnails: (videos: Video[], dirPath: string, options?: { force?: boolean }) => Promise<boolean>;
   cancelGeneration: () => Promise<boolean>;
-  getOSThumbnail: (filePath: string) => Promise<string | null>;
   onThumbProgress: (callback: (data: ThumbProgress) => void) => () => void;
   onThumbReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;
   onMenuAction: (callback: (action: string) => void) => () => void;
@@ -301,7 +301,7 @@ export interface ElectronAPI {
   saveCacheAtomic: (dirPath: string, videos: Video[]) => Promise<boolean>;
   clearCache: (dirPath: string) => Promise<boolean>;
   batchDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
-  exportReport: (videos: Video[], dirPath: string) => Promise<'saved' | 'cancelled' | 'error'>;
+  exportReport: (videos: Video[], dirPaths: string[]) => Promise<'saved' | 'cancelled' | 'error'>;
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
   setExportReportAvailable: (enabled: boolean) => void;
   openVideo: (filePath: string) => Promise<void>;
@@ -318,8 +318,8 @@ export interface ElectronAPI {
     loadedDirs: string[]
   ) => Promise<{ status: 'unchanged' | 'no-cache' | 'cancelled' | 'fresh' | 'migrated' | 'partial' | 'error'; migrated: number; errors: string[] }>;
   getAppVersion: () => Promise<string>;
-  checkForUpdates: () => Promise<void>;
-  installUpdate: () => Promise<void>;
+  checkForUpdates: () => Promise<{ ok: boolean; status: string; error?: string }>;
+  installUpdate: () => Promise<boolean>;
   onUpdateStatus: (callback: (data: UpdateInfo) => void) => () => void;
   onAppNotification: (callback: (data: ToastInput) => void) => () => void;
 }
