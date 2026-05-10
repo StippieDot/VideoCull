@@ -5,8 +5,8 @@ import useStore from '../store';
 import { formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
-  ArrowUpDown, HardDrive, FileVideo, Check, X, Clock, SkipForward, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle, Volume2, VolumeX
+  ArrowUpDown, HardDrive, FileVideo, X, Maximize2, Settings, ChevronDown,
+  Heart, AlertTriangle, Volume2, VolumeX
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -48,8 +48,6 @@ export default function Sidebar({
   const setMinSizeFilter = useStore((s) => s.setMinSizeFilter);
   const minDurationFilter = useStore((s) => s.minDurationFilter);
   const setMinDurationFilter = useStore((s) => s.setMinDurationFilter);
-  const ratedFilter = useStore((s) => s.ratedFilter);
-  const setRatedFilter = useStore((s) => s.setRatedFilter);
   const favoritesFilter = useStore((s) => s.favoritesFilter);
   const setFavoritesFilter = useStore((s) => s.setFavoritesFilter);
   const incompatibleFilter = useStore((s) => s.incompatibleFilter);
@@ -192,12 +190,12 @@ export default function Sidebar({
     { label: '> 1 GB', value: 1024 * 1024 * 1024 },
   ];
 
-  const filterOptions: { key: StatusFilter; label: string; icon?: React.ReactNode }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'pending', label: 'Pending', icon: <Clock size={12} /> },
-    { key: 'skipped', label: 'Skipped', icon: <SkipForward size={12} /> },
-    { key: 'keep', label: 'Keep', icon: <Check size={12} /> },
-    { key: 'delete', label: 'Delete', icon: <X size={12} /> },
+  const statusStatItems: { key: StatusFilter; label: string; value: number; className: string }[] = [
+    { key: 'all', label: 'All', value: stats.total, className: 'stat-total' },
+    { key: 'pending', label: 'Pending', value: stats.pending, className: 'stat-pending' },
+    { key: 'keep', label: 'Keep', value: stats.keep, className: 'stat-keep' },
+    { key: 'skipped', label: 'Skipped', value: stats.skipped, className: 'stat-skipped' },
+    { key: 'delete', label: 'Delete', value: stats.delete, className: 'stat-delete' },
   ];
 
   const formatDurationInput = (seconds: number): string => {
@@ -362,28 +360,21 @@ export default function Sidebar({
 
       {stats.total > 0 && (
         <section className="sidebar-section">
-          <h3 className="sidebar-section-title">Statistics</h3>
+          <h3 className="sidebar-section-title">Library</h3>
           <div className="stat-grid">
-            <div className="stat-item stat-total">
-              <span className="stat-value">{stats.total}</span>
-              <span className="stat-label">Total</span>
-            </div>
-            <div className="stat-item stat-pending">
-              <span className="stat-value">{stats.pending}</span>
-              <span className="stat-label">Pending</span>
-            </div>
-            <div className="stat-item stat-keep">
-              <span className="stat-value">{stats.keep}</span>
-              <span className="stat-label">Keep</span>
-            </div>
-            <div className="stat-item stat-skipped">
-              <span className="stat-value">{stats.skipped}</span>
-              <span className="stat-label">Skipped</span>
-            </div>
-            <div className="stat-item stat-delete">
-              <span className="stat-value">{stats.delete}</span>
-              <span className="stat-label">Delete</span>
-            </div>
+            {statusStatItems.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={`stat-item ${item.className} ${statusFilter === item.key ? 'stat-active' : ''}`}
+                onClick={() => setStatusFilter(item.key)}
+                aria-pressed={statusFilter === item.key}
+                title={`Show ${item.label.toLowerCase()} videos`}
+              >
+                <span className="stat-value">{item.value}</span>
+                <span className="stat-label">{item.label}</span>
+              </button>
+            ))}
           </div>
           {stats.deleteSize > 0 && (
             <p className="delete-size-note">
@@ -405,19 +396,7 @@ export default function Sidebar({
 
           {showFilters && (
             <div className="sidebar-section-content">
-              <div className="filter-pills">
-                {filterOptions.map((f) => (
-                  <button
-                    key={f.key}
-                    className={`pill ${statusFilter === f.key ? 'pill-active' : ''} ${f.key !== 'all' ? `pill-${f.key}` : ''}`}
-                    onClick={() => setStatusFilter(f.key)}
-                  >
-                    {f.icon}{f.label}
-                  </button>
-                ))}
-              </div>
-
-              {(features.ratings || features.favorites || (features.compatibilityCheck && hasIncompatibleVideos)) && (
+              {(features.favorites || (features.compatibilityCheck && hasIncompatibleVideos)) && (
                 <div className="filter-pills filter-pills-extra">
                   {features.favorites && (
                     <button
@@ -428,22 +407,15 @@ export default function Sidebar({
                       <Heart size={12} /> Favorites
                     </button>
                   )}
-                  {features.ratings && (
-                    <button
-                      className={`pill ${ratedFilter ? 'pill-active' : ''}`}
-                      onClick={() => setRatedFilter(!ratedFilter)}
-                      title="Show only rated videos"
-                    >
-                      <Star size={12} /> Rated only
-                    </button>
-                  )}
                   {features.compatibilityCheck && hasIncompatibleVideos && (
                     <button
                       className={`pill pill-delete ${incompatibleFilter ? 'pill-active' : ''}`}
                       onClick={() => setIncompatibleFilter(!incompatibleFilter)}
                       title="Show only videos that need the external player"
                     >
-                      <AlertTriangle size={12} /> Incompatible ({incompatibleCount})
+                      <AlertTriangle size={12} />
+                      <span className="pill-text">Incompatible</span>
+                      <span className="pill-count">{incompatibleCount}</span>
                     </button>
                   )}
                 </div>
