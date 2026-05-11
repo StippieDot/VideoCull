@@ -94,6 +94,7 @@ export type SortField = 'name' | 'size' | 'duration' | 'date' | 'rating' | 'reso
 export type FolderSortField = 'name' | 'size';
 export type SortOrder = 'asc' | 'desc';
 export type StatusFilter = 'all' | VideoStatus;
+export type RatingFilter = 0 | 1 | 2 | 3 | 4 | 5;
 export type CacheLocationMode = 'centralised' | 'per-drive' | 'distributed';
 
 export interface FeatureSettings {
@@ -187,9 +188,11 @@ export interface VideoStore {
   sortBy: SortField;
   sortOrder: SortOrder;
   minSizeFilter: number;
+  maxSizeFilter: number | null;
   minDurationFilter: number;
+  maxDurationFilter: number | null;
   folderFilterPath: string | null;
-  ratedFilter: boolean;
+  minRatingFilter: RatingFilter;
   favoritesFilter: boolean;
   incompatibleFilter: boolean;
   groupByFolder: boolean;
@@ -232,9 +235,11 @@ export interface VideoStore {
   setSortBy: (sortBy: SortField) => void;
   setSortOrder: (sortOrder: SortOrder) => void;
   setMinSizeFilter: (minSize: number) => void;
+  setSizeFilterRange: (minSize: number, maxSize: number | null) => void;
   setMinDurationFilter: (seconds: number) => void;
+  setDurationFilterRange: (minSeconds: number, maxSeconds: number | null) => void;
   setFolderFilterPath: (folderPath: string | null) => void;
-  setRatedFilter: (val: boolean) => void;
+  setMinRatingFilter: (rating: RatingFilter) => void;
   setFavoritesFilter: (val: boolean) => void;
   setIncompatibleFilter: (val: boolean) => void;
   setGroupByFolder: (val: boolean) => void;

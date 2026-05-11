@@ -259,6 +259,26 @@
   color: #f5a623;
 }
 
+.card-stars:has(.card-star-btn:hover) .card-star-btn {
+  color: var(--text-tertiary);
+}
+
+.card-stars:has(.card-star-btn:nth-child(1):hover) .card-star-btn:nth-child(-n+1),
+.card-stars:has(.card-star-btn:nth-child(2):hover) .card-star-btn:nth-child(-n+2),
+.card-stars:has(.card-star-btn:nth-child(3):hover) .card-star-btn:nth-child(-n+3),
+.card-stars:has(.card-star-btn:nth-child(4):hover) .card-star-btn:nth-child(-n+4),
+.card-stars:has(.card-star-btn:nth-child(5):hover) .card-star-btn:nth-child(-n+5) {
+  color: #f5a623;
+}
+
+.card-stars:has(.card-star-btn:nth-child(1):hover) .card-star-btn:nth-child(-n+1) svg,
+.card-stars:has(.card-star-btn:nth-child(2):hover) .card-star-btn:nth-child(-n+2) svg,
+.card-stars:has(.card-star-btn:nth-child(3):hover) .card-star-btn:nth-child(-n+3) svg,
+.card-stars:has(.card-star-btn:nth-child(4):hover) .card-star-btn:nth-child(-n+4) svg,
+.card-stars:has(.card-star-btn:nth-child(5):hover) .card-star-btn:nth-child(-n+5) svg {
+  fill: currentColor;
+}
+
 .card-star-btn:hover {
   transform: translateY(-1px);
 }

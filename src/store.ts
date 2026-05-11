@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type {
   Video, VideoStatus, VideoStats, VideoStore,
   ScanProgress, ThumbProgress, UndoEntry,
-  StatusFilter, SortField, SortOrder, FolderSortField,
+  StatusFilter, SortField, SortOrder, FolderSortField, RatingFilter,
   ToastInput, ToastKind,
 } from './types';
 import { DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, pruneRecentDirectories } from './keybind-defaults';
@@ -34,27 +34,43 @@ function getFolder(v: Video): string {
   return parts.length >= 2 ? parts.slice(0, -1).join(sep) : '';
 }
 
-function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'minDurationFilter' | 'folderFilterPath' | 'ratedFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
+function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
   let filtered = [...state.videos];
+  const minSizeFilter = Math.max(0, Math.floor(state.minSizeFilter));
+  const maxSizeFilter = state.maxSizeFilter === null
+    ? null
+    : Math.max(minSizeFilter, Math.floor(state.maxSizeFilter));
+  const minDurationFilter = Math.max(0, Math.floor(state.minDurationFilter));
+  const maxDurationFilter = state.maxDurationFilter === null
+    ? null
+    : Math.max(minDurationFilter, Math.floor(state.maxDurationFilter));
 
   if (state.statusFilter !== 'all') {
     filtered = filtered.filter((v) => v.status === state.statusFilter);
   }
 
-  if (state.minSizeFilter > 0) {
-    filtered = filtered.filter((v) => v.sizeBytes >= state.minSizeFilter);
+  if (minSizeFilter > 0) {
+    filtered = filtered.filter((v) => v.sizeBytes >= minSizeFilter);
+  }
+  if (maxSizeFilter !== null) {
+    filtered = filtered.filter((v) => v.sizeBytes <= maxSizeFilter);
   }
 
-  if (state.minDurationFilter > 0) {
-    filtered = filtered.filter((v) => (v.durationSecs ?? 0) >= state.minDurationFilter);
+  if (minDurationFilter > 0 || maxDurationFilter !== null) {
+    filtered = filtered.filter((v) => {
+      if (!Number.isFinite(v.durationSecs)) return false;
+      const duration = v.durationSecs ?? 0;
+      if (minDurationFilter > 0 && duration < minDurationFilter) return false;
+      return maxDurationFilter === null || duration <= maxDurationFilter;
+    });
   }
 
   if (state.folderFilterPath) {
     filtered = filtered.filter((v) => getFolder(v) === state.folderFilterPath);
   }
 
-  if (state.ratedFilter) {
-    filtered = filtered.filter((v) => (v.rating ?? 0) > 0);
+  if (state.minRatingFilter > 0) {
+    filtered = filtered.filter((v) => (v.rating ?? 0) >= state.minRatingFilter);
   }
 
   if (state.favoritesFilter) {
@@ -504,9 +520,11 @@ const useStore = create<VideoStore>((set, get) => ({
   sortBy: 'name',
   sortOrder: 'asc',
   minSizeFilter: 0,
+  maxSizeFilter: null,
   minDurationFilter: 0,
+  maxDurationFilter: null,
   folderFilterPath: null,
-  ratedFilter: false,
+  minRatingFilter: 0,
   favoritesFilter: false,
   incompatibleFilter: false,
   groupByFolder: true,
@@ -836,10 +854,22 @@ const useStore = create<VideoStore>((set, get) => ({
     const state = { ...get(), minSizeFilter };
     set({ minSizeFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
   },
+  setSizeFilterRange: (minSizeFilter: number, maxSizeFilter: number | null) => {
+    const safeMin = Math.max(0, Math.floor(minSizeFilter));
+    const safeMax = maxSizeFilter === null ? null : Math.max(safeMin, Math.floor(maxSizeFilter));
+    const state = { ...get(), minSizeFilter: safeMin, maxSizeFilter: safeMax };
+    set({ minSizeFilter: safeMin, maxSizeFilter: safeMax, filteredVideos: computeFiltered(state), reviewIndex: 0 });
+  },
 
   setMinDurationFilter: (minDurationFilter: number) => {
     const state = { ...get(), minDurationFilter };
     set({ minDurationFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
+  },
+  setDurationFilterRange: (minDurationFilter: number, maxDurationFilter: number | null) => {
+    const safeMin = Math.max(0, Math.floor(minDurationFilter));
+    const safeMax = maxDurationFilter === null ? null : Math.max(safeMin, Math.floor(maxDurationFilter));
+    const state = { ...get(), minDurationFilter: safeMin, maxDurationFilter: safeMax };
+    set({ minDurationFilter: safeMin, maxDurationFilter: safeMax, filteredVideos: computeFiltered(state), reviewIndex: 0 });
   },
 
   setFolderFilterPath: (folderFilterPath: string | null) => {
@@ -847,9 +877,9 @@ const useStore = create<VideoStore>((set, get) => ({
     set({ folderFilterPath, filteredVideos: computeFiltered(state), reviewIndex: 0 });
   },
 
-  setRatedFilter: (ratedFilter: boolean) => {
-    const state = { ...get(), ratedFilter };
-    set({ ratedFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
+  setMinRatingFilter: (minRatingFilter: RatingFilter) => {
+    const state = { ...get(), minRatingFilter };
+    set({ minRatingFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
   },
 
   setFavoritesFilter: (favoritesFilter: boolean) => {
@@ -1086,7 +1116,7 @@ const useStore = create<VideoStore>((set, get) => ({
       sortBy: nextSortBy,
       sortOrder: newSettings.defaultSortOrder ?? state.sortOrder,
       groupByFolder: newSettings.defaultGroupByFolder ?? state.groupByFolder,
-      ratedFilter: mergedSettings.features.ratings ? state.ratedFilter : false,
+      minRatingFilter: mergedSettings.features.ratings ? state.minRatingFilter : 0,
       favoritesFilter: mergedSettings.features.favorites ? state.favoritesFilter : false,
       incompatibleFilter: mergedSettings.features.compatibilityCheck ? state.incompatibleFilter : false,
     };
@@ -1103,10 +1133,10 @@ const useStore = create<VideoStore>((set, get) => ({
         dedupeKey: 'settings-sort-reset',
       });
     }
-    if (state.ratedFilter && !mergedSettings.features.ratings) {
+    if (state.minRatingFilter > 0 && !mergedSettings.features.ratings) {
       get().pushToast({
         title: 'Filter cleared',
-        detail: 'Rated-only filter was cleared because Ratings is disabled.',
+        detail: 'Rating filter was cleared because Ratings is disabled.',
         kind: 'warning',
         dedupeKey: 'settings-rated-filter-cleared',
       });

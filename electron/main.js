@@ -1086,8 +1086,17 @@ async function trashEmptyDeletedVideoFolders(deletedFilePaths) {
       await shell.trashItem(resolved);
       trashed.add(resolved);
     } catch (err) {
-      if (err.code !== 'ENOENT' && err.code !== 'ENOTEMPTY') {
-        log.warn(`[batch-delete] Failed to trash empty folder ${resolved}: ${err.message}`);
+      if (err.code === 'ENOENT' || err.code === 'ENOTEMPTY') continue;
+      try {
+        const entries = await fs.readdir(resolved);
+        if (entries.length > 0) continue;
+        await fs.rmdir(resolved);
+        trashed.add(resolved);
+        log.warn(`[batch-delete] Recycle Bin unavailable for empty folder; permanently removed ${resolved}`);
+      } catch (fallbackErr) {
+        if (fallbackErr.code !== 'ENOENT' && fallbackErr.code !== 'ENOTEMPTY') {
+          log.warn(`[batch-delete] Failed to trash or remove empty folder ${resolved}: ${fallbackErr.message}`);
+        }
       }
     }
   }

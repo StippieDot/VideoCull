@@ -246,6 +246,26 @@
   color: #f5a623;
 }
 
+.review-stars:has(.review-star-btn:hover) .review-star-btn {
+  color: var(--text-tertiary);
+}
+
+.review-stars:has(.review-star-btn:nth-child(1):hover) .review-star-btn:nth-child(-n+1),
+.review-stars:has(.review-star-btn:nth-child(2):hover) .review-star-btn:nth-child(-n+2),
+.review-stars:has(.review-star-btn:nth-child(3):hover) .review-star-btn:nth-child(-n+3),
+.review-stars:has(.review-star-btn:nth-child(4):hover) .review-star-btn:nth-child(-n+4),
+.review-stars:has(.review-star-btn:nth-child(5):hover) .review-star-btn:nth-child(-n+5) {
+  color: #f5a623;
+}
+
+.review-stars:has(.review-star-btn:nth-child(1):hover) .review-star-btn:nth-child(-n+1) svg,
+.review-stars:has(.review-star-btn:nth-child(2):hover) .review-star-btn:nth-child(-n+2) svg,
+.review-stars:has(.review-star-btn:nth-child(3):hover) .review-star-btn:nth-child(-n+3) svg,
+.review-stars:has(.review-star-btn:nth-child(4):hover) .review-star-btn:nth-child(-n+4) svg,
+.review-stars:has(.review-star-btn:nth-child(5):hover) .review-star-btn:nth-child(-n+5) svg {
+  fill: currentColor;
+}
+
 .review-star-btn:hover {
   transform: translateY(-1px);
 }
