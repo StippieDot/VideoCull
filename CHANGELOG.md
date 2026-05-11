@@ -2,6 +2,46 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [2.0.0-beta.1] - 2026-05-12
+
+This beta is a major step toward Video Cull v2.0: richer review decisions, smarter library filtering, clearer media insight, safer cleanup, and more predictable playback for large video collections.
+
+### Added
+- Smarter review workflow with ratings, favorites, review summaries, delete totals, scoped review context, and next-undecided navigation.
+- Richer library browsing with Library status filters, rating/favorite/incompatible filters, file-size and duration ranges, and cleaner active-filter controls.
+- Deeper media insight with codec, container, resolution, FPS, compatibility badges, and new metadata-based sort options.
+- More predictable playback with Video Cull's own compatibility policy, external-player fallback for unsupported media, decode-error overlays, and global mute.
+- Better user feedback with in-app notifications for cache recovery, save delays, update state, and background maintenance.
+- Feature toggles for enabling or hiding the new review, metadata, compatibility, and playback helpers.
+- Thumbnail regeneration controls for stale, partial, or interrupted thumbnail sets.
+- About/settings links for project, release, and support pages.
+
+### Changed
+- Upgraded Electron to 41 and refreshed application dependencies.
+- Reworked the custom video protocol for Electron 41 compatibility and stricter file-serving rules.
+- Reworked the sidebar around faster decision-making, with Library status filters promoted to the top and secondary filters kept more compact.
+- Improved large-library navigation with updated grid virtualization, better scroll restoration, and folder headers that show filtered size next to total size.
+- Made review and grid playback behave more consistently across compatibility, mute, metadata, ratings, favorites, and external-player actions.
+- Improved thumbnail generation with clearer progress phases, ordered results, retries around difficult timestamps, and safer reuse of existing thumbnail sets.
+- Cache loading and merging were hardened across central, per-drive, and distributed cache layouts.
+- Improved export reports for multi-directory sessions.
+- Made settings, cache migration, and update flows communicate their state more clearly.
+
+### Fixed
+- Unsupported audio/video decode failures now show an in-app explanation instead of failing silently.
+- Corrupt cache databases are quarantined and rebuilt instead of blocking the app from loading.
+- Deleted videos now remove related cache database rows, metadata entries, and thumbnail folders.
+- Empty parent folders left after deletion are removed when safe; cloud drives without Recycle Bin support now fall back to permanent removal only for verified-empty folders.
+- Partial or interrupted thumbnail folders are regenerated instead of being reused as if complete.
+- Stale cache rows are refreshed when rescans find newer metadata.
+- Save-cache failures now retry and warn the user when decisions may not yet be persisted.
+- Global shortcuts now avoid interfering with focused controls, settings, and shortcut overlays.
+- Update status handling now reports errors and ready states more reliably.
+
+### Tooling
+- Added an IPC contract checker for exposed Electron APIs.
+- Added a cache-clutter cleanup script for old thumbnail/cache artifacts from earlier builds.
+
 ## [1.8.2] - 2026-05-01
 
 ### Changed
