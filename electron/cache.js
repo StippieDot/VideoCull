@@ -414,6 +414,10 @@ function saveCache(db, videos) {
       container_format = COALESCE(excluded.container_format, container_format),
       width = COALESCE(excluded.width, width),
       height = COALESCE(excluded.height, height),
+      -- Invalidate cached file signatures when the file appears to have changed.
+      -- IS NOT is intentional: it's SQLite's NULL-safe inequality (unlike != which
+      -- treats NULL != NULL as NULL/falsy). This correctly preserves signatures
+      -- when both old and new values are NULL.
       file_signature_quick = CASE
         WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
         ELSE file_signature_quick
@@ -554,6 +558,8 @@ async function saveCacheChunked(db, videos, onProgress) {
       container_format = COALESCE(excluded.container_format, container_format),
       width = COALESCE(excluded.width, width),
       height = COALESCE(excluded.height, height),
+      -- Invalidate cached file signatures when the file appears to have changed.
+      -- IS NOT is intentional: SQLite's NULL-safe inequality. See saveCache above.
       file_signature_quick = CASE
         WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
         ELSE file_signature_quick

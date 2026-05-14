@@ -71,9 +71,6 @@ function progress(sendProgress, stage, payload = {}) {
   sendProgress?.({ stage, ...payload });
 }
 
-function hashBuffer(hash, buffer) {
-  hash.update(buffer);
-}
 
 async function readFileChunk(filePath, start, length) {
   const handle = await fs.open(filePath, 'r');
@@ -91,11 +88,11 @@ async function quickSignature(video) {
   const hash = crypto.createHash('sha256');
   hash.update(String(size));
   if (size <= ONE_MIB * 2) {
-    hashBuffer(hash, await fs.readFile(video.path));
+    hash.update(await fs.readFile(video.path));
   } else {
-    hashBuffer(hash, await readFileChunk(video.path, 0, ONE_MIB));
+    hash.update(await readFileChunk(video.path, 0, ONE_MIB));
     const middleStart = Math.max(0, Math.floor(size / 2) - Math.floor(ONE_MIB / 2));
-    hashBuffer(hash, await readFileChunk(video.path, middleStart, ONE_MIB));
+    hash.update(await readFileChunk(video.path, middleStart, ONE_MIB));
   }
   return hash.digest('hex');
 }
@@ -460,11 +457,13 @@ function runVisualWorker(videos, grayRows, settings, run, sendProgress) {
   });
 }
 
-function pairKey(aId, bId) {
+/** In-memory pair key using null-byte separator (can't appear in video IDs). */
+function internalPairKey(aId, bId) {
   return aId < bId ? `${aId}\0${bId}` : `${bId}\0${aId}`;
 }
 
-function settingsPairKey(aId, bId) {
+/** Persisted pair key using pipe separator — stored in settings JSON. */
+function storedPairKey(aId, bId) {
   return aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`;
 }
 
@@ -582,14 +581,14 @@ function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold) {
 
 function buildGroups(exactGroups, matchedPairs, videosById, settings) {
   const ignoredPairKeys = new Set(settings.ignoredDuplicatePairs ?? []);
-  const isIgnoredPair = (aId, bId) => ignoredPairKeys.has(settingsPairKey(aId, bId));
+  const isIgnoredPair = (aId, bId) => ignoredPairKeys.has(storedPairKey(aId, bId));
   const exactPairKeys = new Set();
   const exactPairs = [];
   for (const ids of exactGroups) {
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         if (isIgnoredPair(ids[i], ids[j])) continue;
-        exactPairKeys.add(pairKey(ids[i], ids[j]));
+        exactPairKeys.add(internalPairKey(ids[i], ids[j]));
         exactPairs.push({
           aId: ids[i],
           bId: ids[j],
@@ -602,11 +601,11 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings) {
   const matchedByPair = new Map();
   for (const pair of matchedPairs) {
     if (isIgnoredPair(pair.aId, pair.bId)) continue;
-    matchedByPair.set(pairKey(pair.aId, pair.bId), pair);
+    matchedByPair.set(internalPairKey(pair.aId, pair.bId), pair);
   }
 
   const directSimilarity = (aId, bId) => {
-    const key = pairKey(aId, bId);
+    const key = internalPairKey(aId, bId);
     if (exactPairKeys.has(key)) return 100;
     return matchedByPair.get(key)?.similarity ?? null;
   };
@@ -689,7 +688,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings) {
     let fuzzyMatchType = null;
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
-        const key = pairKey(ids[i], ids[j]);
+        const key = internalPairKey(ids[i], ids[j]);
         if (exactPairKeys.has(key)) {
           similarities.push(100);
           hasExact = true;

@@ -8,7 +8,6 @@ const {
 
 const BUCKET_SIZE_SECS = 1;
 const BUCKET_ACTIVATION_THRESHOLD = 5000;
-const LARGE_BUCKET_THRESHOLD = 400;
 
 function compactGraySamples(rows, sampleCount) {
   const byVideo = new Map();
@@ -147,7 +146,6 @@ function compareVisuals() {
     total,
     bucketed: useBuckets,
     bucketCount: buckets.size,
-    largeBucketThreshold: LARGE_BUCKET_THRESHOLD,
   });
 }
 
