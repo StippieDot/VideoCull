@@ -213,6 +213,22 @@
   line-height: 1;
 }
 
+.toast-action {
+  flex-shrink: 0;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border-hover);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.toast-action:hover {
+  background: var(--bg-surface-hover);
+}
+
 .toast-close:hover {
   color: var(--text-primary);
   background: var(--bg-surface-hover);
@@ -435,5 +451,46 @@
   font-size: 10px;
   color: var(--text-secondary);
   margin-left: 4px;
+}
+
+.app-crash-fallback {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: #0a0a0f;
+  color: var(--text-primary);
+}
+
+.app-crash-panel {
+  width: min(520px, 100%);
+  padding: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.app-crash-panel h1 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.app-crash-panel p {
+  margin: 0 0 22px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.app-crash-panel button {
+  height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
 }
 

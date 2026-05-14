@@ -1,0 +1,152 @@
+const { parentPort, workerData } = require('worker_threads');
+const {
+  normalizeDuplicateSettings,
+  parsePHashHex,
+  pHashSimilarity,
+  average,
+  durationsWithinTolerance,
+} = require('./duplicate-utils');
+
+const BUCKET_SIZE_SECS = 1;
+
+function compactSamples(rows, sampleCount) {
+  const byVideo = new Map();
+  for (const row of rows) {
+    const list = byVideo.get(row.video_id) ?? [];
+    list.push({
+      index: Number(row.sample_index),
+      timestampSecs: Number(row.timestamp_secs),
+      hash: parsePHashHex(row.phash_hex),
+      flippedHash: parsePHashHex(row.flipped_phash_hex ?? row.phash_hex),
+    });
+    byVideo.set(row.video_id, list);
+  }
+
+  const result = new Map();
+  for (const [videoId, samples] of byVideo) {
+    const ordered = samples.sort((a, b) => a.index - b.index).slice(0, sampleCount);
+    if (ordered.length >= sampleCount) result.set(videoId, ordered);
+  }
+  return result;
+}
+
+function getBucketKey(video) {
+  const duration = Number(video.durationSecs ?? 0);
+  if (!Number.isFinite(duration) || duration <= 0) return null;
+  return Math.floor(duration / BUCKET_SIZE_SECS);
+}
+
+function getCandidateBucketKeys(video, settings) {
+  const duration = Number(video.durationSecs ?? 0);
+  if (!Number.isFinite(duration) || duration <= 0) return [];
+  const tolerance = duration * ((settings.durationTolerancePercent ?? 0) / 100);
+  const minKey = Math.floor(Math.max(0, duration - tolerance) / BUCKET_SIZE_SECS);
+  const maxKey = Math.floor((duration + tolerance) / BUCKET_SIZE_SECS);
+  const keys = [];
+  for (let key = minKey; key <= maxKey; key++) keys.push(key);
+  return keys;
+}
+
+function comparePHashes() {
+  const settings = normalizeDuplicateSettings(workerData.settings);
+  const videos = workerData.videos ?? [];
+  const samplesByVideo = compactSamples(workerData.phashRows ?? [], settings.sampleCount);
+  const candidates = videos
+    .filter((video) => samplesByVideo.has(video.id))
+    .map((video, index) => ({ ...video, index, samples: samplesByVideo.get(video.id) }));
+
+  const pairs = [];
+  let compared = 0;
+  const total = Math.max(0, (candidates.length * (candidates.length - 1)) / 2);
+  let lastProgressAt = 0;
+  const buckets = new Map();
+  const unknownDurationCandidates = [];
+
+  for (const video of candidates) {
+    const key = getBucketKey(video);
+    if (key === null) {
+      unknownDurationCandidates.push(video);
+      continue;
+    }
+    const list = buckets.get(key) ?? [];
+    list.push(video);
+    buckets.set(key, list);
+  }
+
+  const comparePair = (a, b) => {
+    compared++;
+    if (!durationsWithinTolerance(a, b, settings)) return;
+    const sampleScores = [];
+    for (let k = 0; k < settings.sampleCount; k++) {
+      const normalScore = pHashSimilarity(a.samples[k].hash, b.samples[k].hash);
+      const flippedScore = settings.compareFlipped
+        ? pHashSimilarity(a.samples[k].flippedHash, b.samples[k].hash)
+        : normalScore;
+      sampleScores.push(Math.max(normalScore, flippedScore));
+    }
+    const similarity = average(sampleScores);
+    const samplesMeetThreshold = !settings.requireEverySample || sampleScores.every((score) => score >= settings.finalSimilarityThreshold);
+    if (similarity >= settings.finalSimilarityThreshold && samplesMeetThreshold) {
+      pairs.push({
+        aId: a.id,
+        bId: b.id,
+        pHashSimilarity: similarity,
+        bestSampleIndex: sampleScores.indexOf(Math.max(...sampleScores)),
+      });
+    }
+  };
+  const comparedPairKeys = new Set();
+  const comparePairOnce = (a, b) => {
+    if (a.id === b.id) return;
+    const key = a.id < b.id ? `${a.id}\0${b.id}` : `${b.id}\0${a.id}`;
+    if (comparedPairKeys.has(key)) return;
+    comparedPairKeys.add(key);
+    comparePair(a, b);
+  };
+
+  const reportProgress = () => {
+    if (compared - lastProgressAt >= 250000) {
+      lastProgressAt = compared;
+      parentPort.postMessage({ type: 'progress', compared, total });
+    }
+  };
+
+  for (const a of candidates) {
+    const bucketKeys = getCandidateBucketKeys(a, settings);
+    if (bucketKeys.length === 0) {
+      for (const b of candidates) {
+        comparePairOnce(a, b);
+        reportProgress();
+      }
+      continue;
+    }
+    for (const key of bucketKeys) {
+      const compareBucket = buckets.get(key);
+      if (!compareBucket) continue;
+      for (const b of compareBucket) {
+        comparePairOnce(a, b);
+        reportProgress();
+      }
+    }
+    for (const b of unknownDurationCandidates) {
+      comparePairOnce(a, b);
+      reportProgress();
+    }
+  }
+
+  parentPort.postMessage({
+    type: 'done',
+    pairs,
+    compared,
+    total,
+    bucketed: true,
+    bucketCount: buckets.size,
+    unknownDurationCount: unknownDurationCandidates.length,
+  });
+}
+
+try {
+  comparePHashes();
+} catch (err) {
+  parentPort.postMessage({ type: 'error', message: err.message || String(err) });
+}

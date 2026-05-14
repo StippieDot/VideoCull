@@ -19,11 +19,27 @@ export interface Video {
   compatible: boolean;
   videoCodec: string | null;
   audioCodec: string | null;
+  videoBitrate?: number | null;
+  audioBitrate?: number | null;
+  totalBitrate?: number | null;
+  metadataCheckedAt?: number | null;
+  metadataVersion?: number | null;
+  metadataFailedAt?: number | null;
+  metadataFailureReason?: string | null;
   containerFormat: string | null;
   width: number | null;
   height: number | null;
   fps: number | null;
+  duplicateGroupId?: string | null;
+  duplicateSimilarity?: number | null;
+  duplicateMatchType?: DuplicateMatchType;
+  duplicateSuggestedKeeper?: boolean;
+  duplicateExact?: boolean;
+  duplicateGroupSize?: number;
+  duplicateMatchReason?: string | null;
 }
+
+export type MediaProbeVideoInput = Pick<Video, 'id' | 'filename' | 'path' | 'sizeBytes' | 'date'>;
 
 // ── Progress Events ────────────────────────────────────────────────
 export interface ScanProgress {
@@ -39,11 +55,18 @@ export interface ThumbProgress {
 
 export interface ThumbReadyEvent {
   videoId: string;
-  thumbnails: string[];
+  thumbnails?: string[];
   durationSecs?: number;
   metadataDate?: number | null;
   videoCodec?: string | null;
   audioCodec?: string | null;
+  videoBitrate?: number | null;
+  audioBitrate?: number | null;
+  totalBitrate?: number | null;
+  metadataCheckedAt?: number | null;
+  metadataVersion?: number | null;
+  metadataFailedAt?: number | null;
+  metadataFailureReason?: string | null;
   containerFormat?: string | null;
   width?: number | null;
   height?: number | null;
@@ -79,6 +102,8 @@ export interface ToastNotification {
   detail?: string;
   kind: ToastKind;
   createdAt: number;
+  actionLabel?: string;
+  action?: () => void;
 }
 
 export interface ToastInput {
@@ -87,6 +112,8 @@ export interface ToastInput {
   kind?: ToastKind;
   dedupeKey?: string;
   durationMs?: number;
+  actionLabel?: string;
+  action?: () => void;
 }
 
 // ── Sort & Filter ──────────────────────────────────────────────────
@@ -96,6 +123,12 @@ export type SortOrder = 'asc' | 'desc';
 export type StatusFilter = 'all' | VideoStatus;
 export type RatingFilter = 0 | 1 | 2 | 3 | 4 | 5;
 export type CacheLocationMode = 'centralised' | 'per-drive' | 'distributed';
+export type DuplicateMatchType = 'exact' | 'phash' | 'visual' | 'mixed' | null;
+export type DuplicateComparisonMode = 'phash' | 'visual';
+export type DuplicateViewMode = 'rows' | 'gallery';
+export type DuplicateSortField = 'similarity' | 'groupSize' | 'totalSize';
+export type DuplicateScope = 'all' | 'filtered';
+export type DuplicateSamplingWindow = 'even' | '25-75' | '20-80' | '15-85' | 'custom';
 
 export interface FeatureSettings {
   ratings: boolean;
@@ -105,6 +138,61 @@ export interface FeatureSettings {
   compatibilityCheck: boolean;
   globalMute: boolean;
   nextUndecided: boolean;
+}
+
+export interface DuplicateSettings {
+  enabled: boolean;
+  runAfterScan: boolean;
+  comparisonMode: DuplicateComparisonMode;
+  sampleCount: 1 | 2 | 3 | 4 | 5 | 7 | 9;
+  defaultScope: DuplicateScope;
+  protectKeep: boolean;
+  protectSkipped: boolean;
+  keeperOrder: string[];
+  samplingWindow: DuplicateSamplingWindow;
+  customStartPercent: number;
+  customEndPercent: number;
+  similarityThreshold?: number;
+  finalSimilarityThreshold: number;
+  durationTolerancePercent: number;
+  requireEverySample: boolean;
+  ignoreBlackPixels: boolean;
+  ignoreWhitePixels: boolean;
+  compareFlipped: boolean;
+  maxSamplingDuration: number;
+  retryFailedFingerprintExtraction: boolean;
+  checkpointIntervalMinutes: number;
+  ignoredDuplicatePairs: string[];
+}
+
+export interface DuplicateGroup {
+  id: string;
+  videoIds: string[];
+  similarity: number;
+  matchType: Exclude<DuplicateMatchType, null>;
+  suggestedKeeperId: string | null;
+  reason: string;
+  exactVideoIds?: string[];
+}
+
+export interface DuplicateProgress {
+  stage: 'Preparing' | 'Building fingerprints' | 'Checking exact matches' | 'Comparing pHashes' | 'Finding candidates' | 'Confirming visual matches' | 'Building groups' | 'Done' | 'Cancelled' | 'Error';
+  current: number;
+  total: number;
+  message?: string;
+}
+
+export interface DuplicateResult {
+  status: 'ok' | 'cancelled' | 'error';
+  groups?: DuplicateGroup[];
+  videos?: Array<Pick<Video, 'id' | 'duplicateGroupId' | 'duplicateSimilarity' | 'duplicateMatchType' | 'duplicateSuggestedKeeper' | 'duplicateExact' | 'duplicateGroupSize' | 'duplicateMatchReason'>>;
+  stats?: {
+    groupCount: number;
+    duplicateVideoCount: number;
+    exactGroupCount: number;
+    similarityGroupCount: number;
+  };
+  error?: string;
 }
 
 // ── Undo Entry ─────────────────────────────────────────────────────
@@ -137,6 +225,7 @@ export interface AppSettings {
   autoUpdates: boolean;
   globalMute: boolean;
   features: FeatureSettings;
+  duplicates: DuplicateSettings;
   // Review mode — context-independent
   keyKeep: Keybind;
   keyDelete: Keybind;
@@ -195,6 +284,7 @@ export interface VideoStore {
   minRatingFilter: RatingFilter;
   favoritesFilter: boolean;
   incompatibleFilter: boolean;
+  duplicateFilter: boolean;
   groupByFolder: boolean;
   folderSortBy: FolderSortField;
   folderSortOrder: SortOrder;
@@ -206,8 +296,18 @@ export interface VideoStore {
   // View Mode
   reviewMode: boolean;
   reviewIndex: number;
+  reviewScopeIds: string[] | null;
   reviewAutoPlay: boolean;
   activeReviewVideoPath: string | null;
+  duplicateGroupsMode: boolean;
+  duplicateGroups: DuplicateGroup[];
+  duplicateProgress: DuplicateProgress | null;
+  isFindingDuplicates: boolean;
+  duplicateViewMode: DuplicateViewMode;
+  duplicatePathFilter: string;
+  duplicateMinSimilarity: number;
+  duplicateSortBy: DuplicateSortField;
+  duplicateSortOrder: SortOrder;
   gridSelectionIds: Set<string>;
   gridSelectionAnchorId: string | null;
   // Card sizing
@@ -242,6 +342,7 @@ export interface VideoStore {
   setMinRatingFilter: (rating: RatingFilter) => void;
   setFavoritesFilter: (val: boolean) => void;
   setIncompatibleFilter: (val: boolean) => void;
+  setDuplicateFilter: (val: boolean) => void;
   setGroupByFolder: (val: boolean) => void;
   setFolderSortBy: (sortBy: FolderSortField) => void;
   setFolderSortOrder: (order: SortOrder) => void;
@@ -251,12 +352,27 @@ export interface VideoStore {
   setGenProgress: (progress: ThumbProgress) => void;
   setReviewMode: (val: boolean) => void;
   setReviewIndex: (idx: number) => void;
+  setReviewScopeIds: (ids: string[] | null) => void;
   setReviewAutoPlay: (val: boolean) => void;
   setActiveReviewVideoPath: (path: string | null) => void;
+  setDuplicateGroupsMode: (val: boolean) => void;
+  setDuplicateGroups: (groups: DuplicateGroup[]) => void;
+  applyDuplicateResult: (result: DuplicateResult) => void;
+  addIgnoredDuplicatePairs: (pairKeys: string[]) => void;
+  removeIgnoredDuplicatePairs: (pairKeys: string[]) => void;
+  clearIgnoredDuplicatePairs: () => void;
+  setDuplicateProgress: (progress: DuplicateProgress | null) => void;
+  setIsFindingDuplicates: (val: boolean) => void;
+  setDuplicateViewMode: (mode: DuplicateViewMode) => void;
+  setDuplicatePathFilter: (pathFilter: string) => void;
+  setDuplicateMinSimilarity: (similarity: number) => void;
+  setDuplicateSortBy: (sortBy: DuplicateSortField) => void;
+  setDuplicateSortOrder: (order: SortOrder) => void;
+  clearDuplicateListFilters: () => void;
   setGridSelectionIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   setGridSelectionAnchorId: (videoId: string | null) => void;
   clearGridSelection: () => void;
-  enterReviewAndPlay: (videoId: string) => void;
+  enterReviewAndPlay: (videoId: string, scopeIds?: string[]) => void;
   setCardScale: (scale: number) => void;
   advanceReview: () => void;
   removeDeletedVideos: (deletedPaths: string[]) => void;
@@ -297,10 +413,16 @@ export interface ElectronAPI {
   scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<Video[]>;
   resetLoadedDirectories: () => Promise<boolean>;
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;
+  processMetadata: (videos: MediaProbeVideoInput[], dirPath: string, options?: { force?: boolean }) => Promise<boolean>;
+  onMetadataProgress: (callback: (data: ThumbProgress) => void) => () => void;
+  onMetadataReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;
   generateThumbnails: (videos: Video[], dirPath: string, options?: { force?: boolean }) => Promise<boolean>;
   cancelGeneration: () => Promise<boolean>;
   onThumbProgress: (callback: (data: ThumbProgress) => void) => () => void;
   onThumbReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;
+  findDuplicates: (videos: Video[], options?: { settings?: Partial<DuplicateSettings> }) => Promise<DuplicateResult>;
+  cancelDuplicateDetection: () => Promise<boolean>;
+  onDuplicateProgress: (callback: (data: DuplicateProgress) => void) => () => void;
   onMenuAction: (callback: (action: string) => void) => () => void;
   saveCache: (dirPath: string, videos: Video[]) => Promise<boolean>;
   saveCacheAtomic: (dirPath: string, videos: Video[]) => Promise<boolean>;
@@ -326,6 +448,15 @@ export interface ElectronAPI {
   checkForUpdates: () => Promise<{ ok: boolean; status: string; error?: string }>;
   installUpdate: () => Promise<boolean>;
   onUpdateStatus: (callback: (data: UpdateInfo) => void) => () => void;
+  reportRendererError: (payload: {
+    kind: string;
+    message: string;
+    stack?: string | null;
+    componentStack?: string | null;
+    source?: string | null;
+    lineno?: number | null;
+    colno?: number | null;
+  }) => void;
   onAppNotification: (callback: (data: ToastInput) => void) => () => void;
 }
 

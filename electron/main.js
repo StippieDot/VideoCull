@@ -3,8 +3,9 @@ const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
 const { scanDirectory } = require('./scanner');
-const { processVideos, cancelProcessing, getConcurrentLimit } = require('./processor');
+const { processVideos, processMetadata, cancelProcessing, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
+const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
 const log = require('./logger');
 const { autoUpdater } = require('electron-updater');
 
@@ -20,6 +21,7 @@ const activeBatchIntervals = new Set();
 let menuBarHiddenForVideoFullscreen = false;
 let scanGeneration = 0;
 let updateReadyToInstall = false;
+let activeDuplicateRun = null;
 const ALLOWED_EXTERNAL_URLS = new Set([
   'https://github.com/stippie-dot/VideoCull',
   'https://github.com/stippie-dot/VideoCull/releases',
@@ -168,12 +170,17 @@ function getFilePathFromProtocolRequest(request, scheme) {
 }
 
 function canSendToRenderer() {
-  return Boolean(
-    mainWindow &&
-    !mainWindow.isDestroyed() &&
-    mainWindow.webContents &&
-    !mainWindow.webContents.isDestroyed()
-  );
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    const webContents = mainWindow.webContents;
+    if (!webContents || webContents.isDestroyed() || webContents.isCrashed?.()) return false;
+    if (webContents.isLoadingMainFrame?.()) return false;
+    const mainFrame = webContents.mainFrame;
+    if (!mainFrame || mainFrame.isDestroyed?.()) return false;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function sendToRenderer(channel, payload) {
@@ -218,6 +225,12 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    log.error('[renderer-crash] Render process gone', details);
+  });
+  mainWindow.webContents.on('unresponsive', () => {
+    log.warn('[renderer-crash] Renderer became unresponsive');
+  });
   mainWindow.on('closed', () => {
     menuBarHiddenForVideoFullscreen = false;
     mainWindow = null;
@@ -1103,6 +1116,22 @@ async function trashEmptyDeletedVideoFolders(deletedFilePaths) {
   return trashed;
 }
 
+function summarizeMediaProbeError(err) {
+  const raw = err?.message || String(err);
+  const stripExtendedWindowsPrefix = (value) => String(value)
+    .replace(/\\\\\?\\UNC\\/g, '\\\\')
+    .replace(/\\\\\?\\/g, '');
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const finalLine = stripExtendedWindowsPrefix(lines[lines.length - 1] || raw);
+  if (/no such file or directory/i.test(finalLine)) return `File not available to ffprobe: ${finalLine}`;
+  if (/permission denied/i.test(finalLine)) return `Permission denied: ${finalLine}`;
+  if (/invalid data found/i.test(finalLine)) return `Invalid media data: ${finalLine}`;
+  return finalLine.slice(0, 500);
+}
+
 function normalizeReportRoots(dirPaths) {
   return (Array.isArray(dirPaths) ? dirPaths : [dirPaths])
     .filter((dirPath) => typeof dirPath === 'string' && dirPath.length > 0)
@@ -1420,6 +1449,13 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
         favorite: Boolean(cached.favorite),
         videoCodec: cached.videoCodec ?? null,
         audioCodec: cached.audioCodec ?? null,
+        videoBitrate: cached.videoBitrate ?? null,
+        audioBitrate: cached.audioBitrate ?? null,
+        totalBitrate: cached.totalBitrate ?? null,
+        metadataCheckedAt: cached.metadataCheckedAt ?? null,
+        metadataVersion: cached.metadataVersion ?? null,
+        metadataFailedAt: cached.metadataFailedAt ?? null,
+        metadataFailureReason: cached.metadataFailureReason ?? null,
         containerFormat: cached.containerFormat ?? null,
         width: cached.width ?? null,
         height: cached.height ?? null,
@@ -1438,6 +1474,13 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
       compatible: detectCompatibility(null, null, v.path),
       videoCodec: null,
       audioCodec: null,
+      videoBitrate: null,
+      audioBitrate: null,
+      totalBitrate: null,
+      metadataCheckedAt: null,
+      metadataVersion: null,
+      metadataFailedAt: null,
+      metadataFailureReason: null,
       containerFormat: null,
       width: null,
       height: null,
@@ -1463,7 +1506,140 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   return merged;
 });
 
-// 3. Generate thumbnails for videos that don't have them
+// 3. Probe metadata for videos that are missing or stale.
+ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {}) => {
+  cancelProcessing();
+
+  if (!currentScanDirs.has(dirPath)) {
+    log.warn('[process-metadata] dirPath is not loaded, rejecting');
+    return false;
+  }
+
+  const safeVideos = videos.filter((v) => {
+    if (!VALID_VIDEO_ID.test(v.id)) {
+      log.warn(`[process-metadata] Rejected video with invalid id: ${v.id}`);
+      return false;
+    }
+    if (!isKnownVideoRecord(v)) {
+      log.warn(`[process-metadata] Rejected mismatched or unknown video record: ${v.path}`);
+      return false;
+    }
+    return true;
+  });
+
+  const cacheOptions = await getCacheOptions();
+  const retryAfterMs = 24 * 60 * 60 * 1000;
+  const recentFailures = new Set();
+  if (!options?.force) {
+    for (const [folderPath, folderVideos] of groupVideosByFolder(safeVideos)) {
+      const db = await openCacheDbWithRecovery(folderPath, cacheOptions);
+      const ids = folderVideos.map((video) => video.id);
+      for (const id of cache.loadRecentMetadataFailureIds(db, ids, retryAfterMs)) {
+        recentFailures.add(id);
+      }
+    }
+  }
+
+  const videosToProcess = safeVideos.filter((video) => !recentFailures.has(video.id));
+  const videoById = new Map(videosToProcess.map((video) => [video.id, video]));
+  log.info('[process-metadata] prepared', {
+    requested: Array.isArray(videos) ? videos.length : 0,
+    safe: safeVideos.length,
+    queued: videosToProcess.length,
+    skippedRecentFailures: recentFailures.size,
+    force: Boolean(options?.force),
+  });
+  let config = {};
+  try {
+    const data = await fs.readFile(path.join(app.getPath('userData'), CONFIG_FILE), 'utf8');
+    config = JSON.parse(data);
+  } catch (e) {
+    // Defaults are fine
+  }
+
+  let readyBatch = [];
+  let lastProgress = null;
+
+  const flushBatch = () => {
+    if (!canSendToRenderer()) return;
+    if (readyBatch.length > 0) {
+      const batch = readyBatch;
+      readyBatch = [];
+      sendToRenderer('metadata-ready-batch', batch);
+    }
+    if (lastProgress) {
+      const progress = lastProgress;
+      lastProgress = null;
+      sendToRenderer('metadata-progress', progress);
+    }
+  };
+
+  const batchInterval = setInterval(flushBatch, 1000);
+  activeBatchIntervals.add(batchInterval);
+  let saved = 0;
+  let failed = 0;
+  const failureExamples = [];
+
+  try {
+    await processMetadata(videosToProcess, config, (progress) => {
+      lastProgress = progress;
+    }, async (videoId, result) => {
+      const video = videoById.get(videoId);
+      if (!video) return;
+      const metadataUpdate = {
+        videoId,
+        durationSecs: result.durationSecs,
+        metadataDate: result.creationTime,
+        videoCodec: result.videoCodec,
+        audioCodec: result.audioCodec,
+        videoBitrate: result.videoBitrate,
+        audioBitrate: result.audioBitrate,
+        totalBitrate: result.totalBitrate,
+        containerFormat: result.containerFormat,
+        width: result.width,
+        height: result.height,
+        fps: result.fps,
+        metadataVersion: result.metadataVersion,
+        metadataCheckedAt: result.metadataCheckedAt,
+        metadataFailedAt: null,
+        metadataFailureReason: null,
+      };
+      const videoFolder = getVideoFolderPath(video);
+      const db = await openCacheDbWithRecovery(videoFolder, cacheOptions);
+      cache.updateVideoMetadata(db, videoId, metadataUpdate);
+      saved++;
+      readyBatch.push(metadataUpdate);
+    }, async (videoId, err) => {
+      const video = videoById.get(videoId);
+      if (!video) return;
+      const reason = summarizeMediaProbeError(err);
+      const db = await openCacheDbWithRecovery(getVideoFolderPath(video), cacheOptions);
+      cache.markMetadataFailure(db, videoId, reason);
+      failed++;
+      if (failureExamples.length < 8) {
+        failureExamples.push({
+          filename: video.filename,
+          path: video.path,
+          error: reason,
+        });
+      }
+    });
+  } finally {
+    clearInterval(batchInterval);
+    activeBatchIntervals.delete(batchInterval);
+    if (!isQuitting) flushBatch();
+  }
+  log.info('[process-metadata] complete', {
+    queued: videosToProcess.length,
+    saved,
+    failed,
+    failureExamples,
+  });
+
+  return true;
+});
+
+// 4. Generate thumbnails for videos that don't have them
 ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = {}) => {
   // Cancel any in-progress generation before starting a new one
   cancelProcessing();
@@ -1519,19 +1695,14 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
     ? safeVideos
     : safeVideos.filter((v) => (
       !v.thumbnails ||
-      v.thumbnails.length < expectedThumbCount(v) ||
-      !v.videoCodec ||
-      !v.containerFormat ||
-      !v.width ||
-      !v.height ||
-      v.fps === null ||
-      v.fps === undefined
+      v.thumbnails.length < expectedThumbCount(v)
     ));
 
   let readyBatch = [];
   let lastProgress = null;
   
   const flushBatch = () => {
+    if (!canSendToRenderer()) return;
     if (readyBatch.length > 0) {
       const batch = readyBatch;
       readyBatch = [];
@@ -1550,7 +1721,7 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
   try {
     await processVideos(needThumbs, (video) => thumbRootByFolder.get(getVideoFolderPath(video)), config, (progress) => {
       lastProgress = progress;
-    }, (videoId, thumbnails, durationSecs, creationTime, videoCodec, audioCodec, containerFormat, width, height, fps) => {
+    }, (videoId, thumbnails, durationSecs, creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps) => {
       readyBatch.push({
         videoId,
         thumbnails,
@@ -1558,6 +1729,9 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
         metadataDate: creationTime,
         videoCodec,
         audioCodec,
+        videoBitrate,
+        audioBitrate,
+        totalBitrate,
         containerFormat,
         width,
         height,
@@ -1571,6 +1745,80 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
   }
 
   return true;
+});
+
+ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
+  if (activeDuplicateRun) {
+    activeDuplicateRun.cancel();
+    activeDuplicateRun = null;
+  }
+  if (!Array.isArray(videos) || currentScanDirs.size === 0) {
+    return { status: 'error', error: 'No loaded videos to compare.' };
+  }
+
+  const safeVideos = [];
+  for (const video of videos) {
+    if (!video || !VALID_VIDEO_ID.test(String(video.id || ''))) continue;
+    if (!isKnownVideoRecord(video)) continue;
+    if (!await isPathWithinAnyDir(video.path, currentScanDirs)) continue;
+    safeVideos.push(video);
+  }
+  if (safeVideos.length < 2) {
+    return { status: 'ok', groups: [], videos: [], stats: { groupCount: 0, duplicateVideoCount: 0, exactGroupCount: 0, similarityGroupCount: 0 } };
+  }
+
+  const cacheOptions = await getCacheOptions();
+  const settings = {
+    ...(await readJsonFile(CONFIG_FILE, {})).duplicates,
+    ...(options?.settings ?? options ?? {}),
+  };
+  const run = createDuplicateRun();
+  activeDuplicateRun = run;
+
+  try {
+    const result = await findDuplicates({
+      videos: safeVideos,
+      settings,
+      cacheOptions,
+      maxConcurrency: getConcurrentLimit(settings),
+      run,
+      openDb: openCacheDbWithRecovery,
+      sendProgress: (payload) => sendToRenderer('duplicate-progress', payload),
+    });
+    if (activeDuplicateRun === run) activeDuplicateRun = null;
+    sendToRenderer('duplicate-progress', { stage: 'Done', current: result.stats.duplicateVideoCount, total: result.stats.duplicateVideoCount });
+    return { status: 'ok', ...result };
+  } catch (err) {
+    if (activeDuplicateRun === run) activeDuplicateRun = null;
+    if (err instanceof DuplicateCancelledError || run.cancelled) {
+      sendToRenderer('duplicate-progress', { stage: 'Cancelled', current: 0, total: 0 });
+      return { status: 'cancelled' };
+    }
+    log.warn('[find-duplicates] Failed:', err);
+    sendToRenderer('duplicate-progress', { stage: 'Error', current: 0, total: 0, message: err.message });
+    return { status: 'error', error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('cancel-duplicate-detection', async () => {
+  if (!activeDuplicateRun) return false;
+  activeDuplicateRun.cancel();
+  activeDuplicateRun = null;
+  sendToRenderer('duplicate-progress', { stage: 'Cancelled', current: 0, total: 0 });
+  return true;
+});
+
+ipcMain.on('renderer-error', (_event, payload = {}) => {
+  const safePayload = {
+    kind: String(payload.kind || 'error').slice(0, 80),
+    message: String(payload.message || '').slice(0, 1000),
+    stack: payload.stack ? String(payload.stack).slice(0, 4000) : null,
+    componentStack: payload.componentStack ? String(payload.componentStack).slice(0, 4000) : null,
+    source: payload.source ? String(payload.source).slice(0, 500) : null,
+    lineno: Number.isFinite(payload.lineno) ? payload.lineno : null,
+    colno: Number.isFinite(payload.colno) ? payload.colno : null,
+  };
+  log.error('[renderer-error]', safePayload);
 });
 
 // 4. Cancel running thumbnail generation

@@ -6,12 +6,15 @@ import GridMode from './components/GridMode';
 import ReviewMode from './components/ReviewMode';
 import EmptyState from './components/EmptyState';
 import SettingsModal from './components/SettingsModal';
+import DuplicateGroupsView from './components/DuplicateGroupsView';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
-import type { UpdateInfo, Video } from './types';
+import type { MediaProbeVideoInput, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatRecentPath } from './utils';
 import { Volume2, VolumeX } from 'lucide-react';
 import './App.css';
+
+const CURRENT_METADATA_VERSION = 2;
 
 function normalizeFsPath(value: string): string {
   return value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
@@ -35,6 +38,24 @@ function groupVideosByLoadedRoot(videos: Video[], roots: string[], fallbackRoot:
   return groups;
 }
 
+function needsMetadataRefresh(video: Video): boolean {
+  return video.metadataVersion !== CURRENT_METADATA_VERSION;
+}
+
+function toMediaProbeInput(video: Video): MediaProbeVideoInput {
+  return {
+    id: video.id,
+    filename: video.filename,
+    path: video.path,
+    sizeBytes: video.sizeBytes,
+    date: video.date,
+  };
+}
+
+function isMetadataRunning(isGenerating: boolean, phase: string | undefined): boolean {
+  return isGenerating && phase === 'metadata';
+}
+
 export default function App() {
   const directory = useStore((s) => s.directory);
   const directories = useStore((s) => s.directories);
@@ -45,12 +66,21 @@ export default function App() {
   const globalMute = useStore((s) => s.settings.globalMute);
   const globalMuteEnabled = useStore((s) => s.settings.features.globalMute);
   const globalMuteKeybind = useStore((s) => s.settings.keyGlobalMute);
+  const duplicateSettings = useStore((s) => s.settings.duplicates);
+  const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
+  const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
+  const isGenerating = useStore((s) => s.isGenerating);
+  const genProgress = useStore((s) => s.genProgress);
   const setVideos = useStore((s) => s.setVideos);
   const setIsScanning = useStore((s) => s.setIsScanning);
   const setScanProgress = useStore((s) => s.setScanProgress);
   const setIsGenerating = useStore((s) => s.setIsGenerating);
   const setGenProgress = useStore((s) => s.setGenProgress);
   const updateVideoThumbnailsBatch = useStore((s) => s.updateVideoThumbnailsBatch);
+  const applyDuplicateResult = useStore((s) => s.applyDuplicateResult);
+  const setDuplicateProgress = useStore((s) => s.setDuplicateProgress);
+  const setIsFindingDuplicates = useStore((s) => s.setIsFindingDuplicates);
+  const setDuplicateGroupsMode = useStore((s) => s.setDuplicateGroupsMode);
   const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const thumbsPerVideo = useStore((s) => s.settings.thumbsPerVideo);
@@ -59,6 +89,7 @@ export default function App() {
   const pushToast = useStore((s) => s.pushToast);
   const dismissToast = useStore((s) => s.dismissToast);
   const scanIdRef = useRef(0);
+  const duplicateRunIdRef = useRef(0);
   const genProgressBaseRef = useRef(0);
   const genProgressTotalRef = useRef(0);
   const genProgressPhaseRef = useRef<'thumbnails' | 'metadata' | 'media'>('thumbnails');
@@ -71,7 +102,7 @@ export default function App() {
   const [isPrivate, setIsPrivate] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropModalPath, setDropModalPath] = useState<string | null>(null);
-  const [settingsTab, setSettingsTab] = useState<'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about'>('interface');
+  const [settingsTab, setSettingsTab] = useState<'interface' | 'features' | 'duplicates' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about'>('interface');
   const [settingsTabRequestId, setSettingsTabRequestId] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
@@ -89,7 +120,7 @@ export default function App() {
     setDropModalPath(pickedPath);
   }, []);
 
-  const openSettings = useCallback((tab: 'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about' = 'interface') => {
+  const openSettings = useCallback((tab: 'interface' | 'features' | 'duplicates' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about' = 'interface') => {
     setSettingsTab(tab);
     setSettingsTabRequestId((prev) => prev + 1);
     useStore.getState().setIsSettingsModalOpen(true);
@@ -155,12 +186,64 @@ export default function App() {
     }
   }, [pushToast]);
 
+  const handleFindDuplicates = useCallback(async () => {
+    if (!window.electronAPI || videos.length < 2 || isFindingDuplicates || !duplicateSettings.enabled) return;
+    if (isMetadataRunning(isGenerating, genProgress.phase)) {
+      pushToast({
+        title: 'Metadata still updating',
+        detail: 'Duplicate detection becomes available when metadata is done.',
+        kind: 'info',
+        dedupeKey: 'duplicates-wait-metadata',
+      });
+      return;
+    }
+    const scopeVideos = duplicateSettings.defaultScope === 'filtered' ? filteredVideos : videos;
+    if (scopeVideos.length < 2) {
+      pushToast({
+        title: 'Not enough videos',
+        detail: 'Duplicate detection needs at least two videos in scope.',
+        kind: 'warning',
+      });
+      return;
+    }
+    const duplicateRunId = ++duplicateRunIdRef.current;
+    setIsFindingDuplicates(true);
+    setDuplicateProgress({ stage: 'Preparing', current: 0, total: scopeVideos.length });
+    try {
+      const result = await window.electronAPI.findDuplicates(scopeVideos, { settings: duplicateSettings });
+      if (duplicateRunId !== duplicateRunIdRef.current) return;
+      if (result.status === 'ok') {
+        const activeIds = new Set(useStore.getState().videos.map((video) => video.id));
+        const resultIds = result.videos?.map((video) => video.id) ?? [];
+        if (resultIds.some((id) => !activeIds.has(id))) return;
+        applyDuplicateResult(result);
+        const count = result.stats?.duplicateVideoCount ?? 0;
+        pushToast({
+          title: count > 0 ? 'Duplicates found' : 'No duplicates found',
+          detail: count > 0 ? `${result.stats?.groupCount ?? 0} duplicate groups detected.` : 'No mostly identical videos matched.',
+          kind: count > 0 ? 'success' : 'info',
+        });
+      } else if (result.status === 'cancelled') {
+        pushToast({ title: 'Duplicate detection cancelled', kind: 'info' });
+      } else {
+        pushToast({ title: 'Duplicate detection failed', detail: result.error ?? 'Unexpected error.', kind: 'error' });
+      }
+    } finally {
+      if (duplicateRunId === duplicateRunIdRef.current) {
+        setIsFindingDuplicates(false);
+      }
+    }
+  }, [applyDuplicateResult, duplicateSettings, filteredVideos, genProgress.phase, isFindingDuplicates, isGenerating, pushToast, setDuplicateProgress, setIsFindingDuplicates, videos]);
+
   // Scan directory when selected
   const handleScan = useCallback(async (dirPaths: string[]) => {
     if (!window.electronAPI || dirPaths.length === 0) return;
     await window.electronAPI.cancelGeneration();
+    duplicateRunIdRef.current += 1;
+    await window.electronAPI.cancelDuplicateDetection();
     await window.electronAPI.resetLoadedDirectories();
     const scanId = ++scanIdRef.current;
+    useStore.getState().setDuplicateGroups([]);
     setIsScanning(true);
     setIsGenerating(false);
     setScanProgress({ found: 0, currentFile: '' });
@@ -212,61 +295,84 @@ export default function App() {
         !v.thumbnails ||
         v.thumbnails.length < expectedThumbCount(v)
       );
-      const needsMetadata = (v: typeof allVideos[number]) => (
-        !v.videoCodec ||
-        !v.containerFormat ||
-        !v.width ||
-        !v.height ||
-        v.fps === null ||
-        v.fps === undefined
-      );
-      const needsThumbnailOrMetadata = (v: typeof allVideos[number]) => needsThumbnails(v) || needsMetadata(v);
-      const needThumbsTotal = normalizedVideos.filter(needsThumbnailOrMetadata).length;
-      if (needThumbsTotal > 0) {
-        const thumbnailTaskCount = normalizedVideos.filter(needsThumbnails).length;
-        const thumbnailTaskIds = new Set(normalizedVideos.filter(needsThumbnails).map((v) => v.id));
-        const phase = thumbnailTaskCount === 0
-          ? 'metadata'
-          : thumbnailTaskCount === needThumbsTotal
-            ? 'thumbnails'
-            : 'media';
+      const metadataTasks = normalizedVideos.filter(needsMetadataRefresh);
+      if (metadataTasks.length > 0) {
         let completedTasks = 0;
         genProgressBaseRef.current = 0;
-        genProgressTotalRef.current = needThumbsTotal;
-        genProgressPhaseRef.current = phase;
+        genProgressTotalRef.current = metadataTasks.length;
+        genProgressPhaseRef.current = 'metadata';
         setIsGenerating(true);
-        setGenProgress({ current: 0, total: needThumbsTotal, phase });
+        setGenProgress({ current: 0, total: metadataTasks.length, phase: 'metadata' });
         for (const group of normalizedGroups) {
-          const needThumbs = group.videos.filter(needsThumbnailOrMetadata);
-          if (needThumbs.length === 0) continue;
+          const needMetadata = group.videos.filter(needsMetadataRefresh);
+          if (needMetadata.length === 0) continue;
           genProgressBaseRef.current = completedTasks;
-          await window.electronAPI.generateThumbnails(needThumbs, group.dirPath);
-          completedTasks += needThumbs.length;
+          await window.electronAPI.processMetadata(needMetadata.map(toMediaProbeInput), group.dirPath);
+          completedTasks += needMetadata.length;
           if (scanId === scanIdRef.current) {
-            setGenProgress({ current: completedTasks, total: needThumbsTotal, phase });
+            setGenProgress({ current: completedTasks, total: metadataTasks.length, phase: 'metadata' });
           }
         }
         if (scanId === scanIdRef.current) {
           setIsGenerating(false);
-          if (thumbnailTaskCount > 0) {
-            const currentVideos = useStore.getState().videos;
-            const stillIncomplete = currentVideos.filter((v) => (
-              thumbnailTaskIds.has(v.id) &&
-              (!v.thumbnails || v.thumbnails.length < expectedThumbCount(v))
-            )).length;
-            pushToast(stillIncomplete > 0
-              ? {
-                title: 'Some thumbnails failed',
-                detail: `${stillIncomplete} ${stillIncomplete === 1 ? 'video still has' : 'videos still have'} fewer than ${thumbsPerVideo} frames.`,
-                kind: 'warning',
-                dedupeKey: `thumbs-incomplete:${dirPaths.join('|')}`,
-              }
-              : {
-                title: 'Thumbnails updated',
-                detail: `${thumbnailTaskCount} ${thumbnailTaskCount === 1 ? 'video was' : 'videos were'} rebuilt to ${thumbsPerVideo} frames.`,
-                kind: 'success',
-                dedupeKey: `thumbs-updated:${dirPaths.join('|')}`,
-              });
+        }
+      }
+      const videosAfterMetadata = useStore.getState().videos;
+      const thumbnailTasks = videosAfterMetadata.filter(needsThumbnails);
+      if (thumbnailTasks.length > 0) {
+        const thumbnailTaskIds = new Set(thumbnailTasks.map((v) => v.id));
+        let completedTasks = 0;
+        genProgressBaseRef.current = 0;
+        genProgressTotalRef.current = thumbnailTasks.length;
+        genProgressPhaseRef.current = 'thumbnails';
+        setIsGenerating(true);
+        setGenProgress({ current: 0, total: thumbnailTasks.length, phase: 'thumbnails' });
+        const groupsAfterMetadata = groupVideosByLoadedRoot(thumbnailTasks, dirPaths, dirPaths[0] ?? null);
+        for (const [root, videosForRoot] of groupsAfterMetadata) {
+          genProgressBaseRef.current = completedTasks;
+          await window.electronAPI.generateThumbnails(videosForRoot, root);
+          completedTasks += videosForRoot.length;
+          if (scanId === scanIdRef.current) {
+            setGenProgress({ current: completedTasks, total: thumbnailTasks.length, phase: 'thumbnails' });
+          }
+        }
+        if (scanId === scanIdRef.current) {
+          setIsGenerating(false);
+          const currentVideos = useStore.getState().videos;
+          const stillIncomplete = currentVideos.filter((v) => (
+            thumbnailTaskIds.has(v.id) &&
+            (!v.thumbnails || v.thumbnails.length < expectedThumbCount(v))
+          )).length;
+          pushToast(stillIncomplete > 0
+            ? {
+              title: 'Some thumbnails failed',
+              detail: `${stillIncomplete} ${stillIncomplete === 1 ? 'video still has' : 'videos still have'} fewer than ${thumbsPerVideo} frames.`,
+              kind: 'warning',
+              dedupeKey: `thumbs-incomplete:${dirPaths.join('|')}`,
+            }
+            : {
+              title: 'Thumbnails updated',
+              detail: `${thumbnailTasks.length} ${thumbnailTasks.length === 1 ? 'video was' : 'videos were'} rebuilt to ${thumbsPerVideo} frames.`,
+              kind: 'success',
+              dedupeKey: `thumbs-updated:${dirPaths.join('|')}`,
+            });
+        }
+      }
+      if (scanId === scanIdRef.current) {
+        const duplicateConfig = useStore.getState().settings.duplicates;
+        if (duplicateConfig.enabled && duplicateConfig.runAfterScan && window.electronAPI) {
+          const currentVideos = useStore.getState().videos;
+          if (currentVideos.length >= 2) {
+            const duplicateRunId = ++duplicateRunIdRef.current;
+            setIsFindingDuplicates(true);
+            setDuplicateProgress({ stage: 'Preparing', current: 0, total: currentVideos.length });
+            const result = await window.electronAPI.findDuplicates(currentVideos, { settings: duplicateConfig });
+            if (scanId === scanIdRef.current && duplicateRunId === duplicateRunIdRef.current && result.status === 'ok') {
+              applyDuplicateResult(result);
+            }
+            if (duplicateRunId === duplicateRunIdRef.current) {
+              setIsFindingDuplicates(false);
+            }
           }
         }
       }
@@ -275,13 +381,14 @@ export default function App() {
       console.error('Scan failed:', err);
       setIsScanning(false);
       setIsGenerating(false);
+      setIsFindingDuplicates(false);
       pushToast({
         title: 'Scan failed',
         detail: dirPaths.length === 1 ? formatRecentPath(dirPaths[0]) : `${dirPaths.length} folders`,
         kind: 'error',
       });
     }
-  }, [includeSubfolders, thumbsPerVideo, skipIntroDelaySecs, setVideos, setIsScanning, setScanProgress, setIsGenerating, setGenProgress, pushToast]);
+  }, [applyDuplicateResult, includeSubfolders, thumbsPerVideo, skipIntroDelaySecs, setVideos, setIsScanning, setScanProgress, setIsGenerating, setGenProgress, setDuplicateProgress, setIsFindingDuplicates, pushToast]);
 
   const handleRegenerateThumbnails = useCallback(async (selectedVideos: Video[]) => {
     if (!window.electronAPI || !directory || selectedVideos.length === 0) return;
@@ -426,7 +533,15 @@ export default function App() {
         phase: genProgressPhaseRef.current,
       });
     });
-    const unsub3 = window.electronAPI.onThumbReadyBatch((batch) => {
+    const unsubMetadataProgress = window.electronAPI.onMetadataProgress((progress) => {
+      const total = genProgressTotalRef.current || progress.total;
+      setGenProgress({
+        current: Math.min(total, genProgressBaseRef.current + progress.current),
+        total,
+        phase: genProgressPhaseRef.current,
+      });
+    });
+    const applyMediaBatch = (batch: Parameters<typeof updateVideoThumbnailsBatch>[0]) => {
       const videosById = new Map(useStore.getState().videos.map((item) => [item.id, item]));
       updateVideoThumbnailsBatch(batch.map((item) => {
         const existing = videosById.get(item.videoId);
@@ -437,9 +552,16 @@ export default function App() {
           compatible: detectVideoCompatibility(containerFormat, videoCodec, existing?.path),
         };
       }));
+    };
+    const unsubMetadataReady = window.electronAPI.onMetadataReadyBatch(applyMediaBatch);
+    const unsub3 = window.electronAPI.onThumbReadyBatch((batch) => {
+      applyMediaBatch(batch);
     });
     const unsubNotifications = window.electronAPI.onAppNotification
       ? window.electronAPI.onAppNotification((notification) => pushToast(notification))
+      : () => {};
+    const unsubDuplicates = window.electronAPI.onDuplicateProgress
+      ? window.electronAPI.onDuplicateProgress((progress) => setDuplicateProgress(progress))
       : () => {};
 
     const unsub4 = window.electronAPI.onMenuAction(async (action) => {
@@ -588,12 +710,15 @@ export default function App() {
     return () => {
       unsub1();
       unsub2();
+      unsubMetadataProgress();
+      unsubMetadataReady();
       unsub3();
       unsubNotifications();
+      unsubDuplicates();
       unsub4();
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [setScanProgress, setGenProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, handleExportReport, showShortcutsHelp]);
+  }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, handleExportReport, showShortcutsHelp]);
 
   useEffect(() => {
     window.electronAPI?.setExportReportAvailable(Boolean(directory && videos.length > 0 && !isScanning));
@@ -701,7 +826,9 @@ export default function App() {
 
   const handleCloseSession = useCallback(async () => {
     scanIdRef.current += 1;
+    duplicateRunIdRef.current += 1;
     await window.electronAPI?.cancelGeneration();
+    await window.electronAPI?.cancelDuplicateDetection();
     await window.electronAPI?.resetLoadedDirectories();
     setIsScanning(false);
     setIsGenerating(false);
@@ -742,6 +869,8 @@ export default function App() {
           onNotify={pushToast}
           onOpenSettings={() => openSettings('interface')}
           onCloseSession={() => void handleCloseSession()}
+          onFindDuplicates={() => void handleFindDuplicates()}
+          onOpenDuplicateSettings={() => openSettings('duplicates')}
           globalMute={globalMute}
           globalMuteEnabled={globalMuteEnabled && !isPrivate}
           globalMuteLabel={formatKeybind(globalMuteKeybind)}
@@ -751,7 +880,10 @@ export default function App() {
 
       <main className="app-main">
         {!directory && !isScanning && videos.length === 0 && <EmptyState onNotify={pushToast} />}
-        {directory && videos.length > 0 && !reviewMode && (
+        {directory && videos.length > 0 && !reviewMode && duplicateGroupsMode && (
+          <DuplicateGroupsView />
+        )}
+        {directory && videos.length > 0 && !reviewMode && !duplicateGroupsMode && (
           <GridMode
             onReviewFolder={handleReviewFolder}
             onRegenerateThumbnails={handleRegenerateThumbnails}
@@ -831,6 +963,17 @@ export default function App() {
                 <span className="toast-title">{toast.title}</span>
                 {toast.detail && <span className="toast-detail">{toast.detail}</span>}
               </span>
+              {toast.action && (
+                <button
+                  className="toast-action"
+                  onClick={() => {
+                    toast.action?.();
+                    dismissToast(toast.id);
+                  }}
+                >
+                  {toast.actionLabel ?? 'Undo'}
+                </button>
+              )}
               <button className="toast-close" onClick={() => dismissToast(toast.id)} aria-label="Dismiss notification">x</button>
             </div>
           ))}

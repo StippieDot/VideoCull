@@ -164,6 +164,7 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
             {resolutionLabel && <span className="card-badge">{resolutionLabel}</span>}
             {codecLabel && <span className="card-badge">{codecLabel}</span>}
             {fpsLabel && <span className="card-badge">{fpsLabel}</span>}
+            {video.duplicateGroupId && <span className="card-badge">Dup {video.duplicateSimilarity?.toFixed(0) ?? ''}%</span>}
           </div>
         )}
       </div>

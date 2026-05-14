@@ -9,6 +9,16 @@ const fs = require('fs/promises');
 const os = require('os');
 
 let currentToken = null;
+const METADATA_SCHEMA_VERSION = 2;
+
+function toFfmpegInputPath(filePath) {
+  if (process.platform !== 'win32') return filePath;
+  const resolved = path.resolve(filePath);
+  if (resolved.startsWith('\\\\?\\')) return resolved;
+  if (resolved.length < 240) return resolved;
+  if (resolved.startsWith('\\\\')) return `\\\\?\\UNC\\${resolved.slice(2)}`;
+  return `\\\\?\\${resolved}`;
+}
 
 function parseFpsRational(value) {
   if (!value || value === '0/0') return null;
@@ -19,14 +29,26 @@ function parseFpsRational(value) {
   return Math.round((num / den) * 100) / 100;
 }
 
+function parseBitrate(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
 /**
- * Get duration, creation_time, codec, resolution, and fps via ffprobe.
+ * Get duration, creation_time, codec, resolution, fps, and bitrate via ffprobe.
  */
 function getVideoMetadata(filePath) {
   return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(filePath, (err, metadata) => {
+    fs.stat(filePath)
+      .then((stat) => {
+        ffmpeg.ffprobe(toFfmpegInputPath(filePath), async (err, metadata) => {
       if (err) return reject(err);
-      const duration = metadata?.format?.duration || 0;
+      const duration = Number(metadata?.format?.duration) || 0;
+      const formatBitrate = parseBitrate(metadata?.format?.bit_rate);
+      const calculatedTotalBitrate = !formatBitrate && duration > 0 && stat?.size
+        ? Math.round((stat.size * 8) / duration)
+        : null;
+      const totalBitrate = formatBitrate ?? calculatedTotalBitrate;
       // Try to extract creation_time from format tags (camera date)
       let creationTime = null;
       const tags = metadata?.format?.tags;
@@ -41,6 +63,11 @@ function getVideoMetadata(filePath) {
       const streams = metadata?.streams ?? [];
       const videoStream = streams.find((stream) => stream.codec_type === 'video');
       const audioStream = streams.find((stream) => stream.codec_type === 'audio');
+      const audioBitrate = parseBitrate(audioStream?.bit_rate);
+      const parsedVideoBitrate = parseBitrate(videoStream?.bit_rate);
+      const derivedVideoBitrate = !parsedVideoBitrate && totalBitrate && audioBitrate
+        ? Math.max(0, totalBitrate - audioBitrate)
+        : null;
       const fps =
         parseFpsRational(videoStream?.avg_frame_rate) ??
         parseFpsRational(videoStream?.r_frame_rate) ??
@@ -51,12 +78,19 @@ function getVideoMetadata(filePath) {
         creationTime,
         videoCodec: videoStream?.codec_name ?? null,
         audioCodec: audioStream?.codec_name ?? null,
+        videoBitrate: parsedVideoBitrate ?? derivedVideoBitrate,
+        audioBitrate,
+        totalBitrate,
         containerFormat: metadata?.format?.format_name ?? null,
         width: videoStream?.width ?? null,
         height: videoStream?.height ?? null,
         fps,
+        metadataVersion: METADATA_SCHEMA_VERSION,
+        metadataCheckedAt: Date.now(),
       });
-    });
+        });
+      })
+      .catch(reject);
   });
 }
 
@@ -153,7 +187,7 @@ function extractFrame(videoPath, timestamp, outputPath, config, token) {
     }
 
     const createCommand = (seekTime) => {
-      let command = ffmpeg(videoPath).seekInput(seekTime).frames(1);
+      let command = ffmpeg(toFfmpegInputPath(videoPath)).seekInput(seekTime).frames(1);
       if (config.hardwareAccel) {
         command = command.inputOptions(['-hwaccel', 'auto']);
       }
@@ -204,14 +238,16 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
   const videoThumbDir = path.join(thumbDir, video.id);
   await fs.mkdir(videoThumbDir, { recursive: true });
   let duration = video.durationSecs;
-  let creationTime = null;
+  let creationTime = video.metadataDate ?? null;
   let videoCodec = video.videoCodec ?? null;
   let audioCodec = video.audioCodec ?? null;
+  let videoBitrate = video.videoBitrate ?? null;
+  let audioBitrate = video.audioBitrate ?? null;
+  let totalBitrate = video.totalBitrate ?? null;
   let containerFormat = video.containerFormat ?? null;
   let width = video.width ?? null;
   let height = video.height ?? null;
   let fps = video.fps ?? null;
-  const needsMetadata = () => !duration || !videoCodec || !containerFormat || !width || !height || fps === null;
 
   try {
     const existing = await fs.readdir(videoThumbDir);
@@ -219,19 +255,6 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
       // Reuse cached thumbnail files only when the set is complete for the current
       // thumbnail count. Partial sets usually mean a previous run was interrupted.
       const jpgs = existing.filter((f) => f.endsWith('.jpg')).sort(compareThumbnailPaths);
-      if (needsMetadata()) {
-        try {
-          const meta = await getVideoMetadata(video.path);
-          duration = meta.duration;
-          creationTime = meta.creationTime;
-          videoCodec = meta.videoCodec;
-          audioCodec = meta.audioCodec;
-          containerFormat = meta.containerFormat;
-          width = meta.width;
-          height = meta.height;
-          fps = meta.fps;
-        } catch { duration = duration ?? 0; }
-      }
       const expectedCount = expectedThumbnailCount(duration, THUMB_COUNT, skipDelay);
       const usableJpgs = jpgs.slice(0, expectedCount);
       if (usableJpgs.length >= expectedCount) {
@@ -242,6 +265,9 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
           creationTime,
           videoCodec,
           audioCodec,
+          videoBitrate,
+          audioBitrate,
+          totalBitrate,
           containerFormat,
           width,
           height,
@@ -255,24 +281,6 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     }
   } catch {
     // Directory doesn't exist yet
-  }
-
-  // Get duration + metadata. On force-regenerate always re-run FFprobe so that
-  // codec/format/compatibility are guaranteed fresh, not read from a stale cache.
-  if (options.forceRegenerate || needsMetadata()) {
-    try {
-      const meta = await getVideoMetadata(video.path);
-      duration = meta.duration;
-      creationTime = meta.creationTime;
-      videoCodec = meta.videoCodec;
-      audioCodec = meta.audioCodec;
-      containerFormat = meta.containerFormat;
-      width = meta.width;
-      height = meta.height;
-      fps = meta.fps;
-    } catch {
-      duration = duration ?? 0;
-    }
   }
 
   const timestamps = calculateTimestamps(duration, THUMB_COUNT, skipDelay);
@@ -313,32 +321,38 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     } catch { /* truly can't generate thumbnails for this video */ }
   }
 
-  return { thumbnails: finalPaths, durationSecs: duration, creationTime, videoCodec, audioCodec, containerFormat, width, height, fps };
+  return { thumbnails: finalPaths, durationSecs: duration, creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps };
 }
 
 async function readMetadataForVideo(video) {
   let duration = video.durationSecs;
-  let creationTime = null;
+  let creationTime = video.metadataDate ?? null;
   let videoCodec = video.videoCodec ?? null;
   let audioCodec = video.audioCodec ?? null;
+  let videoBitrate = video.videoBitrate ?? null;
+  let audioBitrate = video.audioBitrate ?? null;
+  let totalBitrate = video.totalBitrate ?? null;
   let containerFormat = video.containerFormat ?? null;
   let width = video.width ?? null;
   let height = video.height ?? null;
   let fps = video.fps ?? null;
+  let metadataVersion = video.metadataVersion ?? null;
+  let metadataCheckedAt = video.metadataCheckedAt ?? null;
 
-  try {
-    const meta = await getVideoMetadata(video.path);
-    duration = meta.duration;
-    creationTime = meta.creationTime;
-    videoCodec = meta.videoCodec;
-    audioCodec = meta.audioCodec;
-    containerFormat = meta.containerFormat;
-    width = meta.width;
-    height = meta.height;
-    fps = meta.fps;
-  } catch {
-    duration = duration ?? 0;
-  }
+  const meta = await getVideoMetadata(video.path);
+  duration = meta.duration;
+  creationTime = meta.creationTime;
+  videoCodec = meta.videoCodec;
+  audioCodec = meta.audioCodec;
+  videoBitrate = meta.videoBitrate;
+  audioBitrate = meta.audioBitrate;
+  totalBitrate = meta.totalBitrate;
+  containerFormat = meta.containerFormat;
+  width = meta.width;
+  height = meta.height;
+  fps = meta.fps;
+  metadataVersion = meta.metadataVersion;
+  metadataCheckedAt = meta.metadataCheckedAt;
 
   return {
     thumbnails: video.thumbnails ?? [],
@@ -346,10 +360,15 @@ async function readMetadataForVideo(video) {
     creationTime,
     videoCodec,
     audioCodec,
+    videoBitrate,
+    audioBitrate,
+    totalBitrate,
     containerFormat,
     width,
     height,
     fps,
+    metadataVersion,
+    metadataCheckedAt,
   };
 }
 
@@ -377,9 +396,6 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
   currentToken = token;
   const total = videos.length;
   let current = 0;
-  const targetThumbCount = Math.max(1, Number(config.thumbsPerVideo) || 6);
-  const skipDelay = config.skipIntroDelaySecs !== undefined ? config.skipIntroDelaySecs : 3;
-
   const concurrentLimit = getConcurrentLimit(config);
   const cooldownMs = getGpuCooldownMs(config);
   const cooldownBatchSize = getGpuCooldownBatchSize(config, concurrentLimit);
@@ -399,20 +415,8 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
             const video = queue.shift();
             if (!video) break;
             try {
-              const expectedCount = expectedThumbnailCount(video.durationSecs, targetThumbCount, skipDelay);
-              const hasCompleteCachedThumbs = !options.forceRegenerate && Array.isArray(video.thumbnails) && video.thumbnails.length >= expectedCount;
-              const needsMetadataOnly = hasCompleteCachedThumbs && (
-                !video.videoCodec ||
-                !video.containerFormat ||
-                !video.width ||
-                !video.height ||
-                video.fps === null ||
-                video.fps === undefined
-              );
               const videoThumbRoot = typeof thumbDir === 'function' ? thumbDir(video) : thumbDir;
-              const result = needsMetadataOnly
-                ? await readMetadataForVideo(video)
-                : await generateThumbnailsForVideo(video, videoThumbRoot, config, token, options);
+              const result = await generateThumbnailsForVideo(video, videoThumbRoot, config, token, options);
               current++;
               if (onProgress) onProgress({ current, total });
               if (onVideoReady) {
@@ -423,6 +427,9 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
                   result.creationTime,
                   result.videoCodec,
                   result.audioCodec,
+                  result.videoBitrate,
+                  result.audioBitrate,
+                  result.totalBitrate,
                   result.containerFormat,
                   result.width,
                   result.height,
@@ -446,6 +453,43 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
   }
 }
 
+async function processMetadata(videos, config, onProgress, onVideoReady, onVideoFailed) {
+  const token = { cancelled: false };
+  currentToken = token;
+  const total = videos.length;
+  let current = 0;
+  const concurrentLimit = getConcurrentLimit(config);
+  const queue = [...videos];
+  const workers = [];
+  const workerCount = Math.min(concurrentLimit, queue.length);
+
+  for (let i = 0; i < workerCount; i++) {
+    workers.push((async () => {
+      while (queue.length > 0 && !token.cancelled) {
+        const video = queue.shift();
+        if (!video) break;
+        try {
+          const result = await readMetadataForVideo(video);
+          current++;
+          if (onProgress) onProgress({ current, total });
+          if (onVideoReady) {
+            await onVideoReady(video.id, result);
+          }
+        } catch (err) {
+          if (err.message === 'Cancelled') break;
+          current++;
+          if (onProgress) onProgress({ current, total });
+          if (onVideoFailed) {
+            await onVideoFailed(video.id, err);
+          }
+        }
+      }
+    })());
+  }
+
+  await Promise.all(workers);
+}
+
 function cancelProcessing() {
   if (currentToken) currentToken.cancelled = true;
   for (const cmd of activeCommands) {
@@ -458,4 +502,4 @@ function cancelProcessing() {
   activeCommands.clear();
 }
 
-module.exports = { processVideos, cancelProcessing, getConcurrentLimit };
+module.exports = { processVideos, processMetadata, cancelProcessing, getConcurrentLimit, METADATA_SCHEMA_VERSION };

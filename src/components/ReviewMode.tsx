@@ -47,6 +47,7 @@ export default function ReviewMode() {
   const allVideos = useStore((s) => s.videos);
   const filteredVideos = useStore((s) => s.filteredVideos);
   const reviewIndex = useStore((s) => s.reviewIndex);
+  const reviewScopeIds = useStore((s) => s.reviewScopeIds);
   const setReviewIndex = useStore((s) => s.setReviewIndex);
   const setReviewMode = useStore((s) => s.setReviewMode);
   const setActiveReviewVideoPath = useStore((s) => s.setActiveReviewVideoPath);
@@ -65,7 +66,7 @@ export default function ReviewMode() {
 
   const scopeIdsRef = useRef<string[] | null>(null);
   if (scopeIdsRef.current === null) {
-    scopeIdsRef.current = filteredVideos.map((item) => item.id);
+    scopeIdsRef.current = reviewScopeIds ?? filteredVideos.map((item) => item.id);
   }
 
   const reviewVideos = useMemo(() => {

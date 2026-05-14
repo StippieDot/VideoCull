@@ -1,0 +1,362 @@
+﻿diff --git a/src/store.ts b/src/store.ts
+index 6e89081..9a6fa4f 100644
+--- a/src/store.ts
++++ b/src/store.ts
+@@ -1,11 +1,12 @@
+ import { create } from 'zustand';
+ import type {
++  AppSettings, DuplicateGroup,
+   Video, VideoStatus, VideoStats, VideoStore,
+   ScanProgress, ThumbProgress, UndoEntry,
+   StatusFilter, SortField, SortOrder, FolderSortField, RatingFilter,
+   ToastInput, ToastKind,
+ } from './types';
+-import { DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, pruneRecentDirectories } from './keybind-defaults';
++import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, pruneRecentDirectories } from './keybind-defaults';
+ 
+ function thumbnailIndex(filePath: string): number | null {
+   const basename = filePath.split(/[\\/]/).pop() ?? filePath;
+@@ -34,7 +35,7 @@ function getFolder(v: Video): string {
+   return parts.length >= 2 ? parts.slice(0, -1).join(sep) : '';
+ }
+ 
+-function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
++function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
+   let filtered = [...state.videos];
+   const minSizeFilter = Math.max(0, Math.floor(state.minSizeFilter));
+   const maxSizeFilter = state.maxSizeFilter === null
+@@ -81,6 +82,10 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
+     filtered = filtered.filter((v) => v.compatible === false);
+   }
+ 
++  if (state.duplicateFilter) {
++    filtered = filtered.filter((v) => Boolean(v.duplicateGroupId));
++  }
++
+   const getSortCmp = (a: Video, b: Video): number => {
+     switch (state.sortBy) {
+       case 'name':
+@@ -152,6 +157,101 @@ function computeStats(videos: Video[]): VideoStats {
+   };
+ }
+ 
++function duplicatePairKey(aId: string, bId: string): string {
++  return aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`;
++}
++
++function normalizeDuplicatePairKey(pairKey: string): string | null {
++  if (typeof pairKey !== 'string') return null;
++  const parts = pairKey.toLowerCase().split('|');
++  if (parts.length !== 2 || !parts.every((part) => /^[0-9a-f]{16}$/.test(part))) return null;
++  if (parts[0] === parts[1]) return null;
++  return duplicatePairKey(parts[0], parts[1]);
++}
++
++function applyDuplicateGroupsToVideos(videos: Video[], groups: DuplicateGroup[]): Video[] {
++  const groupByVideo = new Map<string, DuplicateGroup>();
++  for (const group of groups) {
++    for (const videoId of group.videoIds) groupByVideo.set(videoId, group);
++  }
++
++  return videos.map((video) => {
++    const group = groupByVideo.get(video.id);
++    if (!group) {
++      return {
++        ...video,
++        duplicateGroupId: null,
++        duplicateSimilarity: null,
++        duplicateMatchType: null,
++        duplicateSuggestedKeeper: false,
++        duplicateExact: false,
++        duplicateGroupSize: 0,
++        duplicateMatchReason: null,
++      };
++    }
++
++    return {
++      ...video,
++      duplicateGroupId: group.id,
++      duplicateSimilarity: group.similarity,
++      duplicateMatchType: group.matchType,
++      duplicateSuggestedKeeper: group.suggestedKeeperId === video.id,
++      duplicateExact: group.matchType === 'exact' || Boolean(group.exactVideoIds?.includes(video.id)),
++      duplicateGroupSize: group.videoIds.length,
++      duplicateMatchReason: group.reason,
++    };
++  });
++}
++
++function finiteNumber(value: unknown): number {
++  const parsed = Number(value);
++  return Number.isFinite(parsed) ? parsed : 0;
++}
++
++function resolutionPixels(video: Video): number {
++  return finiteNumber(video.width) * finiteNumber(video.height);
++}
++
++function compareKeeperCandidates(a: Video, b: Video, order: string[]): number {
++  for (const rule of order) {
++    let diff = 0;
++    if (rule === 'resolution') diff = resolutionPixels(a) - resolutionPixels(b);
++    else if (rule === 'videoBitrate') diff = finiteNumber(a.videoBitrate ?? a.totalBitrate) - finiteNumber(b.videoBitrate ?? b.totalBitrate);
++    else if (rule === 'duration') diff = finiteNumber(a.durationSecs) - finiteNumber(b.durationSecs);
++    else if (rule === 'fps') diff = finiteNumber(a.fps) - finiteNumber(b.fps);
++    else if (rule === 'size') diff = finiteNumber(a.sizeBytes) - finiteNumber(b.sizeBytes);
++    else if (rule === 'metadataDate') diff = finiteNumber(a.metadataDate ?? a.date) - finiteNumber(b.metadataDate ?? b.date);
++    else if (rule === 'filename') diff = String(b.filename ?? '').localeCompare(String(a.filename ?? ''), undefined, { numeric: true });
++    if (Number.isFinite(diff) && diff !== 0) return diff;
++  }
++  return String(b.path ?? '').localeCompare(String(a.path ?? ''));
++}
++
++function chooseSuggestedKeeperId(videos: Video[], order: string[]): string | null {
++  return [...videos].sort((a, b) => -compareKeeperCandidates(a, b, order))[0]?.id ?? null;
++}
++
++function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], order: string[]): DuplicateGroup[] {
++  if (groups.length === 0) return groups;
++  const videosById = new Map(videos.map((video) => [video.id, video]));
++  return groups.map((group) => {
++    const groupVideos = group.videoIds
++      .map((videoId) => videosById.get(videoId))
++      .filter((video): video is Video => Boolean(video));
++    return {
++      ...group,
++      suggestedKeeperId: chooseSuggestedKeeperId(groupVideos, order),
++    };
++  });
++}
++
++function saveSettingsQuietly(settings: AppSettings) {
++  if (!window.electronAPI) return;
++  void window.electronAPI.saveConfig(settings).catch((err) => {
++    console.error('[store] Failed to save settings:', err);
++  });
++}
++
+ function normalizePathForCompare(value: string): string {
+   return value.replace(/[/\\]+/g, '\\').replace(/\\+$/g, '').toLowerCase();
+ }
+@@ -527,6 +627,7 @@ const useStore = create<VideoStore>((set, get) => ({
+   minRatingFilter: 0,
+   favoritesFilter: false,
+   incompatibleFilter: false,
++  duplicateFilter: false,
+   groupByFolder: true,
+   folderSortBy: 'name',
+   folderSortOrder: 'asc',
+@@ -536,6 +637,15 @@ const useStore = create<VideoStore>((set, get) => ({
+   reviewIndex: 0,
+   reviewAutoPlay: false,
+   activeReviewVideoPath: null,
++  duplicateGroupsMode: false,
++  duplicateGroups: [],
++  duplicateProgress: null,
++  isFindingDuplicates: false,
++  duplicateViewMode: 'rows',
++  duplicatePathFilter: '',
++  duplicateMinSimilarity: 0,
++  duplicateSortBy: 'similarity',
++  duplicateSortOrder: 'desc',
+   gridSelectionIds: new Set(),
+   gridSelectionAnchorId: null,
+   // ÔöÇÔöÇ Card sizing ÔöÇÔöÇ
+@@ -564,6 +674,7 @@ const useStore = create<VideoStore>((set, get) => ({
+     autoUpdates: true,
+     globalMute: false,
+     features: { ...DEFAULT_FEATURES },
++    duplicates: { ...DEFAULT_DUPLICATE_SETTINGS },
+     ...DEFAULT_KEYBINDS,
+   },
+ 
+@@ -595,6 +706,14 @@ const useStore = create<VideoStore>((set, get) => ({
+         settings: newSettings,
+         folderFilterPath: null,
+         reviewIndex: 0,
++        duplicateGroupsMode: false,
++        duplicateGroups: [],
++        duplicateProgress: null,
++        duplicateFilter: false,
++        duplicatePathFilter: '',
++        duplicateMinSimilarity: 0,
++        duplicateSortBy: 'similarity',
++        duplicateSortOrder: 'desc',
+         undoStack: [],
+         gridSelectionIds: new Set(),
+         gridSelectionAnchorId: null,
+@@ -614,6 +733,14 @@ const useStore = create<VideoStore>((set, get) => ({
+         folderFilterPath: null,
+         reviewMode: false,
+         reviewIndex: 0,
++        duplicateGroupsMode: false,
++        duplicateGroups: [],
++        duplicateProgress: null,
++        duplicateFilter: false,
++        duplicatePathFilter: '',
++        duplicateMinSimilarity: 0,
++        duplicateSortBy: 'similarity',
++        duplicateSortOrder: 'desc',
+         undoStack: [],
+         gridSelectionIds: new Set(),
+         gridSelectionAnchorId: null,
+@@ -691,6 +818,9 @@ const useStore = create<VideoStore>((set, get) => ({
+           metadataDate: item.metadataDate ?? videos[vIdx].metadataDate,
+           videoCodec: item.videoCodec ?? videos[vIdx].videoCodec,
+           audioCodec: item.audioCodec ?? videos[vIdx].audioCodec,
++          videoBitrate: item.videoBitrate ?? videos[vIdx].videoBitrate,
++          audioBitrate: item.audioBitrate ?? videos[vIdx].audioBitrate,
++          totalBitrate: item.totalBitrate ?? videos[vIdx].totalBitrate,
+           containerFormat: item.containerFormat ?? videos[vIdx].containerFormat,
+           width: item.width ?? videos[vIdx].width,
+           height: item.height ?? videos[vIdx].height,
+@@ -892,6 +1022,11 @@ const useStore = create<VideoStore>((set, get) => ({
+     set({ incompatibleFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
+   },
+ 
++  setDuplicateFilter: (duplicateFilter: boolean) => {
++    const state = { ...get(), duplicateFilter };
++    set({ duplicateFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
++  },
++
+   setGroupByFolder: (groupByFolder: boolean) => {
+     const state = { ...get(), groupByFolder };
+     set({ groupByFolder, filteredVideos: computeFiltered(state) });
+@@ -932,6 +1067,103 @@ const useStore = create<VideoStore>((set, get) => ({
+   },
+   setReviewAutoPlay: (reviewAutoPlay: boolean) => set({ reviewAutoPlay }),
+   setActiveReviewVideoPath: (activeReviewVideoPath: string | null) => set({ activeReviewVideoPath }),
++  setDuplicateGroupsMode: (duplicateGroupsMode: boolean) => set({ duplicateGroupsMode }),
++  setDuplicateGroups: (duplicateGroups) => {
++    const groupsWithKeepers = applyKeeperOrderToGroups(duplicateGroups, get().videos, get().settings.duplicates.keeperOrder);
++    const videos = applyDuplicateGroupsToVideos(get().videos, groupsWithKeepers);
++    const state = { ...get(), videos };
++    set({
++      videos,
++      filteredVideos: computeFiltered(state),
++      duplicateGroups: groupsWithKeepers,
++      duplicateGroupsMode: groupsWithKeepers.length > 0,
++    });
++  },
++  applyDuplicateResult: (result) => {
++    const groupsWithKeepers = result.groups
++      ? applyKeeperOrderToGroups(result.groups, get().videos, get().settings.duplicates.keeperOrder)
++      : [];
++    const videos = result.groups
++      ? applyDuplicateGroupsToVideos(get().videos, groupsWithKeepers)
++      : applyDuplicateGroupsToVideos(get().videos, []);
++    const state = { ...get(), videos };
++    set({
++      videos,
++      filteredVideos: computeFiltered(state),
++      duplicateGroups: groupsWithKeepers,
++      duplicateGroupsMode: groupsWithKeepers.length > 0,
++    });
++  },
++  addIgnoredDuplicatePairs: (pairKeys) => {
++    const normalized = pairKeys
++      .map(normalizeDuplicatePairKey)
++      .filter((pairKey): pairKey is string => Boolean(pairKey));
++    if (normalized.length === 0) return;
++
++    const settings = get().settings;
++    const existing = settings.duplicates.ignoredDuplicatePairs ?? [];
++    const merged = Array.from(new Set([...existing, ...normalized]));
++    if (merged.length === existing.length) return;
++
++    const nextSettings = {
++      ...settings,
++      duplicates: {
++        ...settings.duplicates,
++        ignoredDuplicatePairs: merged,
++      },
++    };
++    set({ settings: nextSettings });
++    saveSettingsQuietly(nextSettings);
++  },
++  removeIgnoredDuplicatePairs: (pairKeys) => {
++    const removeSet = new Set(
++      pairKeys
++        .map(normalizeDuplicatePairKey)
++        .filter((pairKey): pairKey is string => Boolean(pairKey))
++    );
++    if (removeSet.size === 0) return;
++
++    const settings = get().settings;
++    const existing = settings.duplicates.ignoredDuplicatePairs ?? [];
++    const remaining = existing.filter((pairKey) => !removeSet.has(pairKey));
++    if (remaining.length === existing.length) return;
++
++    const nextSettings = {
++      ...settings,
++      duplicates: {
++        ...settings.duplicates,
++        ignoredDuplicatePairs: remaining,
++      },
++    };
++    set({ settings: nextSettings });
++    saveSettingsQuietly(nextSettings);
++  },
++  clearIgnoredDuplicatePairs: () => {
++    const settings = get().settings;
++    if ((settings.duplicates.ignoredDuplicatePairs ?? []).length === 0) return;
++    const nextSettings = {
++      ...settings,
++      duplicates: {
++        ...settings.duplicates,
++        ignoredDuplicatePairs: [],
++      },
++    };
++    set({ settings: nextSettings });
++    saveSettingsQuietly(nextSettings);
++  },
++  setDuplicateProgress: (duplicateProgress) => set({ duplicateProgress }),
++  setIsFindingDuplicates: (isFindingDuplicates) => set({ isFindingDuplicates }),
++  setDuplicateViewMode: (duplicateViewMode) => set({ duplicateViewMode }),
++  setDuplicatePathFilter: (duplicatePathFilter) => set({ duplicatePathFilter }),
++  setDuplicateMinSimilarity: (duplicateMinSimilarity) => set({ duplicateMinSimilarity: Math.max(0, Math.min(100, duplicateMinSimilarity)) }),
++  setDuplicateSortBy: (duplicateSortBy) => set({ duplicateSortBy }),
++  setDuplicateSortOrder: (duplicateSortOrder) => set({ duplicateSortOrder }),
++  clearDuplicateListFilters: () => set({
++    duplicatePathFilter: '',
++    duplicateMinSimilarity: 0,
++    duplicateSortBy: 'similarity',
++    duplicateSortOrder: 'desc',
++  }),
+   setGridSelectionIds: (gridSelectionIds) => set((state) => ({
+     gridSelectionIds: typeof gridSelectionIds === 'function'
+       ? gridSelectionIds(state.gridSelectionIds)
+@@ -1065,6 +1297,8 @@ const useStore = create<VideoStore>((set, get) => ({
+           detail: input.detail,
+           kind: toastKind,
+           createdAt: now,
++          actionLabel: input.actionLabel,
++          action: input.action,
+         },
+       ],
+     }));
+@@ -1103,7 +1337,15 @@ const useStore = create<VideoStore>((set, get) => ({
+         ...state.settings.features,
+         ...(newSettings.features ?? {}),
+       },
++      duplicates: {
++        ...state.settings.duplicates,
++        ...(newSettings.duplicates ?? {}),
++      },
+     };
++    const duplicateGroups = applyKeeperOrderToGroups(state.duplicateGroups, state.videos, mergedSettings.duplicates.keeperOrder);
++    const videos = duplicateGroups.length > 0
++      ? applyDuplicateGroupsToVideos(state.videos, duplicateGroups)
++      : state.videos;
+     const nextSortBy =
+       (!mergedSettings.features.ratings && state.sortBy === 'rating') ||
+       (!mergedSettings.features.codecBadges && (state.sortBy === 'resolution' || state.sortBy === 'fps'))
+@@ -1111,6 +1353,8 @@ const useStore = create<VideoStore>((set, get) => ({
+         : (newSettings.defaultSortBy ?? state.sortBy);
+     const newState = {
+       ...state,
++      videos,
++      duplicateGroups,
+       settings: mergedSettings,
+       cardScale: newSettings.defaultCardScale ?? state.cardScale,
+       sortBy: nextSortBy,

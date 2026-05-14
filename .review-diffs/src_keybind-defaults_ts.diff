@@ -1,0 +1,90 @@
+﻿diff --git a/src/keybind-defaults.ts b/src/keybind-defaults.ts
+index e48132d..b012ea1 100644
+--- a/src/keybind-defaults.ts
++++ b/src/keybind-defaults.ts
+@@ -1,6 +1,7 @@
+ import { kb } from './keybinds';
+ import type { Keybind, KeybindSettingKey } from './keybinds';
+ import type { AppSettings, FeatureSettings } from './types';
++import type { DuplicateSettings } from './types';
+ 
+ export const DEFAULT_FEATURES: FeatureSettings = {
+   ratings: true,
+@@ -35,6 +36,41 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
+   keyPreviewSeekForward: kb('arrowright'),
+ };
+ 
++export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
++  enabled: true,
++  runAfterScan: false,
++  comparisonMode: 'visual',
++  sampleCount: 3,
++  defaultScope: 'all',
++  protectKeep: true,
++  protectSkipped: false,
++  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'metadataDate', 'filename'],
++  samplingWindow: 'even',
++  customStartPercent: 0,
++  customEndPercent: 100,
++  finalSimilarityThreshold: 95,
++  durationTolerancePercent: 20,
++  requireEverySample: false,
++  ignoreBlackPixels: false,
++  ignoreWhitePixels: false,
++  compareFlipped: false,
++  maxSamplingDuration: 0,
++  retryFailedFingerprintExtraction: false,
++  checkpointIntervalMinutes: 5,
++  ignoredDuplicatePairs: [],
++};
++
++const KEEPER_RULES = new Set(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
++
++function normalizeKeeperOrder(value: unknown): string[] {
++  if (!Array.isArray(value)) return DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
++  const normalized = value.filter((rule): rule is string => typeof rule === 'string' && KEEPER_RULES.has(rule));
++  for (const rule of DEFAULT_DUPLICATE_SETTINGS.keeperOrder) {
++    if (!normalized.includes(rule)) normalized.push(rule);
++  }
++  return normalized.length > 0 ? normalized : DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
++}
++
+ // Keys that existed in the old single-char string format
+ const LEGACY_STRING_KEYS = ['keyKeep', 'keyDelete', 'keySkip', 'keyUndo', 'keyPlay'] as const;
+ 
+@@ -96,6 +132,35 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
+     );
+   }
+ 
++  if (!result.duplicates || typeof result.duplicates !== 'object' || Array.isArray(result.duplicates)) {
++    result.duplicates = { ...DEFAULT_DUPLICATE_SETTINGS };
++  } else {
++    const migratedDuplicates: Record<string, unknown> = {
++      ...DEFAULT_DUPLICATE_SETTINGS,
++      ...(result.duplicates as Record<string, unknown>),
++    };
++    if (!['phash', 'visual'].includes(String(migratedDuplicates.comparisonMode))) {
++      migratedDuplicates.comparisonMode = DEFAULT_DUPLICATE_SETTINGS.comparisonMode;
++    }
++    if (![1, 2, 3, 4, 5, 7, 9].includes(Number(migratedDuplicates.sampleCount))) {
++      migratedDuplicates.sampleCount = DEFAULT_DUPLICATE_SETTINGS.sampleCount;
++    }
++    migratedDuplicates.ignoredDuplicatePairs = Array.isArray(migratedDuplicates.ignoredDuplicatePairs)
++      ? Array.from(new Set(
++        migratedDuplicates.ignoredDuplicatePairs
++          .filter((pairKey) => typeof pairKey === 'string' && /^[0-9a-f]{16}\|[0-9a-f]{16}$/i.test(pairKey))
++          .map((pairKey) => pairKey.toLowerCase())
++      ))
++      : [];
++    migratedDuplicates.keeperOrder = normalizeKeeperOrder(migratedDuplicates.keeperOrder);
++    delete migratedDuplicates.phashCandidateThreshold;
++    delete migratedDuplicates.rawGrayThreshold;
++    delete migratedDuplicates.profile;
++    delete migratedDuplicates.durationToleranceMinSecs;
++    delete migratedDuplicates.durationToleranceMaxSecs;
++    result.duplicates = migratedDuplicates;
++  }
++
+   delete result.appMode;
+   delete result.hasSeenAppModeIntro;
+   delete result.keyToggleAppMode;

@@ -149,6 +149,10 @@ const SCHEMA = `
     size_bytes        INTEGER,
     file_date         INTEGER,
     metadata_date     INTEGER,
+    metadata_checked_at INTEGER,
+    metadata_version  INTEGER,
+    metadata_failed_at INTEGER,
+    metadata_failure_reason TEXT,
     duration_secs     REAL,
     fps               REAL,
     duplicate_hash    TEXT,
@@ -158,9 +162,16 @@ const SCHEMA = `
     compatible        INTEGER DEFAULT 1,
     video_codec       TEXT,
     audio_codec       TEXT,
+    video_bitrate     INTEGER,
+    audio_bitrate     INTEGER,
+    total_bitrate     INTEGER,
     container_format  TEXT,
     width             INTEGER,
     height            INTEGER,
+    file_signature_quick TEXT,
+    file_signature_full  TEXT,
+    signature_updated_at INTEGER,
+    fingerprint_failed_at INTEGER,
     bookmarks         TEXT,
     os_thumbnail_path TEXT,
     updated_at        INTEGER
@@ -173,15 +184,33 @@ const SCHEMA = `
     PRIMARY KEY (video_id, idx)
   );
 
+  CREATE TABLE IF NOT EXISTS video_fingerprints (
+    video_id         TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    sample_index     INTEGER NOT NULL,
+    timestamp_secs   REAL NOT NULL,
+    phash_hex        TEXT NOT NULL,
+    flipped_phash_hex TEXT,
+    gray_bytes       BLOB NOT NULL,
+    frame_dark_ratio REAL,
+    created_at       INTEGER,
+    updated_at       INTEGER,
+    PRIMARY KEY (video_id, sample_index)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
   CREATE INDEX IF NOT EXISTS idx_videos_duplicate_hash ON videos(duplicate_hash);
   CREATE INDEX IF NOT EXISTS idx_videos_metadata_date ON videos(metadata_date);
+  CREATE INDEX IF NOT EXISTS idx_video_fingerprints_video ON video_fingerprints(video_id);
 `;
 
 const VIDEO_SCHEMA_COLUMNS = {
   size_bytes: 'INTEGER',
   file_date: 'INTEGER',
   metadata_date: 'INTEGER',
+  metadata_checked_at: 'INTEGER',
+  metadata_version: 'INTEGER',
+  metadata_failed_at: 'INTEGER',
+  metadata_failure_reason: 'TEXT',
   duration_secs: 'REAL',
   fps: 'REAL',
   duplicate_hash: 'TEXT',
@@ -191,12 +220,23 @@ const VIDEO_SCHEMA_COLUMNS = {
   compatible: 'INTEGER DEFAULT 1',
   video_codec: 'TEXT',
   audio_codec: 'TEXT',
+  video_bitrate: 'INTEGER',
+  audio_bitrate: 'INTEGER',
+  total_bitrate: 'INTEGER',
   container_format: 'TEXT',
   width: 'INTEGER',
   height: 'INTEGER',
+  file_signature_quick: 'TEXT',
+  file_signature_full: 'TEXT',
+  signature_updated_at: 'INTEGER',
+  fingerprint_failed_at: 'INTEGER',
   bookmarks: 'TEXT',
   os_thumbnail_path: 'TEXT',
   updated_at: 'INTEGER',
+};
+
+const FINGERPRINT_SCHEMA_COLUMNS = {
+  flipped_phash_hex: 'TEXT',
 };
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
@@ -217,9 +257,11 @@ function openDb(folderPath, cacheOptions) {
 
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
   ensureVideoSchemaColumns(db);
+  ensureFingerprintSchemaColumns(db);
 
   _dbByPath.set(dbPath, db);
   log.info(`[cache] Opened DB for: ${folderPath}`);
@@ -231,6 +273,14 @@ function ensureVideoSchemaColumns(db) {
   for (const [columnName, columnType] of Object.entries(VIDEO_SCHEMA_COLUMNS)) {
     if (existingColumns.has(columnName)) continue;
     db.exec(`ALTER TABLE videos ADD COLUMN ${columnName} ${columnType}`);
+  }
+}
+
+function ensureFingerprintSchemaColumns(db) {
+  const existingColumns = new Set(db.prepare('PRAGMA table_info(video_fingerprints)').all().map((row) => row.name));
+  for (const [columnName, columnType] of Object.entries(FINGERPRINT_SCHEMA_COLUMNS)) {
+    if (existingColumns.has(columnName)) continue;
+    db.exec(`ALTER TABLE video_fingerprints ADD COLUMN ${columnName} ${columnType}`);
   }
 }
 
@@ -284,6 +334,10 @@ function loadCacheVideos(db) {
       durationSecs: row.duration_secs ?? null,
       fps: row.fps ?? null,
       metadataDate: row.metadata_date ?? null,
+      metadataCheckedAt: row.metadata_checked_at ?? null,
+      metadataVersion: row.metadata_version ?? null,
+      metadataFailedAt: row.metadata_failed_at ?? null,
+      metadataFailureReason: row.metadata_failure_reason ?? null,
       thumbnails: thumbs,
       bookmarks: parseBookmarks(row.bookmarks, row.id),
       duplicateHash: row.duplicate_hash ?? null,
@@ -292,6 +346,9 @@ function loadCacheVideos(db) {
       compatible: row.compatible !== 0,
       videoCodec: row.video_codec ?? null,
       audioCodec: row.audio_codec ?? null,
+      videoBitrate: row.video_bitrate ?? null,
+      audioBitrate: row.audio_bitrate ?? null,
+      totalBitrate: row.total_bitrate ?? null,
       containerFormat: row.container_format ?? null,
       width: row.width ?? null,
       height: row.height ?? null,
@@ -321,16 +378,28 @@ function saveCache(db, videos) {
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
+       metadata_checked_at, metadata_version, metadata_failed_at, metadata_failure_reason,
        duration_secs, fps, status, rating, favorite, compatible,
-       video_codec, audio_codec, container_format, width, height, bookmarks,
-       os_thumbnail_path, duplicate_hash, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       video_codec, audio_codec, video_bitrate, audio_bitrate, total_bitrate,
+       container_format, width, height, bookmarks, os_thumbnail_path,
+       duplicate_hash, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       filename    = excluded.filename,
       path        = excluded.path,
       size_bytes  = excluded.size_bytes,
       file_date   = excluded.file_date,
       metadata_date = COALESCE(excluded.metadata_date, metadata_date),
+      metadata_checked_at = COALESCE(excluded.metadata_checked_at, metadata_checked_at),
+      metadata_version = COALESCE(excluded.metadata_version, metadata_version),
+      metadata_failed_at = CASE
+        WHEN excluded.metadata_version IS NOT NULL THEN NULL
+        ELSE COALESCE(excluded.metadata_failed_at, metadata_failed_at)
+      END,
+      metadata_failure_reason = CASE
+        WHEN excluded.metadata_version IS NOT NULL THEN NULL
+        ELSE COALESCE(excluded.metadata_failure_reason, metadata_failure_reason)
+      END,
       duration_secs = COALESCE(excluded.duration_secs, duration_secs),
       fps = COALESCE(excluded.fps, fps),
       status      = excluded.status,
@@ -339,9 +408,24 @@ function saveCache(db, videos) {
       compatible = excluded.compatible,
       video_codec = COALESCE(excluded.video_codec, video_codec),
       audio_codec = COALESCE(excluded.audio_codec, audio_codec),
+      video_bitrate = COALESCE(excluded.video_bitrate, video_bitrate),
+      audio_bitrate = COALESCE(excluded.audio_bitrate, audio_bitrate),
+      total_bitrate = COALESCE(excluded.total_bitrate, total_bitrate),
       container_format = COALESCE(excluded.container_format, container_format),
       width = COALESCE(excluded.width, width),
       height = COALESCE(excluded.height, height),
+      file_signature_quick = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE file_signature_quick
+      END,
+      file_signature_full = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE file_signature_full
+      END,
+      signature_updated_at = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE signature_updated_at
+      END,
       bookmarks   = excluded.bookmarks,
       os_thumbnail_path = COALESCE(excluded.os_thumbnail_path, os_thumbnail_path),
       duplicate_hash = excluded.duplicate_hash,
@@ -357,9 +441,13 @@ function saveCache(db, videos) {
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
+        v.metadataCheckedAt ?? null, v.metadataVersion ?? null,
+        v.metadataFailedAt ?? null, v.metadataFailureReason ?? null,
         v.durationSecs ?? null, v.fps ?? null, v.status,
         v.rating ?? 0, v.favorite ? 1 : 0, v.compatible === false ? 0 : 1,
-        v.videoCodec ?? null, v.audioCodec ?? null, v.containerFormat ?? null,
+        v.videoCodec ?? null, v.audioCodec ?? null,
+        v.videoBitrate ?? null, v.audioBitrate ?? null, v.totalBitrate ?? null,
+        v.containerFormat ?? null,
         v.width ?? null, v.height ?? null,
         v.bookmarks?.length ? JSON.stringify(v.bookmarks) : null,
         v.osThumbnail ?? null,
@@ -379,6 +467,47 @@ function saveCache(db, videos) {
   upsertAll(videos);
 }
 
+function updateVideoMetadata(db, videoId, metadata) {
+  if (!videoId || !metadata) return;
+
+  db.prepare(`
+    UPDATE videos SET
+      metadata_date = COALESCE(?, metadata_date),
+      metadata_checked_at = COALESCE(?, metadata_checked_at),
+      metadata_version = COALESCE(?, metadata_version),
+      metadata_failed_at = NULL,
+      metadata_failure_reason = NULL,
+      duration_secs = COALESCE(?, duration_secs),
+      fps = COALESCE(?, fps),
+      video_codec = COALESCE(?, video_codec),
+      audio_codec = COALESCE(?, audio_codec),
+      video_bitrate = COALESCE(?, video_bitrate),
+      audio_bitrate = COALESCE(?, audio_bitrate),
+      total_bitrate = COALESCE(?, total_bitrate),
+      container_format = COALESCE(?, container_format),
+      width = COALESCE(?, width),
+      height = COALESCE(?, height),
+      updated_at = ?
+    WHERE id = ?
+  `).run(
+    metadata.metadataDate ?? null,
+    metadata.metadataCheckedAt ?? null,
+    metadata.metadataVersion ?? null,
+    metadata.durationSecs ?? null,
+    metadata.fps ?? null,
+    metadata.videoCodec ?? null,
+    metadata.audioCodec ?? null,
+    metadata.videoBitrate ?? null,
+    metadata.audioBitrate ?? null,
+    metadata.totalBitrate ?? null,
+    metadata.containerFormat ?? null,
+    metadata.width ?? null,
+    metadata.height ?? null,
+    Date.now(),
+    videoId
+  );
+}
+
 /**
  * Chunked upsert with optional progress callback.
  * Use for bulk operations (initial scan, JSON migration) where IPC progress
@@ -389,16 +518,28 @@ async function saveCacheChunked(db, videos, onProgress) {
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
+       metadata_checked_at, metadata_version, metadata_failed_at, metadata_failure_reason,
        duration_secs, fps, status, rating, favorite, compatible,
-       video_codec, audio_codec, container_format, width, height, bookmarks,
-       os_thumbnail_path, duplicate_hash, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       video_codec, audio_codec, video_bitrate, audio_bitrate, total_bitrate,
+       container_format, width, height, bookmarks, os_thumbnail_path,
+       duplicate_hash, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       filename    = excluded.filename,
       path        = excluded.path,
       size_bytes  = excluded.size_bytes,
       file_date   = excluded.file_date,
       metadata_date = COALESCE(excluded.metadata_date, metadata_date),
+      metadata_checked_at = COALESCE(excluded.metadata_checked_at, metadata_checked_at),
+      metadata_version = COALESCE(excluded.metadata_version, metadata_version),
+      metadata_failed_at = CASE
+        WHEN excluded.metadata_version IS NOT NULL THEN NULL
+        ELSE COALESCE(excluded.metadata_failed_at, metadata_failed_at)
+      END,
+      metadata_failure_reason = CASE
+        WHEN excluded.metadata_version IS NOT NULL THEN NULL
+        ELSE COALESCE(excluded.metadata_failure_reason, metadata_failure_reason)
+      END,
       duration_secs = COALESCE(excluded.duration_secs, duration_secs),
       fps = COALESCE(excluded.fps, fps),
       status      = excluded.status,
@@ -407,9 +548,24 @@ async function saveCacheChunked(db, videos, onProgress) {
       compatible = excluded.compatible,
       video_codec = COALESCE(excluded.video_codec, video_codec),
       audio_codec = COALESCE(excluded.audio_codec, audio_codec),
+      video_bitrate = COALESCE(excluded.video_bitrate, video_bitrate),
+      audio_bitrate = COALESCE(excluded.audio_bitrate, audio_bitrate),
+      total_bitrate = COALESCE(excluded.total_bitrate, total_bitrate),
       container_format = COALESCE(excluded.container_format, container_format),
       width = COALESCE(excluded.width, width),
       height = COALESCE(excluded.height, height),
+      file_signature_quick = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE file_signature_quick
+      END,
+      file_signature_full = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE file_signature_full
+      END,
+      signature_updated_at = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE signature_updated_at
+      END,
       bookmarks   = excluded.bookmarks,
       os_thumbnail_path = COALESCE(excluded.os_thumbnail_path, os_thumbnail_path),
       duplicate_hash = excluded.duplicate_hash,
@@ -427,9 +583,13 @@ async function saveCacheChunked(db, videos, onProgress) {
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
+        v.metadataCheckedAt ?? null, v.metadataVersion ?? null,
+        v.metadataFailedAt ?? null, v.metadataFailureReason ?? null,
         v.durationSecs ?? null, v.fps ?? null, v.status,
         v.rating ?? 0, v.favorite ? 1 : 0, v.compatible === false ? 0 : 1,
-        v.videoCodec ?? null, v.audioCodec ?? null, v.containerFormat ?? null,
+        v.videoCodec ?? null, v.audioCodec ?? null,
+        v.videoBitrate ?? null, v.audioBitrate ?? null, v.totalBitrate ?? null,
+        v.containerFormat ?? null,
         v.width ?? null, v.height ?? null,
         v.bookmarks?.length ? JSON.stringify(v.bookmarks) : null,
         v.osThumbnail ?? null,
@@ -456,15 +616,155 @@ async function saveCacheChunked(db, videos, onProgress) {
 function deleteVideosByIds(db, videoIds) {
   if (!videoIds.length) return;
 
+  const deleteFingerprints = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
   const deleteThumbs = db.prepare('DELETE FROM thumbnails WHERE video_id = ?');
   const deleteVideo = db.prepare('DELETE FROM videos WHERE id = ?');
   const deleteAll = db.transaction((ids) => {
     for (const id of ids) {
+      deleteFingerprints.run(id);
       deleteThumbs.run(id);
       deleteVideo.run(id);
     }
   });
   deleteAll(videoIds);
+}
+
+function getFingerprintCounts(db, sampleCount, options = {}) {
+  const rows = db.prepare(`
+    SELECT video_id,
+           COUNT(*) AS sample_count,
+           SUM(CASE WHEN flipped_phash_hex IS NOT NULL AND flipped_phash_hex <> '' THEN 1 ELSE 0 END) AS flipped_count
+    FROM video_fingerprints
+    GROUP BY video_id
+  `).all();
+  const result = new Map();
+  for (const row of rows) {
+    const enoughSamples = Number(row.sample_count) >= sampleCount;
+    const enoughFlipped = !options.requireFlipped || Number(row.flipped_count) >= sampleCount;
+    result.set(row.video_id, enoughSamples && enoughFlipped);
+  }
+  return result;
+}
+
+function saveVideoFingerprints(db, videoId, fingerprints) {
+  if (!videoId || !Array.isArray(fingerprints) || fingerprints.length === 0) return;
+  const now = Date.now();
+  const clear = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
+  const insert = db.prepare(`
+    INSERT INTO video_fingerprints
+      (video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const write = db.transaction(() => {
+    clear.run(videoId);
+    for (const fp of fingerprints) {
+      insert.run(
+        videoId,
+        fp.sampleIndex,
+        fp.timestampSecs,
+        fp.phashHex,
+        fp.flippedPHashHex ?? null,
+        fp.grayBytes,
+        fp.frameDarkRatio ?? null,
+        now,
+        now
+      );
+    }
+    db.prepare('UPDATE videos SET fingerprint_failed_at = NULL WHERE id = ?').run(videoId);
+  });
+  write();
+}
+
+function markFingerprintFailure(db, videoId) {
+  if (!videoId) return;
+  db.prepare('UPDATE videos SET fingerprint_failed_at = ? WHERE id = ?').run(Date.now(), videoId);
+}
+
+function loadFingerprintFailureIds(db, videoIds) {
+  if (!videoIds.length) return new Set();
+  const query = db.prepare('SELECT id FROM videos WHERE id = ? AND fingerprint_failed_at IS NOT NULL');
+  return new Set(videoIds.map((id) => query.get(id)?.id).filter(Boolean));
+}
+
+function markMetadataFailure(db, videoId, reason) {
+  if (!videoId) return;
+  db.prepare(`
+    UPDATE videos
+    SET metadata_failed_at = ?,
+        metadata_failure_reason = ?
+    WHERE id = ?
+  `).run(Date.now(), String(reason || 'Metadata probe failed').slice(0, 500), videoId);
+}
+
+function loadRecentMetadataFailureIds(db, videoIds, retryAfterMs) {
+  if (!videoIds.length) return new Set();
+  const cutoff = Date.now() - Math.max(0, Number(retryAfterMs) || 0);
+  const query = db.prepare('SELECT id FROM videos WHERE id = ? AND metadata_failed_at IS NOT NULL AND metadata_failed_at >= ?');
+  return new Set(videoIds.map((id) => query.get(id, cutoff)?.id).filter(Boolean));
+}
+
+function loadPHashRows(db, videoIds, sampleCount) {
+  if (!videoIds.length) return [];
+  const rows = [];
+  const query = db.prepare(`
+    SELECT video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex
+    FROM video_fingerprints
+    WHERE video_id = ?
+    ORDER BY sample_index
+  `);
+  for (const videoId of videoIds) {
+    const samples = query.all(videoId);
+    if (samples.length >= sampleCount) rows.push(...samples.slice(0, sampleCount));
+  }
+  return rows;
+}
+
+function loadGraySamples(db, videoId, sampleCount) {
+  if (!videoId) return [];
+  return db.prepare(`
+    SELECT sample_index, timestamp_secs, gray_bytes, frame_dark_ratio
+    FROM video_fingerprints
+    WHERE video_id = ?
+    ORDER BY sample_index
+    LIMIT ?
+  `).all(videoId, sampleCount);
+}
+
+function loadGraySampleRows(db, videoIds, sampleCount) {
+  if (!videoIds.length) return [];
+  const rows = [];
+  const query = db.prepare(`
+    SELECT video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio
+    FROM video_fingerprints
+    WHERE video_id = ?
+    ORDER BY sample_index
+  `);
+  for (const videoId of videoIds) {
+    const samples = query.all(videoId);
+    if (samples.length >= sampleCount) rows.push(...samples.slice(0, sampleCount));
+  }
+  return rows;
+}
+
+function updateVideoSignatures(db, videoId, signatures) {
+  if (!videoId || !signatures) return;
+  db.prepare(`
+    UPDATE videos
+    SET file_signature_quick = COALESCE(?, file_signature_quick),
+        file_signature_full = COALESCE(?, file_signature_full),
+        signature_updated_at = ?
+    WHERE id = ?
+  `).run(signatures.quick ?? null, signatures.full ?? null, Date.now(), videoId);
+}
+
+function loadSignatureRows(db, videoIds) {
+  if (!videoIds.length) return [];
+  const query = db.prepare(`
+    SELECT id, file_signature_quick, file_signature_full, signature_updated_at
+    FROM videos
+    WHERE id = ?
+  `);
+  return videoIds.map((id) => query.get(id)).filter(Boolean);
 }
 
 // ── JSON migration ────────────────────────────────────────────────────────
@@ -570,6 +870,18 @@ module.exports = {
   saveCache,
   saveCacheChunked,
   deleteVideosByIds,
+  getFingerprintCounts,
+  saveVideoFingerprints,
+  markFingerprintFailure,
+  loadFingerprintFailureIds,
+  markMetadataFailure,
+  loadRecentMetadataFailureIds,
+  updateVideoMetadata,
+  loadPHashRows,
+  loadGraySamples,
+  loadGraySampleRows,
+  updateVideoSignatures,
+  loadSignatureRows,
   migrateJsonIfNeeded,
   deleteDb,
 };

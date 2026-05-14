@@ -18,9 +18,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Thumbnail generation
+  processMetadata: (videos, dirPath, options) =>
+    ipcRenderer.invoke('process-metadata', videos, dirPath, options),
   generateThumbnails: (videos, dirPath, options) =>
     ipcRenderer.invoke('generate-thumbnails', videos, dirPath, options),
   cancelGeneration: () => ipcRenderer.invoke('cancel-generation'),
+  onMetadataProgress: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('metadata-progress', handler);
+    return () => ipcRenderer.removeListener('metadata-progress', handler);
+  },
+  onMetadataReadyBatch: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('metadata-ready-batch', handler);
+    return () => ipcRenderer.removeListener('metadata-ready-batch', handler);
+  },
   onThumbProgress: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('thumb-progress', handler);
@@ -30,6 +42,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('thumb-ready-batch', handler);
     return () => ipcRenderer.removeListener('thumb-ready-batch', handler);
+  },
+
+  // Duplicate detection
+  findDuplicates: (videos, options) => ipcRenderer.invoke('find-duplicates', videos, options),
+  cancelDuplicateDetection: () => ipcRenderer.invoke('cancel-duplicate-detection'),
+  onDuplicateProgress: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('duplicate-progress', handler);
+    return () => ipcRenderer.removeListener('duplicate-progress', handler);
   },
 
   // Cache & Config
@@ -71,6 +92,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // App notifications
+  reportRendererError: (payload) => ipcRenderer.send('renderer-error', payload),
   onAppNotification: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('app-notification', handler);

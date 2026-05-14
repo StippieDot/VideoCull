@@ -1,16 +1,16 @@
 ﻿import React, { useState, useEffect } from 'react';
 import useStore from '../store';
-import { X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake } from 'lucide-react';
+import { ArrowDown, ArrowUp, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake } from 'lucide-react';
 import type { AppSettings, ToastInput, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
-import { DEFAULT_KEYBINDS } from '../keybind-defaults';
+import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
 import KeybindInput from './KeybindInput';
 import './SettingsModal.css';
 
 const KEYBIND_GROUPS: ShortcutGroup[] = ['Review mode', 'Preview', 'Global'];
 
-type SettingsTab = 'interface' | 'features' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about';
+type SettingsTab = 'interface' | 'features' | 'duplicates' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about';
 
 const ABOUT_LINKS = {
   repo: 'https://github.com/stippie-dot/VideoCull',
@@ -28,6 +28,16 @@ const FEATURE_TOGGLES = [
   { key: 'globalMute', label: 'Global mute toggle', description: 'Persist a single mute switch for all in-app video playback.' },
   { key: 'nextUndecided', label: 'Next Undecided jump', description: 'Enable the review-mode shortcut that jumps to pending videos.' },
 ] as const;
+
+const KEEPER_RULE_LABELS: Record<string, { title: string; description: string }> = {
+  resolution: { title: 'Resolution', description: 'Prefer the highest pixel count.' },
+  videoBitrate: { title: 'Video bitrate', description: 'Prefer the cleaner encode.' },
+  duration: { title: 'Duration', description: 'Prefer the longest version.' },
+  fps: { title: 'FPS', description: 'Prefer smoother playback.' },
+  size: { title: 'File size', description: 'Prefer the largest file.' },
+  metadataDate: { title: 'Metadata date', description: 'Prefer the newest date.' },
+  filename: { title: 'Filename', description: 'Use name as a final tie-breaker.' },
+};
 
 interface SettingsModalProps {
   initialTab?: SettingsTab;
@@ -95,6 +105,8 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
 
   if (!isOpen) return null;
 
+  const ignoredDuplicatePairCount = localSettings.duplicates.ignoredDuplicatePairs?.length ?? 0;
+
   const handleChange = (key: keyof AppSettings, val: unknown) => {
     setLocalSettings((prev) => ({ ...prev, [key]: val }));
   };
@@ -107,6 +119,29 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
         [key]: val,
       },
     }));
+  };
+
+  const handleDuplicateChange = (key: keyof AppSettings['duplicates'], val: unknown) => {
+    setLocalSettings((prev) => ({
+      ...prev,
+      duplicates: {
+        ...prev.duplicates,
+        [key]: val,
+      },
+    }));
+  };
+
+  const moveKeeperRule = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    const currentOrder = localSettings.duplicates.keeperOrder;
+    if (nextIndex < 0 || nextIndex >= currentOrder.length) return;
+    const nextOrder = [...currentOrder];
+    [nextOrder[index], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[index]];
+    handleDuplicateChange('keeperOrder', nextOrder);
+  };
+
+  const resetKeeperOrder = () => {
+    handleDuplicateChange('keeperOrder', [...DEFAULT_DUPLICATE_SETTINGS.keeperOrder]);
   };
 
   const handleCacheLocationChange = async (val: string) => {
@@ -275,6 +310,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
           <div className="settings-sidebar">
             <button className={`tab-btn ${activeTab === 'interface' ? 'active' : ''}`} onClick={() => setActiveTab('interface')}>Interface</button>
             <button className={`tab-btn ${activeTab === 'features' ? 'active' : ''}`} onClick={() => setActiveTab('features')}>Features</button>
+            <button className={`tab-btn ${activeTab === 'duplicates' ? 'active' : ''}`} onClick={() => setActiveTab('duplicates')}>Duplicates</button>
             <button className={`tab-btn ${activeTab === 'cache' ? 'active' : ''}`} onClick={() => setActiveTab('cache')}>Cache</button>
             <button className={`tab-btn ${activeTab === 'processing' ? 'active' : ''}`} onClick={() => setActiveTab('processing')}>Processing</button>
             <button className={`tab-btn ${activeTab === 'keybindings' ? 'active' : ''}`} onClick={() => setActiveTab('keybindings')}>Keybindings</button>
@@ -356,6 +392,244 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     </label>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'duplicates' && (
+              <div className="settings-form duplicates-settings">
+                <label className={`duplicates-enable-row ${localSettings.duplicates.enabled ? 'active' : ''}`}>
+                  <span className="duplicates-enable-main">
+                    <input type="checkbox" checked={localSettings.duplicates.enabled} onChange={(e) => handleDuplicateChange('enabled', e.target.checked)} />
+                    <span className="duplicates-enable-copy">
+                      <span className="duplicates-enable-title">Enable duplicate detection</span>
+                      <span className="help-text">Enables duplicate finding and stores its cache data.</span>
+                    </span>
+                  </span>
+                </label>
+
+                {localSettings.duplicates.enabled && (
+                  <>
+                    <div className="duplicates-section settings-section-divider">
+                      <div className="duplicates-section-heading">
+                        <h3 className="settings-subsection-title">Matching</h3>
+                        <span className="help-text">Main duplicate matching options.</span>
+                      </div>
+                      <div className="duplicates-toggle-list">
+                        <div className="form-group checkbox-group duplicates-toggle-row">
+                          <label>
+                            <input type="checkbox" checked={localSettings.duplicates.runAfterScan} onChange={(e) => handleDuplicateChange('runAfterScan', e.target.checked)} />
+                            Run after each scan
+                          </label>
+                          <span className="help-text">Starts duplicate detection after each scan.</span>
+                        </div>
+                      </div>
+                      <div className="duplicates-control-grid">
+                        <div className="form-group">
+                          <label>Similarity</label>
+                          <div className="flex-row duplicates-inline-value">
+                            <input type="number" min="80" max="100" value={localSettings.duplicates.finalSimilarityThreshold} onChange={(e) => handleDuplicateChange('finalSimilarityThreshold', Number(e.target.value))} className="number-input" />
+                            <span>%</span>
+                          </div>
+                          <span className="help-text">Minimum score needed to group videos as duplicates.</span>
+                        </div>
+                        <div className="form-group">
+                          <label>Sample Count</label>
+                          <select value={localSettings.duplicates.sampleCount} onChange={(e) => handleDuplicateChange('sampleCount', Number(e.target.value))}>
+                            <option value={1}>1 sample</option>
+                            <option value={2}>2 samples</option>
+                            <option value={3}>3 samples</option>
+                            <option value={4}>4 samples</option>
+                            <option value={5}>5 samples</option>
+                            <option value={7}>7 samples</option>
+                            <option value={9}>9 samples</option>
+                          </select>
+                          <span className="help-text">More samples reduce false positives, but take longer.</span>
+                        </div>
+                        <div className="form-group duplicates-span-full">
+                          <label>Comparison Method</label>
+                          <select value={localSettings.duplicates.comparisonMode} onChange={(e) => handleDuplicateChange('comparisonMode', e.target.value)}>
+                            <option value="phash">pHash</option>
+                            <option value="visual">Visual similarity</option>
+                          </select>
+                          <span className="help-text">pHash is more flexible. Visual similarity compares sampled frames more directly.</span>
+                        </div>
+                        <div className="form-group duplicates-span-full">
+                          <label>Default Scope</label>
+                          <select value={localSettings.duplicates.defaultScope} onChange={(e) => handleDuplicateChange('defaultScope', e.target.value)}>
+                            <option value="all">All loaded videos</option>
+                            <option value="filtered">Current filtered view</option>
+                          </select>
+                          <span className="help-text">Choose all loaded videos or only the current filtered view.</span>
+                        </div>
+                      </div>
+                      <div className="duplicates-toggle-list">
+                        <div className="form-group checkbox-group duplicates-toggle-row">
+                          <label>
+                            <input type="checkbox" checked={localSettings.duplicates.protectKeep} onChange={(e) => handleDuplicateChange('protectKeep', e.target.checked)} />
+                            Protect marked keep videos
+                          </label>
+                          <span className="help-text">Keeps already approved videos out of delete suggestions.</span>
+                        </div>
+                        <div className="form-group checkbox-group duplicates-toggle-row">
+                          <label>
+                            <input type="checkbox" checked={localSettings.duplicates.protectSkipped} onChange={(e) => handleDuplicateChange('protectSkipped', e.target.checked)} />
+                            Protect skipped videos
+                          </label>
+                          <span className="help-text">Leaves skipped videos out of delete suggestions.</span>
+                        </div>
+                      </div>
+                      <div className="duplicates-keeper-order">
+                        <div className="duplicates-keeper-heading">
+                          <div>
+                            <h4>Suggested keeper priority</h4>
+                            <span className="help-text">Higher items decide first when choosing which duplicate to keep.</span>
+                          </div>
+                          <button type="button" className="duplicates-clear-btn" onClick={resetKeeperOrder}>
+                            Reset
+                          </button>
+                        </div>
+                        <div className="duplicates-keeper-list">
+                          {localSettings.duplicates.keeperOrder.map((rule, index) => {
+                            const label = KEEPER_RULE_LABELS[rule] ?? { title: rule, description: 'Custom rule.' };
+                            return (
+                              <div className="duplicates-keeper-row" key={rule}>
+                                <span className="duplicates-keeper-rank">{index + 1}</span>
+                                <span className="duplicates-keeper-copy">
+                                  <strong>{label.title}</strong>
+                                  <span>{label.description}</span>
+                                </span>
+                                <span className="duplicates-keeper-actions">
+                                  <button type="button" onClick={() => moveKeeperRule(index, -1)} disabled={index === 0} aria-label={`Move ${label.title} up`}>
+                                    <ArrowUp size={14} />
+                                  </button>
+                                  <button type="button" onClick={() => moveKeeperRule(index, 1)} disabled={index === localSettings.duplicates.keeperOrder.length - 1} aria-label={`Move ${label.title} down`}>
+                                    <ArrowDown size={14} />
+                                  </button>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="duplicates-section settings-section-divider">
+                      <div className="duplicates-section-heading">
+                        <h3 className="settings-subsection-title">Ignored Matches</h3>
+                        <span className="help-text">Pairs marked Not a match stay hidden in future duplicate runs.</span>
+                      </div>
+                      <div className="duplicates-maintenance-row">
+                        <div>
+                          <strong>{ignoredDuplicatePairCount}</strong>
+                          <span className="help-text">
+                            {ignoredDuplicatePairCount === 1 ? ' ignored pair' : ' ignored pairs'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="duplicates-clear-btn"
+                          disabled={ignoredDuplicatePairCount === 0}
+                          onClick={() => handleDuplicateChange('ignoredDuplicatePairs', [])}
+                        >
+                          Clear ignored matches
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="duplicates-section settings-section-divider">
+                      <div className="duplicates-section-heading">
+                        <h3 className="settings-subsection-title">Advanced</h3>
+                        <span className="help-text">Extra control for harder matching cases.</span>
+                      </div>
+                      <div className="duplicates-control-grid">
+                        <div className="form-group">
+                          <label>Sampling Window</label>
+                          <select value={localSettings.duplicates.samplingWindow} onChange={(e) => handleDuplicateChange('samplingWindow', e.target.value)}>
+                            <option value="even">Evenly spaced</option>
+                            <option value="25-75">25-75% center</option>
+                            <option value="20-80">20-80% center</option>
+                            <option value="15-85">15-85% center</option>
+                            <option value="custom">Custom window</option>
+                          </select>
+                          <span className="help-text">Choose which part of each video gets sampled.</span>
+                        </div>
+                        <div className="form-group">
+                          <label>Duration Tolerance</label>
+                          <div className="flex-row duplicates-inline-value">
+                            <input type="number" min="0" max="100" value={localSettings.duplicates.durationTolerancePercent} onChange={(e) => handleDuplicateChange('durationTolerancePercent', Number(e.target.value))} className="number-input" />
+                            <span>%</span>
+                          </div>
+                          <span className="help-text">How much video lengths may differ and still be compared.</span>
+                        </div>
+                        <div className="form-group">
+                          <label>Max Sampling Duration</label>
+                          <div className="flex-row duplicates-inline-value">
+                            <input type="number" min="0" max="86400" value={localSettings.duplicates.maxSamplingDuration} onChange={(e) => handleDuplicateChange('maxSamplingDuration', Number(e.target.value))} className="number-input" />
+                            <span>seconds</span>
+                          </div>
+                          <span className="help-text">0 uses the full video length.</span>
+                        </div>
+                        <div className="form-group">
+                          <label>Checkpoint Interval</label>
+                          <div className="flex-row duplicates-inline-value">
+                            <input type="number" min="0" max="60" value={localSettings.duplicates.checkpointIntervalMinutes} onChange={(e) => handleDuplicateChange('checkpointIntervalMinutes', Number(e.target.value))} className="number-input" />
+                            <span>minutes</span>
+                          </div>
+                          <span className="help-text">How often long runs save progress.</span>
+                        </div>
+                      </div>
+                      {localSettings.duplicates.samplingWindow === 'custom' && (
+                        <div className="form-group duplicates-custom-window">
+                          <label>Custom Sampling Window</label>
+                          <div className="flex-row duplicates-inline-value">
+                            <input type="number" min="0" max="95" value={localSettings.duplicates.customStartPercent} onChange={(e) => handleDuplicateChange('customStartPercent', Number(e.target.value))} className="number-input" />
+                            <span>% start</span>
+                            <input type="number" min="5" max="100" value={localSettings.duplicates.customEndPercent} onChange={(e) => handleDuplicateChange('customEndPercent', Number(e.target.value))} className="number-input" />
+                            <span>% end</span>
+                          </div>
+                          <span className="help-text">Useful for repeated intros, outros, or watermarks.</span>
+                        </div>
+                      )}
+                      <div className="duplicates-toggle-list advanced">
+                        <div className="form-group checkbox-group duplicates-toggle-row">
+                          <label>
+                            <input type="checkbox" checked={localSettings.duplicates.requireEverySample} onChange={(e) => handleDuplicateChange('requireEverySample', e.target.checked)} />
+                            Require every sample to meet similarity
+                          </label>
+                          <span className="help-text">Every sample must pass, not just the average.</span>
+                        </div>
+                        <div className="form-group checkbox-group duplicates-toggle-row">
+                          <label>
+                            <input type="checkbox" checked={localSettings.duplicates.ignoreBlackPixels} onChange={(e) => handleDuplicateChange('ignoreBlackPixels', e.target.checked)} />
+                            Ignore black pixels
+                          </label>
+                          <span className="help-text">Can help with fades, black frames, and letterboxing.</span>
+                        </div>
+                        <div className="form-group checkbox-group duplicates-toggle-row">
+                          <label>
+                            <input type="checkbox" checked={localSettings.duplicates.ignoreWhitePixels} onChange={(e) => handleDuplicateChange('ignoreWhitePixels', e.target.checked)} />
+                            Ignore white pixels
+                          </label>
+                          <span className="help-text">Can help with bright flashes and white frames.</span>
+                        </div>
+                        <div className="form-group checkbox-group duplicates-toggle-row">
+                          <label>
+                            <input type="checkbox" checked={localSettings.duplicates.compareFlipped} onChange={(e) => handleDuplicateChange('compareFlipped', e.target.checked)} />
+                            Compare flipped videos
+                          </label>
+                          <span className="help-text">Also checks horizontally mirrored copies.</span>
+                        </div>
+                        <div className="form-group checkbox-group duplicates-toggle-row">
+                          <label>
+                            <input type="checkbox" checked={localSettings.duplicates.retryFailedFingerprintExtraction} onChange={(e) => handleDuplicateChange('retryFailedFingerprintExtraction', e.target.checked)} />
+                            Retry failed fingerprints
+                          </label>
+                          <span className="help-text">Retries videos that failed to process before.</span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

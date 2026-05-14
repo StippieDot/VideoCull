@@ -1,0 +1,161 @@
+﻿diff --git a/src/components/Sidebar.css b/src/components/Sidebar.css
+index 3fefe81..3a39fa1 100644
+--- a/src/components/Sidebar.css
++++ b/src/components/Sidebar.css
+@@ -904,6 +904,140 @@
+   transition: width 300ms ease;
+ }
+ 
++.duplicate-progress-info {
++  margin-top: 10px;
++}
++
++.sidebar-duplicate-mode-section {
++  gap: 12px;
++}
++
++.duplicate-mode-summary {
++  display: flex;
++  align-items: baseline;
++  justify-content: space-between;
++  gap: 10px;
++  padding: 10px 11px;
++  border: 1px solid var(--border);
++  border-radius: var(--radius-sm);
++  background: var(--bg-surface);
++}
++
++.duplicate-mode-summary strong {
++  color: var(--text-primary);
++  font-size: 22px;
++  line-height: 1;
++  font-variant-numeric: tabular-nums;
++}
++
++.duplicate-mode-summary span {
++  min-width: 0;
++  color: var(--text-tertiary);
++  font-size: 12px;
++  text-align: right;
++}
++
++.duplicate-sidebar-view-toggle {
++  display: grid;
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++  gap: 4px;
++  padding: 3px;
++  border: 1px solid var(--border);
++  border-radius: var(--radius-sm);
++  background: var(--bg-surface);
++}
++
++.duplicate-sidebar-view-toggle button {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  gap: 6px;
++  min-height: 30px;
++  border: 1px solid transparent;
++  border-radius: calc(var(--radius-sm) - 2px);
++  background: transparent;
++  color: var(--text-secondary);
++  font-size: 12px;
++  font-weight: 600;
++  transition: var(--transition);
++}
++
++.duplicate-sidebar-view-toggle button:hover {
++  color: var(--text-primary);
++  background: var(--bg-surface-hover);
++}
++
++.duplicate-sidebar-view-toggle button.active {
++  color: var(--accent);
++  border-color: var(--accent);
++  background: var(--accent-dim);
++}
++
++.duplicate-sidebar-controls {
++  display: grid;
++  gap: 10px;
++  padding: 11px;
++  border: 1px solid var(--border);
++  border-radius: var(--radius-sm);
++  background: rgba(255, 255, 255, 0.018);
++}
++
++.duplicate-sidebar-heading-row {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 8px;
++}
++
++.duplicate-sidebar-field {
++  display: grid;
++  gap: 5px;
++}
++
++.duplicate-sidebar-field > span {
++  color: var(--text-tertiary);
++  font-size: 10px;
++  font-weight: 600;
++  letter-spacing: 0.06em;
++  text-transform: uppercase;
++}
++
++.duplicate-sidebar-field input[type="text"] {
++  width: 100%;
++  min-height: 32px;
++  box-sizing: border-box;
++  padding: 0 9px;
++  border: 1px solid var(--border);
++  border-radius: var(--radius-sm);
++  background: var(--bg-surface);
++  color: var(--text-primary);
++  font-size: 12px;
++}
++
++.duplicate-sidebar-field input[type="text"]:focus {
++  outline: none;
++  border-color: var(--accent);
++}
++
++.duplicate-sidebar-inline {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) 42px;
++  align-items: center;
++  gap: 8px;
++}
++
++.duplicate-sidebar-inline input[type="range"] {
++  width: 100%;
++  accent-color: var(--accent);
++}
++
++.duplicate-sidebar-inline strong {
++  color: var(--text-secondary);
++  font-size: 12px;
++  text-align: right;
++  font-variant-numeric: tabular-nums;
++}
++
+ 
+ /* Buttons */
+ .btn {
+@@ -925,6 +1059,15 @@
+ .btn-primary:hover {
+   background: var(--accent-hover);
+ }
++
++.sidebar-wide-action {
++  width: 100%;
++  margin-top: 8px;
++}
++
++.sidebar-wide-action:first-child {
++  margin-top: 0;
++}
+ .btn-ghost {
+   background: transparent;
+   color: var(--text-secondary);
