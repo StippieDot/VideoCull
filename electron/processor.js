@@ -8,7 +8,8 @@ const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
 
-let currentToken = null;
+let thumbToken = null;
+let metadataToken = null;
 const METADATA_SCHEMA_VERSION = 2;
 
 function toFfmpegInputPath(filePath) {
@@ -339,20 +340,26 @@ async function readMetadataForVideo(video) {
   let metadataVersion = video.metadataVersion ?? null;
   let metadataCheckedAt = video.metadataCheckedAt ?? null;
 
-  const meta = await getVideoMetadata(video.path);
-  duration = meta.duration;
-  creationTime = meta.creationTime;
-  videoCodec = meta.videoCodec;
-  audioCodec = meta.audioCodec;
-  videoBitrate = meta.videoBitrate;
-  audioBitrate = meta.audioBitrate;
-  totalBitrate = meta.totalBitrate;
-  containerFormat = meta.containerFormat;
-  width = meta.width;
-  height = meta.height;
-  fps = meta.fps;
-  metadataVersion = meta.metadataVersion;
-  metadataCheckedAt = meta.metadataCheckedAt;
+  try {
+    const meta = await getVideoMetadata(video.path);
+    duration = meta.duration;
+    creationTime = meta.creationTime;
+    videoCodec = meta.videoCodec;
+    audioCodec = meta.audioCodec;
+    videoBitrate = meta.videoBitrate;
+    audioBitrate = meta.audioBitrate;
+    totalBitrate = meta.totalBitrate;
+    containerFormat = meta.containerFormat;
+    width = meta.width;
+    height = meta.height;
+    fps = meta.fps;
+    metadataVersion = meta.metadataVersion;
+    metadataCheckedAt = meta.metadataCheckedAt;
+  } catch {
+    // ffprobe failed — keep whatever cached values the video already had.
+    // Ensure duration is at least 0 so thumbnail timestamp calculation won't break.
+    duration = duration ?? 0;
+  }
 
   return {
     thumbnails: video.thumbnails ?? [],
@@ -455,7 +462,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
 
 async function processMetadata(videos, config, onProgress, onVideoReady, onVideoFailed) {
   const token = { cancelled: false };
-  currentToken = token;
+  metadataToken = token;
   const total = videos.length;
   let current = 0;
   const concurrentLimit = getConcurrentLimit(config);
@@ -490,8 +497,8 @@ async function processMetadata(videos, config, onProgress, onVideoReady, onVideo
   await Promise.all(workers);
 }
 
-function cancelProcessing() {
-  if (currentToken) currentToken.cancelled = true;
+function cancelThumbnails() {
+  if (thumbToken) thumbToken.cancelled = true;
   for (const cmd of activeCommands) {
     try {
       cmd.kill('SIGKILL');
@@ -502,4 +509,14 @@ function cancelProcessing() {
   activeCommands.clear();
 }
 
-module.exports = { processVideos, processMetadata, cancelProcessing, getConcurrentLimit, METADATA_SCHEMA_VERSION };
+function cancelMetadata() {
+  if (metadataToken) metadataToken.cancelled = true;
+}
+
+/** Cancel all pipelines — used on quit and full rescan. */
+function cancelProcessing() {
+  cancelThumbnails();
+  cancelMetadata();
+}
+
+module.exports = { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit, METADATA_SCHEMA_VERSION };

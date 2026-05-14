@@ -212,6 +212,8 @@ function resolutionPixels(video: Video): number {
   return finiteNumber(video.width) * finiteNumber(video.height);
 }
 
+// SYNC NOTE: This function mirrors compareKeeperCandidates in electron/duplicate-utils.js.
+// The renderer copy exists for instant keeper re-computation when settings change.
 function compareKeeperCandidates(a: Video, b: Video, order: string[]): number {
   for (const rule of order) {
     let diff = 0;

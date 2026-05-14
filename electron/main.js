@@ -1,9 +1,9 @@
-﻿const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
 const { scanDirectory } = require('./scanner');
-const { processVideos, processMetadata, cancelProcessing, getConcurrentLimit } = require('./processor');
+const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
 const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
 const log = require('./logger');
@@ -1508,7 +1508,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
 
 // 3. Probe metadata for videos that are missing or stale.
 ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {}) => {
-  cancelProcessing();
+  cancelMetadata();
 
   if (!currentScanDirs.has(dirPath)) {
     log.warn('[process-metadata] dirPath is not loaded, rejecting');
@@ -1642,7 +1642,7 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
 // 4. Generate thumbnails for videos that don't have them
 ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = {}) => {
   // Cancel any in-progress generation before starting a new one
-  cancelProcessing();
+  cancelThumbnails();
 
   // Security: validate that dirPath is one of the loaded scan directories
   if (!currentScanDirs.has(dirPath)) {

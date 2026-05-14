@@ -1,3 +1,6 @@
+// SYNC NOTE: These defaults are duplicated in src/keybind-defaults.ts (DEFAULT_DUPLICATE_SETTINGS).
+// The renderer copy is needed for instant settings UI feedback. Keep both in sync when changing defaults.
+// The compareKeeperCandidates / chooseSuggestedKeeper functions below are also mirrored in src/store.ts.
 const DEFAULT_DUPLICATE_SETTINGS = {
   enabled: true,
   runAfterScan: false,

@@ -629,6 +629,20 @@ function deleteVideosByIds(db, videoIds) {
   deleteAll(videoIds);
 }
 
+// SQLite has a default variable limit of 999. Chunk IN-clause queries to stay safe.
+const BATCH_CHUNK_SIZE = 500;
+
+function batchSelectIn(db, sql, ids) {
+  const results = [];
+  for (let i = 0; i < ids.length; i += BATCH_CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + BATCH_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = db.prepare(sql.replace('__IN__', placeholders)).all(...chunk);
+    results.push(...rows);
+  }
+  return results;
+}
+
 function getFingerprintCounts(db, sampleCount, options = {}) {
   const rows = db.prepare(`
     SELECT video_id,
@@ -682,8 +696,8 @@ function markFingerprintFailure(db, videoId) {
 
 function loadFingerprintFailureIds(db, videoIds) {
   if (!videoIds.length) return new Set();
-  const query = db.prepare('SELECT id FROM videos WHERE id = ? AND fingerprint_failed_at IS NOT NULL');
-  return new Set(videoIds.map((id) => query.get(id)?.id).filter(Boolean));
+  const rows = batchSelectIn(db, 'SELECT id FROM videos WHERE id IN (__IN__) AND fingerprint_failed_at IS NOT NULL', videoIds);
+  return new Set(rows.map((row) => row.id));
 }
 
 function markMetadataFailure(db, videoId, reason) {
@@ -699,8 +713,16 @@ function markMetadataFailure(db, videoId, reason) {
 function loadRecentMetadataFailureIds(db, videoIds, retryAfterMs) {
   if (!videoIds.length) return new Set();
   const cutoff = Date.now() - Math.max(0, Number(retryAfterMs) || 0);
-  const query = db.prepare('SELECT id FROM videos WHERE id = ? AND metadata_failed_at IS NOT NULL AND metadata_failed_at >= ?');
-  return new Set(videoIds.map((id) => query.get(id, cutoff)?.id).filter(Boolean));
+  const results = [];
+  for (let i = 0; i < videoIds.length; i += BATCH_CHUNK_SIZE) {
+    const chunk = videoIds.slice(i, i + BATCH_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = db.prepare(
+      `SELECT id FROM videos WHERE id IN (${placeholders}) AND metadata_failed_at IS NOT NULL AND metadata_failed_at >= ?`
+    ).all(...chunk, cutoff);
+    results.push(...rows);
+  }
+  return new Set(results.map((row) => row.id));
 }
 
 function loadPHashRows(db, videoIds, sampleCount) {
@@ -759,12 +781,7 @@ function updateVideoSignatures(db, videoId, signatures) {
 
 function loadSignatureRows(db, videoIds) {
   if (!videoIds.length) return [];
-  const query = db.prepare(`
-    SELECT id, file_signature_quick, file_signature_full, signature_updated_at
-    FROM videos
-    WHERE id = ?
-  `);
-  return videoIds.map((id) => query.get(id)).filter(Boolean);
+  return batchSelectIn(db, 'SELECT id, file_signature_quick, file_signature_full, signature_updated_at FROM videos WHERE id IN (__IN__)', videoIds);
 }
 
 // ── JSON migration ────────────────────────────────────────────────────────

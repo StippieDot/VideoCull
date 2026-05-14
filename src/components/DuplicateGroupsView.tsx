@@ -159,7 +159,7 @@ export default function DuplicateGroupsView() {
   const ignorePairsWithUndo = (nextIgnoredPairKeys: string[], groupsToHide: DuplicateGroup[], title: string, detail: string) => {
     if (nextIgnoredPairKeys.length === 0) return;
     const hiddenGroupIds = new Set(groupsToHide.map((group) => group.id));
-    const previousGroups = groups;
+    const removedGroups = hiddenGroupIds.size > 0 ? groups.filter((group) => hiddenGroupIds.has(group.id)) : [];
     addIgnoredDuplicatePairs(nextIgnoredPairKeys);
     if (hiddenGroupIds.size > 0) {
       setDuplicateGroups(groups.filter((group) => !hiddenGroupIds.has(group.id)));
@@ -173,7 +173,17 @@ export default function DuplicateGroupsView() {
       actionLabel: 'Undo',
       action: () => {
         removeIgnoredDuplicatePairs(nextIgnoredPairKeys);
-        setDuplicateGroups(previousGroups);
+        if (removedGroups.length > 0) {
+          // Merge the removed groups back into the current list instead of
+          // restoring a stale snapshot. This avoids un-dismissing groups the
+          // user dealt with separately between the dismiss and the undo.
+          const currentGroups = useStore.getState().duplicateGroups;
+          const currentIds = new Set(currentGroups.map((group) => group.id));
+          const toRestore = removedGroups.filter((group) => !currentIds.has(group.id));
+          if (toRestore.length > 0) {
+            setDuplicateGroups([...currentGroups, ...toRestore]);
+          }
+        }
       },
     });
   };
