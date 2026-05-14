@@ -79,8 +79,14 @@ function compareVisuals() {
     .map((video, index) => ({ ...video, index, samples: sampleMap.get(video.id) }));
 
   const buckets = new Map();
+  const unknownDurationCandidates = [];
   for (const video of candidates) {
-    const key = Math.floor(Number(video.durationSecs ?? 0) / BUCKET_SIZE_SECS);
+    const duration = Number(video.durationSecs ?? 0);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      unknownDurationCandidates.push(video);
+      continue;
+    }
+    const key = Math.floor(duration / BUCKET_SIZE_SECS);
     const list = buckets.get(key) ?? [];
     list.push(video);
     buckets.set(key, list);
@@ -93,7 +99,6 @@ function compareVisuals() {
   const useBuckets = candidates.length >= BUCKET_ACTIVATION_THRESHOLD;
 
   const comparePair = (a, b) => {
-    compared++;
     if (!durationsWithinTolerance(a, b, settings)) return;
     const result = compareSamples(a, b, settings);
     if (!result) return;
@@ -107,15 +112,20 @@ function compareVisuals() {
     });
   };
 
+  const reportProgress = () => {
+    if (compared - lastProgressAt >= 250000) {
+      lastProgressAt = compared;
+      parentPort.postMessage({ type: 'progress', compared, total });
+    }
+  };
+
   if (!useBuckets) {
     for (let i = 0; i < candidates.length; i++) {
       const a = candidates[i];
-      for (let j = i + 1; j < candidates.length; j++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+        compared++;
         comparePair(a, candidates[j]);
-        if (compared - lastProgressAt >= 250000) {
-          lastProgressAt = compared;
-          parentPort.postMessage({ type: 'progress', compared, total });
-        }
+        reportProgress();
       }
     }
   } else {
@@ -128,13 +138,26 @@ function compareVisuals() {
           if (!compareBucket) continue;
           for (const b of compareBucket) {
             if (b.index <= a.index) continue;
+            compared++;
             comparePair(a, b);
-            if (compared - lastProgressAt >= 250000) {
-              lastProgressAt = compared;
-              parentPort.postMessage({ type: 'progress', compared, total });
-            }
+            reportProgress();
           }
         }
+        // Compare bucketed videos against all unknown-duration wildcards
+        for (const b of unknownDurationCandidates) {
+          if (b.index <= a.index) continue;
+          compared++;
+          comparePair(a, b);
+          reportProgress();
+        }
+      }
+    }
+    // Compare unknown-duration wildcards against each other
+    for (let i = 0; i < unknownDurationCandidates.length; i++) {
+      for (let j = i + 1; j < unknownDurationCandidates.length; j++) {
+        comparePair(unknownDurationCandidates[i], unknownDurationCandidates[j]);
+        compared++;
+        reportProgress();
       }
     }
   }

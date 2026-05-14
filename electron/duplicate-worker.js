@@ -74,7 +74,6 @@ function comparePHashes() {
   }
 
   const comparePair = (a, b) => {
-    compared++;
     if (!durationsWithinTolerance(a, b, settings)) return;
     const sampleScores = [];
     for (let k = 0; k < settings.sampleCount; k++) {
@@ -95,15 +94,6 @@ function comparePHashes() {
       });
     }
   };
-  const comparedPairKeys = new Set();
-  const comparePairOnce = (a, b) => {
-    if (a.id === b.id) return;
-    const key = a.id < b.id ? `${a.id}\0${b.id}` : `${b.id}\0${a.id}`;
-    if (comparedPairKeys.has(key)) return;
-    comparedPairKeys.add(key);
-    comparePair(a, b);
-  };
-
   const reportProgress = () => {
     if (compared - lastProgressAt >= 250000) {
       lastProgressAt = compared;
@@ -114,8 +104,11 @@ function comparePHashes() {
   for (const a of candidates) {
     const bucketKeys = getCandidateBucketKeys(a, settings);
     if (bucketKeys.length === 0) {
+      // Unknown duration — compare against all candidates with higher index
       for (const b of candidates) {
-        comparePairOnce(a, b);
+        if (b.index <= a.index) continue;
+        compared++;
+        comparePair(a, b);
         reportProgress();
       }
       continue;
@@ -124,12 +117,16 @@ function comparePHashes() {
       const compareBucket = buckets.get(key);
       if (!compareBucket) continue;
       for (const b of compareBucket) {
-        comparePairOnce(a, b);
+        if (b.index <= a.index) continue;
+        compared++;
+        comparePair(a, b);
         reportProgress();
       }
     }
     for (const b of unknownDurationCandidates) {
-      comparePairOnce(a, b);
+      if (b.index <= a.index) continue;
+      compared++;
+      comparePair(a, b);
       reportProgress();
     }
   }

@@ -247,7 +247,8 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
   for (const [folder, folderVideos] of byFolder) {
     const db = dbByFolder.get(folder);
     if (!db) continue;
-    const completeById = cache.getFingerprintCounts(db, settings.sampleCount, { requireFlipped: settings.compareFlipped });
+    const folderVideoIds = folderVideos.map((video) => video.id);
+    const completeById = cache.getFingerprintCounts(db, folderVideoIds, settings.sampleCount, { requireFlipped: settings.compareFlipped });
     const failedIds = settings.retryFailedFingerprintExtraction
       ? new Set()
       : cache.loadFingerprintFailureIds(db, folderVideos.map((video) => video.id));

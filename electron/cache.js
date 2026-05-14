@@ -649,14 +649,22 @@ function batchSelectIn(db, sql, ids) {
   return results;
 }
 
-function getFingerprintCounts(db, sampleCount, options = {}) {
-  const rows = db.prepare(`
-    SELECT video_id,
-           COUNT(*) AS sample_count,
-           SUM(CASE WHEN flipped_phash_hex IS NOT NULL AND flipped_phash_hex <> '' THEN 1 ELSE 0 END) AS flipped_count
-    FROM video_fingerprints
-    GROUP BY video_id
-  `).all();
+function getFingerprintCounts(db, videoIds, sampleCount, options = {}) {
+  if (!videoIds.length) return new Map();
+  const rows = [];
+  for (let i = 0; i < videoIds.length; i += BATCH_CHUNK_SIZE) {
+    const chunk = videoIds.slice(i, i + BATCH_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(',');
+    const batch = db.prepare(`
+      SELECT video_id,
+             COUNT(*) AS sample_count,
+             SUM(CASE WHEN flipped_phash_hex IS NOT NULL AND flipped_phash_hex <> '' THEN 1 ELSE 0 END) AS flipped_count
+      FROM video_fingerprints
+      WHERE video_id IN (${placeholders})
+      GROUP BY video_id
+    `).all(...chunk);
+    rows.push(...batch);
+  }
   const result = new Map();
   for (const row of rows) {
     const enoughSamples = Number(row.sample_count) >= sampleCount;
@@ -762,7 +770,7 @@ function loadGraySampleRows(db, videoIds, sampleCount) {
   if (!videoIds.length) return [];
   const rows = [];
   const query = db.prepare(`
-    SELECT video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio
+    SELECT video_id, sample_index, gray_bytes
     FROM video_fingerprints
     WHERE video_id = ?
     ORDER BY sample_index

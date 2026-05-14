@@ -310,3 +310,37 @@ Not reviewed (test files):
 - ⏭️ `electron/duplicate-utils.test.js`
 - ⏭️ `electron/duplicates.test.js`
 - ⏭️ `electron/duplicate-worker.test.js`
+
+---
+
+## Additional Deep-Dive Findings (Agent Review)
+
+### 22. `visual-worker.js` bucket logic fails for unknown-duration videos
+**File**: `visual-worker.js`
+When `useBuckets` is true (libraries > 5000 videos), videos with no duration are treated as `0` seconds. Because bucket filtering only checks adjacent buckets, a video with no duration will *only* be compared against extremely short videos (e.g., bucket `0`), completely missing duplicates against normal-length videos. `duplicate-worker.js` avoids this by maintaining an explicit `unknownDurationCandidates` array.
+**Fix**: Adopt the `unknownDurationCandidates` fallback pattern in `visual-worker.js` when bucketing is active.
+
+### 23. `duplicate-worker.js` wastes memory tracking `comparedPairKeys`
+**File**: `duplicate-worker.js`
+To avoid double-comparing pairs, `duplicate-worker.js` stores every single pair key in a `Set`. For 100,000s of comparisons, this Set consumes unnecessary memory and CPU. `visual-worker.js` elegantly solves the exact same problem by simply skipping pairs where `b.index <= a.index`.
+**Fix**: Replace the `Set` in `duplicate-worker.js` with the `b.index <= a.index` comparison check used in the visual worker.
+
+### 24. `getFingerprintCounts` performs a full table group-by
+**File**: `cache.js`
+`getFingerprintCounts` uses `SELECT video_id, COUNT(*) ... FROM video_fingerprints GROUP BY video_id`. When called by `backfillFingerprints` per folder, it processes the *entire* table instead of just the videos in that folder.
+**Fix**: Add a `WHERE video_id IN (...)` clause to only aggregate the videos being requested, drastically speeding up the query for large databases.
+
+### 25. Progress bar stalls and jumps to 100% during bucketed comparison
+**File**: `duplicate-worker.js` & `visual-worker.js`
+The `total` progress is calculated as `(N * (N-1)) / 2` (all possible theoretical pairs). However, `compared` only increments for pairs that actually fall within matching duration buckets. This causes the progress bar to stall at a small percentage and instantly jump to 100% when the worker finishes.
+**Fix**: To make the UI smooth, either increment `compared` for skipped buckets, or calculate the exact number of pairs that will be evaluated before starting.
+
+### 26. `calculateDctPHash` includes the DC component in the hash
+**File**: `duplicate-utils.js`
+The hash loop `for (let i = 0; i < 64; i++)` includes `dct[0]` (the DC component, representing average frame brightness). Because the DC component is almost always significantly larger than the AC median, bit 63 of the hash will virtually always be `1`. Standard pHash implementations usually skip the DC component (e.g., using `dct[1]` to `dct[64]`).
+**Severity**: Low (effectively reduces the hash from 64 to 63 bits of entropy).
+
+### 27. `loadGraySampleRows` loads unnecessary text columns
+**File**: `cache.js`
+`loadGraySampleRows` `SELECT`s `phash_hex`, `flipped_phash_hex`, and `frame_dark_ratio` even though `visual-worker.js` only needs `sample_index` and `gray_bytes` (BLOBs). Passing these extra unused string columns over the IPC/Worker boundary adds unnecessary serialization overhead.
+**Fix**: Only select `video_id`, `sample_index`, and `gray_bytes`.

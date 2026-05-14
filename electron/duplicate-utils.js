@@ -141,11 +141,13 @@ function calculateDctPHash(grayBytes, size = 32, lowSize = 8) {
     }
   }
 
+  // Skip dct[0] (the DC component / average brightness) — it's almost always
+  // above the median so bit 63 would universally be 1, wasting a hash bit.
   const comparable = dct.slice(1);
   const median = comparable.slice().sort((a, b) => a - b)[Math.floor(comparable.length / 2)] ?? 0;
   let hash = 0n;
-  for (let i = 0; i < 64; i++) {
-    if ((dct[i] ?? 0) > median) hash |= 1n << BigInt(63 - i);
+  for (let i = 0; i < 63; i++) {
+    if ((comparable[i] ?? 0) > median) hash |= 1n << BigInt(62 - i);
   }
   return hash.toString(16).padStart(16, '0');
 }
