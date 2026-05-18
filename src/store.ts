@@ -1260,12 +1260,35 @@ const useStore = create<VideoStore>((set, get) => ({
   removeDeletedVideos: (deletedPaths: string[]) => {
     const pathSet = new Set(deletedPaths);
     const videos = get().videos.filter((v) => !pathSet.has(v.path));
-    const state = { ...get(), videos };
+
+    // Prune deleted video IDs from duplicate groups and drop groups with < 2 members.
+    const deletedVideoIds = new Set(
+      get().videos.filter((v) => pathSet.has(v.path)).map((v) => v.id)
+    );
+    const prevGroups = get().duplicateGroups;
+    const prunedGroups = deletedVideoIds.size > 0
+      ? prevGroups
+          .map((group) => ({
+            ...group,
+            videoIds: group.videoIds.filter((id) => !deletedVideoIds.has(id)),
+            suggestedKeeperId: group.suggestedKeeperId && deletedVideoIds.has(group.suggestedKeeperId)
+              ? null
+              : group.suggestedKeeperId,
+          }))
+          .filter((group) => group.videoIds.length >= 2)
+      : prevGroups;
+    const groupsChanged = prunedGroups !== prevGroups;
+
+    const state = { ...get(), videos, duplicateGroups: prunedGroups };
     set({
       videos,
       filteredVideos: computeFiltered(state),
       stats: computeStats(videos),
       undoStack: [],
+      ...(groupsChanged ? {
+        duplicateGroups: prunedGroups,
+        ...(prunedGroups.length === 0 ? { duplicateGroupsMode: false } : {}),
+      } : {}),
     });
   },
 

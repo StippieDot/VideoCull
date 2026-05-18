@@ -143,13 +143,6 @@ function compareVisuals() {
             reportProgress();
           }
         }
-        // Compare bucketed videos against all unknown-duration wildcards
-        for (const b of unknownDurationCandidates) {
-          if (b.index <= a.index) continue;
-          compared++;
-          comparePair(a, b);
-          reportProgress();
-        }
       }
     }
     // Compare unknown-duration wildcards against each other

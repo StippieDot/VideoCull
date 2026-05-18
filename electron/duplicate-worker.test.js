@@ -17,7 +17,7 @@ function runWorker(workerData) {
   });
 }
 
-test('pHash worker compares unknown-duration videos even when they appear after known-duration videos', async () => {
+test('unknown-duration videos are NOT compared against known-duration videos', async () => {
   const result = await runWorker({
     videos: [
       { id: 'known', durationSecs: 100 },
@@ -35,8 +35,30 @@ test('pHash worker compares unknown-duration videos even when they appear after 
     },
   });
 
-  assert.equal(result.pairs.length, 1);
-  assert.equal(result.pairs[0].aId, 'known');
-  assert.equal(result.pairs[0].bId, 'unknown');
+  assert.equal(result.pairs.length, 0, 'should not cross-compare known vs unknown duration');
 });
 
+test('unknown-duration videos ARE compared against each other', async () => {
+  const result = await runWorker({
+    videos: [
+      { id: 'known', durationSecs: 100 },
+      { id: 'unknownA', durationSecs: null },
+      { id: 'unknownB', durationSecs: 0 },
+    ],
+    phashRows: [
+      { video_id: 'known', sample_index: 0, timestamp_secs: 50, phash_hex: 'ffff000000000000' },
+      { video_id: 'unknownA', sample_index: 0, timestamp_secs: 0, phash_hex: 'ffff000000000000' },
+      { video_id: 'unknownB', sample_index: 0, timestamp_secs: 0, phash_hex: 'ffff000000000000' },
+    ],
+    settings: {
+      sampleCount: 1,
+      comparisonMode: 'phash',
+      finalSimilarityThreshold: 95,
+      durationTolerancePercent: 20,
+    },
+  });
+
+  assert.equal(result.pairs.length, 1, 'two unknown-duration videos with same hash should match');
+  assert.equal(result.pairs[0].aId, 'unknownA');
+  assert.equal(result.pairs[0].bId, 'unknownB');
+});

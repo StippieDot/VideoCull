@@ -101,18 +101,10 @@ function comparePHashes() {
     }
   };
 
+  // Bucketed videos: compare within duration-tolerance buckets only.
   for (const a of candidates) {
     const bucketKeys = getCandidateBucketKeys(a, settings);
-    if (bucketKeys.length === 0) {
-      // Unknown duration — compare against all candidates with higher index
-      for (const b of candidates) {
-        if (b.index <= a.index) continue;
-        compared++;
-        comparePair(a, b);
-        reportProgress();
-      }
-      continue;
-    }
+    if (bucketKeys.length === 0) continue; // handled separately below
     for (const key of bucketKeys) {
       const compareBucket = buckets.get(key);
       if (!compareBucket) continue;
@@ -123,10 +115,13 @@ function comparePHashes() {
         reportProgress();
       }
     }
-    for (const b of unknownDurationCandidates) {
-      if (b.index <= a.index) continue;
+  }
+
+  // Unknown-duration videos: only compare against each other (not the entire library).
+  for (let i = 0; i < unknownDurationCandidates.length; i++) {
+    for (let j = i + 1; j < unknownDurationCandidates.length; j++) {
       compared++;
-      comparePair(a, b);
+      comparePair(unknownDurationCandidates[i], unknownDurationCandidates[j]);
       reportProgress();
     }
   }
