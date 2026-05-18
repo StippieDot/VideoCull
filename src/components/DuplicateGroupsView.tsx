@@ -19,14 +19,31 @@ function bitrateLabel(video: Video): string {
   return `${Math.round(bitrate / 1000).toLocaleString()} kbps`;
 }
 
-function videoMeta(video: Video): string {
-  return [
-    formatResolutionLabel(video.width, video.height),
-    formatFps(video.fps),
-    bitrateLabel(video),
-    formatDuration(video.durationSecs),
-    formatSize(video.sizeBytes),
-  ].filter(Boolean).join(' / ');
+type MetricState = 'best' | 'equal' | 'worse';
+type MetricFlags = Record<string, MetricState>;
+
+function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
+  const flags = new Map<string, MetricFlags>();
+  for (const v of videos) flags.set(v.id, {});
+  if (videos.length < 2) return flags;
+
+  const metrics: { key: string; value: (v: Video) => number; higher: boolean }[] = [
+    { key: 'resolution', value: (v) => (v.width ?? 0) * (v.height ?? 0), higher: true },
+    { key: 'fps',        value: (v) => v.fps ?? 0,                        higher: true },
+    { key: 'bitrate',    value: (v) => v.videoBitrate ?? v.totalBitrate ?? 0, higher: true },
+    { key: 'duration',   value: (v) => v.durationSecs ?? 0,               higher: true },
+    { key: 'size',       value: (v) => v.sizeBytes ?? 0,                   higher: false },
+  ];
+
+  for (const metric of metrics) {
+    const values = videos.map((v) => metric.value(v));
+    const best = metric.higher ? Math.max(...values) : Math.min(...values);
+    const allEqual = values.every((val) => val === best);
+    for (let i = 0; i < videos.length; i++) {
+      flags.get(videos[i].id)![metric.key] = allEqual ? 'equal' : values[i] === best ? 'best' : 'worse';
+    }
+  }
+  return flags;
 }
 
 function parentPath(filePath: string): string {
@@ -266,30 +283,47 @@ export default function DuplicateGroupsView() {
         <section key={group.id} className="duplicate-group">
           {renderGroupHeader(group)}
           <div className="duplicate-row-list">
-            {videosForGroup(group).map((video) => (
-              <div
-                key={video.id}
-                className={`duplicate-row ${group.suggestedKeeperId === video.id ? 'keeper' : ''} ${selectedIds.has(video.id) ? 'selected' : ''}`}
-              >
-                <label className="duplicate-select-cell" title="Select video">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(video.id)}
-                    onChange={() => toggleVideoSelection(video)}
-                  />
-                </label>
-                <img src={thumbSrc(video)} alt="" />
-                <div className="duplicate-row-copy">
-                  <strong>{video.filename}</strong>
-                  <span className="duplicate-row-path" title={video.path}>{parentPath(video.path)}</span>
-                  <span>{videoMeta(video)}</span>
-                </div>
-                {group.suggestedKeeperId === video.id && <span className="duplicate-keeper-badge"><CheckCircle2 size={13} /> Suggested keeper</span>}
-                <button className="duplicate-play-btn" onClick={() => enterReviewAndPlay(video.id, group.videoIds)} title="Play in review mode">
-                  <Play size={14} />
-                </button>
-              </div>
-            ))}
+            {(() => {
+              const groupVideos = videosForGroup(group);
+              const bestFlags = computeBestFlags(groupVideos);
+              return groupVideos.map((video) => {
+                const f = bestFlags.get(video.id) ?? {};
+                const chip = (key: string, label: string) => {
+                  const state = f[key] ?? 'equal';
+                  return <span key={key} className={`meta-chip ${state}`}>{label}</span>;
+                };
+                return (
+                  <div
+                    key={video.id}
+                    className={`duplicate-row ${group.suggestedKeeperId === video.id ? 'keeper' : ''} ${selectedIds.has(video.id) ? 'selected' : ''}`}
+                  >
+                    <label className="duplicate-select-cell" title="Select video">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(video.id)}
+                        onChange={() => toggleVideoSelection(video)}
+                      />
+                    </label>
+                    <img src={thumbSrc(video)} alt="" />
+                    <div className="duplicate-row-copy">
+                      <strong>{video.filename}</strong>
+                      <span className="duplicate-row-path" title={video.path}>{parentPath(video.path)}</span>
+                      <span className="duplicate-meta-chips">
+                        {chip('resolution', formatResolutionLabel(video.width, video.height))}
+                        {chip('fps', formatFps(video.fps))}
+                        {chip('bitrate', bitrateLabel(video))}
+                        {chip('duration', formatDuration(video.durationSecs))}
+                        {chip('size', formatSize(video.sizeBytes))}
+                      </span>
+                    </div>
+                    {group.suggestedKeeperId === video.id && <span className="duplicate-keeper-badge"><CheckCircle2 size={13} /> Suggested keeper</span>}
+                    <button className="duplicate-play-btn" onClick={() => enterReviewAndPlay(video.id, group.videoIds)} title="Play in review mode">
+                      <Play size={14} />
+                    </button>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </section>
       ))}

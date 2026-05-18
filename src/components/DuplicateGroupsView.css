@@ -257,6 +257,35 @@
   white-space: nowrap;
 }
 
+.duplicate-meta-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.meta-chip {
+  font-size: 12px;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.meta-chip + .meta-chip::before {
+  content: ' / ';
+  color: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.meta-chip.best {
+  color: #4CAF50;
+  font-weight: 600;
+}
+
+.meta-chip.worse {
+  color: var(--text-tertiary);
+  opacity: 0.7;
+}
+
 .duplicate-play-btn {
   width: 34px;
   height: 34px;
