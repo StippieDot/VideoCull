@@ -679,6 +679,7 @@ const useStore = create<VideoStore>((set, get) => ({
   duplicateMinSimilarity: 0,
   duplicateSortBy: 'similarity',
   duplicateSortOrder: 'desc',
+  duplicateScrollTop: 0,
   gridSelectionIds: new Set(),
   gridSelectionAnchorId: null,
   // ── Card sizing ──
@@ -1220,6 +1221,7 @@ const useStore = create<VideoStore>((set, get) => ({
   setDuplicateMinSimilarity: (duplicateMinSimilarity) => set({ duplicateMinSimilarity: Math.max(0, Math.min(100, duplicateMinSimilarity)) }),
   setDuplicateSortBy: (duplicateSortBy) => set({ duplicateSortBy }),
   setDuplicateSortOrder: (duplicateSortOrder) => set({ duplicateSortOrder }),
+  setDuplicateScrollTop: (duplicateScrollTop) => set({ duplicateScrollTop: Math.max(0, duplicateScrollTop) }),
   clearDuplicateListFilters: () => set({
     duplicatePathFilter: '',
     duplicateMinSimilarity: 0,

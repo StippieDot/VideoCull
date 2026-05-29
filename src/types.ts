@@ -308,6 +308,7 @@ export interface VideoStore {
   duplicateMinSimilarity: number;
   duplicateSortBy: DuplicateSortField;
   duplicateSortOrder: SortOrder;
+  duplicateScrollTop: number;
   gridSelectionIds: Set<string>;
   gridSelectionAnchorId: string | null;
   // Card sizing
@@ -368,6 +369,7 @@ export interface VideoStore {
   setDuplicateMinSimilarity: (similarity: number) => void;
   setDuplicateSortBy: (sortBy: DuplicateSortField) => void;
   setDuplicateSortOrder: (order: SortOrder) => void;
+  setDuplicateScrollTop: (scrollTop: number) => void;
   clearDuplicateListFilters: () => void;
   setGridSelectionIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   setGridSelectionAnchorId: (videoId: string | null) => void;

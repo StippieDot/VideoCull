@@ -6,8 +6,6 @@ import VideoCard from './VideoCard';
 import { Ban, CheckCircle2, Play, Trash2 } from 'lucide-react';
 import './DuplicateGroupsView.css';
 
-let savedDuplicateScrollTop = 0;
-
 function thumbSrc(video: Video): string {
   if (video.thumbnails[0]) return `thumb://local/${encodeURIComponent(video.thumbnails[0])}`;
   return video.osThumbnail ?? '';
@@ -80,7 +78,9 @@ export default function DuplicateGroupsView() {
   const duplicateMinSimilarity = useStore((s) => s.duplicateMinSimilarity);
   const duplicateSortBy = useStore((s) => s.duplicateSortBy);
   const duplicateSortOrder = useStore((s) => s.duplicateSortOrder);
+  const duplicateScrollTop = useStore((s) => s.duplicateScrollTop);
   const setDuplicateGroups = useStore((s) => s.setDuplicateGroups);
+  const setDuplicateScrollTop = useStore((s) => s.setDuplicateScrollTop);
   const addIgnoredDuplicatePairs = useStore((s) => s.addIgnoredDuplicatePairs);
   const removeIgnoredDuplicatePairs = useStore((s) => s.removeIgnoredDuplicatePairs);
   const pushToast = useStore((s) => s.pushToast);
@@ -134,8 +134,8 @@ export default function DuplicateGroupsView() {
   useEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
-    node.scrollTop = savedDuplicateScrollTop;
-  }, []);
+    node.scrollTop = duplicateScrollTop;
+  }, [duplicateScrollTop]);
 
   const toggleVideoSelection = (video: Video) => {
     setSelectedIds((prev) => {
@@ -370,7 +370,7 @@ export default function DuplicateGroupsView() {
       <div
         ref={scrollRef}
         className="duplicate-groups-view"
-        onScroll={(event) => { savedDuplicateScrollTop = event.currentTarget.scrollTop; }}
+        onScroll={(event) => { setDuplicateScrollTop(event.currentTarget.scrollTop); }}
       >
         {renderToolbar()}
         <div className="duplicate-empty">
@@ -385,7 +385,7 @@ export default function DuplicateGroupsView() {
     <div
       ref={scrollRef}
       className="duplicate-groups-view"
-      onScroll={(event) => { savedDuplicateScrollTop = event.currentTarget.scrollTop; }}
+      onScroll={(event) => { setDuplicateScrollTop(event.currentTarget.scrollTop); }}
     >
       {renderToolbar()}
       {viewMode === 'rows' && renderRows()}
