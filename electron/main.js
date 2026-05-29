@@ -6,7 +6,6 @@ const { scanDirectory } = require('./scanner');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
 const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
-const { buildPermanentDeleteFallbackDialogOptions } = require('./delete-fallback-dialog');
 const log = require('./logger');
 const { autoUpdater } = require('electron-updater');
 
@@ -1941,10 +1940,16 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
     });
   }
 
-  const { response } = await dialog.showMessageBox(
-    mainWindow,
-    buildPermanentDeleteFallbackDialogOptions(failedTrash),
-  );
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: 'Recycle Bin not available',
+    message: `Recycle Bin failed for ${failedTrash.length} file(s). Do you want to permanently delete them instead?`,
+    detail: 'This action cannot be undone.',
+    buttons: ['Cancel', 'Delete Permanently'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
 
   if (response === 0) {
     const successfulPaths = new Set(results.filter((result) => result.success).map((result) => result.path));

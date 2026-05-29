@@ -63,6 +63,13 @@ The report itself stays unchanged for now. The plan also does **not** include be
 - Duration tolerance setting stays at `20%`; only the calculation base changes.
 - No benchmark suite, no VDF side-by-side automation, and no rewrite of `videocull_vs_vdf_comparison.md` in this round.
 
+## Branch Note
+
+- One extra cleanup currently remains on this branch even though it was not requested by this plan:
+  duplicate scroll position was moved from a module-level variable into store state in `src/components/DuplicateGroupsView.tsx`, `src/store.ts`, and `src/types.ts`.
+- Keep it for now.
+- If strict plan-only scope is required later, this is the first extra change to consider reverting.
+
 ## Recommended PR / Commit Order
 
 1. **Shared defaults and duration rule**
