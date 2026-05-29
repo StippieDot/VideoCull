@@ -8,6 +8,7 @@ const {
 
 const BUCKET_SIZE_SECS = 1;
 const BUCKET_ACTIVATION_THRESHOLD = 5000;
+const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 
 function compactGraySamples(rows, sampleCount) {
   const byVideo = new Map();
@@ -17,6 +18,7 @@ function compactGraySamples(rows, sampleCount) {
       index: Number(row.sample_index),
       bytes: row.gray_bytes,
       flippedBytes: null,
+      darkRatio: Number(row.frame_dark_ratio ?? 0),
     });
     byVideo.set(row.video_id, list);
   }
@@ -41,6 +43,10 @@ function getCandidateBuckets(video, settings) {
   return keys;
 }
 
+function isDarkSample(sample) {
+  return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
+}
+
 function compareSamples(a, b, settings) {
   const scores = [];
   let diffSum = 0;
@@ -49,6 +55,7 @@ function compareSamples(a, b, settings) {
     const sampleA = a.samples[i];
     const sampleB = b.samples[i];
     if (!sampleA?.bytes || !sampleB?.bytes) continue;
+    if (isDarkSample(sampleA) || isDarkSample(sampleB)) continue;
     const normalScore = rawGraySimilarity(sampleA.bytes, sampleB.bytes, settings);
     let bestScore = normalScore;
     if (settings.compareFlipped) {
@@ -62,8 +69,9 @@ function compareSamples(a, b, settings) {
     if (diffSum > maxDiffSum) return null;
   }
 
-  if (scores.length < settings.sampleCount) return null;
-  const similarity = 100 - (diffSum / settings.sampleCount);
+  if (scores.length === 0) return null;
+  if (settings.sampleCount > 1 && scores.length < 2) return null;
+  const similarity = 100 - (diffSum / scores.length);
   if (similarity < settings.finalSimilarityThreshold) return null;
   return {
     similarity,

@@ -14,10 +14,13 @@ const {
   frameDarkRatio,
   average,
   chooseSuggestedKeeper,
+  pHashSimilarity,
+  rawGraySimilarity,
 } = require('./duplicate-utils');
 
 const ONE_MIB = 1024 * 1024;
 const FRAME_BYTE_COUNT = 32 * 32;
+const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 
 function duplicateLog(message, detail) {
   if (detail === undefined) {
@@ -69,6 +72,14 @@ function groupVideosByFolder(videos) {
 
 function progress(sendProgress, stage, payload = {}) {
   sendProgress?.({ stage, ...payload });
+}
+
+function minimumUsableSamples(sampleCount) {
+  return sampleCount > 1 ? 2 : 1;
+}
+
+function isDarkSample(sample) {
+  return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
 }
 
 
@@ -351,6 +362,116 @@ function loadAllGrayRows(videos, dbByFolder, settings) {
   return rows;
 }
 
+function compactPHashSamples(rows, sampleCount) {
+  const byVideo = new Map();
+  for (const row of rows) {
+    const list = byVideo.get(row.video_id) ?? [];
+    list.push({
+      index: Number(row.sample_index),
+      hash: row.phash_hex,
+      flippedHash: row.flipped_phash_hex ?? row.phash_hex,
+      darkRatio: Number(row.frame_dark_ratio ?? 0),
+    });
+    byVideo.set(row.video_id, list);
+  }
+
+  const result = new Map();
+  for (const [videoId, samples] of byVideo) {
+    const ordered = samples.sort((a, b) => a.index - b.index).slice(0, sampleCount);
+    if (ordered.length >= sampleCount) result.set(videoId, ordered);
+  }
+  return result;
+}
+
+function compactGraySamples(rows, sampleCount) {
+  const byVideo = new Map();
+  for (const row of rows) {
+    const list = byVideo.get(row.video_id) ?? [];
+    list.push({
+      index: Number(row.sample_index),
+      bytes: row.gray_bytes,
+      darkRatio: Number(row.frame_dark_ratio ?? 0),
+    });
+    byVideo.set(row.video_id, list);
+  }
+
+  const result = new Map();
+  for (const [videoId, samples] of byVideo) {
+    const ordered = samples.sort((a, b) => a.index - b.index).slice(0, sampleCount);
+    if (ordered.length >= sampleCount) result.set(videoId, ordered);
+  }
+  return result;
+}
+
+function recomputePHashSimilarity(samplesA, samplesB, settings) {
+  const sampleScores = [];
+  for (let i = 0; i < settings.sampleCount; i++) {
+    const sampleA = samplesA[i];
+    const sampleB = samplesB[i];
+    if (!sampleA || !sampleB) return null;
+    if (isDarkSample(sampleA) || isDarkSample(sampleB)) continue;
+    const normalScore = pHashSimilarity(sampleA.hash, sampleB.hash);
+    const flippedScore = settings.compareFlipped
+      ? pHashSimilarity(sampleA.flippedHash, sampleB.hash)
+      : normalScore;
+    sampleScores.push(Math.max(normalScore, flippedScore));
+  }
+
+  if (sampleScores.length < minimumUsableSamples(settings.sampleCount)) return null;
+  if (settings.requireEverySample && sampleScores.some((score) => score < settings.finalSimilarityThreshold)) return null;
+  const similarity = average(sampleScores);
+  return similarity >= settings.finalSimilarityThreshold ? similarity : null;
+}
+
+function recomputeVisualSimilarity(samplesA, samplesB, settings) {
+  const scores = [];
+  let diffSum = 0;
+  for (let i = 0; i < settings.sampleCount; i++) {
+    const sampleA = samplesA[i];
+    const sampleB = samplesB[i];
+    if (!sampleA?.bytes || !sampleB?.bytes) return null;
+    if (isDarkSample(sampleA) || isDarkSample(sampleB)) continue;
+    const normalScore = rawGraySimilarity(sampleA.bytes, sampleB.bytes, settings);
+    const flippedScore = settings.compareFlipped
+      ? rawGraySimilarity(flipGrayBytes(sampleA.bytes), sampleB.bytes, settings)
+      : normalScore;
+    const bestScore = Math.max(normalScore, flippedScore);
+    if (settings.requireEverySample && bestScore < settings.finalSimilarityThreshold) return null;
+    scores.push(bestScore);
+    diffSum += 100 - bestScore;
+  }
+
+  if (scores.length < minimumUsableSamples(settings.sampleCount)) return null;
+  const similarity = 100 - (diffSum / scores.length);
+  return similarity >= settings.finalSimilarityThreshold ? similarity : null;
+}
+
+function createSimilarityRevalidator(settings, comparisonData = null) {
+  if (!comparisonData?.mode || !Array.isArray(comparisonData.rows)) return null;
+
+  if (comparisonData.mode === 'phash') {
+    const samplesByVideo = compactPHashSamples(comparisonData.rows, settings.sampleCount);
+    return (aId, bId) => {
+      const samplesA = samplesByVideo.get(aId);
+      const samplesB = samplesByVideo.get(bId);
+      if (!samplesA || !samplesB) return undefined;
+      return recomputePHashSimilarity(samplesA, samplesB, settings);
+    };
+  }
+
+  if (comparisonData.mode === 'visual') {
+    const samplesByVideo = compactGraySamples(comparisonData.rows, settings.sampleCount);
+    return (aId, bId) => {
+      const samplesA = samplesByVideo.get(aId);
+      const samplesB = samplesByVideo.get(bId);
+      if (!samplesA || !samplesB) return undefined;
+      return recomputeVisualSimilarity(samplesA, samplesB, settings);
+    };
+  }
+
+  return null;
+}
+
 function runPHashWorker(videos, phashRows, settings, run, sendProgress) {
   return new Promise((resolve, reject) => {
     duplicateLog('Starting pHash comparison worker', {
@@ -551,14 +672,20 @@ function splitDaisyChainIds(ids, directSimilarity, threshold) {
   return groups.length > 0 ? groups : [];
 }
 
-function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold) {
+function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold, revalidateSimilarity = null) {
   const splitGroups = [];
   let groupsSplit = 0;
   let removedSingletons = 0;
 
   for (const candidate of candidateGroups) {
     const ids = Array.from(candidate.ids);
-    const splitIds = splitDaisyChainIds(ids, directSimilarity, threshold);
+    const similarityForValidation = ids.length >= 3 && revalidateSimilarity
+      ? (aId, bId) => {
+          const recomputed = revalidateSimilarity(aId, bId);
+          return recomputed === undefined ? directSimilarity(aId, bId) : recomputed;
+        }
+      : directSimilarity;
+    const splitIds = splitDaisyChainIds(ids, similarityForValidation, threshold);
     if (splitIds.length === 1 && splitIds[0].length === ids.length) {
       splitGroups.push(candidate);
       continue;
@@ -580,7 +707,7 @@ function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold) {
   return { groups: splitGroups, stats: { groupsSplit, removedSingletons } };
 }
 
-function buildGroups(exactGroups, matchedPairs, videosById, settings) {
+function buildGroups(exactGroups, matchedPairs, videosById, settings, options = {}) {
   const ignoredPairKeys = new Set(settings.ignoredDuplicatePairs ?? []);
   const isIgnoredPair = (aId, bId) => ignoredPairKeys.has(storedPairKey(aId, bId));
   const exactPairKeys = new Set();
@@ -671,6 +798,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings) {
     candidateGroups,
     directSimilarity,
     settings.finalSimilarityThreshold,
+    options.revalidateSimilarity ?? null,
   );
   if (daisyChainStats.groupsSplit > 0 || daisyChainStats.removedSingletons > 0) {
     duplicateLog('Daisy-chain validation complete', daisyChainStats);
@@ -782,8 +910,10 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
   await backfillFingerprints(safeVideos, dbByFolder, settings, run, sendProgress, maxConcurrency);
   assertNotCancelled(run);
   let similarityPairs = [];
+  let comparisonData = null;
   if (settings.comparisonMode === 'phash') {
     const phashRows = loadAllPHashes(safeVideos, dbByFolder, settings);
+    comparisonData = { mode: 'phash', rows: phashRows };
     const expectedRows = safeVideos.length * settings.sampleCount;
     duplicateLog('pHash rows loaded', {
       rows: phashRows.length,
@@ -800,12 +930,15 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
   } else {
     assertNotCancelled(run);
     const grayRows = loadAllGrayRows(safeVideos, dbByFolder, settings);
+    comparisonData = { mode: 'visual', rows: grayRows };
     duplicateLog('Gray sample rows loaded', { rows: grayRows.length });
     similarityPairs = await runVisualWorker(safeVideos, grayRows, settings, run, sendProgress);
   }
   assertNotCancelled(run);
   progress(sendProgress, 'Building groups', { current: 0, total: 1 });
-  const groups = buildGroups(exactGroups, similarityPairs, videosById, settings);
+  const groups = buildGroups(exactGroups, similarityPairs, videosById, settings, {
+    revalidateSimilarity: createSimilarityRevalidator(settings, comparisonData),
+  });
   progress(sendProgress, 'Building groups', { current: 1, total: 1 });
   const result = {
     groups,

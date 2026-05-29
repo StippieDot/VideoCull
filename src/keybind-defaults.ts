@@ -53,7 +53,7 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   customEndPercent: 100,
   finalSimilarityThreshold: 95,
   durationTolerancePercent: 20,
-  requireEverySample: false,
+  requireEverySample: true,
   ignoreBlackPixels: false,
   ignoreWhitePixels: false,
   compareFlipped: false,

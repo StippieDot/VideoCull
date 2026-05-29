@@ -10,6 +10,7 @@ const {
   rawGraySimilarity,
   average,
   normalizeDuplicateSettings,
+  durationsWithinTolerance,
   chooseSuggestedKeeper,
 } = require('./duplicate-utils');
 
@@ -45,7 +46,19 @@ test('default settings follow the simplified VDF-style model', () => {
   assert.equal(settings.comparisonMode, 'visual');
   assert.equal(settings.durationTolerancePercent, 20);
   assert.equal(settings.checkpointIntervalMinutes, 5);
-  assert.equal(settings.requireEverySample, false);
+  assert.equal(settings.requireEverySample, true);
+});
+
+test('duration tolerance uses the shorter video as the percentage base', () => {
+  const settings = normalizeDuplicateSettings({ durationTolerancePercent: 20 });
+  assert.equal(
+    durationsWithinTolerance({ durationSecs: 60 }, { durationSecs: 48 }, settings),
+    false,
+  );
+  assert.equal(
+    durationsWithinTolerance({ durationSecs: 60 }, { durationSecs: 50 }, settings),
+    true,
+  );
 });
 
 test('users can choose comparison method and similarity directly', () => {

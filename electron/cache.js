@@ -743,7 +743,7 @@ function loadPHashRows(db, videoIds, sampleCount) {
   if (!videoIds.length) return [];
   const rows = [];
   const query = db.prepare(`
-    SELECT video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex
+    SELECT video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, frame_dark_ratio
     FROM video_fingerprints
     WHERE video_id = ?
     ORDER BY sample_index
@@ -770,7 +770,7 @@ function loadGraySampleRows(db, videoIds, sampleCount) {
   if (!videoIds.length) return [];
   const rows = [];
   const query = db.prepare(`
-    SELECT video_id, sample_index, gray_bytes
+    SELECT video_id, sample_index, gray_bytes, frame_dark_ratio
     FROM video_fingerprints
     WHERE video_id = ?
     ORDER BY sample_index

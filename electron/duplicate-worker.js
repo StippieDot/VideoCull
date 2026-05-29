@@ -8,6 +8,7 @@ const {
 } = require('./duplicate-utils');
 
 const BUCKET_SIZE_SECS = 1;
+const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 
 function compactSamples(rows, sampleCount) {
   const byVideo = new Map();
@@ -18,6 +19,7 @@ function compactSamples(rows, sampleCount) {
       timestampSecs: Number(row.timestamp_secs),
       hash: parsePHashHex(row.phash_hex),
       flippedHash: parsePHashHex(row.flipped_phash_hex ?? row.phash_hex),
+      darkRatio: Number(row.frame_dark_ratio ?? 0),
     });
     byVideo.set(row.video_id, list);
   }
@@ -45,6 +47,10 @@ function getCandidateBucketKeys(video, settings) {
   const keys = [];
   for (let key = minKey; key <= maxKey; key++) keys.push(key);
   return keys;
+}
+
+function isDarkSample(sample) {
+  return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
 }
 
 function comparePHashes() {
@@ -77,12 +83,15 @@ function comparePHashes() {
     if (!durationsWithinTolerance(a, b, settings)) return;
     const sampleScores = [];
     for (let k = 0; k < settings.sampleCount; k++) {
+      if (isDarkSample(a.samples[k]) || isDarkSample(b.samples[k])) continue;
       const normalScore = pHashSimilarity(a.samples[k].hash, b.samples[k].hash);
       const flippedScore = settings.compareFlipped
         ? pHashSimilarity(a.samples[k].flippedHash, b.samples[k].hash)
         : normalScore;
       sampleScores.push(Math.max(normalScore, flippedScore));
     }
+    if (sampleScores.length === 0) return;
+    if (settings.sampleCount > 1 && sampleScores.length < 2) return;
     const similarity = average(sampleScores);
     const samplesMeetThreshold = !settings.requireEverySample || sampleScores.every((score) => score >= settings.finalSimilarityThreshold);
     if (similarity >= settings.finalSimilarityThreshold && samplesMeetThreshold) {

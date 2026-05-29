@@ -62,3 +62,55 @@ test('unknown-duration videos ARE compared against each other', async () => {
   assert.equal(result.pairs[0].aId, 'unknownA');
   assert.equal(result.pairs[0].bId, 'unknownB');
 });
+
+test('dark pHash samples are skipped when enough usable samples remain', async () => {
+  const result = await runWorker({
+    videos: [
+      { id: 'a', durationSecs: 100 },
+      { id: 'b', durationSecs: 100 },
+    ],
+    phashRows: [
+      { video_id: 'a', sample_index: 0, timestamp_secs: 25, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'a', sample_index: 1, timestamp_secs: 50, phash_hex: '0000000000000000', frame_dark_ratio: 0.9 },
+      { video_id: 'a', sample_index: 2, timestamp_secs: 75, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'b', sample_index: 0, timestamp_secs: 25, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'b', sample_index: 1, timestamp_secs: 50, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'b', sample_index: 2, timestamp_secs: 75, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    ],
+    settings: {
+      sampleCount: 3,
+      comparisonMode: 'phash',
+      finalSimilarityThreshold: 95,
+      durationTolerancePercent: 20,
+      requireEverySample: true,
+    },
+  });
+
+  assert.equal(result.pairs.length, 1, 'dark sample should be ignored instead of forcing a mismatch');
+});
+
+test('pHash match fails when dark-sample filtering leaves fewer than two usable samples', async () => {
+  const result = await runWorker({
+    videos: [
+      { id: 'a', durationSecs: 100 },
+      { id: 'b', durationSecs: 100 },
+    ],
+    phashRows: [
+      { video_id: 'a', sample_index: 0, timestamp_secs: 25, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.9 },
+      { video_id: 'a', sample_index: 1, timestamp_secs: 50, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'a', sample_index: 2, timestamp_secs: 75, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.9 },
+      { video_id: 'b', sample_index: 0, timestamp_secs: 25, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'b', sample_index: 1, timestamp_secs: 50, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'b', sample_index: 2, timestamp_secs: 75, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    ],
+    settings: {
+      sampleCount: 3,
+      comparisonMode: 'phash',
+      finalSimilarityThreshold: 95,
+      durationTolerancePercent: 20,
+      requireEverySample: true,
+    },
+  });
+
+  assert.equal(result.pairs.length, 0, 'matching should fail when only one usable sample remains');
+});

@@ -257,7 +257,7 @@ export default function DuplicateGroupsView() {
         </button>
         <button className="duplicate-action-btn" onClick={markSelectedDuplicates} disabled={selectedCount === 0}>
           <Trash2 size={14} />
-          Mark selected{selectedCount > 0 ? ` (${selectedCount})` : ''}
+          Mark selected for deletion{selectedCount > 0 ? ` (${selectedCount})` : ''}
         </button>
       </div>
     </div>
@@ -266,9 +266,13 @@ export default function DuplicateGroupsView() {
   const renderGroupHeader = (group: DuplicateGroup) => (
     <div className="duplicate-group-header">
       <div className="duplicate-group-title">
+        <span className={`duplicate-match-badge ${group.matchType === 'exact' ? 'exact' : 'potential'}`}>
+          {group.matchType === 'exact' ? 'Exact matches' : 'Potential duplicates'}
+        </span>
         <strong>{group.similarity.toFixed(1)}%</strong>
         <em>{group.videoIds.length} videos</em>
         <em>{formatSize(groupTotalSize(group, videosById))}</em>
+        <em>{group.reason}</em>
       </div>
       <button className="duplicate-group-dismiss-btn" onClick={() => dismissGroup(group)}>
         <Ban size={13} />

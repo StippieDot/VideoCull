@@ -15,7 +15,7 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   customEndPercent: 100,
   finalSimilarityThreshold: 95,
   durationTolerancePercent: 20,
-  requireEverySample: false,
+  requireEverySample: true,
   ignoreBlackPixels: false,
   ignoreWhitePixels: false,
   compareFlipped: false,
@@ -225,7 +225,7 @@ function durationsWithinTolerance(a, b, settings) {
   const durationB = Number(b.durationSecs ?? 0);
   if (durationA <= 0 || durationB <= 0) return true;
   const diff = Math.abs(durationA - durationB);
-  const percentAllowance = Math.max(durationA, durationB) * ((settings.durationTolerancePercent ?? 2) / 100);
+  const percentAllowance = Math.min(durationA, durationB) * ((settings.durationTolerancePercent ?? 2) / 100);
   return diff <= percentAllowance;
 }
 

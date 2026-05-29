@@ -128,10 +128,32 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
   border: 0;
   background: transparent;
   color: var(--text-primary);
   padding: 0;
+}
+
+.duplicate-match-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.duplicate-match-badge.exact {
+  background: rgba(71, 176, 120, 0.14);
+  color: #79d89e;
+}
+
+.duplicate-match-badge.potential {
+  background: rgba(244, 184, 78, 0.15);
+  color: #f2c46a;
 }
 
 .duplicate-group-title strong {

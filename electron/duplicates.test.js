@@ -35,3 +35,25 @@ test('daisy-chain validation splits weak connected duplicate groups', () => {
   assert.equal(groups.length, 2);
   assert.deepEqual(groupedIds, [['a', 'b'], ['c', 'd']]);
 });
+
+test('daisy-chain cleanup can drop weak members after similarity is recomputed', () => {
+  const videos = ['a', 'b', 'c'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const matchedPairs = [
+    { aId: 'a', bId: 'b', similarity: 96, matchType: 'phash' },
+    { aId: 'a', bId: 'c', similarity: 96, matchType: 'phash' },
+    { aId: 'b', bId: 'c', similarity: 96, matchType: 'phash' },
+  ];
+
+  const groups = __test__.buildGroups([], matchedPairs, videosById, settings, {
+    revalidateSimilarity(aId, bId) {
+      const key = [aId, bId].toSorted().join('|');
+      if (key === 'a|b') return 96;
+      return 80;
+    },
+  });
+
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].videoIds.toSorted(), ['a', 'b']);
+});
