@@ -8,6 +8,7 @@ import type {
 } from './types';
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, pruneRecentDirectories } from './keybind-defaults';
 import { recordDevPerf } from './perf-dev';
+import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
 
 function thumbnailIndex(filePath: string): number | null {
   const basename = filePath.split(/[\\/]/).pop() ?? filePath;
@@ -147,6 +148,15 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
   return filtered;
 }
 
+function arraysEqual<T>(a: T[], b: T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 function computeStats(videos: Video[]): VideoStats {
   const startedAt = import.meta.env.DEV ? performance.now() : 0;
   const stats = {
@@ -160,6 +170,45 @@ function computeStats(videos: Video[]): VideoStats {
   };
   recordDevPerf('computeStats', performance.now() - startedAt, { items: videos.length });
   return stats;
+}
+
+type VideoStateUpdateOptions = {
+  duplicateFilter?: boolean;
+  duplicateGroups?: DuplicateGroup[];
+  duplicateGroupsMode?: boolean;
+  recomputeStats?: boolean;
+  reviewIndex?: number;
+  undoStack?: UndoEntry[];
+};
+
+function buildVideoStateUpdate(
+  currentState: VideoStore,
+  videos: Video[],
+  changedFields: Iterable<InvalidationField>,
+  options: VideoStateUpdateOptions = {}
+) {
+  const nextState = {
+    ...currentState,
+    videos,
+    duplicateFilter: options.duplicateFilter ?? currentState.duplicateFilter,
+    duplicateGroups: options.duplicateGroups ?? currentState.duplicateGroups,
+    duplicateGroupsMode: options.duplicateGroupsMode ?? currentState.duplicateGroupsMode,
+  };
+
+  const filteredVideos = changeAffectsCurrentView(changedFields, nextState)
+    ? computeFiltered(nextState)
+    : patchFilteredVideosPreservingOrder(currentState.filteredVideos, videos);
+
+  return {
+    videos,
+    filteredVideos,
+    ...(options.duplicateFilter !== undefined ? { duplicateFilter: options.duplicateFilter } : {}),
+    ...(options.duplicateGroups !== undefined ? { duplicateGroups: options.duplicateGroups } : {}),
+    ...(options.duplicateGroupsMode !== undefined ? { duplicateGroupsMode: options.duplicateGroupsMode } : {}),
+    ...(options.undoStack !== undefined ? { undoStack: options.undoStack } : {}),
+    ...(options.reviewIndex !== undefined ? { reviewIndex: options.reviewIndex } : {}),
+    ...(options.recomputeStats ? { stats: computeStats(videos) } : {}),
+  };
 }
 
 function duplicatePairKey(aId: string, bId: string): string {
@@ -861,45 +910,73 @@ const useStore = create<VideoStore>((set, get) => ({
 
   updateVideoThumbnailsBatch: (batch) => {
     const startedAt = import.meta.env.DEV ? performance.now() : 0;
-    const videos = [...get().videos];
+    const stateBefore = get();
+    const videos = [...stateBefore.videos];
     const indexById = new Map(videos.map((video, index) => [video.id, index]));
     let changed = false;
+    const changedFields = new Set<InvalidationField>();
     const videosToPersist = new Map<string, Video>();
     for (const item of batch) {
       const vIdx = indexById.get(item.videoId);
       if (vIdx === undefined) continue;
 
-      videos[vIdx] = {
-        ...videos[vIdx],
-        thumbnails: item.thumbnails ? orderedThumbnails(item.thumbnails) : videos[vIdx].thumbnails,
-        durationSecs: item.durationSecs ?? videos[vIdx].durationSecs,
-        metadataDate: item.metadataDate ?? videos[vIdx].metadataDate,
-        videoCodec: item.videoCodec ?? videos[vIdx].videoCodec,
-        audioCodec: item.audioCodec ?? videos[vIdx].audioCodec,
-        videoBitrate: item.videoBitrate ?? videos[vIdx].videoBitrate,
-        audioBitrate: item.audioBitrate ?? videos[vIdx].audioBitrate,
-        totalBitrate: item.totalBitrate ?? videos[vIdx].totalBitrate,
-        metadataCheckedAt: item.metadataCheckedAt ?? videos[vIdx].metadataCheckedAt,
-        metadataVersion: item.metadataVersion ?? videos[vIdx].metadataVersion,
-        metadataFailedAt: item.metadataFailedAt ?? videos[vIdx].metadataFailedAt,
-        metadataFailureReason: item.metadataFailureReason ?? videos[vIdx].metadataFailureReason,
-        containerFormat: item.containerFormat ?? videos[vIdx].containerFormat,
-        width: item.width ?? videos[vIdx].width,
-        height: item.height ?? videos[vIdx].height,
-        fps: item.fps ?? videos[vIdx].fps,
-        compatible: item.compatible ?? videos[vIdx].compatible,
+      const previousVideo = videos[vIdx];
+      const nextVideo: Video = {
+        ...previousVideo,
+        thumbnails: item.thumbnails ? orderedThumbnails(item.thumbnails) : previousVideo.thumbnails,
+        durationSecs: item.durationSecs ?? previousVideo.durationSecs,
+        metadataDate: item.metadataDate ?? previousVideo.metadataDate,
+        videoCodec: item.videoCodec ?? previousVideo.videoCodec,
+        audioCodec: item.audioCodec ?? previousVideo.audioCodec,
+        videoBitrate: item.videoBitrate ?? previousVideo.videoBitrate,
+        audioBitrate: item.audioBitrate ?? previousVideo.audioBitrate,
+        totalBitrate: item.totalBitrate ?? previousVideo.totalBitrate,
+        metadataCheckedAt: item.metadataCheckedAt ?? previousVideo.metadataCheckedAt,
+        metadataVersion: item.metadataVersion ?? previousVideo.metadataVersion,
+        metadataFailedAt: item.metadataFailedAt ?? previousVideo.metadataFailedAt,
+        metadataFailureReason: item.metadataFailureReason ?? previousVideo.metadataFailureReason,
+        containerFormat: item.containerFormat ?? previousVideo.containerFormat,
+        width: item.width ?? previousVideo.width,
+        height: item.height ?? previousVideo.height,
+        fps: item.fps ?? previousVideo.fps,
+        compatible: item.compatible ?? previousVideo.compatible,
       };
-      if (item.thumbnails) {
-        videosToPersist.set(item.videoId, videos[vIdx]);
+
+      const changedThumbnails = !arraysEqual(previousVideo.thumbnails, nextVideo.thumbnails);
+      const changedDuration = previousVideo.durationSecs !== nextVideo.durationSecs;
+      const changedMetadataDate = previousVideo.metadataDate !== nextVideo.metadataDate;
+      const changedResolution = previousVideo.width !== nextVideo.width || previousVideo.height !== nextVideo.height;
+      const changedFps = previousVideo.fps !== nextVideo.fps;
+      const changedCompatibility = previousVideo.compatible !== nextVideo.compatible;
+      const changedMetadata =
+        previousVideo.videoCodec !== nextVideo.videoCodec ||
+        previousVideo.audioCodec !== nextVideo.audioCodec ||
+        previousVideo.videoBitrate !== nextVideo.videoBitrate ||
+        previousVideo.audioBitrate !== nextVideo.audioBitrate ||
+        previousVideo.totalBitrate !== nextVideo.totalBitrate ||
+        previousVideo.metadataCheckedAt !== nextVideo.metadataCheckedAt ||
+        previousVideo.metadataVersion !== nextVideo.metadataVersion ||
+        previousVideo.metadataFailedAt !== nextVideo.metadataFailedAt ||
+        previousVideo.metadataFailureReason !== nextVideo.metadataFailureReason ||
+        previousVideo.containerFormat !== nextVideo.containerFormat;
+
+      if (!changedThumbnails && !changedDuration && !changedMetadataDate && !changedResolution && !changedFps && !changedCompatibility && !changedMetadata) {
+        continue;
       }
+
+      if (changedThumbnails) changedFields.add('thumbnails');
+      if (changedDuration) changedFields.add('duration');
+      if (changedMetadataDate) changedFields.add('metadataDate');
+      if (changedResolution) changedFields.add('resolution');
+      if (changedFps) changedFields.add('fps');
+      if (changedCompatibility) changedFields.add('compatible');
+
+      videos[vIdx] = nextVideo;
+      if (item.thumbnails) videosToPersist.set(item.videoId, nextVideo);
       changed = true;
     }
     if (!changed) return;
-    const state = { ...get(), videos };
-    set({
-      videos,
-      filteredVideos: computeFiltered(state),
-    });
+    set(buildVideoStateUpdate(stateBefore, videos, changedFields));
 
     const stateNow = get();
     if (videosToPersist.size > 0) {
@@ -909,28 +986,26 @@ const useStore = create<VideoStore>((set, get) => ({
   },
 
   setVideoStatus: (videoId: string, status: VideoStatus) => {
-    const prev = get().videos.find((v) => v.id === videoId);
+    const stateBefore = get();
+    const prev = stateBefore.videos.find((v) => v.id === videoId);
     if (!prev) return;
     if (prev.status === status) return;
 
     const undoEntry: UndoEntry = {
       videoId,
       previousStatus: prev.status,
-      previousIndex: get().reviewIndex,
+      previousIndex: stateBefore.reviewIndex,
     };
-    const undoStack = [...get().undoStack, undoEntry];
+    const undoStack = [...stateBefore.undoStack, undoEntry];
 
-    const videos = get().videos.map((v) =>
+    const videos = stateBefore.videos.map((v) =>
       v.id === videoId ? { ...v, status } : v
     );
-    const state = { ...get(), videos };
     const updatedVideo = videos.find((v) => v.id === videoId);
-    set({
-      videos,
-      filteredVideos: computeFiltered(state),
-      stats: computeStats(videos),
+    set(buildVideoStateUpdate(stateBefore, videos, ['status'], {
+      recomputeStats: true,
       undoStack,
-    });
+    }));
 
     const stateNow = get();
     persistChangedVideos(stateNow.directory, stateNow.directories, updatedVideo ? [updatedVideo] : []);
@@ -938,11 +1013,12 @@ const useStore = create<VideoStore>((set, get) => ({
 
   setVideoStatusesBatch: (videoIds: string[], status: VideoStatus) => {
     if (videoIds.length === 0) return;
+    const stateBefore = get();
     const targetIds = new Set(videoIds);
     const previousStatuses: Record<string, VideoStatus> = {};
     let changed = false;
 
-    const videos = get().videos.map((video) => {
+    const videos = stateBefore.videos.map((video) => {
       if (!targetIds.has(video.id) || video.status === status) return video;
       previousStatuses[video.id] = video.status;
       changed = true;
@@ -956,58 +1032,56 @@ const useStore = create<VideoStore>((set, get) => ({
     const undoEntry: UndoEntry = {
       videoId: videoIds[0],
       previousStatus: previousStatuses[videoIds[0]] ?? status,
-      previousIndex: get().reviewIndex,
+      previousIndex: stateBefore.reviewIndex,
       videoIds: Object.keys(previousStatuses),
       previousStatuses,
     };
 
-    const state = { ...get(), videos };
-    const undoStack = [...get().undoStack, undoEntry];
-    set({
-      videos,
-      filteredVideos: computeFiltered(state),
-      stats: computeStats(videos),
+    const undoStack = [...stateBefore.undoStack, undoEntry];
+    set(buildVideoStateUpdate(stateBefore, videos, ['status'], {
+      recomputeStats: true,
       undoStack,
-    });
+    }));
 
     const stateNow = get();
     persistChangedVideosAtomic(stateNow.directory, stateNow.directories, changedVideos);
   },
 
   setVideoRating: (videoId, rating) => {
+    const stateBefore = get();
     let updatedVideo: Video | null = null;
-    const videos = get().videos.map((video) => {
+    const videos = stateBefore.videos.map((video) => {
       if (video.id !== videoId || video.rating === rating) return video;
       updatedVideo = { ...video, rating };
       return updatedVideo;
     });
     if (!updatedVideo) return;
-    const state = { ...get(), videos };
-    set({ videos, filteredVideos: computeFiltered(state) });
+    set(buildVideoStateUpdate(stateBefore, videos, ['rating']));
     const stateNow = get();
     persistChangedVideos(stateNow.directory, stateNow.directories, [updatedVideo]);
   },
 
   toggleFavorite: (videoId) => {
+    const stateBefore = get();
     let updatedVideo: Video | null = null;
-    const videos = get().videos.map((video) => {
+    const videos = stateBefore.videos.map((video) => {
       if (video.id !== videoId) return video;
       updatedVideo = { ...video, favorite: !video.favorite };
       return updatedVideo;
     });
     if (!updatedVideo) return;
-    const state = { ...get(), videos };
-    set({ videos, filteredVideos: computeFiltered(state) });
+    set(buildVideoStateUpdate(stateBefore, videos, ['favorite']));
     const stateNow = get();
     persistChangedVideos(stateNow.directory, stateNow.directories, [updatedVideo]);
   },
 
   undo: () => {
-    const stack = [...get().undoStack];
+    const stateBefore = get();
+    const stack = [...stateBefore.undoStack];
     if (stack.length === 0) return;
     const action = stack.pop()!;
 
-    const videos = get().videos.map((v) => {
+    const videos = stateBefore.videos.map((v) => {
       if (action.videoIds && action.previousStatuses && action.videoIds.includes(v.id)) {
         return { ...v, status: action.previousStatuses[v.id] ?? v.status };
       }
@@ -1016,15 +1090,12 @@ const useStore = create<VideoStore>((set, get) => ({
       }
       return v;
     });
-    const state = { ...get(), videos };
     const restoredVideos = action.videoIds ? videos.filter((v) => action.videoIds?.includes(v.id)) : videos.filter((v) => v.id === action.videoId);
-    set({
-      videos,
-      filteredVideos: computeFiltered(state),
-      stats: computeStats(videos),
-      undoStack: stack,
+    set(buildVideoStateUpdate(stateBefore, videos, ['status'], {
+      recomputeStats: true,
       reviewIndex: action.previousIndex,
-    });
+      undoStack: stack,
+    }));
 
     const stateNow = get();
     persistChangedVideos(stateNow.directory, stateNow.directories, restoredVideos);
@@ -1139,30 +1210,26 @@ const useStore = create<VideoStore>((set, get) => ({
   setActiveReviewVideoPath: (activeReviewVideoPath: string | null) => set({ activeReviewVideoPath }),
   setDuplicateGroupsMode: (duplicateGroupsMode: boolean) => set({ duplicateGroupsMode }),
   setDuplicateGroups: (duplicateGroups) => {
-    const groupsWithKeepers = applyKeeperOrderToGroups(duplicateGroups, get().videos, get().settings.duplicates.keeperOrder);
-    const videos = applyDuplicateGroupsToVideos(get().videos, groupsWithKeepers);
-    const state = { ...get(), videos };
-    set({
-      videos,
-      filteredVideos: computeFiltered(state),
+    const stateBefore = get();
+    const groupsWithKeepers = applyKeeperOrderToGroups(duplicateGroups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder);
+    const videos = applyDuplicateGroupsToVideos(stateBefore.videos, groupsWithKeepers);
+    set(buildVideoStateUpdate(stateBefore, videos, ['duplicate'], {
       duplicateGroups: groupsWithKeepers,
       duplicateGroupsMode: groupsWithKeepers.length > 0,
-    });
+    }));
   },
   applyDuplicateResult: (result) => {
+    const stateBefore = get();
     const groupsWithKeepers = result.groups
-      ? applyKeeperOrderToGroups(result.groups, get().videos, get().settings.duplicates.keeperOrder)
+      ? applyKeeperOrderToGroups(result.groups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder)
       : [];
     const videos = result.groups
-      ? applyDuplicateGroupsToVideos(get().videos, groupsWithKeepers)
-      : applyDuplicateGroupsToVideos(get().videos, []);
-    const state = { ...get(), videos };
-    set({
-      videos,
-      filteredVideos: computeFiltered(state),
+      ? applyDuplicateGroupsToVideos(stateBefore.videos, groupsWithKeepers)
+      : applyDuplicateGroupsToVideos(stateBefore.videos, []);
+    set(buildVideoStateUpdate(stateBefore, videos, ['duplicate'], {
       duplicateGroups: groupsWithKeepers,
       duplicateGroupsMode: groupsWithKeepers.length > 0,
-    });
+    }));
   },
   addIgnoredDuplicatePairs: (pairKeys) => {
     const normalized = pairKeys
