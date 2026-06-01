@@ -87,6 +87,42 @@ test('daisy-chain cleanup uses recomputed similarity for retained group scores',
   assert.equal(groups[0].similarity, 95.3);
 });
 
+test('multi-frame extraction args reuse one ffmpeg command for all timestamps', () => {
+  const args = __test__.buildGrayFramesExtractionArgs('D:\\videos\\clip.mp4', [10, 25.5, 90]);
+
+  assert.equal(args.filter((value) => value === '-i').length, 3);
+  assert.equal(args.filter((value) => value === '-ss').length, 3);
+  assert.ok(args.includes('-threads'));
+  assert.ok(args.includes('1'));
+  assert.ok(args.includes('-filter_complex'));
+  assert.ok(args.includes('pipe:1'));
+  assert.ok(args.some((value) => typeof value === 'string' && value.includes('concat=n=3:v=1:a=0[out]')));
+});
+
+test('multi-frame extraction args can disable ffmpeg thread limiting', () => {
+  const args = __test__.buildGrayFramesExtractionArgs('D:\\videos\\clip.mp4', [10, 25.5, 90], {
+    cpuThreadsLimited: false,
+  });
+
+  assert.equal(args.includes('-threads'), false);
+});
+
+test('fingerprint building skips flipped hashes unless compareFlipped is enabled', () => {
+  const grayFrame = Buffer.alloc(32 * 32, 128);
+  const timestamps = [12.5];
+
+  const withoutFlipped = __test__.buildFingerprintsFromGrayFrames([grayFrame], timestamps, {
+    compareFlipped: false,
+  });
+  assert.equal(withoutFlipped[0].flippedPHashHex, null);
+
+  const withFlipped = __test__.buildFingerprintsFromGrayFrames([grayFrame], timestamps, {
+    compareFlipped: true,
+  });
+  assert.equal(typeof withFlipped[0].flippedPHashHex, 'string');
+  assert.ok(withFlipped[0].flippedPHashHex.length > 0);
+});
+
 test('exact duplicate pass stops before cache writes after cancellation', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-duplicates-'));
   const folder = path.join(tempRoot, 'videos');

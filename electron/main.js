@@ -24,6 +24,7 @@ let menuBarHiddenForVideoFullscreen = false;
 let scanGeneration = 0;
 let updateReadyToInstall = false;
 let activeDuplicateRun = null;
+const RESPONSIVE_SCAN_YIELD_MS = 16;
 const ALLOWED_EXTERNAL_URLS = new Set([
   'https://github.com/stippie-dot/VideoCull',
   'https://github.com/stippie-dot/VideoCull/releases',
@@ -752,6 +753,15 @@ function loadCacheMapWithAbsoluteThumbs(db, cacheRootDir) {
   return map;
 }
 
+function createEventLoopYieldController(maxBlockMs = RESPONSIVE_SCAN_YIELD_MS) {
+  let lastYieldAt = Date.now();
+  return async () => {
+    if (Date.now() - lastYieldAt < maxBlockMs) return;
+    lastYieldAt = Date.now();
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+}
+
 async function openCacheDbWithRecovery(folderPath, cacheOptions) {
   try {
     return cache.openDb(folderPath, cacheOptions);
@@ -838,6 +848,7 @@ async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false, 
 async function loadOwnerFolderCachesIntoMap(videos, rootDirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots, loadedCacheFolderKeys = new Set()) {
   const scannedIds = new Set(videos.map((video) => video.id));
   const ownerFolders = collectUnloadedOwnerFolders(videos, rootDirPath, loadedCacheFolderKeys);
+  const yieldToEventLoop = createEventLoopYieldController();
 
   for (const ownerFolder of ownerFolders) {
     try {
@@ -849,6 +860,7 @@ async function loadOwnerFolderCachesIntoMap(videos, rootDirPath, cacheOptions, c
       // Owner-folder caches are the canonical location after P3. Let them win
       // over stale parent rows if both exist.
       mergeCacheMap(cachedMap, ownerMap, scannedIds, { overwrite: true });
+      await yieldToEventLoop();
     } catch (err) {
       if (err instanceof ScanSupersededError) throw err;
       log.warn(`[scan-directory] Failed to load owner cache for ${ownerFolder}:`, err);
@@ -859,6 +871,7 @@ async function loadOwnerFolderCachesIntoMap(videos, rootDirPath, cacheOptions, c
 async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOptions, parentCacheRootDir, scanToken = null, scanCacheRoots = null) {
   const cachedVideos = cache.loadCacheVideos(parentDb);
   const byTargetFolder = new Map();
+  const yieldToEventLoop = createEventLoopYieldController();
 
   for (const cached of cachedVideos) {
     if (!cached.path) continue;
@@ -876,6 +889,7 @@ async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOpti
     const group = byTargetFolder.get(targetFolder) ?? [];
     group.push(video);
     byTargetFolder.set(targetFolder, group);
+    await yieldToEventLoop();
   }
 
   if (byTargetFolder.size === 0) return;
@@ -894,6 +908,7 @@ async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOpti
     cache.saveCache(targetDb, videos.map((video) => videoForDb(video, targetPaths.cacheRootDir)));
     cache.deleteVideosByIds(parentDb, videos.map((video) => video.id));
     movedCount += videos.length;
+    await yieldToEventLoop();
   }
 
   log.info(`[cache] Split ${movedCount} descendant cached video rows out of ${parentFolder}`);
@@ -1371,6 +1386,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   let knownCacheFolders = await getKnownCacheFolders();
   assertScanCurrent(scanToken);
   const parentCacheFolders = knownCacheFolders.filter((folderPath) => isFolderInsideSync(dirPath, folderPath));
+  const yieldToEventLoop = createEventLoopYieldController();
   for (const parentFolder of parentCacheFolders) {
     try {
       assertScanCurrent(scanToken);
@@ -1379,6 +1395,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
       const parentDb = await openCacheDbWithRecovery(parentFolder, cacheOptions);
       await splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOptions, parentPaths.cacheRootDir, scanToken, scanCacheRoots);
       assertScanCurrent(scanToken);
+      await yieldToEventLoop();
     } catch (err) {
       if (err instanceof ScanSupersededError) throw err;
       log.warn(`[scan-directory] Failed to split parent cache for ${parentFolder}:`, err);
@@ -1401,6 +1418,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
       mergeCacheMap(cachedMap, childMap);
       rememberFolder(loadedCacheFolderKeys, childFolder);
       assertScanCurrent(scanToken);
+      await yieldToEventLoop();
     } catch (err) {
       if (err instanceof ScanSupersededError) throw err;
       log.warn(`[scan-directory] Failed to reuse subfolder cache for ${childFolder}:`, err);
@@ -1455,10 +1473,11 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
 
   // Merge with cache: preserve status, thumbnails, bookmarks from SQLite.
   // Thumbnail paths are resolved to absolute here so the renderer can use them directly.
-  const merged = videos.map((v) => {
+  const merged = [];
+  for (const v of videos) {
     const cached = cachedMap.get(v.id);
     if (cached) {
-      return {
+      merged.push({
         ...v,
         status: cached.status,
         durationSecs: cached.durationSecs ?? v.durationSecs,
@@ -1482,32 +1501,34 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
         height: cached.height ?? null,
         fps: cached.fps ?? null,
         compatible: detectCompatibility(cached.containerFormat ?? null, cached.videoCodec ?? null, v.path),
-      };
+      });
+    } else {
+      merged.push({
+        ...v,
+        status: 'pending',
+        thumbnails: [],
+        metadataDate: null,
+        bookmarks: [],
+        rating: 0,
+        favorite: false,
+        compatible: detectCompatibility(null, null, v.path),
+        videoCodec: null,
+        audioCodec: null,
+        videoBitrate: null,
+        audioBitrate: null,
+        totalBitrate: null,
+        metadataCheckedAt: null,
+        metadataVersion: null,
+        metadataFailedAt: null,
+        metadataFailureReason: null,
+        containerFormat: null,
+        width: null,
+        height: null,
+        fps: null,
+      });
     }
-    return {
-      ...v,
-      status: 'pending',
-      thumbnails: [],
-      metadataDate: null,
-      bookmarks: [],
-      rating: 0,
-      favorite: false,
-      compatible: detectCompatibility(null, null, v.path),
-      videoCodec: null,
-      audioCodec: null,
-      videoBitrate: null,
-      audioBitrate: null,
-      totalBitrate: null,
-      metadataCheckedAt: null,
-      metadataVersion: null,
-      metadataFailedAt: null,
-      metadataFailureReason: null,
-      containerFormat: null,
-      width: null,
-      height: null,
-      fps: null,
-    };
-  });
+    await yieldToEventLoop();
+  }
 
   // Persist each video to the cache owned by its immediate parent folder.
   await saveVideosByParentFolder(merged, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
@@ -1800,14 +1821,20 @@ ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
   }
 
   const cacheOptions = await getCacheOptions();
+  const appConfig = await readJsonFile(CONFIG_FILE, {});
   const settings = {
-    ...(await readJsonFile(CONFIG_FILE, {})).duplicates,
+    ...appConfig.duplicates,
     ...(options?.settings ?? options ?? {}),
+  };
+  const duplicateConcurrency = getConcurrentLimit(appConfig);
+  const duplicateExecutionOptions = {
+    cpuThreadsLimited: appConfig.cpuThreadsLimited,
   };
   const perfRun = perfMetrics.beginRun('duplicate', {
     videoCount: safeVideos.length,
     sampleCount: settings.sampleCount,
     comparisonMode: settings.comparisonMode,
+    maxConcurrency: duplicateConcurrency,
   });
   const run = createDuplicateRun();
   activeDuplicateRun = run;
@@ -1817,7 +1844,8 @@ ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
       videos: safeVideos,
       settings,
       cacheOptions,
-      maxConcurrency: getConcurrentLimit(settings),
+      maxConcurrency: duplicateConcurrency,
+      executionOptions: duplicateExecutionOptions,
       run,
       openDb: openCacheDbWithRecovery,
       sendProgress: (payload) => sendToRenderer('duplicate-progress', payload),

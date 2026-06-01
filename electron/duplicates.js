@@ -21,6 +21,7 @@ const {
 const ONE_MIB = 1024 * 1024;
 const FRAME_BYTE_COUNT = 32 * 32;
 const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
+const FRAME_FILTER = 'scale=32:32:flags=bicubic,format=gray';
 
 function duplicateLog(message, detail) {
   if (detail === undefined) {
@@ -90,6 +91,53 @@ function createQueueCursor(items) {
     index += 1;
     return item;
   };
+}
+
+function buildGrayFrameExtractionArgs(videoPath, timestamp, executionOptions = {}) {
+  const args = [
+    '-v', 'error',
+    '-ss', String(Math.max(0, Number(timestamp) || 0)),
+    '-i', videoPath,
+    '-frames:v', '1',
+    '-vf', FRAME_FILTER,
+    '-f', 'rawvideo',
+    '-pix_fmt', 'gray',
+    'pipe:1',
+  ];
+  if (executionOptions.cpuThreadsLimited !== false) {
+    args.splice(args.length - 1, 0, '-threads', '1');
+  }
+  return args;
+}
+
+function buildGrayFramesExtractionArgs(videoPath, timestamps, executionOptions = {}) {
+  const safeTimestamps = Array.isArray(timestamps) ? timestamps : [];
+  if (safeTimestamps.length <= 1) {
+    return buildGrayFrameExtractionArgs(videoPath, safeTimestamps[0] ?? 0, executionOptions);
+  }
+
+  const args = ['-v', 'error'];
+  for (const timestamp of safeTimestamps) {
+    args.push('-ss', String(Math.max(0, Number(timestamp) || 0)), '-i', videoPath);
+  }
+
+  const filters = [];
+  for (let i = 0; i < safeTimestamps.length; i++) {
+    filters.push(`[${i}:v]${FRAME_FILTER},trim=end_frame=1,setpts=PTS-STARTPTS[v${i}]`);
+  }
+  filters.push(`${safeTimestamps.map((_, i) => `[v${i}]`).join('')}concat=n=${safeTimestamps.length}:v=1:a=0[out]`);
+  args.push(
+    '-filter_complex', filters.join(';'),
+    '-map', '[out]',
+    '-frames:v', String(safeTimestamps.length),
+    '-f', 'rawvideo',
+    '-pix_fmt', 'gray',
+  );
+  if (executionOptions.cpuThreadsLimited !== false) {
+    args.push('-threads', '1');
+  }
+  args.push('pipe:1');
+  return args;
 }
 
 async function readFileChunk(filePath, start, length) {
@@ -208,19 +256,11 @@ async function findExactGroups(videos, dbByFolder, run, sendProgress) {
   return exactGroups;
 }
 
-function extractGrayFrame(videoPath, timestamp, run) {
+function extractGrayFrames(videoPath, timestamps, run, executionOptions) {
   return new Promise((resolve, reject) => {
     assertNotCancelled(run);
-    const args = [
-      '-v', 'error',
-      '-ss', String(Math.max(0, timestamp)),
-      '-i', videoPath,
-      '-frames:v', '1',
-      '-vf', 'scale=32:32:flags=bicubic,format=gray',
-      '-f', 'rawvideo',
-      '-pix_fmt', 'gray',
-      'pipe:1',
-    ];
+    const expectedFrameCount = Math.max(1, Array.isArray(timestamps) ? timestamps.length : 0);
+    const args = buildGrayFramesExtractionArgs(videoPath, timestamps, executionOptions);
     const child = spawn(ffmpegPath, args, { windowsHide: true });
     run.commands.add(child);
     const chunks = [];
@@ -238,27 +278,31 @@ function extractGrayFrame(videoPath, timestamp, run) {
         return;
       }
       const buffer = Buffer.concat(chunks);
-      if (code !== 0 || buffer.length < FRAME_BYTE_COUNT) {
+      const expectedBytes = expectedFrameCount * FRAME_BYTE_COUNT;
+      if (code !== 0 || buffer.length < expectedBytes) {
         reject(new Error(stderr || `FFmpeg returned ${code}`));
         return;
       }
-      resolve(buffer.subarray(0, FRAME_BYTE_COUNT));
+      const frames = [];
+      for (let i = 0; i < expectedFrameCount; i++) {
+        const start = i * FRAME_BYTE_COUNT;
+        frames.push(buffer.subarray(start, start + FRAME_BYTE_COUNT));
+      }
+      resolve(frames);
     });
   });
 }
 
-async function buildFingerprintsForVideo(video, settings, run) {
-  const timestamps = getSamplingTimestamps(video.durationSecs, settings.sampleCount, settings);
+function buildFingerprintsFromGrayFrames(grayFrames, timestamps, settings) {
   const fingerprints = [];
   for (let i = 0; i < timestamps.length; i++) {
-    assertNotCancelled(run);
-    const grayBytes = await extractGrayFrame(video.path, timestamps[i], run);
-    const flippedGrayBytes = flipGrayBytes(grayBytes);
+    const grayBytes = grayFrames[i];
+    const flippedGrayBytes = settings.compareFlipped ? flipGrayBytes(grayBytes) : null;
     fingerprints.push({
       sampleIndex: i,
       timestampSecs: timestamps[i],
       phashHex: calculateDctPHash(grayBytes),
-      flippedPHashHex: calculateDctPHash(flippedGrayBytes),
+      flippedPHashHex: flippedGrayBytes ? calculateDctPHash(flippedGrayBytes) : null,
       grayBytes,
       frameDarkRatio: frameDarkRatio(grayBytes),
     });
@@ -266,7 +310,14 @@ async function buildFingerprintsForVideo(video, settings, run) {
   return fingerprints;
 }
 
-async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgress, maxConcurrency = 2) {
+async function buildFingerprintsForVideo(video, settings, run, executionOptions) {
+  const timestamps = getSamplingTimestamps(video.durationSecs, settings.sampleCount, settings);
+  const grayFrames = await extractGrayFrames(video.path, timestamps, run, executionOptions);
+  assertNotCancelled(run);
+  return buildFingerprintsFromGrayFrames(grayFrames, timestamps, settings);
+}
+
+async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgress, maxConcurrency = 2, executionOptions = {}) {
   const byFolder = groupVideosByFolder(videos);
   const missing = [];
   let skippedFailed = 0;
@@ -311,7 +362,7 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
       const video = takeNextVideo();
       if (!video) break;
       try {
-        const fingerprints = await buildFingerprintsForVideo(video, settings, run);
+        const fingerprints = await buildFingerprintsForVideo(video, settings, run, executionOptions);
         const db = dbByFolder.get(path.dirname(video.path));
         if (db) {
           assertNotCancelled(run);
@@ -924,7 +975,7 @@ function deriveVideos(videos, groups) {
   });
 }
 
-async function findDuplicates({ videos, settings: rawSettings, cacheOptions, openDb, maxConcurrency, run, sendProgress }) {
+async function findDuplicates({ videos, settings: rawSettings, cacheOptions, openDb, maxConcurrency, executionOptions, run, sendProgress }) {
   const settings = normalizeDuplicateSettings(rawSettings);
   const safeVideos = Array.isArray(videos) ? videos.filter((video) => video?.id && video?.path) : [];
   const videosById = new Map(safeVideos.map((video) => [video.id, video]));
@@ -943,7 +994,7 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
   duplicateLog('Cache databases ready', { folders: dbByFolder.size });
 
   const exactGroups = await findExactGroups(safeVideos, dbByFolder, run, sendProgress);
-  await backfillFingerprints(safeVideos, dbByFolder, settings, run, sendProgress, maxConcurrency);
+  await backfillFingerprints(safeVideos, dbByFolder, settings, run, sendProgress, maxConcurrency, executionOptions);
   assertNotCancelled(run);
   let similarityPairs = [];
   let comparisonData = null;
@@ -997,6 +1048,8 @@ module.exports = {
   findDuplicates,
   __test__: {
     buildGroups,
+    buildFingerprintsFromGrayFrames,
+    buildGrayFramesExtractionArgs,
     findExactGroups,
     splitDaisyChainIds,
   },
