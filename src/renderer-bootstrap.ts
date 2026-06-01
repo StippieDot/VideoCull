@@ -1,3 +1,5 @@
+import { installDevPerfGlobal, startLongTaskObserver } from './perf-dev';
+
 function disableReactDevUserTiming() {
   if (!import.meta.env.DEV) return;
 
@@ -22,4 +24,6 @@ function disableReactDevUserTiming() {
 }
 
 disableReactDevUserTiming();
+installDevPerfGlobal();
+startLongTaskObserver();
 void import('./main');

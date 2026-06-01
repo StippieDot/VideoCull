@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const log = require('./logger');
+const perfMetrics = require('./perf-metrics');
 
 // better-sqlite3 is a native module unpacked from asar — require it directly.
 const Database = require('better-sqlite3');
@@ -742,17 +743,25 @@ function loadRecentMetadataFailureIds(db, videoIds, retryAfterMs) {
 function loadPHashRows(db, videoIds, sampleCount) {
   if (!videoIds.length) return [];
   const rows = [];
-  const query = db.prepare(`
-    SELECT video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, frame_dark_ratio
-    FROM video_fingerprints
-    WHERE video_id = ?
-    ORDER BY sample_index
-  `);
-  for (const videoId of videoIds) {
-    const samples = query.all(videoId);
-    if (samples.length >= sampleCount) rows.push(...samples.slice(0, sampleCount));
+  for (let i = 0; i < videoIds.length; i += BATCH_CHUNK_SIZE) {
+    const chunk = videoIds.slice(i, i + BATCH_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(',');
+    const startedAt = performance.now();
+    const batch = db.prepare(`
+      SELECT video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, frame_dark_ratio
+      FROM video_fingerprints
+      WHERE video_id IN (${placeholders})
+      ORDER BY video_id, sample_index
+    `).all(...chunk);
+    const durationMs = performance.now() - startedAt;
+    const duplicateRun = perfMetrics.getActiveRun('duplicate');
+    if (duplicateRun) {
+      perfMetrics.recordRunCounter(duplicateRun, 'duplicateFingerprintQueryCount');
+      perfMetrics.recordRunTiming(duplicateRun, 'duplicateFingerprintQueryMs', durationMs, { items: chunk.length });
+    }
+    rows.push(...batch);
   }
-  return rows;
+  return selectCompleteSampleRows(rows, sampleCount);
 }
 
 function loadGraySamples(db, videoId, sampleCount) {
@@ -769,17 +778,49 @@ function loadGraySamples(db, videoId, sampleCount) {
 function loadGraySampleRows(db, videoIds, sampleCount) {
   if (!videoIds.length) return [];
   const rows = [];
-  const query = db.prepare(`
-    SELECT video_id, sample_index, gray_bytes, frame_dark_ratio
-    FROM video_fingerprints
-    WHERE video_id = ?
-    ORDER BY sample_index
-  `);
-  for (const videoId of videoIds) {
-    const samples = query.all(videoId);
-    if (samples.length >= sampleCount) rows.push(...samples.slice(0, sampleCount));
+  for (let i = 0; i < videoIds.length; i += BATCH_CHUNK_SIZE) {
+    const chunk = videoIds.slice(i, i + BATCH_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(',');
+    const startedAt = performance.now();
+    const batch = db.prepare(`
+      SELECT video_id, sample_index, gray_bytes, frame_dark_ratio
+      FROM video_fingerprints
+      WHERE video_id IN (${placeholders})
+      ORDER BY video_id, sample_index
+    `).all(...chunk);
+    const durationMs = performance.now() - startedAt;
+    const duplicateRun = perfMetrics.getActiveRun('duplicate');
+    if (duplicateRun) {
+      perfMetrics.recordRunCounter(duplicateRun, 'duplicateFingerprintQueryCount');
+      perfMetrics.recordRunTiming(duplicateRun, 'duplicateFingerprintQueryMs', durationMs, { items: chunk.length });
+    }
+    rows.push(...batch);
   }
-  return rows;
+  return selectCompleteSampleRows(rows, sampleCount);
+}
+
+function selectCompleteSampleRows(rows, sampleCount) {
+  const result = [];
+  let currentVideoId = null;
+  let currentRows = [];
+
+  const flushCurrentRows = () => {
+    if (currentRows.length >= sampleCount) {
+      result.push(...currentRows.slice(0, sampleCount));
+    }
+    currentRows = [];
+  };
+
+  for (const row of rows) {
+    if (row.video_id !== currentVideoId) {
+      if (currentRows.length > 0) flushCurrentRows();
+      currentVideoId = row.video_id;
+    }
+    currentRows.push(row);
+  }
+
+  if (currentRows.length > 0) flushCurrentRows();
+  return result;
 }
 
 function updateVideoSignatures(db, videoId, signatures) {

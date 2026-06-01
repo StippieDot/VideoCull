@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, useMemo, useLayoutEffect, type AriaAttributes, type CSSProperties, type MouseEvent as ReactMouseEvent, type UIEvent as ReactUIEvent } from 'react';
 import { List } from 'react-window';
-import type { ListImperativeAPI } from 'react-window';
+import type { ListImperativeAPI, RowComponentProps } from 'react-window';
 import type { Video } from '../types';
 import useStore from '../store';
 import VideoCard from './VideoCard';
@@ -90,7 +90,7 @@ function formatFolderSize(bytes: number): string {
   return formatSize(bytes).replace(/\.0\s/, ' ').replace(/\s/g, '');
 }
 
-function Row({ index, style, ariaAttributes }: { index: number; style: CSSProperties; ariaAttributes: AriaAttributes & { role: 'listitem' } } & GridRowRenderSignals) {
+function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSignals>) {
   const data = gridRowRuntime;
   if (!data) return null;
   const {

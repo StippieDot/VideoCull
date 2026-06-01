@@ -175,6 +175,16 @@ function getGpuCooldownBatchSize(config = {}, concurrentLimit) {
   return Math.max(concurrentLimit, Math.min(500, frameBudget));
 }
 
+function createQueueCursor(items) {
+  let index = 0;
+  return () => {
+    if (index >= items.length) return null;
+    const item = items[index];
+    index += 1;
+    return item;
+  };
+}
+
 /**
  * Extract a single frame from a video at a given timestamp.
  * Uses fast seeking (-ss before -i) via fluent-ffmpeg's seekInput().
@@ -412,14 +422,15 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
       ? Math.min(batchStart + cooldownBatchSize, videos.length)
       : videos.length;
     const queue = videos.slice(batchStart, batchEnd);
+    const takeNextVideo = createQueueCursor(queue);
     const workers = [];
     const workerCount = Math.min(concurrentLimit, queue.length);
 
     for (let i = 0; i < workerCount; i++) {
       workers.push(
         (async () => {
-          while (queue.length > 0 && !token.cancelled) {
-            const video = queue.shift();
+          while (!token.cancelled) {
+            const video = takeNextVideo();
             if (!video) break;
             try {
               const videoThumbRoot = typeof thumbDir === 'function' ? thumbDir(video) : thumbDir;
@@ -467,13 +478,14 @@ async function processMetadata(videos, config, onProgress, onVideoReady, onVideo
   let current = 0;
   const concurrentLimit = getConcurrentLimit(config);
   const queue = [...videos];
+  const takeNextVideo = createQueueCursor(queue);
   const workers = [];
   const workerCount = Math.min(concurrentLimit, queue.length);
 
   for (let i = 0; i < workerCount; i++) {
     workers.push((async () => {
-      while (queue.length > 0 && !token.cancelled) {
-        const video = queue.shift();
+      while (!token.cancelled) {
+        const video = takeNextVideo();
         if (!video) break;
         try {
           const result = await readMetadataForVideo(video);

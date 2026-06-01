@@ -7,6 +7,7 @@ import type {
   ToastInput, ToastKind,
 } from './types';
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, pruneRecentDirectories } from './keybind-defaults';
+import { recordDevPerf } from './perf-dev';
 
 function thumbnailIndex(filePath: string): number | null {
   const basename = filePath.split(/[\\/]/).pop() ?? filePath;
@@ -36,6 +37,7 @@ function getFolder(v: Video): string {
 }
 
 function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
+  const startedAt = import.meta.env.DEV ? performance.now() : 0;
   let filtered = [...state.videos];
   const minSizeFilter = Math.max(0, Math.floor(state.minSizeFilter));
   const maxSizeFilter = state.maxSizeFilter === null
@@ -141,12 +143,13 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
       return state.sortOrder === 'asc' ? cmp : -cmp;
     });
   }
-
+  recordDevPerf('computeFiltered', performance.now() - startedAt, { items: state.videos.length });
   return filtered;
 }
 
 function computeStats(videos: Video[]): VideoStats {
-  return {
+  const startedAt = import.meta.env.DEV ? performance.now() : 0;
+  const stats = {
     total: videos.length,
     pending: videos.filter((v) => v.status === 'pending').length,
     skipped: videos.filter((v) => v.status === 'skipped').length,
@@ -155,6 +158,8 @@ function computeStats(videos: Video[]): VideoStats {
     totalSize: videos.reduce((sum, v) => sum + v.sizeBytes, 0),
     deleteSize: videos.filter((v) => v.status === 'delete').reduce((sum, v) => sum + v.sizeBytes, 0),
   };
+  recordDevPerf('computeStats', performance.now() - startedAt, { items: videos.length });
+  return stats;
 }
 
 function duplicatePairKey(aId: string, bId: string): string {
@@ -855,6 +860,7 @@ const useStore = create<VideoStore>((set, get) => ({
   },
 
   updateVideoThumbnailsBatch: (batch) => {
+    const startedAt = import.meta.env.DEV ? performance.now() : 0;
     const videos = [...get().videos];
     const indexById = new Map(videos.map((video, index) => [video.id, index]));
     let changed = false;
@@ -899,6 +905,7 @@ const useStore = create<VideoStore>((set, get) => ({
     if (videosToPersist.size > 0) {
       persistChangedVideos(stateNow.directory, stateNow.directories, Array.from(videosToPersist.values()));
     }
+    recordDevPerf('updateVideoThumbnailsBatch', performance.now() - startedAt, { items: batch.length });
   },
 
   setVideoStatus: (videoId: string, status: VideoStatus) => {

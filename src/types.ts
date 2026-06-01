@@ -406,6 +406,42 @@ export interface UpdateInfo {
   message?: string;
 }
 
+export interface PerfCounterSample {
+  count: number;
+  total: number;
+  max: number;
+}
+
+export interface PerfTimingSample {
+  count: number;
+  totalMs: number;
+  maxMs: number;
+  totalItems: number;
+}
+
+export interface PerfRunSnapshot {
+  id: number;
+  name: string;
+  meta: Record<string, unknown>;
+  extra: Record<string, unknown>;
+  durationMs: number;
+  counters: Record<string, PerfCounterSample>;
+  timings: Record<string, PerfTimingSample>;
+  finishedAt: number;
+}
+
+export interface PerformanceStatsSnapshot {
+  counters: Record<string, PerfCounterSample>;
+  timings: Record<string, PerfTimingSample>;
+  latestRuns: Record<string, PerfRunSnapshot>;
+}
+
+export interface RendererPerformanceSnapshot {
+  counters: Record<string, PerfCounterSample>;
+  timings: Record<string, PerfTimingSample>;
+  latestRuns: Record<string, never>;
+}
+
 // ── Electron API (exposed via preload) ─────────────────────────────
 export interface ElectronAPI {
   selectDirectory: () => Promise<string | null>;
@@ -439,6 +475,8 @@ export interface ElectronAPI {
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;
   getAutoConcurrency: (config?: AppSettings) => Promise<number>;
+  getPerformanceStats: () => Promise<PerformanceStatsSnapshot>;
+  resetPerformanceStats: () => Promise<boolean>;
   validateCacheLocation: (dirPath: string, expectedDriveKey?: string | null) => Promise<{ ok: boolean; error?: string }>;
   confirmDistributedMode: () => Promise<boolean>;
   migrateCacheSettings: (
@@ -466,5 +504,14 @@ export interface ElectronAPI {
 declare global {
   interface Window {
     electronAPI: ElectronAPI;
+    __VIDEO_CULL_DEV_PERF__?: {
+      getSnapshot: () => RendererPerformanceSnapshot;
+      getCombinedSnapshot: () => Promise<{
+        renderer: RendererPerformanceSnapshot;
+        main: PerformanceStatsSnapshot | undefined;
+      }>;
+      reset: () => void;
+      resetAll: () => Promise<void>;
+    };
   }
 }

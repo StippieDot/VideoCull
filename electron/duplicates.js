@@ -82,6 +82,15 @@ function isDarkSample(sample) {
   return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
 }
 
+function createQueueCursor(items) {
+  let index = 0;
+  return () => {
+    if (index >= items.length) return null;
+    const item = items[index];
+    index += 1;
+    return item;
+  };
+}
 
 async function readFileChunk(filePath, start, length) {
   const handle = await fs.open(filePath, 'r');
@@ -292,13 +301,14 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
     : Number.POSITIVE_INFINITY;
   let lastCheckpoint = Date.now();
   const queue = [...missing];
+  const takeNextVideo = createQueueCursor(queue);
   const workerCount = Math.max(1, Math.min(Math.floor(maxConcurrency) || 1, queue.length || 1));
   duplicateLog('Fingerprint workers starting', { workers: workerCount });
 
   const workers = Array.from({ length: workerCount }, async () => {
-    while (queue.length > 0) {
+    while (true) {
       assertNotCancelled(run);
-      const video = queue.shift();
+      const video = takeNextVideo();
       if (!video) break;
       try {
         const fingerprints = await buildFingerprintsForVideo(video, settings, run);

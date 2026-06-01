@@ -7,6 +7,7 @@ const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, canc
 const cache = require('./cache');
 const { collectUnloadedOwnerFolders, createFolderKey, rememberFolder } = require('./cache-folder-tracker');
 const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
+const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { autoUpdater } = require('electron-updater');
 
@@ -194,6 +195,14 @@ function sendToRenderer(channel, payload) {
     return true;
   } catch (err) {
     return false;
+  }
+}
+
+function measurePayloadBytes(payload) {
+  try {
+    return Buffer.byteLength(JSON.stringify(payload), 'utf8');
+  } catch {
+    return 0;
   }
 }
 
@@ -1330,6 +1339,12 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     throw new Error('Invalid directory path');
   }
 
+  const perfRun = perfMetrics.beginRun('scan', {
+    dirPath,
+    includeSubfolders: Boolean(includeSubfolders),
+  });
+
+  try {
   const cacheOptions = await getCacheOptions();
   assertScanCurrent(scanToken);
   const cachePaths = await prepareCacheFolder(dirPath, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
@@ -1429,7 +1444,10 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   }
 
   const videos = await scanDirectory(dirPath, includeSubfolders, (progress) => {
-    if (scanToken === scanGeneration) sendToRenderer('scan-progress', progress);
+    if (scanToken !== scanGeneration) return;
+    perfMetrics.recordRunCounter(perfRun, 'scanProgressEventCount');
+    perfMetrics.recordRunCounter(perfRun, 'scanProgressPayloadBytes', measurePayloadBytes(progress));
+    sendToRenderer('scan-progress', progress);
   });
   assertScanCurrent(scanToken);
   await loadOwnerFolderCachesIntoMap(videos, dirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots, loadedCacheFolderKeys);
@@ -1506,7 +1524,18 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     knownVideoIdsByPath.set(v.path, v.id);
   });
 
+  perfMetrics.finishRun(perfRun, {
+    status: 'ok',
+    videoCount: merged.length,
+  });
   return merged;
+  } catch (err) {
+    perfMetrics.finishRun(perfRun, {
+      status: err instanceof ScanSupersededError ? 'superseded' : 'error',
+      error: err?.message || String(err),
+    });
+    throw err;
+  }
 });
 
 // 3. Probe metadata for videos that are missing or stale.
@@ -1775,6 +1804,11 @@ ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
     ...(await readJsonFile(CONFIG_FILE, {})).duplicates,
     ...(options?.settings ?? options ?? {}),
   };
+  const perfRun = perfMetrics.beginRun('duplicate', {
+    videoCount: safeVideos.length,
+    sampleCount: settings.sampleCount,
+    comparisonMode: settings.comparisonMode,
+  });
   const run = createDuplicateRun();
   activeDuplicateRun = run;
 
@@ -1790,15 +1824,25 @@ ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
     });
     if (activeDuplicateRun === run) activeDuplicateRun = null;
     sendToRenderer('duplicate-progress', { stage: 'Done', current: result.stats.duplicateVideoCount, total: result.stats.duplicateVideoCount });
+    perfMetrics.finishRun(perfRun, {
+      status: 'ok',
+      groupCount: result.stats.groupCount,
+      duplicateVideoCount: result.stats.duplicateVideoCount,
+    });
     return { status: 'ok', ...result };
   } catch (err) {
     if (activeDuplicateRun === run) activeDuplicateRun = null;
     if (err instanceof DuplicateCancelledError || run.cancelled) {
       sendToRenderer('duplicate-progress', { stage: 'Cancelled', current: 0, total: 0 });
+      perfMetrics.finishRun(perfRun, { status: 'cancelled' });
       return { status: 'cancelled' };
     }
     log.warn('[find-duplicates] Failed:', err);
     sendToRenderer('duplicate-progress', { stage: 'Error', current: 0, total: 0, message: err.message });
+    perfMetrics.finishRun(perfRun, {
+      status: 'error',
+      error: err?.message || String(err),
+    });
     return { status: 'error', error: err.message || String(err) };
   }
 });
@@ -1808,6 +1852,15 @@ ipcMain.handle('cancel-duplicate-detection', async () => {
   activeDuplicateRun.cancel();
   activeDuplicateRun = null;
   sendToRenderer('duplicate-progress', { stage: 'Cancelled', current: 0, total: 0 });
+  return true;
+});
+
+ipcMain.handle('get-performance-stats', async () => {
+  return perfMetrics.getSnapshot();
+});
+
+ipcMain.handle('reset-performance-stats', async () => {
+  perfMetrics.reset();
   return true;
 });
 

@@ -1,5 +1,6 @@
 ﻿import { useEffect, useCallback, useRef, useState } from 'react';
 import useStore from './store';
+import { Profiler } from 'react';
 import { formatKeybind, matchesKeybind } from './keybinds';
 import Sidebar from './components/Sidebar';
 import GridMode from './components/GridMode';
@@ -11,6 +12,8 @@ import ShortcutsHelp from './components/ShortcutsHelp';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { MediaProbeVideoInput, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatRecentPath } from './utils';
+import { recordDevPerf } from './perf-dev';
+import { recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
 import './App.css';
 
@@ -106,6 +109,35 @@ export default function App() {
   const [settingsTabRequestId, setSettingsTabRequestId] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
+
+  const handleSidebarProfiler = useCallback((
+    id: string,
+    phase: 'mount' | 'update' | 'nested-update',
+    actualDuration: number,
+    baseDuration: number,
+    startTime: number,
+    commitTime: number
+  ) => {
+    recordReactCommit(id, phase, actualDuration, baseDuration, startTime, commitTime, isScanning ? 'scan' : 'idle');
+  }, [isScanning]);
+
+  const handleMainProfiler = useCallback((
+    id: string,
+    phase: 'mount' | 'update' | 'nested-update',
+    actualDuration: number,
+    baseDuration: number,
+    startTime: number,
+    commitTime: number
+  ) => {
+    const context = reviewMode
+      ? 'review'
+      : isScanning
+        ? 'scan'
+        : duplicateGroupsMode
+          ? 'duplicates'
+          : 'grid';
+    recordReactCommit(id, phase, actualDuration, baseDuration, startTime, commitTime, context);
+  }, [duplicateGroupsMode, isScanning, reviewMode]);
 
   useEffect(() => {
     isPrivateRef.current = isPrivate;
@@ -542,8 +574,9 @@ export default function App() {
       });
     });
     const applyMediaBatch = (batch: Parameters<typeof updateVideoThumbnailsBatch>[0]) => {
+      const startedAt = import.meta.env.DEV ? performance.now() : 0;
       const videosById = new Map(useStore.getState().videos.map((item) => [item.id, item]));
-      updateVideoThumbnailsBatch(batch.map((item) => {
+      const preparedBatch = batch.map((item) => {
         const existing = videosById.get(item.videoId);
         const containerFormat = item.containerFormat ?? existing?.containerFormat ?? null;
         const videoCodec = item.videoCodec ?? existing?.videoCodec ?? null;
@@ -551,7 +584,13 @@ export default function App() {
           ...item,
           compatible: detectVideoCompatibility(containerFormat, videoCodec, existing?.path),
         };
-      }));
+      });
+      const preparedAt = import.meta.env.DEV ? performance.now() : 0;
+      updateVideoThumbnailsBatch(preparedBatch);
+      const finishedAt = import.meta.env.DEV ? performance.now() : 0;
+      recordDevPerf('applyMediaBatch.prepare', preparedAt - startedAt, { items: batch.length });
+      recordDevPerf('applyMediaBatch.storeUpdate', finishedAt - preparedAt, { items: batch.length });
+      recordDevPerf('applyMediaBatch.total', finishedAt - startedAt, { items: batch.length });
     };
     const unsubMetadataReady = window.electronAPI.onMetadataReadyBatch(applyMediaBatch);
     const unsub3 = window.electronAPI.onThumbReadyBatch((batch) => {
@@ -863,40 +902,44 @@ export default function App() {
         </button>
       )}
       {directory && (
-        <Sidebar
-          onRescan={() => directories.length > 0 && handleScan(directories)}
-          onDirectoryPicked={handleDirectoryPicked}
-          onNotify={pushToast}
-          onOpenSettings={() => openSettings('interface')}
-          onCloseSession={() => void handleCloseSession()}
-          onFindDuplicates={() => void handleFindDuplicates()}
-          onOpenDuplicateSettings={() => openSettings('duplicates')}
-          globalMute={globalMute}
-          globalMuteEnabled={globalMuteEnabled && !isPrivate}
-          globalMuteLabel={formatKeybind(globalMuteKeybind)}
-          onToggleGlobalMute={toggleGlobalMute}
-        />
+        <Profiler id="Sidebar" onRender={handleSidebarProfiler}>
+          <Sidebar
+            onRescan={() => directories.length > 0 && handleScan(directories)}
+            onDirectoryPicked={handleDirectoryPicked}
+            onNotify={pushToast}
+            onOpenSettings={() => openSettings('interface')}
+            onCloseSession={() => void handleCloseSession()}
+            onFindDuplicates={() => void handleFindDuplicates()}
+            onOpenDuplicateSettings={() => openSettings('duplicates')}
+            globalMute={globalMute}
+            globalMuteEnabled={globalMuteEnabled && !isPrivate}
+            globalMuteLabel={formatKeybind(globalMuteKeybind)}
+            onToggleGlobalMute={toggleGlobalMute}
+          />
+        </Profiler>
       )}
 
-      <main className="app-main">
-        {!directory && !isScanning && videos.length === 0 && <EmptyState onNotify={pushToast} />}
-        {directory && videos.length > 0 && !reviewMode && duplicateGroupsMode && (
-          <DuplicateGroupsView />
-        )}
-        {directory && videos.length > 0 && !reviewMode && !duplicateGroupsMode && (
-          <GridMode
-            onReviewFolder={handleReviewFolder}
-            onRegenerateThumbnails={handleRegenerateThumbnails}
-          />
-        )}
-        {reviewMode && <ReviewMode />}
-        {isScanning && videos.length === 0 && (
-          <div className="scanning-overlay">
-            <div className="scanning-spinner" />
-            <p>Scanning for videos...</p>
-          </div>
-        )}
-      </main>
+      <Profiler id="AppMain" onRender={handleMainProfiler}>
+        <main className="app-main">
+          {!directory && !isScanning && videos.length === 0 && <EmptyState onNotify={pushToast} />}
+          {directory && videos.length > 0 && !reviewMode && duplicateGroupsMode && (
+            <DuplicateGroupsView />
+          )}
+          {directory && videos.length > 0 && !reviewMode && !duplicateGroupsMode && (
+            <GridMode
+              onReviewFolder={handleReviewFolder}
+              onRegenerateThumbnails={handleRegenerateThumbnails}
+            />
+          )}
+          {reviewMode && <ReviewMode />}
+          {isScanning && videos.length === 0 && (
+            <div className="scanning-overlay">
+              <div className="scanning-spinner" />
+              <p>Scanning for videos...</p>
+            </div>
+          )}
+        </main>
+      </Profiler>
 
       {/* Drag-over hint overlay */}
       {isDragOver && (

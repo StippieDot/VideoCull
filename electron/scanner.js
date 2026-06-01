@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const VIDEO_EXTENSIONS = new Set([
   '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm', '.flv', '.m4v', '.ts', '.mts',
 ]);
+const SCAN_PROGRESS_BATCH_SIZE = 25;
 
 function isVideoFile(filename) {
   return VIDEO_EXTENSIONS.has(path.extname(filename).toLowerCase());
@@ -19,6 +20,30 @@ function makeDuplicateHash(sizeBytes, durationSecs) {
   return crypto.createHash('md5').update(`${sizeBytes}`).digest('hex').slice(0, 12);
 }
 
+function createProgressReporter(onProgress) {
+  let lastReportedFound = 0;
+  let pendingProgress = null;
+
+  return {
+    report(found, currentFile) {
+      if (!onProgress) return;
+      pendingProgress = { found, currentFile };
+      if (found === 1 || found - lastReportedFound >= SCAN_PROGRESS_BATCH_SIZE) {
+        onProgress(pendingProgress);
+        lastReportedFound = found;
+        pendingProgress = null;
+      }
+    },
+    flush() {
+      if (!onProgress || !pendingProgress) return;
+      if (pendingProgress.found === lastReportedFound) return;
+      onProgress(pendingProgress);
+      lastReportedFound = pendingProgress.found;
+      pendingProgress = null;
+    },
+  };
+}
+
 /**
  * Recursively walk a directory and collect video file info.
  * @param {string} dirPath - Root directory to scan.
@@ -29,6 +54,7 @@ function makeDuplicateHash(sizeBytes, durationSecs) {
 async function scanDirectory(dirPath, includeSubfolders, onProgress) {
   const videos = [];
   let found = 0;
+  const progressReporter = createProgressReporter(onProgress);
 
   async function walk(currentDir) {
     let entries;
@@ -76,9 +102,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
 
           videos.push(video);
 
-          if (onProgress) {
-            onProgress({ found, currentFile: entry.name });
-          }
+          progressReporter.report(found, entry.name);
         } catch {
           // Skip files we can't stat
         }
@@ -87,6 +111,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
   }
 
   await walk(dirPath);
+  progressReporter.flush();
   return videos;
 }
 
