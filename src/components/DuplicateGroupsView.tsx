@@ -238,8 +238,12 @@ export default function DuplicateGroupsView() {
         </span>
       </div>
       <div className="duplicate-toolbar-actions">
-        <button className="duplicate-action-btn secondary" onClick={selectSuggestedDuplicates}>
-          Select duplicates
+        <button
+          className="duplicate-action-btn secondary"
+          onClick={selectSuggestedDuplicates}
+          title="Select the suggested non-keeper videos in the visible groups. Files are not deleted until you confirm batch deletion."
+        >
+          Select suggested deletions
         </button>
         {selectedCount > 0 && (
           <button className="duplicate-action-btn secondary" onClick={() => setSelectedIds(new Set())}>
@@ -255,7 +259,12 @@ export default function DuplicateGroupsView() {
           <Ban size={14} />
           Not a match
         </button>
-        <button className="duplicate-action-btn" onClick={markSelectedDuplicates} disabled={selectedCount === 0}>
+        <button
+          className="duplicate-action-btn"
+          onClick={markSelectedDuplicates}
+          disabled={selectedCount === 0}
+          title="Mark the selected videos for deletion review. Files are not deleted until you confirm batch deletion."
+        >
           <Trash2 size={14} />
           Mark selected for deletion{selectedCount > 0 ? ` (${selectedCount})` : ''}
         </button>

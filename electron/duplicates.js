@@ -161,7 +161,10 @@ async function findExactGroups(videos, dbByFolder, run, sendProgress) {
       const cached = signatureById.get(video.id);
       const quick = cached?.file_signature_quick || await quickSignature(video);
       if (cached?.file_signature_quick) quickCacheHits++;
-      if (db && !cached?.file_signature_quick) cache.updateVideoSignatures(db, video.id, { quick });
+      if (db && !cached?.file_signature_quick) {
+        assertNotCancelled(run);
+        cache.updateVideoSignatures(db, video.id, { quick });
+      }
       quickRows.push({ video, quick, cachedFull: cached?.file_signature_full || null });
       processed++;
       if (processed % 20 === 0) progress(sendProgress, 'Checking exact matches', { current: processed, total: videos.length });
@@ -175,7 +178,10 @@ async function findExactGroups(videos, dbByFolder, run, sendProgress) {
         const full = row.cachedFull || await fullFileHash(row.video);
         if (row.cachedFull) fullCacheHits++;
         const db = dbByFolder.get(path.dirname(row.video.path));
-        if (db && !row.cachedFull) cache.updateVideoSignatures(db, row.video.id, { quick: row.quick, full });
+        if (db && !row.cachedFull) {
+          assertNotCancelled(run);
+          cache.updateVideoSignatures(db, row.video.id, { quick: row.quick, full });
+        }
         fullRows.push({ video: row.video, full });
       }
       for (const fullGroup of groupBy(fullRows, (row) => row.full).values()) {
@@ -298,6 +304,7 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
         const fingerprints = await buildFingerprintsForVideo(video, settings, run);
         const db = dbByFolder.get(path.dirname(video.path));
         if (db) {
+          assertNotCancelled(run);
           cache.saveVideoFingerprints(db, video.id, fingerprints);
           saved++;
         } else {
@@ -313,7 +320,7 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
       } catch (err) {
         if (err instanceof DuplicateCancelledError) throw err;
         const db = dbByFolder.get(path.dirname(video.path));
-        if (db) cache.markFingerprintFailure(db, video.id);
+        if (db && !run?.cancelled) cache.markFingerprintFailure(db, video.id);
         failed++;
         if (failureExamples.length < 8) {
           failureExamples.push({
@@ -403,7 +410,7 @@ function compactGraySamples(rows, sampleCount) {
   return result;
 }
 
-function recomputePHashSimilarity(samplesA, samplesB, settings) {
+function recomputePHashSimilarity(samplesA, samplesB, settings, options = {}) {
   const sampleScores = [];
   for (let i = 0; i < settings.sampleCount; i++) {
     const sampleA = samplesA[i];
@@ -420,10 +427,11 @@ function recomputePHashSimilarity(samplesA, samplesB, settings) {
   if (sampleScores.length < minimumUsableSamples(settings.sampleCount)) return null;
   if (settings.requireEverySample && sampleScores.some((score) => score < settings.finalSimilarityThreshold)) return null;
   const similarity = average(sampleScores);
+  if (options.enforceThreshold === false) return similarity;
   return similarity >= settings.finalSimilarityThreshold ? similarity : null;
 }
 
-function recomputeVisualSimilarity(samplesA, samplesB, settings) {
+function recomputeVisualSimilarity(samplesA, samplesB, settings, options = {}) {
   const scores = [];
   let diffSum = 0;
   for (let i = 0; i < settings.sampleCount; i++) {
@@ -443,6 +451,7 @@ function recomputeVisualSimilarity(samplesA, samplesB, settings) {
 
   if (scores.length < minimumUsableSamples(settings.sampleCount)) return null;
   const similarity = 100 - (diffSum / scores.length);
+  if (options.enforceThreshold === false) return similarity;
   return similarity >= settings.finalSimilarityThreshold ? similarity : null;
 }
 
@@ -451,22 +460,28 @@ function createSimilarityRevalidator(settings, comparisonData = null) {
 
   if (comparisonData.mode === 'phash') {
     const samplesByVideo = compactPHashSamples(comparisonData.rows, settings.sampleCount);
-    return (aId, bId) => {
+    const computeSimilarity = (aId, bId, options = {}) => {
       const samplesA = samplesByVideo.get(aId);
       const samplesB = samplesByVideo.get(bId);
       if (!samplesA || !samplesB) return undefined;
-      return recomputePHashSimilarity(samplesA, samplesB, settings);
+      return recomputePHashSimilarity(samplesA, samplesB, settings, options);
     };
+    const revalidateSimilarity = (aId, bId) => computeSimilarity(aId, bId);
+    revalidateSimilarity.score = (aId, bId) => computeSimilarity(aId, bId, { enforceThreshold: false });
+    return revalidateSimilarity;
   }
 
   if (comparisonData.mode === 'visual') {
     const samplesByVideo = compactGraySamples(comparisonData.rows, settings.sampleCount);
-    return (aId, bId) => {
+    const computeSimilarity = (aId, bId, options = {}) => {
       const samplesA = samplesByVideo.get(aId);
       const samplesB = samplesByVideo.get(bId);
       if (!samplesA || !samplesB) return undefined;
-      return recomputeVisualSimilarity(samplesA, samplesB, settings);
+      return recomputeVisualSimilarity(samplesA, samplesB, settings, options);
     };
+    const revalidateSimilarity = (aId, bId) => computeSimilarity(aId, bId);
+    revalidateSimilarity.score = (aId, bId) => computeSimilarity(aId, bId, { enforceThreshold: false });
+    return revalidateSimilarity;
   }
 
   return null;
@@ -679,7 +694,8 @@ function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold, rev
 
   for (const candidate of candidateGroups) {
     const ids = Array.from(candidate.ids);
-    const similarityForValidation = ids.length >= 3 && revalidateSimilarity
+    const usedRevalidation = ids.length >= 3 && Boolean(revalidateSimilarity);
+    const similarityForValidation = usedRevalidation
       ? (aId, bId) => {
           const recomputed = revalidateSimilarity(aId, bId);
           return recomputed === undefined ? directSimilarity(aId, bId) : recomputed;
@@ -687,7 +703,7 @@ function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold, rev
       : directSimilarity;
     const splitIds = splitDaisyChainIds(ids, similarityForValidation, threshold);
     if (splitIds.length === 1 && splitIds[0].length === ids.length) {
-      splitGroups.push(candidate);
+      splitGroups.push({ ...candidate, usedRevalidation });
       continue;
     }
 
@@ -700,6 +716,7 @@ function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold, rev
         representativeId: groupIds.includes(candidate.representativeId)
           ? candidate.representativeId
           : groupIds[0],
+        usedRevalidation,
       });
     }
   }
@@ -710,6 +727,9 @@ function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold, rev
 function buildGroups(exactGroups, matchedPairs, videosById, settings, options = {}) {
   const ignoredPairKeys = new Set(settings.ignoredDuplicatePairs ?? []);
   const isIgnoredPair = (aId, bId) => ignoredPairKeys.has(storedPairKey(aId, bId));
+  const revalidateScore = typeof options.revalidateSimilarity?.score === 'function'
+    ? options.revalidateSimilarity.score
+    : null;
   const exactPairKeys = new Set();
   const exactPairs = [];
   for (const ids of exactGroups) {
@@ -815,6 +835,11 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     const exactVideoIds = new Set();
     let hasExact = false;
     let fuzzyMatchType = null;
+    const resolveGroupPairSimilarity = (aId, bId) => {
+      if (!candidate.usedRevalidation || !revalidateScore) return directSimilarity(aId, bId);
+      const recomputed = revalidateScore(aId, bId);
+      return recomputed === undefined ? directSimilarity(aId, bId) : recomputed;
+    };
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         const key = internalPairKey(ids[i], ids[j]);
@@ -826,7 +851,8 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
         }
         const matched = matchedByPair.get(key);
         if (matched) {
-          similarities.push(matched.similarity);
+          const resolvedSimilarity = resolveGroupPairSimilarity(ids[i], ids[j]);
+          if (resolvedSimilarity !== null) similarities.push(resolvedSimilarity);
           fuzzyMatchType = fuzzyMatchType && fuzzyMatchType !== matched.matchType ? 'mixed' : matched.matchType;
         }
       }
@@ -961,6 +987,7 @@ module.exports = {
   findDuplicates,
   __test__: {
     buildGroups,
+    findExactGroups,
     splitDaisyChainIds,
   },
 };

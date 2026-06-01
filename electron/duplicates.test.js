@@ -1,6 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { __test__ } = require('./duplicates');
+const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
+const cache = require('./cache');
+const { DuplicateCancelledError, __test__ } = require('./duplicates');
 const { normalizeDuplicateSettings } = require('./duplicate-utils');
 
 function video(id) {
@@ -56,4 +60,82 @@ test('daisy-chain cleanup can drop weak members after similarity is recomputed',
 
   assert.equal(groups.length, 1);
   assert.deepEqual(groups[0].videoIds.toSorted(), ['a', 'b']);
+});
+
+test('daisy-chain cleanup uses recomputed similarity for retained group scores', () => {
+  const videos = ['a', 'b', 'c'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const matchedPairs = [
+    { aId: 'a', bId: 'b', similarity: 96, matchType: 'phash' },
+    { aId: 'a', bId: 'c', similarity: 96, matchType: 'phash' },
+    { aId: 'b', bId: 'c', similarity: 96, matchType: 'phash' },
+  ];
+  const revalidateSimilarity = (aId, bId) => {
+    const key = [aId, bId].toSorted().join('|');
+    return key === 'b|c' ? null : 96;
+  };
+  revalidateSimilarity.score = (aId, bId) => {
+    const key = [aId, bId].toSorted().join('|');
+    return key === 'b|c' ? 94 : 96;
+  };
+
+  const groups = __test__.buildGroups([], matchedPairs, videosById, settings, { revalidateSimilarity });
+
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].videoIds.toSorted(), ['a', 'b', 'c']);
+  assert.equal(groups[0].similarity, 95.3);
+});
+
+test('exact duplicate pass stops before cache writes after cancellation', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-duplicates-'));
+  const folder = path.join(tempRoot, 'videos');
+  const fileBytes = Buffer.alloc(4096, 7);
+  await fs.mkdir(folder, { recursive: true });
+  await Promise.all([
+    fs.writeFile(path.join(folder, 'a.mp4'), fileBytes),
+    fs.writeFile(path.join(folder, 'b.mp4'), fileBytes),
+  ]);
+
+  const videos = [
+    {
+      id: 'a',
+      filename: 'a.mp4',
+      path: path.join(folder, 'a.mp4'),
+      sizeBytes: fileBytes.length,
+      durationSecs: 10,
+    },
+    {
+      id: 'b',
+      filename: 'b.mp4',
+      path: path.join(folder, 'b.mp4'),
+      sizeBytes: fileBytes.length,
+      durationSecs: 10,
+    },
+  ];
+
+  const originalLoadSignatureRows = cache.loadSignatureRows;
+  const originalUpdateVideoSignatures = cache.updateVideoSignatures;
+  let writeAttempts = 0;
+  cache.loadSignatureRows = () => [];
+  cache.updateVideoSignatures = () => {
+    writeAttempts++;
+  };
+
+  const run = { cancelled: false };
+  setImmediate(() => {
+    run.cancelled = true;
+  });
+
+  try {
+    await assert.rejects(
+      __test__.findExactGroups(videos, new Map([[folder, {}]]), run, () => {}),
+      (err) => err instanceof DuplicateCancelledError,
+    );
+    assert.equal(writeAttempts, 0);
+  } finally {
+    cache.loadSignatureRows = originalLoadSignatureRows;
+    cache.updateVideoSignatures = originalUpdateVideoSignatures;
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
 });
