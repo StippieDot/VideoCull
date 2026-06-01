@@ -84,6 +84,267 @@ function getRangeTrackStyle(min: number, max: number, selectedMin: number, selec
   } as CSSProperties;
 }
 
+function SidebarProgressSection() {
+  const isScanning = useStore((s) => s.isScanning);
+  const scanProgress = useStore((s) => s.scanProgress);
+  const isGenerating = useStore((s) => s.isGenerating);
+  const genProgress = useStore((s) => s.genProgress);
+
+  if (!isScanning && !isGenerating) return null;
+
+  const generationLabel =
+    genProgress.phase === 'metadata'
+      ? 'Metadata...'
+      : genProgress.phase === 'media'
+        ? 'Media data...'
+        : 'Thumbnails...';
+
+  return (
+    <section className="sidebar-section">
+      {isScanning && (
+        <div className="progress-info">
+          <span className="progress-label">Scanning...</span>
+          <span className="progress-detail">{scanProgress.found} videos found</span>
+        </div>
+      )}
+      {isGenerating && (
+        <div className="progress-info">
+          <span className="progress-label">{generationLabel}</span>
+          <div className="progress-bar-track">
+            <div
+              className="progress-bar-fill"
+              style={{ width: `${genProgress.total > 0 ? (genProgress.current / genProgress.total) * 100 : 0}%` }}
+            />
+          </div>
+          <span className="progress-detail">
+            {genProgress.current} / {genProgress.total}
+          </span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DuplicateProgressInfo() {
+  const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
+  const duplicateProgress = useStore((s) => s.duplicateProgress);
+
+  if (!isFindingDuplicates || !duplicateProgress) return null;
+
+  return (
+    <div className="progress-info duplicate-progress-info">
+      <span className="progress-label">{duplicateProgress.stage}</span>
+      <div className="progress-bar-track">
+        <div
+          className="progress-bar-fill"
+          style={{ width: `${duplicateProgress.total > 0 ? (duplicateProgress.current / duplicateProgress.total) * 100 : 0}%` }}
+        />
+      </div>
+      <span className="progress-detail">
+        {duplicateProgress.total > 0 ? `${duplicateProgress.current} / ${duplicateProgress.total}` : 'Preparing...'}
+      </span>
+    </div>
+  );
+}
+
+function SidebarDuplicateSection({
+  onFindDuplicates,
+  onOpenDuplicateSettings,
+}: Pick<SidebarProps, 'onFindDuplicates' | 'onOpenDuplicateSettings'>) {
+  const duplicateSettings = useStore((s) => s.settings.duplicates);
+  const statsTotal = useStore((s) => s.stats.total);
+  const videos = useStore((s) => s.videos);
+  const duplicateGroups = useStore((s) => s.duplicateGroups);
+  const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
+  const setDuplicateGroupsMode = useStore((s) => s.setDuplicateGroupsMode);
+  const duplicateViewMode = useStore((s) => s.duplicateViewMode);
+  const setDuplicateViewMode = useStore((s) => s.setDuplicateViewMode);
+  const duplicatePathFilter = useStore((s) => s.duplicatePathFilter);
+  const setDuplicatePathFilter = useStore((s) => s.setDuplicatePathFilter);
+  const duplicateMinSimilarity = useStore((s) => s.duplicateMinSimilarity);
+  const setDuplicateMinSimilarity = useStore((s) => s.setDuplicateMinSimilarity);
+  const duplicateSortBy = useStore((s) => s.duplicateSortBy);
+  const setDuplicateSortBy = useStore((s) => s.setDuplicateSortBy);
+  const duplicateSortOrder = useStore((s) => s.duplicateSortOrder);
+  const setDuplicateSortOrder = useStore((s) => s.setDuplicateSortOrder);
+  const clearDuplicateListFilters = useStore((s) => s.clearDuplicateListFilters);
+  const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
+  const isGenerating = useStore((s) => s.isGenerating);
+  const generationPhase = useStore((s) => s.genProgress.phase);
+
+  if (statsTotal <= 0) return null;
+
+  const metadataRunning = isGenerating && generationPhase === 'metadata';
+  const duplicateDisabled = isFindingDuplicates || metadataRunning || videos.length < 2;
+  const duplicateDisabledTitle = metadataRunning
+    ? 'Available after metadata has finished updating'
+    : videos.length < 2
+      ? 'Duplicate detection needs at least two videos'
+      : 'Find mostly identical whole-video duplicates';
+  const duplicateCount = videos.filter((v) => Boolean(v.duplicateGroupId)).length;
+  const duplicateListFiltersActive =
+    duplicatePathFilter.trim() !== '' ||
+    duplicateMinSimilarity > 0 ||
+    duplicateSortBy !== 'similarity' ||
+    duplicateSortOrder !== 'desc';
+
+  if (!duplicateSettings.enabled && !duplicateGroupsMode) {
+    return (
+      <section className="sidebar-section">
+        <button className="btn btn-outline sidebar-wide-action" onClick={onOpenDuplicateSettings}>
+          Enable duplicate detection
+        </button>
+      </section>
+    );
+  }
+
+  if (!duplicateSettings.enabled) return null;
+
+  if (duplicateGroupsMode) {
+    return (
+      <section className="sidebar-section sidebar-duplicate-mode-section">
+        <h3 className="sidebar-section-title">
+          <CopyCheck size={14} /> Duplicates
+        </h3>
+
+        <div className="duplicate-mode-summary">
+          <strong>{duplicateGroups.length}</strong>
+          <span>{duplicateGroups.length === 1 ? 'group' : 'groups'} / {duplicateCount} videos</span>
+        </div>
+
+        <div className="duplicate-sidebar-view-toggle" role="tablist" aria-label="Duplicate view mode">
+          <button
+            type="button"
+            className={duplicateViewMode === 'rows' ? 'active' : ''}
+            onClick={() => setDuplicateViewMode('rows')}
+            aria-pressed={duplicateViewMode === 'rows'}
+          >
+            <List size={14} />
+            Rows
+          </button>
+          <button
+            type="button"
+            className={duplicateViewMode === 'gallery' ? 'active' : ''}
+            onClick={() => setDuplicateViewMode('gallery')}
+            aria-pressed={duplicateViewMode === 'gallery'}
+          >
+            <Grid3X3 size={14} />
+            Gallery
+          </button>
+        </div>
+
+        <div className="duplicate-sidebar-controls">
+          <div className="duplicate-sidebar-heading-row">
+            <span className="sort-label">Filter / sort</span>
+            {duplicateListFiltersActive && (
+              <button
+                type="button"
+                className="filter-reset-btn"
+                onClick={clearDuplicateListFilters}
+                title="Reset duplicate filters"
+                aria-label="Reset duplicate filters"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          <label className="duplicate-sidebar-field">
+            <span>Path contains</span>
+            <input
+              type="text"
+              value={duplicatePathFilter}
+              onChange={(e) => setDuplicatePathFilter(e.target.value)}
+              placeholder="folder or filename"
+            />
+          </label>
+
+          <label className="duplicate-sidebar-field">
+            <span>Minimum similarity</span>
+            <div className="duplicate-sidebar-inline">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={duplicateMinSimilarity}
+                onChange={(e) => setDuplicateMinSimilarity(Number(e.target.value))}
+              />
+              <strong>{duplicateMinSimilarity}%</strong>
+            </div>
+          </label>
+
+          <label className="duplicate-sidebar-field">
+            <span>Sort by</span>
+            <div className="sort-row">
+              <select
+                className="sidebar-select"
+                value={duplicateSortBy}
+                onChange={(e) => setDuplicateSortBy(e.target.value as DuplicateSortField)}
+              >
+                <option value="similarity">Similarity</option>
+                <option value="groupSize">Group size</option>
+                <option value="totalSize">Total size</option>
+              </select>
+              <button
+                className="btn btn-icon"
+                onClick={() => setDuplicateSortOrder(duplicateSortOrder === 'asc' ? 'desc' : 'asc')}
+                title={duplicateSortOrder === 'asc' ? 'Ascending' : 'Descending'}
+              >
+                <ArrowUpDown size={14} style={{ transform: duplicateSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+              </button>
+            </div>
+          </label>
+        </div>
+
+        <button
+          className="btn btn-primary sidebar-wide-action"
+          onClick={onFindDuplicates}
+          disabled={duplicateDisabled}
+          title={metadataRunning ? duplicateDisabledTitle : 'Run duplicate detection again'}
+        >
+          <RefreshCw size={14} />
+          {isFindingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Run Again'}
+        </button>
+
+        <button className="btn btn-outline sidebar-wide-action" onClick={() => setDuplicateGroupsMode(false)}>
+          Back to Library
+        </button>
+
+        <button className="btn btn-outline sidebar-wide-action" onClick={onOpenDuplicateSettings}>
+          <Settings size={14} />
+          Duplicate Settings
+        </button>
+
+        <DuplicateProgressInfo />
+      </section>
+    );
+  }
+
+  return (
+    <section className="sidebar-section">
+      <button
+        className="btn btn-primary sidebar-wide-action"
+        onClick={onFindDuplicates}
+        disabled={duplicateDisabled}
+        title={duplicateDisabledTitle}
+      >
+        <CopyCheck size={14} />
+        {isFindingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Find Duplicates'}
+      </button>
+      <DuplicateProgressInfo />
+      {duplicateGroups.length > 0 && (
+        <button
+          className={`btn btn-outline sidebar-wide-action ${duplicateGroupsMode ? 'btn-toggle-active' : ''}`}
+          onClick={() => setDuplicateGroupsMode(!duplicateGroupsMode)}
+        >
+          {duplicateGroupsMode ? 'Back to Library' : `Duplicate Groups (${duplicateGroups.length})`}
+        </button>
+      )}
+    </section>
+  );
+}
+
 export default function Sidebar({
   onRescan,
   onDirectoryPicked,
@@ -125,32 +386,13 @@ export default function Sidebar({
   const duplicateFilter = useStore((s) => s.duplicateFilter);
   const setDuplicateFilter = useStore((s) => s.setDuplicateFilter);
   const features = useStore((s) => s.settings.features);
-  const duplicateSettings = useStore((s) => s.settings.duplicates);
   const stats = useStore((s) => s.stats);
   const isScanning = useStore((s) => s.isScanning);
-  const scanProgress = useStore((s) => s.scanProgress);
-  const isGenerating = useStore((s) => s.isGenerating);
-  const genProgress = useStore((s) => s.genProgress);
   const setReviewMode = useStore((s) => s.setReviewMode);
   const setReviewIndex = useStore((s) => s.setReviewIndex);
   const filteredVideos = useStore((s) => s.filteredVideos);
   const videos = useStore((s) => s.videos);
-  const duplicateGroups = useStore((s) => s.duplicateGroups);
-  const duplicateProgress = useStore((s) => s.duplicateProgress);
-  const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
-  const setDuplicateGroupsMode = useStore((s) => s.setDuplicateGroupsMode);
-  const duplicateViewMode = useStore((s) => s.duplicateViewMode);
-  const setDuplicateViewMode = useStore((s) => s.setDuplicateViewMode);
-  const duplicatePathFilter = useStore((s) => s.duplicatePathFilter);
-  const setDuplicatePathFilter = useStore((s) => s.setDuplicatePathFilter);
-  const duplicateMinSimilarity = useStore((s) => s.duplicateMinSimilarity);
-  const setDuplicateMinSimilarity = useStore((s) => s.setDuplicateMinSimilarity);
-  const duplicateSortBy = useStore((s) => s.duplicateSortBy);
-  const setDuplicateSortBy = useStore((s) => s.setDuplicateSortBy);
-  const duplicateSortOrder = useStore((s) => s.duplicateSortOrder);
-  const setDuplicateSortOrder = useStore((s) => s.setDuplicateSortOrder);
-  const clearDuplicateListFilters = useStore((s) => s.clearDuplicateListFilters);
   const cardScale = useStore((s) => s.cardScale);
   const setCardScale = useStore((s) => s.setCardScale);
   const groupByFolder = useStore((s) => s.groupByFolder);
@@ -169,13 +411,6 @@ export default function Sidebar({
   const [showFilters, setShowFilters] = useState(true);
   const [showSort, setShowSort] = useState(true);
   const [showView, setShowView] = useState(true);
-  const metadataRunning = isGenerating && genProgress.phase === 'metadata';
-  const duplicateDisabled = isFindingDuplicates || metadataRunning || videos.length < 2;
-  const duplicateDisabledTitle = metadataRunning
-    ? 'Available after metadata has finished updating'
-    : videos.length < 2
-      ? 'Duplicate detection needs at least two videos'
-      : 'Find mostly identical whole-video duplicates';
 
   const handleSelectDir = async () => {
     if (!window.electronAPI) return;
@@ -336,7 +571,6 @@ export default function Sidebar({
   const hasDurationFilter = minDurationFilter > 0 || maxDurationFilter !== null;
   const hasRatingFilter = minRatingFilter > 0;
   const duplicateCount = videos.filter((v) => Boolean(v.duplicateGroupId)).length;
-  const duplicateListFiltersActive = duplicatePathFilter.trim() !== '' || duplicateMinSimilarity > 0 || duplicateSortBy !== 'similarity' || duplicateSortOrder !== 'desc';
   const hasExtraFilter = favoritesFilter || incompatibleFilter || duplicateFilter;
   const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilterPath) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
   const filteredSummary = `${filteredVideos.length} / ${videos.length}`;
@@ -373,12 +607,6 @@ export default function Sidebar({
 
   const hasIncompatibleVideos = videos.some((v) => v.compatible === false);
   const incompatibleCount = videos.filter((v) => v.compatible === false).length;
-  const generationLabel =
-    genProgress.phase === 'metadata'
-      ? 'Metadata...'
-      : genProgress.phase === 'media'
-        ? 'Media data...'
-        : 'Thumbnails...';
 
   return (
     <aside className="sidebar">
@@ -495,206 +723,12 @@ export default function Sidebar({
         </div>
       </section>
 
-      {(isScanning || isGenerating) && (
-        <section className="sidebar-section">
-          {isScanning && (
-            <div className="progress-info">
-              <span className="progress-label">Scanning...</span>
-              <span className="progress-detail">{scanProgress.found} videos found</span>
-            </div>
-          )}
-          {isGenerating && (
-            <div className="progress-info">
-              <span className="progress-label">{generationLabel}</span>
-              <div className="progress-bar-track">
-                <div
-                  className="progress-bar-fill"
-                  style={{ width: `${genProgress.total > 0 ? (genProgress.current / genProgress.total) * 100 : 0}%` }}
-                />
-              </div>
-              <span className="progress-detail">
-                {genProgress.current} / {genProgress.total}
-              </span>
-            </div>
-          )}
-        </section>
-      )}
+      <SidebarProgressSection />
 
-      {stats.total > 0 && duplicateSettings.enabled && duplicateGroupsMode && (
-        <section className="sidebar-section sidebar-duplicate-mode-section">
-          <h3 className="sidebar-section-title">
-            <CopyCheck size={14} /> Duplicates
-          </h3>
-
-          <div className="duplicate-mode-summary">
-            <strong>{duplicateGroups.length}</strong>
-            <span>{duplicateGroups.length === 1 ? 'group' : 'groups'} / {duplicateCount} videos</span>
-          </div>
-
-          <div className="duplicate-sidebar-view-toggle" role="tablist" aria-label="Duplicate view mode">
-            <button
-              type="button"
-              className={duplicateViewMode === 'rows' ? 'active' : ''}
-              onClick={() => setDuplicateViewMode('rows')}
-              aria-pressed={duplicateViewMode === 'rows'}
-            >
-              <List size={14} />
-              Rows
-            </button>
-            <button
-              type="button"
-              className={duplicateViewMode === 'gallery' ? 'active' : ''}
-              onClick={() => setDuplicateViewMode('gallery')}
-              aria-pressed={duplicateViewMode === 'gallery'}
-            >
-              <Grid3X3 size={14} />
-              Gallery
-            </button>
-          </div>
-
-          <div className="duplicate-sidebar-controls">
-            <div className="duplicate-sidebar-heading-row">
-              <span className="sort-label">Filter / sort</span>
-              {duplicateListFiltersActive && (
-                <button
-                  type="button"
-                  className="filter-reset-btn"
-                  onClick={clearDuplicateListFilters}
-                  title="Reset duplicate filters"
-                  aria-label="Reset duplicate filters"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-
-            <label className="duplicate-sidebar-field">
-              <span>Path contains</span>
-              <input
-                type="text"
-                value={duplicatePathFilter}
-                onChange={(e) => setDuplicatePathFilter(e.target.value)}
-                placeholder="folder or filename"
-              />
-            </label>
-
-            <label className="duplicate-sidebar-field">
-              <span>Minimum similarity</span>
-              <div className="duplicate-sidebar-inline">
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={duplicateMinSimilarity}
-                  onChange={(e) => setDuplicateMinSimilarity(Number(e.target.value))}
-                />
-                <strong>{duplicateMinSimilarity}%</strong>
-              </div>
-            </label>
-
-            <label className="duplicate-sidebar-field">
-              <span>Sort by</span>
-              <div className="sort-row">
-                <select
-                  className="sidebar-select"
-                  value={duplicateSortBy}
-                  onChange={(e) => setDuplicateSortBy(e.target.value as DuplicateSortField)}
-                >
-                  <option value="similarity">Similarity</option>
-                  <option value="groupSize">Group size</option>
-                  <option value="totalSize">Total size</option>
-                </select>
-                <button
-                  className="btn btn-icon"
-                  onClick={() => setDuplicateSortOrder(duplicateSortOrder === 'asc' ? 'desc' : 'asc')}
-                  title={duplicateSortOrder === 'asc' ? 'Ascending' : 'Descending'}
-                >
-                  <ArrowUpDown size={14} style={{ transform: duplicateSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
-                </button>
-              </div>
-            </label>
-          </div>
-
-          <button
-            className="btn btn-primary sidebar-wide-action"
-            onClick={onFindDuplicates}
-            disabled={duplicateDisabled}
-            title={metadataRunning ? duplicateDisabledTitle : 'Run duplicate detection again'}
-          >
-            <RefreshCw size={14} />
-            {isFindingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Run Again'}
-          </button>
-
-          <button className="btn btn-outline sidebar-wide-action" onClick={() => setDuplicateGroupsMode(false)}>
-            Back to Library
-          </button>
-
-          <button className="btn btn-outline sidebar-wide-action" onClick={onOpenDuplicateSettings}>
-            <Settings size={14} />
-            Duplicate Settings
-          </button>
-
-          {isFindingDuplicates && duplicateProgress && (
-            <div className="progress-info duplicate-progress-info">
-              <span className="progress-label">{duplicateProgress.stage}</span>
-              <div className="progress-bar-track">
-                <div
-                  className="progress-bar-fill"
-                  style={{ width: `${duplicateProgress.total > 0 ? (duplicateProgress.current / duplicateProgress.total) * 100 : 0}%` }}
-                />
-              </div>
-              <span className="progress-detail">
-                {duplicateProgress.total > 0 ? `${duplicateProgress.current} / ${duplicateProgress.total}` : 'Preparing...'}
-              </span>
-            </div>
-          )}
-        </section>
-      )}
-
-      {stats.total > 0 && duplicateSettings.enabled && !duplicateGroupsMode && (
-        <section className="sidebar-section">
-          <button
-            className="btn btn-primary sidebar-wide-action"
-            onClick={onFindDuplicates}
-            disabled={duplicateDisabled}
-            title={duplicateDisabledTitle}
-          >
-            <CopyCheck size={14} />
-            {isFindingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Find Duplicates'}
-          </button>
-          {isFindingDuplicates && duplicateProgress && (
-            <div className="progress-info duplicate-progress-info">
-              <span className="progress-label">{duplicateProgress.stage}</span>
-              <div className="progress-bar-track">
-                <div
-                  className="progress-bar-fill"
-                  style={{ width: `${duplicateProgress.total > 0 ? (duplicateProgress.current / duplicateProgress.total) * 100 : 0}%` }}
-                />
-              </div>
-              <span className="progress-detail">
-                {duplicateProgress.total > 0 ? `${duplicateProgress.current} / ${duplicateProgress.total}` : 'Preparing...'}
-              </span>
-            </div>
-          )}
-          {duplicateGroups.length > 0 && (
-            <button
-              className={`btn btn-outline sidebar-wide-action ${duplicateGroupsMode ? 'btn-toggle-active' : ''}`}
-              onClick={() => setDuplicateGroupsMode(!duplicateGroupsMode)}
-            >
-              {duplicateGroupsMode ? 'Back to Library' : `Duplicate Groups (${duplicateGroups.length})`}
-            </button>
-          )}
-        </section>
-      )}
-
-      {stats.total > 0 && !duplicateSettings.enabled && !duplicateGroupsMode && (
-        <section className="sidebar-section">
-          <button className="btn btn-outline sidebar-wide-action" onClick={onOpenDuplicateSettings}>
-            Enable duplicate detection
-          </button>
-        </section>
-      )}
+      <SidebarDuplicateSection
+        onFindDuplicates={onFindDuplicates}
+        onOpenDuplicateSettings={onOpenDuplicateSettings}
+      />
 
       {stats.total > 0 && !duplicateGroupsMode && (
         <section className="sidebar-section sidebar-library-section">

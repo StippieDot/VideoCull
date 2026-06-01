@@ -55,14 +55,20 @@ export default function ReviewMode() {
   const setVideoStatus = useStore((s) => s.setVideoStatus);
   const undo = useStore((s) => s.undo);
   const undoStack = useStore((s) => s.undoStack);
-  const settings = useStore((s) => s.settings);
+  const globalMute = useStore((s) => s.settings.globalMute);
+  const keyReset = useStore((s) => s.settings.keyReset);
+  const keyUndo = useStore((s) => s.settings.keyUndo);
+  const keyDelete = useStore((s) => s.settings.keyDelete);
+  const keyPlay = useStore((s) => s.settings.keyPlay);
+  const keySkip = useStore((s) => s.settings.keySkip);
+  const keyKeep = useStore((s) => s.settings.keyKeep);
   const addBookmark = useStore((s) => s.addBookmark);
   const removeBookmark = useStore((s) => s.removeBookmark);
   const setVideoRating = useStore((s) => s.setVideoRating);
   const toggleFavorite = useStore((s) => s.toggleFavorite);
   const features = useStore((s) => s.settings.features);
   const pushToast = useStore((s) => s.pushToast);
-  const effectiveGlobalMute = features.globalMute && settings.globalMute;
+  const effectiveGlobalMute = features.globalMute && globalMute;
 
   const scopeIdsRef = useRef<string[] | null>(null);
   if (scopeIdsRef.current === null) {
@@ -562,49 +568,49 @@ export default function ReviewMode() {
       </div>
 
       <div className="review-actions">
-        <button className="review-action-btn review-btn-reset" onClick={resetStatus} title={`Reset (${formatKeybind(settings.keyReset)})`}>
+        <button className="review-action-btn review-btn-reset" onClick={resetStatus} title={`Reset (${formatKeybind(keyReset)})`}>
           <RotateCcw size={18} />
           <span>Reset</span>
-          <kbd>{formatKeybind(settings.keyReset)}</kbd>
+          <kbd>{formatKeybind(keyReset)}</kbd>
         </button>
 
         <button
           className="review-action-btn review-undo"
           onClick={handleUndo}
           disabled={undoStack.length === 0}
-          title={`Undo (${formatKeybind(settings.keyUndo)})`}
+          title={`Undo (${formatKeybind(keyUndo)})`}
         >
           <Undo2 size={18} />
           <span>Undo</span>
-          <kbd>{formatKeybind(settings.keyUndo)}</kbd>
+          <kbd>{formatKeybind(keyUndo)}</kbd>
         </button>
 
-        <button className="review-action-btn review-btn-delete" onClick={markDelete} title={`Delete (${formatKeybind(settings.keyDelete)})`}>
+        <button className="review-action-btn review-btn-delete" onClick={markDelete} title={`Delete (${formatKeybind(keyDelete)})`}>
           <Trash2 size={20} />
           <span>Delete</span>
-          <kbd>{formatKeybind(settings.keyDelete)}</kbd>
+          <kbd>{formatKeybind(keyDelete)}</kbd>
         </button>
 
         <button
           className="review-action-btn review-btn-play"
           onClick={handlePlay}
-          title={`${canPlayInReview ? 'Play' : 'Open in external player'} (${formatKeybind(settings.keyPlay)})`}
+          title={`${canPlayInReview ? 'Play' : 'Open in external player'} (${formatKeybind(keyPlay)})`}
         >
           <Play size={20} />
           <span>{canPlayInReview ? 'Play' : 'Open External'}</span>
-          <kbd>{formatKeybind(settings.keyPlay)}</kbd>
+          <kbd>{formatKeybind(keyPlay)}</kbd>
         </button>
 
-        <button className="review-action-btn review-btn-skip" onClick={skip} title={`Skip (${formatKeybind(settings.keySkip)})`}>
+        <button className="review-action-btn review-btn-skip" onClick={skip} title={`Skip (${formatKeybind(keySkip)})`}>
           <SkipForward size={20} />
           <span>Skip</span>
-          <kbd>{formatKeybind(settings.keySkip)}</kbd>
+          <kbd>{formatKeybind(keySkip)}</kbd>
         </button>
 
-        <button className="review-action-btn review-btn-keep" onClick={markKeep} title={`Keep (${formatKeybind(settings.keyKeep)})`}>
+        <button className="review-action-btn review-btn-keep" onClick={markKeep} title={`Keep (${formatKeybind(keyKeep)})`}>
           <Check size={20} />
           <span>Keep</span>
-          <kbd>{formatKeybind(settings.keyKeep)}</kbd>
+          <kbd>{formatKeybind(keyKeep)}</kbd>
         </button>
       </div>
     </div>
