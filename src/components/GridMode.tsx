@@ -49,6 +49,15 @@ interface GridRowData {
   toggleSelection: (video: Video, event: ReactMouseEvent) => void;
 }
 
+interface GridRowRenderSignals {
+  cardHeight: number;
+  columnWidth: number;
+  rowContentVersion: number;
+  selectionVersion: number;
+}
+
+let gridRowRuntime: GridRowData | null = null;
+
 /** Extract display-friendly folder name relative to root directory */
 function getFolderLabel(video: Video, rootDirs: string[]): string {
   const sep = video.path.includes('/') ? '/' : '\\';
@@ -81,7 +90,9 @@ function formatFolderSize(bytes: number): string {
   return formatSize(bytes).replace(/\.0\s/, ' ').replace(/\s/g, '');
 }
 
-function Row({ index, style, ariaAttributes, ...data }: { index: number; style: CSSProperties; ariaAttributes: AriaAttributes & { role: 'listitem' } } & GridRowData) {
+function Row({ index, style, ariaAttributes }: { index: number; style: CSSProperties; ariaAttributes: AriaAttributes & { role: 'listitem' } } & GridRowRenderSignals) {
+  const data = gridRowRuntime;
+  if (!data) return null;
   const {
     rows,
     columnWidth,
@@ -179,6 +190,10 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const listRef = useRef<ListImperativeAPI | null>(null);
   const restoredScrollRef = useRef(false);
   const visibleRowsRef = useRef({ startIndex: 0, stopIndex: 0 });
+  const lastRowsRef = useRef<RowItem[] | null>(null);
+  const rowContentVersionRef = useRef(0);
+  const lastSelectedIdsRef = useRef(selectedIds);
+  const selectionVersionRef = useRef(0);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const isSelectionMode = selectedIds.size > 0;
 
@@ -329,8 +344,8 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   }, [dimensions.height, initialScrollOffset, rows.length]);
 
   const getItemSize = useCallback(
-    (index: number, rowProps: GridRowData) => rowProps.rows[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP,
-    [cardHeight]
+    (index: number) => rows[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP,
+    [cardHeight, rows]
   );
 
   const getLastSelectedInList = useCallback((ids: Set<string>): string | null => {
@@ -515,6 +530,25 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     toggleSelection,
   }), [rows, columnWidth, cardHeight, selectedIds, isSelectionMode, handleCardClick, handleCardPlay, onReviewFolder, persistCurrentScroll, toggleSelection]);
 
+  if (lastRowsRef.current !== rows) {
+    lastRowsRef.current = rows;
+    rowContentVersionRef.current += 1;
+  }
+
+  if (lastSelectedIdsRef.current !== selectedIds) {
+    lastSelectedIdsRef.current = selectedIds;
+    selectionVersionRef.current += 1;
+  }
+
+  gridRowRuntime = itemData;
+
+  const rowRenderSignals = useMemo<GridRowRenderSignals>(() => ({
+    cardHeight,
+    columnWidth,
+    rowContentVersion: rowContentVersionRef.current,
+    selectionVersion: selectionVersionRef.current,
+  }), [cardHeight, columnWidth, rows, selectedIds]);
+
   return (
     <div className="grid-mode" ref={containerRef}>
       {filteredVideos.length === 0 ? (
@@ -527,7 +561,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
           rowCount={rows.length}
           rowComponent={Row}
           rowHeight={getItemSize}
-          rowProps={itemData}
+          rowProps={rowRenderSignals}
           overscanCount={2}
           onRowsRendered={handleRowsRendered}
           onScroll={handleScroll}

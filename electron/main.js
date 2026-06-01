@@ -5,6 +5,7 @@ const os = require('os');
 const { scanDirectory } = require('./scanner');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
+const { collectUnloadedOwnerFolders, createFolderKey, rememberFolder } = require('./cache-folder-tracker');
 const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
 const log = require('./logger');
 const { autoUpdater } = require('electron-updater');
@@ -237,7 +238,7 @@ function createWindow() {
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL(`http://localhost:${process.env.VITE_DEV_SERVER_PORT || 5173}`);
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
@@ -509,6 +510,10 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   isQuitting = true;
   cancelProcessing();
+  if (activeDuplicateRun) {
+    activeDuplicateRun.cancel();
+    activeDuplicateRun = null;
+  }
   for (const interval of activeBatchIntervals) {
     clearInterval(interval);
   }
@@ -821,13 +826,9 @@ async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false, 
   }
 }
 
-async function loadOwnerFolderCachesIntoMap(videos, rootDirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots) {
+async function loadOwnerFolderCachesIntoMap(videos, rootDirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots, loadedCacheFolderKeys = new Set()) {
   const scannedIds = new Set(videos.map((video) => video.id));
-  const ownerFolders = Array.from(new Set(
-    videos
-      .map((video) => getVideoFolderPath(video))
-      .filter((folderPath) => !isSameFolderSync(folderPath, rootDirPath))
-  ));
+  const ownerFolders = collectUnloadedOwnerFolders(videos, rootDirPath, loadedCacheFolderKeys);
 
   for (const ownerFolder of ownerFolders) {
     try {
@@ -1333,6 +1334,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   assertScanCurrent(scanToken);
   const cachePaths = await prepareCacheFolder(dirPath, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
   assertScanCurrent(scanToken);
+  const loadedCacheFolderKeys = new Set([createFolderKey(dirPath)]);
 
   // Open SQLite DB for this directory (creates schema if first time)
   let db = await openCacheDbWithRecovery(dirPath, cacheOptions);
@@ -1382,6 +1384,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
       scanCacheRoots.add(childPaths.cacheRootDir);
       const childMap = await loadCacheMapWithRecovery(childFolder, cacheOptions, childPaths.cacheRootDir);
       mergeCacheMap(cachedMap, childMap);
+      rememberFolder(loadedCacheFolderKeys, childFolder);
       assertScanCurrent(scanToken);
     } catch (err) {
       if (err instanceof ScanSupersededError) throw err;
@@ -1429,7 +1432,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     if (scanToken === scanGeneration) sendToRenderer('scan-progress', progress);
   });
   assertScanCurrent(scanToken);
-  await loadOwnerFolderCachesIntoMap(videos, dirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots);
+  await loadOwnerFolderCachesIntoMap(videos, dirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots, loadedCacheFolderKeys);
   assertScanCurrent(scanToken);
 
   // Merge with cache: preserve status, thumbnails, bookmarks from SQLite.
