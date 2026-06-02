@@ -12,8 +12,7 @@ import ShortcutsHelp from './components/ShortcutsHelp';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { MediaProbeVideoInput, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatRecentPath } from './utils';
-import { recordDevPerf } from './perf-dev';
-import { recordReactCommit } from './perf-dev';
+import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
 import './App.css';
 
@@ -100,6 +99,7 @@ export default function App() {
   const dragDepthRef = useRef(0);
   const folderReviewPathRef = useRef<string | null>(null);
   const settingsSaveQueueRef = useRef(Promise.resolve());
+  const previousReviewModeRef = useRef(reviewMode);
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
@@ -142,6 +142,13 @@ export default function App() {
   useEffect(() => {
     isPrivateRef.current = isPrivate;
   }, [isPrivate]);
+
+  useEffect(() => {
+    if (previousReviewModeRef.current && !reviewMode) {
+      completeDevInteractionOnNextPaint('review.exit');
+    }
+    previousReviewModeRef.current = reviewMode;
+  }, [reviewMode]);
 
   const handleDirectoryPicked = useCallback((pickedPath: string) => {
     const currentDirs = useStore.getState().directories;
@@ -922,8 +929,18 @@ export default function App() {
       <Profiler id="AppMain" onRender={handleMainProfiler}>
         <main className="app-main">
           {!directory && !isScanning && videos.length === 0 && <EmptyState onNotify={pushToast} />}
-          {directory && videos.length > 0 && !reviewMode && duplicateGroupsMode && (
-            <DuplicateGroupsView />
+          {directory && videos.length > 0 && duplicateGroupsMode && (
+            <Profiler id="DuplicateGroupsView" onRender={handleMainProfiler}>
+              <div
+                style={{
+                  display: reviewMode ? 'none' : 'flex',
+                  flex: 1,
+                  minHeight: 0,
+                }}
+              >
+                <DuplicateGroupsView />
+              </div>
+            </Profiler>
           )}
           {directory && videos.length > 0 && !reviewMode && !duplicateGroupsMode && (
             <GridMode
@@ -931,7 +948,11 @@ export default function App() {
               onRegenerateThumbnails={handleRegenerateThumbnails}
             />
           )}
-          {reviewMode && <ReviewMode />}
+          {reviewMode && (
+            <Profiler id="ReviewMode" onRender={handleMainProfiler}>
+              <ReviewMode />
+            </Profiler>
+          )}
           {isScanning && videos.length === 0 && (
             <div className="scanning-overlay">
               <div className="scanning-spinner" />

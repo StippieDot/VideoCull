@@ -96,6 +96,7 @@ test('multi-frame extraction args reuse one ffmpeg command for all timestamps', 
   assert.ok(args.includes('1'));
   assert.ok(args.includes('-filter_complex'));
   assert.ok(args.includes('pipe:1'));
+  assert.ok(args.some((value) => typeof value === 'string' && value.includes('setsar=1')));
   assert.ok(args.some((value) => typeof value === 'string' && value.includes('concat=n=3:v=1:a=0[out]')));
 });
 
@@ -121,6 +122,80 @@ test('fingerprint building skips flipped hashes unless compareFlipped is enabled
   });
   assert.equal(typeof withFlipped[0].flippedPHashHex, 'string');
   assert.ok(withFlipped[0].flippedPHashHex.length > 0);
+});
+
+test('single-frame fallback is enabled for incomplete-output and concat failures', () => {
+  assert.equal(__test__.shouldFallbackToSingleFrameExtraction(new Error('FFmpeg returned 0')), true);
+  assert.equal(__test__.shouldFallbackToSingleFrameExtraction(new Error('Failed to configure output pad on Parsed_concat_12')), true);
+  assert.equal(__test__.shouldFallbackToSingleFrameExtraction(new Error('Permission denied')), false);
+});
+
+test('exact representative reduction keeps one representative per exact cluster', () => {
+  const videos = ['a', 'b', 'c', 'd'].map(video);
+  const settings = normalizeDuplicateSettings({ comparisonMode: 'phash' });
+
+  const result = __test__.buildExactRepresentativeIndex([
+    ['a', 'b'],
+    ['c', 'd'],
+  ], videos, settings);
+
+  assert.deepEqual(result.representativeVideos.map((item) => item.id), ['a', 'c']);
+  assert.deepEqual(result.membersByRepresentativeId.get('a'), ['a', 'b']);
+  assert.deepEqual(result.membersByRepresentativeId.get('c'), ['c', 'd']);
+  assert.equal(result.representativeByVideoId.get('b'), 'a');
+  assert.equal(result.representativeByVideoId.get('d'), 'c');
+});
+
+test('exact representative reduction respects ignored exact pairs', () => {
+  const ids = ['0000000000000001', '0000000000000002'];
+  const videos = ids.map(video);
+  const settings = normalizeDuplicateSettings({
+    comparisonMode: 'phash',
+    ignoredDuplicatePairs: ['0000000000000001|0000000000000002'],
+  });
+
+  const result = __test__.buildExactRepresentativeIndex([
+    ids,
+  ], videos, settings);
+
+  assert.deepEqual(result.representativeVideos.map((item) => item.id), ids);
+  assert.deepEqual(result.membersByRepresentativeId.get(ids[0]), [ids[0]]);
+  assert.deepEqual(result.membersByRepresentativeId.get(ids[1]), [ids[1]]);
+});
+
+test('representative similarity pairs expand back to all exact-group members', () => {
+  const expanded = __test__.expandRepresentativePairs([
+    { aId: 'a', bId: 'c', similarity: 96, matchType: 'phash' },
+  ], new Map([
+    ['a', ['a', 'b']],
+    ['c', ['c', 'd']],
+  ]));
+
+  assert.deepEqual(
+    expanded.map((pair) => [pair.aId, pair.bId].toSorted()).toSorted((left, right) => left.join('|').localeCompare(right.join('|'))),
+    [['a', 'c'], ['a', 'd'], ['b', 'c'], ['b', 'd']],
+  );
+});
+
+test('expanded representative matches still build full mixed groups', () => {
+  const videos = ['a', 'b', 'c', 'd'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const expandedPairs = __test__.expandRepresentativePairs([
+    { aId: 'a', bId: 'c', similarity: 96, matchType: 'phash' },
+  ], new Map([
+    ['a', ['a', 'b']],
+    ['c', ['c', 'd']],
+  ]));
+
+  const groups = __test__.buildGroups([
+    ['a', 'b'],
+    ['c', 'd'],
+  ], expandedPairs, videosById, settings);
+
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].videoIds.toSorted(), ['a', 'b', 'c', 'd']);
+  assert.equal(groups[0].matchType, 'mixed');
 });
 
 test('exact duplicate pass stops before cache writes after cancellation', async () => {

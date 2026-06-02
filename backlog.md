@@ -321,6 +321,31 @@ For each issue below:
   - **No.**
   - The performance plan intentionally avoids changing duplicate-detection semantics.
 
+### 20. Suggested keeper logic is too limited for source quality and file-health tradeoffs
+- **What the issue is**
+  - Suggested keeper selection currently relies on a short deterministic priority list (`resolution`, `videoBitrate`, `duration`, `fps`, `size`).
+  - In plain language: the app can pick the technically larger file, but it cannot yet prefer trusted sources, structurally healthier files, or more likely uncropped framing when duplicate candidates are otherwise close.
+- **Why this matters**
+  - Users may want keeper suggestions to reflect library-specific trust signals like `originals` vs `imports`.
+  - Some duplicate groups contain broken remuxes, silent variants, or reframed reposts where pure size/bitrate ordering is not the best keeper choice.
+- **Proposed fix**
+  - Extend the existing duplicate keeper-priority system with three optional reorderable rules:
+    - `sourcePriority`
+    - `containerHealth`
+    - `cropSanity`
+  - Keep them disabled by default.
+  - Make `sourcePriority` user-configurable with ordered path-match rules that can either `prefer` or `avoid` matching paths.
+  - Keep `containerHealth` and `cropSanity` as soft heuristics that only influence suggested keeper choice and do not change duplicate grouping.
+  - Keep the current deterministic core rules and continue to mirror keeper logic in both frontend and backend until a shared helper exists.
+- **Worth implementing?**
+  - **Yes, selectively.**
+  - `sourcePriority` is the highest-value and lowest-cost option.
+  - `containerHealth` is practical as a metadata-based soft preference.
+  - `cropSanity` is useful, but should stay metadata-only in a first version rather than expanding into frame-analysis or watermark detection.
+- **Fully fixed by the performance audit plan?**
+  - **No.**
+  - This is duplicate-review quality/UX work, not part of the performance plan.
+
 ## Recommended Next Implementation Order
 
 1. Permanent delete fallback dialog
@@ -334,4 +359,5 @@ For each issue below:
 9. Grid and review recomputation cleanup
 10. Duplicate results windowing
 11. Scanner throughput improvements
-12. Lower-priority cleanup items
+12. Optional duplicate keeper heuristics (`sourcePriority` first, then `containerHealth`, then `cropSanity`)
+13. Lower-priority cleanup items

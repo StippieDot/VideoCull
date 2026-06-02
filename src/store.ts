@@ -276,8 +276,6 @@ function compareKeeperCandidates(a: Video, b: Video, order: string[]): number {
     else if (rule === 'duration') diff = finiteNumber(a.durationSecs) - finiteNumber(b.durationSecs);
     else if (rule === 'fps') diff = finiteNumber(a.fps) - finiteNumber(b.fps);
     else if (rule === 'size') diff = finiteNumber(a.sizeBytes) - finiteNumber(b.sizeBytes);
-    else if (rule === 'metadataDate') diff = finiteNumber(a.metadataDate ?? a.date) - finiteNumber(b.metadataDate ?? b.date);
-    else if (rule === 'filename') diff = String(b.filename ?? '').localeCompare(String(a.filename ?? ''), undefined, { numeric: true });
     if (Number.isFinite(diff) && diff !== 0) return diff;
   }
   return String(b.path ?? '').localeCompare(String(a.path ?? ''));
@@ -294,9 +292,13 @@ function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], ord
     const groupVideos = group.videoIds
       .map((videoId) => videosById.get(videoId))
       .filter((video): video is Video => Boolean(video));
+    const manualSuggestedKeeperId = group.manualSuggestedKeeperId && group.videoIds.includes(group.manualSuggestedKeeperId)
+      ? group.manualSuggestedKeeperId
+      : null;
     return {
       ...group,
-      suggestedKeeperId: chooseSuggestedKeeperId(groupVideos, order),
+      manualSuggestedKeeperId,
+      suggestedKeeperId: manualSuggestedKeeperId ?? chooseSuggestedKeeperId(groupVideos, order),
     };
   });
 }
@@ -1218,6 +1220,26 @@ const useStore = create<VideoStore>((set, get) => ({
       duplicateGroupsMode: groupsWithKeepers.length > 0,
     }));
   },
+  setManualDuplicateKeeper: (groupId, videoId) => {
+    const stateBefore = get();
+    const groupsWithOverride = stateBefore.duplicateGroups.map((group) => {
+      if (group.id !== groupId) return group;
+      return {
+        ...group,
+        manualSuggestedKeeperId: videoId && group.videoIds.includes(videoId) ? videoId : null,
+      };
+    });
+    const groupsWithKeepers = applyKeeperOrderToGroups(
+      groupsWithOverride,
+      stateBefore.videos,
+      stateBefore.settings.duplicates.keeperOrder
+    );
+    const videos = applyDuplicateGroupsToVideos(stateBefore.videos, groupsWithKeepers);
+    set(buildVideoStateUpdate(stateBefore, videos, ['duplicate'], {
+      duplicateGroups: groupsWithKeepers,
+      duplicateGroupsMode: groupsWithKeepers.length > 0,
+    }));
+  },
   applyDuplicateResult: (result) => {
     const stateBefore = get();
     const groupsWithKeepers = result.groups
@@ -1293,7 +1315,10 @@ const useStore = create<VideoStore>((set, get) => ({
   setDuplicateViewMode: (duplicateViewMode) => set({ duplicateViewMode }),
   setDuplicatePathFilter: (duplicatePathFilter) => set({ duplicatePathFilter }),
   setDuplicateMinSimilarity: (duplicateMinSimilarity) => set({ duplicateMinSimilarity: Math.max(0, Math.min(100, duplicateMinSimilarity)) }),
-  setDuplicateSortBy: (duplicateSortBy) => set({ duplicateSortBy }),
+  setDuplicateSortBy: (duplicateSortBy) => set((state) => ({
+    duplicateSortBy,
+    duplicateSortOrder: state.duplicateSortBy === duplicateSortBy ? state.duplicateSortOrder : 'desc',
+  })),
   setDuplicateSortOrder: (duplicateSortOrder) => set({ duplicateSortOrder }),
   setDuplicateScrollTop: (duplicateScrollTop) => set({ duplicateScrollTop: Math.max(0, duplicateScrollTop) }),
   clearDuplicateListFilters: () => set({
@@ -1343,15 +1368,22 @@ const useStore = create<VideoStore>((set, get) => ({
     );
     const prevGroups = get().duplicateGroups;
     const prunedGroups = deletedVideoIds.size > 0
-      ? prevGroups
+      ? applyKeeperOrderToGroups(
+        prevGroups
           .map((group) => ({
             ...group,
             videoIds: group.videoIds.filter((id) => !deletedVideoIds.has(id)),
             suggestedKeeperId: group.suggestedKeeperId && deletedVideoIds.has(group.suggestedKeeperId)
               ? null
               : group.suggestedKeeperId,
+            manualSuggestedKeeperId: group.manualSuggestedKeeperId && deletedVideoIds.has(group.manualSuggestedKeeperId)
+              ? null
+              : group.manualSuggestedKeeperId,
           }))
-          .filter((group) => group.videoIds.length >= 2)
+          .filter((group) => group.videoIds.length >= 2),
+        videos,
+        get().settings.duplicates.keeperOrder
+      )
       : prevGroups;
     const groupsChanged = prunedGroups !== prevGroups;
 

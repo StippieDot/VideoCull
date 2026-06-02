@@ -47,6 +47,7 @@ test('default settings follow the simplified VDF-style model', () => {
   assert.equal(settings.durationTolerancePercent, 20);
   assert.equal(settings.checkpointIntervalMinutes, 5);
   assert.equal(settings.requireEverySample, true);
+  assert.deepEqual(settings.keeperOrder, ['resolution', 'videoBitrate', 'duration', 'fps', 'size']);
 });
 
 test('duration tolerance uses the shorter video as the percentage base', () => {
@@ -131,4 +132,11 @@ test('keeper ordering follows user priority order', () => {
   };
   const settings = normalizeDuplicateSettings({ keeperOrder: ['size', 'videoBitrate', 'resolution'] });
   assert.equal(chooseSuggestedKeeper([smallHigherBitrate, largeLowerBitrate], settings)?.id, 'large');
+});
+
+test('keeper ordering normalization removes legacy metadata and filename rules', () => {
+  const settings = normalizeDuplicateSettings({
+    keeperOrder: ['metadataDate', 'size', 'filename', 'fps'],
+  });
+  assert.deepEqual(settings.keeperOrder, ['size', 'fps', 'resolution', 'videoBitrate', 'duration']);
 });

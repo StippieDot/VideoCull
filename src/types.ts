@@ -171,6 +171,7 @@ export interface DuplicateGroup {
   similarity: number;
   matchType: Exclude<DuplicateMatchType, null>;
   suggestedKeeperId: string | null;
+  manualSuggestedKeeperId?: string | null;
   reason: string;
   exactVideoIds?: string[];
 }
@@ -358,6 +359,7 @@ export interface VideoStore {
   setActiveReviewVideoPath: (path: string | null) => void;
   setDuplicateGroupsMode: (val: boolean) => void;
   setDuplicateGroups: (groups: DuplicateGroup[]) => void;
+  setManualDuplicateKeeper: (groupId: string, videoId: string | null) => void;
   applyDuplicateResult: (result: DuplicateResult) => void;
   addIgnoredDuplicatePairs: (pairKeys: string[]) => void;
   removeIgnoredDuplicatePairs: (pairKeys: string[]) => void;

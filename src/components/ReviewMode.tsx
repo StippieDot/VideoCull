@@ -11,6 +11,7 @@ import { createPlayer, videoFeatures } from '@videojs/react';
 import { MinimalVideoSkin, Video } from '@videojs/react/video';
 import { isWebSupported } from '../utils';
 import { matchesKeybind, formatKeybind } from '../keybinds';
+import { beginDevInteraction, completeDevInteractionOnNextPaint } from '../perf-dev';
 import './ReviewMode.css';
 
 const Player = createPlayer({ features: videoFeatures });
@@ -128,6 +129,10 @@ export default function ReviewMode() {
   const videoUrl = useMemo(() => (
     video ? `video://local/${encodeURIComponent(video.path)}` : ''
   ), [video]);
+
+  useEffect(() => {
+    completeDevInteractionOnNextPaint('review.enter');
+  }, [video?.id]);
 
   useEffect(() => {
     return () => setActiveReviewVideoPath(null);
@@ -274,7 +279,10 @@ export default function ReviewMode() {
     }
   }, [video, canPlayInReview]);
 
-  const close = useCallback(() => setReviewMode(false), [setReviewMode]);
+  const close = useCallback(() => {
+    beginDevInteraction('review.exit');
+    setReviewMode(false);
+  }, [setReviewMode]);
 
   const addBookmarkNow = useCallback(() => {
     if (!video || !videoRef.current) return;

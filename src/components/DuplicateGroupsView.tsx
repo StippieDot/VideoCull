@@ -1,10 +1,98 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { List } from 'react-window';
+import type { ListImperativeAPI, RowComponentProps } from 'react-window';
 import useStore from '../store';
-import type { DuplicateGroup, Video } from '../types';
-import { formatDuration, formatFps, formatSize, formatResolutionLabel } from '../utils';
+import type { DuplicateGroup, DuplicateViewMode, Video } from '../types';
+import {
+  formatDuration,
+  formatFps,
+  formatResolutionLabel,
+  formatSize,
+} from '../utils';
+import {
+  beginDevInteraction,
+  completeDevInteractionOnNextPaint,
+  measureDevNextPaint,
+  recordDevPerf,
+} from '../perf-dev';
 import VideoCard from './VideoCard';
-import { Ban, CheckCircle2, Play, Trash2 } from 'lucide-react';
+import {
+  buildDuplicateGalleryRows,
+  buildDuplicateRowsRows,
+  computeDuplicateGalleryLayout,
+  DUPLICATE_GALLERY_CARD_HEIGHT,
+  DUPLICATE_GALLERY_CARD_GAP,
+  DUPLICATE_GALLERY_ROW_PADDING,
+  DUPLICATE_GROUP_GAP,
+  getDuplicateVirtualRowHeight,
+  type DuplicateVirtualRow,
+} from './duplicateVirtualRows';
+import { Ban, Check, CheckCircle2, Play, SkipForward, Trash2 } from 'lucide-react';
 import './DuplicateGroupsView.css';
+
+type MetricState = 'best' | 'equal' | 'worse';
+type MetricFlags = Record<string, MetricState>;
+type DuplicateGroupView = {
+  group: DuplicateGroup;
+  videos: Video[];
+  groupSize: number;
+  totalSize: number;
+  searchText: string;
+  bestFlags: Map<string, MetricFlags>;
+};
+
+type DuplicateRowItemProps = {
+  video: Video;
+  groupVideoIds: string[];
+  groupId: string;
+  suggestedKeeperId: string | null;
+  manualSuggestedKeeperId: string | null | undefined;
+  flags: MetricFlags;
+  isSelected: boolean;
+  isLastInGroup: boolean;
+  onToggleSelection: (video: Video) => void;
+  onPlayVideo: (videoId: string, scopeIds: string[]) => void;
+  onOpenContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+};
+
+type DuplicateGalleryCardProps = {
+  video: Video;
+  groupVideoIds: string[];
+  groupId: string;
+  isSelected: boolean;
+  onToggleSelection: (video: Video) => void;
+  onPlayVideo: (videoId: string, scopeIds: string[]) => void;
+  onOpenContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+};
+
+type DuplicateRowRuntimeData = {
+  rows: DuplicateVirtualRow[];
+  groupViewsById: Map<string, DuplicateGroupView>;
+  videosById: Map<string, Video>;
+  selectedIds: Set<string>;
+  galleryCardWidth: number;
+  dismissGroup: (group: DuplicateGroup) => void;
+  handleToggleSelection: (video: Video) => void;
+  handlePlayVideo: (videoId: string, scopeIds: string[]) => void;
+  handleOpenContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+};
+
+type DuplicateRowRenderSignals = {
+  galleryCardWidth: number;
+  rowContentVersion: number;
+  selectionVersion: number;
+  viewMode: DuplicateViewMode;
+};
+
+let duplicateRowRuntime: DuplicateRowRuntimeData | null = null;
 
 function thumbSrc(video: Video): string {
   if (video.thumbnails[0]) return `thumb://local/${encodeURIComponent(video.thumbnails[0])}`;
@@ -17,9 +105,6 @@ function bitrateLabel(video: Video): string {
   return `${Math.round(bitrate / 1000).toLocaleString()} kbps`;
 }
 
-type MetricState = 'best' | 'equal' | 'worse';
-type MetricFlags = Record<string, MetricState>;
-
 function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
   const flags = new Map<string, MetricFlags>();
   for (const v of videos) flags.set(v.id, {});
@@ -27,18 +112,22 @@ function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
 
   const metrics: { key: string; value: (v: Video) => number; higher: boolean }[] = [
     { key: 'resolution', value: (v) => (v.width ?? 0) * (v.height ?? 0), higher: true },
-    { key: 'fps',        value: (v) => v.fps ?? 0,                        higher: true },
-    { key: 'bitrate',    value: (v) => v.videoBitrate ?? v.totalBitrate ?? 0, higher: true },
-    { key: 'duration',   value: (v) => v.durationSecs ?? 0,               higher: true },
-    { key: 'size',       value: (v) => v.sizeBytes ?? 0,                   higher: false },
+    { key: 'fps', value: (v) => v.fps ?? 0, higher: true },
+    { key: 'bitrate', value: (v) => v.videoBitrate ?? v.totalBitrate ?? 0, higher: true },
+    { key: 'duration', value: (v) => v.durationSecs ?? 0, higher: true },
+    { key: 'size', value: (v) => v.sizeBytes ?? 0, higher: false },
   ];
 
   for (const metric of metrics) {
     const values = videos.map((v) => metric.value(v));
     const best = metric.higher ? Math.max(...values) : Math.min(...values);
     const allEqual = values.every((val) => val === best);
-    for (let i = 0; i < videos.length; i++) {
-      flags.get(videos[i].id)![metric.key] = allEqual ? 'equal' : values[i] === best ? 'best' : 'worse';
+    for (let i = 0; i < videos.length; i += 1) {
+      flags.get(videos[i].id)![metric.key] = allEqual
+        ? 'equal'
+        : values[i] === best
+          ? 'best'
+          : 'worse';
     }
   }
   return flags;
@@ -49,28 +138,256 @@ function parentPath(filePath: string): string {
   return lastSeparator >= 0 ? filePath.slice(0, lastSeparator) : filePath;
 }
 
-function groupTotalSize(group: DuplicateGroup, videosById: Map<string, Video>): number {
-  return group.videoIds.reduce((sum, id) => sum + (videosById.get(id)?.sizeBytes ?? 0), 0);
-}
-
 function duplicatePairKey(aId: string, bId: string): string {
   return aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`;
 }
 
 function pairKeysForGroup(group: DuplicateGroup): string[] {
   const keys: string[] = [];
-  for (let i = 0; i < group.videoIds.length; i++) {
-    for (let j = i + 1; j < group.videoIds.length; j++) {
+  for (let i = 0; i < group.videoIds.length; i += 1) {
+    for (let j = i + 1; j < group.videoIds.length; j += 1) {
       keys.push(duplicatePairKey(group.videoIds[i], group.videoIds[j]));
     }
   }
   return keys;
 }
 
-export default function DuplicateGroupsView() {
+function statusBadgeContent(video: Video) {
+  if (video.status === 'keep') {
+    return { label: 'Marked keep', icon: <Check size={12} />, className: 'keep' };
+  }
+  if (video.status === 'delete') {
+    return { label: 'Marked delete', icon: <Trash2 size={12} />, className: 'delete' };
+  }
+  if (video.status === 'skipped') {
+    return { label: 'Skipped', icon: <SkipForward size={12} />, className: 'skipped' };
+  }
+  return null;
+}
+
+const DuplicateRowItem = memo(function DuplicateRowItem({
+  video,
+  groupVideoIds,
+  groupId,
+  suggestedKeeperId,
+  manualSuggestedKeeperId,
+  flags,
+  isSelected,
+  isLastInGroup,
+  onToggleSelection,
+  onPlayVideo,
+  onOpenContextMenu,
+}: DuplicateRowItemProps) {
+  const statusBadge = statusBadgeContent(video);
+  const chip = (key: string, label: string) => {
+    const state = flags[key] ?? 'equal';
+    return (
+      <span key={key} className={`meta-chip ${state}`}>
+        {label}
+      </span>
+    );
+  };
+
+  return (
+    <div
+      className={`duplicate-row ${suggestedKeeperId === video.id ? 'keeper' : ''} ${video.status !== 'pending' ? `status-${video.status}` : ''} ${isSelected ? 'selected' : ''} ${isLastInGroup ? 'last-in-group' : ''}`}
+      onContextMenu={(event) => onOpenContextMenu(event, groupId, video.id)}
+    >
+      <label className="duplicate-select-cell" title="Select video">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelection(video)}
+        />
+      </label>
+      <img src={thumbSrc(video)} alt="" />
+      <div className="duplicate-row-copy">
+        <div className="duplicate-row-title">
+          <strong>{video.filename}</strong>
+          {statusBadge && (
+            <span className={`duplicate-inline-flag ${statusBadge.className}`}>
+              {statusBadge.icon}
+              {statusBadge.label}
+            </span>
+          )}
+        </div>
+        <span className="duplicate-row-path" title={video.path}>
+          {parentPath(video.path)}
+        </span>
+        <span className="duplicate-meta-chips">
+          {chip('resolution', formatResolutionLabel(video.width, video.height))}
+          {chip('fps', formatFps(video.fps))}
+          {chip('bitrate', bitrateLabel(video))}
+          {chip('duration', formatDuration(video.durationSecs))}
+          {chip('size', formatSize(video.sizeBytes))}
+        </span>
+      </div>
+      {suggestedKeeperId === video.id && (
+        <span className="duplicate-keeper-badge">
+          <CheckCircle2 size={13} />
+          {manualSuggestedKeeperId === video.id ? 'Selected keeper' : 'Suggested keeper'}
+        </span>
+      )}
+      <button
+        className="duplicate-play-btn"
+        onClick={() => onPlayVideo(video.id, groupVideoIds)}
+        title="Play in review mode"
+      >
+        <Play size={14} />
+      </button>
+    </div>
+  );
+});
+
+const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
+  video,
+  groupVideoIds,
+  groupId,
+  isSelected,
+  onToggleSelection,
+  onPlayVideo,
+  onOpenContextMenu,
+}: DuplicateGalleryCardProps) {
+  return (
+    <div onContextMenu={(event) => onOpenContextMenu(event, groupId, video.id)}>
+      <VideoCard
+        video={video}
+        showSelectionControls
+        isSelected={isSelected}
+        onToggleSelect={() => onToggleSelection(video)}
+        onPlay={() => onPlayVideo(video.id, groupVideoIds)}
+      />
+    </div>
+  );
+});
+
+const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
+  groupView,
+  onDismissGroup,
+}: {
+  groupView: DuplicateGroupView;
+  onDismissGroup: (group: DuplicateGroup) => void;
+}) {
+  return (
+    <div className="duplicate-group-panel duplicate-group-panel-header">
+      <div className="duplicate-group-header">
+        <div className="duplicate-group-title">
+          <span
+            className={`duplicate-match-badge ${groupView.group.matchType === 'exact' ? 'exact' : 'potential'}`}
+          >
+            {groupView.group.matchType === 'exact' ? 'Exact matches' : 'Potential duplicates'}
+          </span>
+          <strong>{groupView.group.similarity.toFixed(1)}%</strong>
+          <em>{groupView.groupSize} videos</em>
+          <em>{formatSize(groupView.totalSize)}</em>
+          <em>{groupView.group.reason}</em>
+        </div>
+        <button
+          className="duplicate-group-dismiss-btn"
+          onClick={() => onDismissGroup(groupView.group)}
+        >
+          <Ban size={13} />
+          Dismiss group
+        </button>
+      </div>
+    </div>
+  );
+});
+
+function DuplicateVirtualRowRenderer({
+  index,
+  style,
+  ariaAttributes,
+}: RowComponentProps<DuplicateRowRenderSignals>) {
+  const runtime = duplicateRowRuntime;
+  if (!runtime) return null;
+
+  const row = runtime.rows[index];
+  const groupView = runtime.groupViewsById.get(row.groupId);
+  if (!row || !groupView) return null;
+
+  const topGap = row.type === 'group-header' && !row.isFirstGroup ? DUPLICATE_GROUP_GAP : 0;
+  const rowStyle = {
+    ...style,
+    boxSizing: 'border-box' as const,
+    paddingLeft: 20,
+    paddingRight: 20,
+    paddingTop: topGap,
+  };
+
+  if (row.type === 'group-header') {
+    return (
+      <div style={rowStyle} className="duplicate-virtual-row-shell group-header" {...ariaAttributes}>
+        <DuplicateGroupHeaderPanel groupView={groupView} onDismissGroup={runtime.dismissGroup} />
+      </div>
+    );
+  }
+
+  if (row.type === 'video-row') {
+    const video = runtime.videosById.get(row.videoId);
+    if (!video) return null;
+    return (
+      <div style={rowStyle} className="duplicate-virtual-row-shell video-row" {...ariaAttributes}>
+        <div className={`duplicate-group-panel duplicate-group-panel-row ${row.isLastInGroup ? 'group-end' : ''}`}>
+          <DuplicateRowItem
+            video={video}
+            groupId={groupView.group.id}
+            groupVideoIds={groupView.group.videoIds}
+            suggestedKeeperId={groupView.group.suggestedKeeperId}
+            manualSuggestedKeeperId={groupView.group.manualSuggestedKeeperId}
+            flags={groupView.bestFlags.get(video.id) ?? {}}
+            isSelected={runtime.selectedIds.has(video.id)}
+            isLastInGroup={row.isLastInGroup}
+            onToggleSelection={runtime.handleToggleSelection}
+            onPlayVideo={runtime.handlePlayVideo}
+            onOpenContextMenu={runtime.handleOpenContextMenu}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={rowStyle} className="duplicate-virtual-row-shell gallery-row" {...ariaAttributes}>
+      <div className={`duplicate-group-panel duplicate-group-panel-gallery ${row.isLastInGroup ? 'group-end' : ''}`}>
+        <div
+          className="duplicate-card-grid-row"
+          style={{
+            gridTemplateColumns: `repeat(${row.videoIds.length}, minmax(0, ${runtime.galleryCardWidth}px))`,
+          }}
+        >
+          {row.videoIds.map((videoId) => {
+            const video = runtime.videosById.get(videoId);
+            if (!video) return null;
+            return (
+              <div
+                key={video.id}
+                className="duplicate-card-grid-cell"
+                style={{ height: DUPLICATE_GALLERY_CARD_HEIGHT }}
+              >
+                <DuplicateGalleryCard
+                  video={video}
+                  groupId={groupView.group.id}
+                  groupVideoIds={groupView.group.videoIds}
+                  isSelected={runtime.selectedIds.has(video.id)}
+                  onToggleSelection={runtime.handleToggleSelection}
+                  onPlayVideo={runtime.handlePlayVideo}
+                  onOpenContextMenu={runtime.handleOpenContextMenu}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DuplicateGroupsView() {
   const videos = useStore((s) => s.videos);
   const groups = useStore((s) => s.duplicateGroups);
   const viewMode = useStore((s) => s.duplicateViewMode);
+  const reviewMode = useStore((s) => s.reviewMode);
   const setVideoStatusesBatch = useStore((s) => s.setVideoStatusesBatch);
   const enterReviewAndPlay = useStore((s) => s.enterReviewAndPlay);
   const settings = useStore((s) => s.settings.duplicates);
@@ -80,84 +397,194 @@ export default function DuplicateGroupsView() {
   const duplicateSortOrder = useStore((s) => s.duplicateSortOrder);
   const duplicateScrollTop = useStore((s) => s.duplicateScrollTop);
   const setDuplicateGroups = useStore((s) => s.setDuplicateGroups);
+  const setManualDuplicateKeeper = useStore((s) => s.setManualDuplicateKeeper);
   const setDuplicateScrollTop = useStore((s) => s.setDuplicateScrollTop);
   const addIgnoredDuplicatePairs = useStore((s) => s.addIgnoredDuplicatePairs);
   const removeIgnoredDuplicatePairs = useStore((s) => s.removeIgnoredDuplicatePairs);
   const pushToast = useStore((s) => s.pushToast);
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    groupId: string;
+    videoId: string;
+  } | null>(null);
+  const listShellRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<ListImperativeAPI | null>(null);
+  const lastRowsRef = useRef<DuplicateVirtualRow[] | null>(null);
+  const rowContentVersionRef = useRef(0);
+  const lastSelectedIdsRef = useRef(selectedIds);
+  const selectionVersionRef = useRef(0);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
-  const videosById = useMemo(() => new Map(videos.map((video) => [video.id, video])), [videos]);
-  const visibleGroups = useMemo(() => {
-    const pathQuery = duplicatePathFilter.trim().toLowerCase();
-    const filtered = groups.filter((group) => {
-      if (group.similarity < duplicateMinSimilarity) return false;
-      if (!pathQuery) return true;
-      return group.videoIds.some((id) => {
-        const video = videosById.get(id);
-        return Boolean(video && `${video.filename} ${video.path}`.toLowerCase().includes(pathQuery));
-      });
-    });
-
-    return [...filtered].sort((a, b) => {
-      let diff = 0;
-      if (duplicateSortBy === 'similarity') diff = a.similarity - b.similarity;
-      else if (duplicateSortBy === 'groupSize') diff = a.videoIds.length - b.videoIds.length;
-      else if (duplicateSortBy === 'totalSize') diff = groupTotalSize(a, videosById) - groupTotalSize(b, videosById);
-      if (diff === 0) diff = b.similarity - a.similarity;
-      return duplicateSortOrder === 'asc' ? diff : -diff;
-    });
-  }, [duplicateMinSimilarity, duplicatePathFilter, duplicateSortBy, duplicateSortOrder, groups, videosById]);
-
-  const videosForGroup = (group: DuplicateGroup) => group.videoIds
-    .map((id) => videosById.get(id))
-    .filter((video): video is Video => Boolean(video));
-
-  const isProtectedFromSuggestion = (video: Video) => (
-    (settings.protectKeep && video.status === 'keep') ||
-    (settings.protectSkipped && video.status === 'skipped')
+  const videosById = useMemo(
+    () => new Map(videos.map((video) => [video.id, video])),
+    [videos]
   );
 
-  const getMarkableDuplicateIds = (scopeGroups: DuplicateGroup[]) => {
+  const groupViews = useMemo<DuplicateGroupView[]>(() => {
+    const startedAt = performance.now();
+    const built = groups.map((group) => {
+      const groupVideos = group.videoIds
+        .map((id) => videosById.get(id))
+        .filter((video): video is Video => Boolean(video));
+      return {
+        group,
+        videos: groupVideos,
+        groupSize: group.videoIds.length,
+        totalSize: groupVideos.reduce((sum, video) => sum + (video.sizeBytes ?? 0), 0),
+        searchText: groupVideos
+          .map((video) => `${video.filename} ${video.path}`)
+          .join('\n')
+          .toLowerCase(),
+        bestFlags: computeBestFlags(groupVideos),
+      };
+    });
+    recordDevPerf('duplicates.groupViews.compute', performance.now() - startedAt, {
+      items: groups.length,
+    });
+    return built;
+  }, [groups, videosById]);
+
+  const visibleGroupViews = useMemo(() => {
+    const startedAt = performance.now();
+    const pathQuery = duplicatePathFilter.trim().toLowerCase();
+    const filtered = groupViews.filter(({ group, searchText }) => {
+      if (group.similarity < duplicateMinSimilarity) return false;
+      if (!pathQuery) return true;
+      return searchText.includes(pathQuery);
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      let diff = 0;
+      if (duplicateSortBy === 'similarity') diff = a.group.similarity - b.group.similarity;
+      else if (duplicateSortBy === 'groupSize') diff = a.groupSize - b.groupSize;
+      else if (duplicateSortBy === 'totalSize') diff = a.totalSize - b.totalSize;
+      if (diff === 0 && duplicateSortBy !== 'groupSize') diff = a.groupSize - b.groupSize;
+      if (diff === 0 && duplicateSortBy !== 'totalSize') diff = a.totalSize - b.totalSize;
+      if (diff === 0) diff = b.group.similarity - a.group.similarity;
+      return duplicateSortOrder === 'asc' ? diff : -diff;
+    });
+
+    recordDevPerf('duplicates.visibleGroups.compute', performance.now() - startedAt, {
+      items: filtered.length,
+    });
+    return sorted;
+  }, [
+    duplicateMinSimilarity,
+    duplicatePathFilter,
+    duplicateSortBy,
+    duplicateSortOrder,
+    groupViews,
+  ]);
+
+  const groupViewsById = useMemo(
+    () => new Map(visibleGroupViews.map((groupView) => [groupView.group.id, groupView])),
+    [visibleGroupViews]
+  );
+
+  useEffect(() => {
+    const shell = listShellRef.current;
+    if (!shell) return;
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setDimensions({ width, height });
+    });
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handlePointerDown = () => setContextMenu(null);
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setContextMenu(null);
+    };
+    const handleWindowScroll = () => setContextMenu(null);
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleEscape);
+    window.addEventListener('scroll', handleWindowScroll, true);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('scroll', handleWindowScroll, true);
+    };
+  }, [contextMenu]);
+
+  const isProtectedFromSuggestion = useCallback((video: Video) => (
+    (settings.protectKeep && video.status === 'keep') ||
+    (settings.protectSkipped && video.status === 'skipped')
+  ), [settings.protectKeep, settings.protectSkipped]);
+
+  const getMarkableDuplicateIds = useCallback((scopeGroups: DuplicateGroupView[]) => {
     const ids: string[] = [];
-    for (const group of scopeGroups) {
-      for (const videoId of group.videoIds) {
-        const video = videosById.get(videoId);
-        if (!video || group.suggestedKeeperId === videoId) continue;
+    for (const { group, videos: groupVideos } of scopeGroups) {
+      for (const video of groupVideos) {
+        if (group.suggestedKeeperId === video.id) continue;
         if (isProtectedFromSuggestion(video)) continue;
-        ids.push(videoId);
+        ids.push(video.id);
       }
     }
     return ids;
-  };
+  }, [isProtectedFromSuggestion]);
 
   useEffect(() => {
-    const node = scrollRef.current;
-    if (!node) return;
-    node.scrollTop = duplicateScrollTop;
-  }, [duplicateScrollTop]);
+    completeDevInteractionOnNextPaint('duplicates.sort');
+  }, [
+    duplicateSortBy,
+    duplicateSortOrder,
+    duplicateMinSimilarity,
+    duplicatePathFilter,
+    visibleGroupViews,
+  ]);
 
-  const toggleVideoSelection = (video: Video) => {
+  useEffect(() => {
+    completeDevInteractionOnNextPaint('duplicates.select');
+  }, [selectedIds]);
+
+  const toggleVideoSelection = useCallback((video: Video) => {
+    beginDevInteraction('duplicates.select');
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(video.id)) next.delete(video.id);
       else next.add(video.id);
       return next;
     });
-  };
+  }, []);
+
+  const openContextMenu = useCallback((event: React.MouseEvent, groupId: string, videoId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      groupId,
+      videoId,
+    });
+  }, []);
+
+  const handlePlayVideo = useCallback((videoId: string, scopeIds: string[]) => {
+    const currentScrollTop = listRef.current?.element?.scrollTop;
+    if (typeof currentScrollTop === 'number' && Number.isFinite(currentScrollTop)) {
+      setDuplicateScrollTop(currentScrollTop);
+    }
+    beginDevInteraction('review.enter');
+    enterReviewAndPlay(videoId, scopeIds);
+  }, [enterReviewAndPlay, setDuplicateScrollTop]);
 
   const selectSuggestedDuplicates = () => {
-    setSelectedIds(new Set(getMarkableDuplicateIds(visibleGroups)));
+    const startedAt = performance.now();
+    setSelectedIds(new Set(getMarkableDuplicateIds(visibleGroupViews)));
+    measureDevNextPaint('duplicates.selectSuggested.nextPaint', startedAt);
   };
 
   const markSelectedDuplicates = () => {
-    const ids = Array.from(selectedIds).filter((id) => {
-      const video = videosById.get(id);
-      return Boolean(video);
-    });
+    const startedAt = performance.now();
+    const ids = Array.from(selectedIds).filter((id) => Boolean(videosById.get(id)));
     if (ids.length === 0) return;
     setVideoStatusesBatch(ids, 'delete');
-    setSelectedIds(new Set());
+    measureDevNextPaint('duplicates.markSelected.nextPaint', startedAt);
     pushToast({
       title: 'Duplicates marked',
       detail: `${ids.length} ${ids.length === 1 ? 'video' : 'videos'} marked for deletion. Nothing was deleted from disk.`,
@@ -169,14 +596,23 @@ export default function DuplicateGroupsView() {
   const selectedPair = useMemo(() => {
     if (selectedIds.size !== 2) return null;
     const ids = Array.from(selectedIds);
-    const group = visibleGroups.find((candidate) => ids.every((id) => candidate.videoIds.includes(id))) ?? null;
-    return group ? { ids: ids as [string, string], group } : null;
-  }, [selectedIds, visibleGroups]);
+    const groupView =
+      visibleGroupViews.find(({ group }) => ids.every((id) => group.videoIds.includes(id))) ?? null;
+    return groupView ? { ids: ids as [string, string], group: groupView.group } : null;
+  }, [selectedIds, visibleGroupViews]);
 
-  const ignorePairsWithUndo = (nextIgnoredPairKeys: string[], groupsToHide: DuplicateGroup[], title: string, detail: string) => {
+  const ignorePairsWithUndo = useCallback((
+    nextIgnoredPairKeys: string[],
+    groupsToHide: DuplicateGroup[],
+    title: string,
+    detail: string
+  ) => {
     if (nextIgnoredPairKeys.length === 0) return;
     const hiddenGroupIds = new Set(groupsToHide.map((group) => group.id));
-    const removedGroups = hiddenGroupIds.size > 0 ? groups.filter((group) => hiddenGroupIds.has(group.id)) : [];
+    const removedGroups =
+      hiddenGroupIds.size > 0
+        ? groups.filter((group) => hiddenGroupIds.has(group.id))
+        : [];
     addIgnoredDuplicatePairs(nextIgnoredPairKeys);
     if (hiddenGroupIds.size > 0) {
       setDuplicateGroups(groups.filter((group) => !hiddenGroupIds.has(group.id)));
@@ -191,9 +627,6 @@ export default function DuplicateGroupsView() {
       action: () => {
         removeIgnoredDuplicatePairs(nextIgnoredPairKeys);
         if (removedGroups.length > 0) {
-          // Merge the removed groups back into the current list instead of
-          // restoring a stale snapshot. This avoids un-dismissing groups the
-          // user dealt with separately between the dismiss and the undo.
           const currentGroups = useStore.getState().duplicateGroups;
           const currentIds = new Set(currentGroups.map((group) => group.id));
           const toRestore = removedGroups.filter((group) => !currentIds.has(group.id));
@@ -203,16 +636,22 @@ export default function DuplicateGroupsView() {
         }
       },
     });
-  };
+  }, [
+    addIgnoredDuplicatePairs,
+    groups,
+    pushToast,
+    removeIgnoredDuplicatePairs,
+    setDuplicateGroups,
+  ]);
 
-  const dismissGroup = (group: DuplicateGroup) => {
+  const dismissGroup = useCallback((group: DuplicateGroup) => {
     ignorePairsWithUndo(
       pairKeysForGroup(group),
       [group],
       'Group dismissed',
       'This group will be ignored in future duplicate runs.'
     );
-  };
+  }, [ignorePairsWithUndo]);
 
   const dismissSelectedPair = () => {
     if (!selectedPair) return;
@@ -227,14 +666,138 @@ export default function DuplicateGroupsView() {
     );
   };
 
+  const handleSetSelectedKeeper = useCallback((groupId: string, videoId: string | null) => {
+    setManualDuplicateKeeper(groupId, videoId);
+    setContextMenu(null);
+    const group = groupViewsById.get(groupId);
+    const video = videoId ? videosById.get(videoId) : null;
+    if (videoId && group && video) {
+      pushToast({
+        title: 'Selected keeper updated',
+        detail: `${video.filename} is now the selected keeper for this group.`,
+        kind: 'success',
+      });
+      return;
+    }
+    if (group) {
+      pushToast({
+        title: 'Keeper override cleared',
+        detail: 'This group now uses the automatic keeper suggestion again.',
+        kind: 'info',
+      });
+    }
+  }, [groupViewsById, pushToast, setManualDuplicateKeeper, videosById]);
+
+  const galleryLayout = useMemo(
+    () => computeDuplicateGalleryLayout(dimensions.width),
+    [dimensions.width]
+  );
+
+  const virtualRows = useMemo(() => {
+    if (viewMode === 'rows') {
+      return buildDuplicateRowsRows(visibleGroupViews);
+    }
+    return buildDuplicateGalleryRows(visibleGroupViews, galleryLayout);
+  }, [galleryLayout, viewMode, visibleGroupViews]);
+
+  if (lastRowsRef.current !== virtualRows) {
+    lastRowsRef.current = virtualRows;
+    rowContentVersionRef.current += 1;
+  }
+
+  if (lastSelectedIdsRef.current !== selectedIds) {
+    lastSelectedIdsRef.current = selectedIds;
+    selectionVersionRef.current += 1;
+  }
+
+  const getItemSize = useCallback(
+    (index: number) => getDuplicateVirtualRowHeight(virtualRows[index]!),
+    [virtualRows]
+  );
+
+  const itemData = useMemo<DuplicateRowRuntimeData>(() => ({
+    rows: virtualRows,
+    groupViewsById,
+    videosById,
+    selectedIds,
+    galleryCardWidth: galleryLayout.cardWidth,
+    dismissGroup,
+    handleToggleSelection: toggleVideoSelection,
+    handlePlayVideo,
+    handleOpenContextMenu: openContextMenu,
+  }), [
+    dismissGroup,
+    galleryLayout.cardWidth,
+    groupViewsById,
+    openContextMenu,
+    handlePlayVideo,
+    selectedIds,
+    toggleVideoSelection,
+    videosById,
+    virtualRows,
+  ]);
+
+  duplicateRowRuntime = itemData;
+
+  const rowRenderSignals = useMemo<DuplicateRowRenderSignals>(() => ({
+    galleryCardWidth: galleryLayout.cardWidth,
+    rowContentVersion: rowContentVersionRef.current,
+    selectionVersion: selectionVersionRef.current,
+    viewMode,
+  }), [galleryLayout.cardWidth, selectedIds, viewMode, virtualRows]);
+
+  useLayoutEffect(() => {
+    const element = listRef.current?.element;
+    if (!element) return;
+    if (Math.abs(element.scrollTop - duplicateScrollTop) > 1) {
+      element.scrollTop = duplicateScrollTop;
+    }
+  }, [dimensions.height, dimensions.width, duplicateScrollTop, reviewMode, viewMode, virtualRows.length]);
+
+  useEffect(() => {
+    if (reviewMode) return;
+    let frameOne = 0;
+    let frameTwo = 0;
+    const restore = () => {
+      const element = listRef.current?.element;
+      if (!element) return;
+      if (Math.abs(element.scrollTop - duplicateScrollTop) > 1) {
+        element.scrollTop = duplicateScrollTop;
+      }
+    };
+    frameOne = window.requestAnimationFrame(() => {
+      restore();
+      frameTwo = window.requestAnimationFrame(restore);
+    });
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+    };
+  }, [duplicateScrollTop, reviewMode, viewMode]);
+
+  const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    if (reviewMode) return;
+    setDuplicateScrollTop(event.currentTarget.scrollTop);
+  }, [reviewMode, setDuplicateScrollTop]);
+
+  const visibleVideoCount = useMemo(
+    () => visibleGroupViews.reduce((sum, groupView) => sum + groupView.groupSize, 0),
+    [visibleGroupViews]
+  );
+
+  const contextMenuGroup = contextMenu ? groupViewsById.get(contextMenu.groupId) ?? null : null;
+  const contextMenuVideo = contextMenu ? videosById.get(contextMenu.videoId) ?? null : null;
+  const canClearManualKeeper =
+    Boolean(contextMenuGroup && contextMenuGroup.group.manualSuggestedKeeperId === contextMenu?.videoId);
+  const canSetManualKeeper =
+    Boolean(contextMenuGroup && contextMenuGroup.group.manualSuggestedKeeperId !== contextMenu?.videoId);
+
   const renderToolbar = () => (
     <div className="duplicate-toolbar">
       <div>
         <h2>Duplicates</h2>
         <span>
-          {visibleGroups.length} / {groups.length} groups
-          {' / '}
-          {visibleGroups.reduce((sum, group) => sum + group.videoIds.length, 0)} videos
+          {visibleGroupViews.length} / {groups.length} groups / {visibleVideoCount} videos
         </span>
       </div>
       <div className="duplicate-toolbar-actions">
@@ -246,7 +809,10 @@ export default function DuplicateGroupsView() {
           Select suggested deletions
         </button>
         {selectedCount > 0 && (
-          <button className="duplicate-action-btn secondary" onClick={() => setSelectedIds(new Set())}>
+          <button
+            className="duplicate-action-btn secondary"
+            onClick={() => setSelectedIds(new Set())}
+          >
             Clear selected
           </button>
         )}
@@ -272,99 +838,6 @@ export default function DuplicateGroupsView() {
     </div>
   );
 
-  const renderGroupHeader = (group: DuplicateGroup) => (
-    <div className="duplicate-group-header">
-      <div className="duplicate-group-title">
-        <span className={`duplicate-match-badge ${group.matchType === 'exact' ? 'exact' : 'potential'}`}>
-          {group.matchType === 'exact' ? 'Exact matches' : 'Potential duplicates'}
-        </span>
-        <strong>{group.similarity.toFixed(1)}%</strong>
-        <em>{group.videoIds.length} videos</em>
-        <em>{formatSize(groupTotalSize(group, videosById))}</em>
-        <em>{group.reason}</em>
-      </div>
-      <button className="duplicate-group-dismiss-btn" onClick={() => dismissGroup(group)}>
-        <Ban size={13} />
-        Dismiss group
-      </button>
-    </div>
-  );
-
-  const renderRows = () => (
-    <div className="duplicate-group-list">
-      {visibleGroups.map((group) => (
-        <section key={group.id} className="duplicate-group">
-          {renderGroupHeader(group)}
-          <div className="duplicate-row-list">
-            {(() => {
-              const groupVideos = videosForGroup(group);
-              const bestFlags = computeBestFlags(groupVideos);
-              return groupVideos.map((video) => {
-                const f = bestFlags.get(video.id) ?? {};
-                const chip = (key: string, label: string) => {
-                  const state = f[key] ?? 'equal';
-                  return <span key={key} className={`meta-chip ${state}`}>{label}</span>;
-                };
-                return (
-                  <div
-                    key={video.id}
-                    className={`duplicate-row ${group.suggestedKeeperId === video.id ? 'keeper' : ''} ${selectedIds.has(video.id) ? 'selected' : ''}`}
-                  >
-                    <label className="duplicate-select-cell" title="Select video">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(video.id)}
-                        onChange={() => toggleVideoSelection(video)}
-                      />
-                    </label>
-                    <img src={thumbSrc(video)} alt="" />
-                    <div className="duplicate-row-copy">
-                      <strong>{video.filename}</strong>
-                      <span className="duplicate-row-path" title={video.path}>{parentPath(video.path)}</span>
-                      <span className="duplicate-meta-chips">
-                        {chip('resolution', formatResolutionLabel(video.width, video.height))}
-                        {chip('fps', formatFps(video.fps))}
-                        {chip('bitrate', bitrateLabel(video))}
-                        {chip('duration', formatDuration(video.durationSecs))}
-                        {chip('size', formatSize(video.sizeBytes))}
-                      </span>
-                    </div>
-                    {group.suggestedKeeperId === video.id && <span className="duplicate-keeper-badge"><CheckCircle2 size={13} /> Suggested keeper</span>}
-                    <button className="duplicate-play-btn" onClick={() => enterReviewAndPlay(video.id, group.videoIds)} title="Play in review mode">
-                      <Play size={14} />
-                    </button>
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
-
-  const renderGallery = () => (
-    <div className="duplicate-gallery">
-      {visibleGroups.map((group) => (
-        <section key={group.id} className="duplicate-group">
-          {renderGroupHeader(group)}
-          <div className="duplicate-card-grid">
-            {videosForGroup(group).map((video) => (
-              <VideoCard
-                key={video.id}
-                video={video}
-                showSelectionControls
-                isSelected={selectedIds.has(video.id)}
-                onToggleSelect={() => toggleVideoSelection(video)}
-                onPlay={() => enterReviewAndPlay(video.id, group.videoIds)}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
-
   if (groups.length === 0) {
     return (
       <div className="duplicate-empty">
@@ -374,31 +847,55 @@ export default function DuplicateGroupsView() {
     );
   }
 
-  if (visibleGroups.length === 0) {
-    return (
-      <div
-        ref={scrollRef}
-        className="duplicate-groups-view"
-        onScroll={(event) => { setDuplicateScrollTop(event.currentTarget.scrollTop); }}
-      >
-        {renderToolbar()}
-        <div className="duplicate-empty">
-          <h2>No groups match the current filters</h2>
-          <p>Adjust the duplicate filters in the sidebar to show more groups.</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      ref={scrollRef}
-      className="duplicate-groups-view"
-      onScroll={(event) => { setDuplicateScrollTop(event.currentTarget.scrollTop); }}
-    >
+    <div className="duplicate-groups-view">
       {renderToolbar()}
-      {viewMode === 'rows' && renderRows()}
-      {viewMode === 'gallery' && renderGallery()}
+      <div className="duplicate-list-shell" ref={listShellRef}>
+        {visibleGroupViews.length === 0 ? (
+          <div className="duplicate-empty duplicate-empty-panel">
+            <h2>No groups match the current filters</h2>
+            <p>Adjust the duplicate filters in the sidebar to show more groups.</p>
+          </div>
+        ) : dimensions.height > 0 && dimensions.width > 0 ? (
+          <List
+            listRef={listRef}
+            rowCount={virtualRows.length}
+            rowComponent={DuplicateVirtualRowRenderer}
+            rowHeight={getItemSize}
+            rowProps={rowRenderSignals}
+            overscanCount={2}
+            onScroll={handleScroll}
+            style={{ height: dimensions.height, width: dimensions.width }}
+          />
+        ) : null}
+      </div>
+      {contextMenu && contextMenuGroup && contextMenuVideo && (
+        <div
+          className="duplicate-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="duplicate-context-menu-item"
+            onClick={() => handleSetSelectedKeeper(contextMenu.groupId, contextMenu.videoId)}
+            disabled={!canSetManualKeeper}
+          >
+            Mark as selected keeper
+          </button>
+          {canClearManualKeeper && (
+            <button
+              type="button"
+              className="duplicate-context-menu-item secondary"
+              onClick={() => handleSetSelectedKeeper(contextMenu.groupId, null)}
+            >
+              Use automatic keeper suggestion
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
+
+export default memo(DuplicateGroupsView);

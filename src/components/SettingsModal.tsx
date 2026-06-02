@@ -35,8 +35,6 @@ const KEEPER_RULE_LABELS: Record<string, { title: string; description: string }>
   duration: { title: 'Duration', description: 'Prefer the longest version.' },
   fps: { title: 'FPS', description: 'Prefer smoother playback.' },
   size: { title: 'File size', description: 'Prefer the largest file.' },
-  metadataDate: { title: 'Metadata date', description: 'Prefer the newest date.' },
-  filename: { title: 'Filename', description: 'Use name as a final tie-breaker.' },
 };
 
 interface SettingsModalProps {

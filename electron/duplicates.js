@@ -21,7 +21,7 @@ const {
 const ONE_MIB = 1024 * 1024;
 const FRAME_BYTE_COUNT = 32 * 32;
 const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
-const FRAME_FILTER = 'scale=32:32:flags=bicubic,format=gray';
+const FRAME_FILTER = 'scale=32:32:flags=bicubic,setsar=1,format=gray';
 
 function duplicateLog(message, detail) {
   if (detail === undefined) {
@@ -140,6 +140,11 @@ function buildGrayFramesExtractionArgs(videoPath, timestamps, executionOptions =
   return args;
 }
 
+function shouldFallbackToSingleFrameExtraction(error) {
+  const message = error?.message || String(error || '');
+  return /FFmpeg returned 0/i.test(message) || /concat/i.test(message) || /Invalid argument/i.test(message);
+}
+
 async function readFileChunk(filePath, start, length) {
   const handle = await fs.open(filePath, 'r');
   try {
@@ -256,11 +261,9 @@ async function findExactGroups(videos, dbByFolder, run, sendProgress) {
   return exactGroups;
 }
 
-function extractGrayFrames(videoPath, timestamps, run, executionOptions) {
+function extractGrayFramesWithArgs(args, expectedFrameCount, run) {
   return new Promise((resolve, reject) => {
     assertNotCancelled(run);
-    const expectedFrameCount = Math.max(1, Array.isArray(timestamps) ? timestamps.length : 0);
-    const args = buildGrayFramesExtractionArgs(videoPath, timestamps, executionOptions);
     const child = spawn(ffmpegPath, args, { windowsHide: true });
     run.commands.add(child);
     const chunks = [];
@@ -293,6 +296,17 @@ function extractGrayFrames(videoPath, timestamps, run, executionOptions) {
   });
 }
 
+function extractGrayFrame(videoPath, timestamp, run, executionOptions) {
+  const args = buildGrayFrameExtractionArgs(videoPath, timestamp, executionOptions);
+  return extractGrayFramesWithArgs(args, 1, run).then((frames) => frames[0]);
+}
+
+function extractGrayFrames(videoPath, timestamps, run, executionOptions) {
+  const expectedFrameCount = Math.max(1, Array.isArray(timestamps) ? timestamps.length : 0);
+  const args = buildGrayFramesExtractionArgs(videoPath, timestamps, executionOptions);
+  return extractGrayFramesWithArgs(args, expectedFrameCount, run);
+}
+
 function buildFingerprintsFromGrayFrames(grayFrames, timestamps, settings) {
   const fingerprints = [];
   for (let i = 0; i < timestamps.length; i++) {
@@ -312,7 +326,23 @@ function buildFingerprintsFromGrayFrames(grayFrames, timestamps, settings) {
 
 async function buildFingerprintsForVideo(video, settings, run, executionOptions) {
   const timestamps = getSamplingTimestamps(video.durationSecs, settings.sampleCount, settings);
-  const grayFrames = await extractGrayFrames(video.path, timestamps, run, executionOptions);
+  let grayFrames;
+  try {
+    grayFrames = await extractGrayFrames(video.path, timestamps, run, executionOptions);
+  } catch (err) {
+    if (!shouldFallbackToSingleFrameExtraction(err)) throw err;
+    duplicateLog('Falling back to single-frame fingerprint extraction', {
+      filename: video.filename,
+      path: video.path,
+      sampleCount: timestamps.length,
+      reason: err?.message || String(err),
+    });
+    grayFrames = [];
+    for (const timestamp of timestamps) {
+      assertNotCancelled(run);
+      grayFrames.push(await extractGrayFrame(video.path, timestamp, run, executionOptions));
+    }
+  }
   assertNotCancelled(run);
   return buildFingerprintsFromGrayFrames(grayFrames, timestamps, settings);
 }
@@ -665,6 +695,82 @@ function storedPairKey(aId, bId) {
   return aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`;
 }
 
+function buildExactRepresentativeIndex(exactGroups, videos, settings) {
+  const ignoredPairKeys = new Set(settings?.ignoredDuplicatePairs ?? []);
+  const orderById = new Map(videos.map((video, index) => [video.id, index]));
+  const videosById = new Map(videos.map((video) => [video.id, video]));
+  const representativeByVideoId = new Map();
+  const membersByRepresentativeId = new Map();
+
+  for (const ids of exactGroups) {
+    const pending = new Set(ids.filter((id) => orderById.has(id)));
+    while (pending.size > 0) {
+      const start = pending.values().next().value;
+      const stack = [start];
+      const component = [];
+      pending.delete(start);
+
+      while (stack.length > 0) {
+        const currentId = stack.pop();
+        component.push(currentId);
+        for (const otherId of [...pending]) {
+          if (ignoredPairKeys.has(storedPairKey(currentId, otherId))) continue;
+          pending.delete(otherId);
+          stack.push(otherId);
+        }
+      }
+
+      if (component.length < 2) continue;
+      component.sort((aId, bId) => (orderById.get(aId) ?? 0) - (orderById.get(bId) ?? 0));
+      const representativeId = component[0];
+      membersByRepresentativeId.set(representativeId, component);
+      for (const videoId of component) representativeByVideoId.set(videoId, representativeId);
+    }
+  }
+
+  const representativeVideos = [];
+  const seenRepresentatives = new Set();
+  for (const video of videos) {
+    const representativeId = representativeByVideoId.get(video.id) ?? video.id;
+    if (!membersByRepresentativeId.has(representativeId)) {
+      membersByRepresentativeId.set(representativeId, [video.id]);
+      representativeByVideoId.set(video.id, representativeId);
+    }
+    if (seenRepresentatives.has(representativeId)) continue;
+    seenRepresentatives.add(representativeId);
+    representativeVideos.push(video.id === representativeId
+      ? video
+      : videosById.get(representativeId) || video);
+  }
+
+  return {
+    representativeVideos,
+    representativeByVideoId,
+    membersByRepresentativeId,
+  };
+}
+
+function expandRepresentativePairs(pairs, membersByRepresentativeId) {
+  const expanded = [];
+  const seenPairs = new Set();
+
+  for (const pair of pairs) {
+    const memberIdsA = membersByRepresentativeId.get(pair.aId) ?? [pair.aId];
+    const memberIdsB = membersByRepresentativeId.get(pair.bId) ?? [pair.bId];
+    for (const aId of memberIdsA) {
+      for (const bId of memberIdsB) {
+        if (aId === bId) continue;
+        const key = internalPairKey(aId, bId);
+        if (seenPairs.has(key)) continue;
+        seenPairs.add(key);
+        expanded.push({ ...pair, aId, bId });
+      }
+    }
+  }
+
+  return expanded;
+}
+
 function connectionScore(aId, bId, directSimilarity, threshold) {
   const similarity = directSimilarity(aId, bId);
   return similarity !== null && similarity >= threshold ? similarity : null;
@@ -994,32 +1100,40 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
   duplicateLog('Cache databases ready', { folders: dbByFolder.size });
 
   const exactGroups = await findExactGroups(safeVideos, dbByFolder, run, sendProgress);
-  await backfillFingerprints(safeVideos, dbByFolder, settings, run, sendProgress, maxConcurrency, executionOptions);
+  const representativeIndex = buildExactRepresentativeIndex(exactGroups, safeVideos, settings);
+  const representativeVideos = representativeIndex.representativeVideos;
+  duplicateLog('Representative reduction prepared', {
+    videos: safeVideos.length,
+    representatives: representativeVideos.length,
+    reducedBy: safeVideos.length - representativeVideos.length,
+  });
+  await backfillFingerprints(representativeVideos, dbByFolder, settings, run, sendProgress, maxConcurrency, executionOptions);
   assertNotCancelled(run);
   let similarityPairs = [];
   let comparisonData = null;
   if (settings.comparisonMode === 'phash') {
-    const phashRows = loadAllPHashes(safeVideos, dbByFolder, settings);
+    const phashRows = loadAllPHashes(representativeVideos, dbByFolder, settings);
     comparisonData = { mode: 'phash', rows: phashRows };
-    const expectedRows = safeVideos.length * settings.sampleCount;
+    const expectedRows = representativeVideos.length * settings.sampleCount;
     duplicateLog('pHash rows loaded', {
       rows: phashRows.length,
       expectedRows,
       missingRows: Math.max(0, expectedRows - phashRows.length),
       missingVideosApprox: Math.ceil(Math.max(0, expectedRows - phashRows.length) / settings.sampleCount),
     });
-    const pHashPairs = await runPHashWorker(safeVideos, phashRows, settings, run, sendProgress);
-    similarityPairs = pHashPairs.map((pair) => ({
+    const pHashPairs = await runPHashWorker(representativeVideos, phashRows, settings, run, sendProgress);
+    similarityPairs = expandRepresentativePairs(pHashPairs.map((pair) => ({
       ...pair,
       similarity: pair.pHashSimilarity,
       matchType: 'phash',
-    }));
+    })), representativeIndex.membersByRepresentativeId);
   } else {
     assertNotCancelled(run);
-    const grayRows = loadAllGrayRows(safeVideos, dbByFolder, settings);
+    const grayRows = loadAllGrayRows(representativeVideos, dbByFolder, settings);
     comparisonData = { mode: 'visual', rows: grayRows };
     duplicateLog('Gray sample rows loaded', { rows: grayRows.length });
-    similarityPairs = await runVisualWorker(safeVideos, grayRows, settings, run, sendProgress);
+    const visualPairs = await runVisualWorker(representativeVideos, grayRows, settings, run, sendProgress);
+    similarityPairs = expandRepresentativePairs(visualPairs, representativeIndex.membersByRepresentativeId);
   }
   assertNotCancelled(run);
   progress(sendProgress, 'Building groups', { current: 0, total: 1 });
@@ -1048,8 +1162,11 @@ module.exports = {
   findDuplicates,
   __test__: {
     buildGroups,
+    buildExactRepresentativeIndex,
     buildFingerprintsFromGrayFrames,
     buildGrayFramesExtractionArgs,
+    shouldFallbackToSingleFrameExtraction,
+    expandRepresentativePairs,
     findExactGroups,
     splitDaisyChainIds,
   },

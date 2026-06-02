@@ -2,6 +2,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import type { DuplicateSortField, RatingFilter, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
 import useStore from '../store';
+import { beginDevInteraction } from '../perf-dev';
 import { formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
@@ -280,15 +281,21 @@ function SidebarDuplicateSection({
               <select
                 className="sidebar-select"
                 value={duplicateSortBy}
-                onChange={(e) => setDuplicateSortBy(e.target.value as DuplicateSortField)}
+                onChange={(e) => {
+                  beginDevInteraction('duplicates.sort');
+                  setDuplicateSortBy(e.target.value as DuplicateSortField);
+                }}
               >
                 <option value="similarity">Similarity</option>
-                <option value="groupSize">Group size</option>
+                <option value="groupSize">Group count</option>
                 <option value="totalSize">Total size</option>
               </select>
               <button
                 className="btn btn-icon"
-                onClick={() => setDuplicateSortOrder(duplicateSortOrder === 'asc' ? 'desc' : 'asc')}
+                onClick={() => {
+                  beginDevInteraction('duplicates.sort');
+                  setDuplicateSortOrder(duplicateSortOrder === 'asc' ? 'desc' : 'asc');
+                }}
                 title={duplicateSortOrder === 'asc' ? 'Ascending' : 'Descending'}
               >
                 <ArrowUpDown size={14} style={{ transform: duplicateSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />

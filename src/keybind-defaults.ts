@@ -47,7 +47,7 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   defaultScope: 'all',
   protectKeep: true,
   protectSkipped: false,
-  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'metadataDate', 'filename'],
+  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size'],
   samplingWindow: 'even',
   customStartPercent: 0,
   customEndPercent: 100,

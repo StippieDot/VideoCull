@@ -9,7 +9,7 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   defaultScope: 'all',
   protectKeep: true,
   protectSkipped: false,
-  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'metadataDate', 'filename'],
+  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size'],
   samplingWindow: 'even',
   customStartPercent: 0,
   customEndPercent: 100,
@@ -27,7 +27,7 @@ const DEFAULT_DUPLICATE_SETTINGS = {
 
 const SAMPLE_COUNT_OPTIONS = new Set([1, 2, 3, 4, 5, 7, 9]);
 const COMPARISON_MODES = new Set(['phash', 'visual']);
-const KEEPER_RULES = new Set(['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'metadataDate', 'filename']);
+const KEEPER_RULES = new Set(['resolution', 'videoBitrate', 'duration', 'fps', 'size']);
 
 function normalizeDuplicateSettings(input = {}) {
   const sampleCount = SAMPLE_COUNT_OPTIONS.has(Number(input.sampleCount))
@@ -246,8 +246,6 @@ function compareKeeperCandidates(a, b, order) {
     else if (rule === 'duration') diff = finiteNumber(a.durationSecs) - finiteNumber(b.durationSecs);
     else if (rule === 'fps') diff = finiteNumber(a.fps) - finiteNumber(b.fps);
     else if (rule === 'size') diff = finiteNumber(a.sizeBytes) - finiteNumber(b.sizeBytes);
-    else if (rule === 'metadataDate') diff = finiteNumber(a.metadataDate ?? a.date) - finiteNumber(b.metadataDate ?? b.date);
-    else if (rule === 'filename') diff = String(b.filename ?? '').localeCompare(String(a.filename ?? ''), undefined, { numeric: true });
     if (Number.isFinite(diff) && diff !== 0) return diff;
   }
   return String(b.path ?? '').localeCompare(String(a.path ?? ''));

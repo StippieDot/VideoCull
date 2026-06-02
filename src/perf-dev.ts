@@ -31,6 +31,7 @@ export type DevPerfGlobal = {
 const REPORT_INTERVAL_MS = 5000;
 const counters = new Map<string, DevPerfCounter>();
 const timings = new Map<string, DevPerfTiming>();
+const interactionStarts = new Map<string, number>();
 let longTaskObserver: PerformanceObserver | null = null;
 
 function devPerfEnabled() {
@@ -80,6 +81,29 @@ export function recordDevPerf(name: string, durationMs: number, options: DevPerf
   timing.maxMs = Math.max(timing.maxMs, durationMs);
   timing.totalItems += options.items ?? 0;
   maybeReportTiming(name, timing);
+}
+
+export function beginDevInteraction(name: string) {
+  if (!devPerfEnabled()) return;
+  interactionStarts.set(name, performance.now());
+  recordDevCounter(`${name}.startCount`);
+}
+
+export function completeDevInteractionOnNextPaint(name: string, timingName = `${name}.nextPaint`) {
+  if (!devPerfEnabled()) return;
+  const startedAt = interactionStarts.get(name);
+  if (startedAt === undefined || typeof requestAnimationFrame !== 'function') return;
+  interactionStarts.delete(name);
+  requestAnimationFrame(() => {
+    recordDevPerf(timingName, performance.now() - startedAt);
+  });
+}
+
+export function measureDevNextPaint(name: string, startedAt = performance.now()) {
+  if (!devPerfEnabled() || typeof requestAnimationFrame !== 'function') return;
+  requestAnimationFrame(() => {
+    recordDevPerf(name, performance.now() - startedAt);
+  });
 }
 
 export function recordReactCommit(
@@ -141,6 +165,7 @@ export function getDevPerfSnapshot(): DevPerfSnapshot {
 export function resetDevPerf() {
   counters.clear();
   timings.clear();
+  interactionStarts.clear();
 }
 
 export function installDevPerfGlobal() {
