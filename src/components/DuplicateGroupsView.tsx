@@ -688,6 +688,66 @@ function DuplicateGroupsView() {
     );
   };
 
+  const excludeVideoFromGroup = useCallback((group: DuplicateGroup, videoId: string) => {
+    if (!group.videoIds.includes(videoId)) return;
+
+    const pairKeys = group.videoIds
+      .filter((id) => id !== videoId)
+      .map((id) => duplicatePairKey(videoId, id));
+    if (pairKeys.length === 0) return;
+
+    const updatedVideoIds = group.videoIds.filter((id) => id !== videoId);
+    const originalGroupIndex = groups.findIndex((entry) => entry.id === group.id);
+    const nextGroups = groups.flatMap((entry) => {
+      if (entry.id !== group.id) return [entry];
+      if (updatedVideoIds.length < 2) return [];
+      return [{
+        ...entry,
+        videoIds: updatedVideoIds,
+        exactVideoIds: entry.exactVideoIds?.filter((id) => id !== videoId),
+        manualSuggestedKeeperId: entry.manualSuggestedKeeperId === videoId ? null : entry.manualSuggestedKeeperId,
+      }];
+    });
+
+    addIgnoredDuplicatePairs(pairKeys);
+    setDuplicateGroups(nextGroups);
+    setSelectedIds((prev) => {
+      if (!prev.has(videoId)) return prev;
+      const next = new Set(prev);
+      next.delete(videoId);
+      return next;
+    });
+
+    const removedVideo = videosById.get(videoId);
+    pushToast({
+      title: 'Video excluded from group',
+      detail: removedVideo
+        ? `${removedVideo.filename} will be ignored against the rest of this group in future duplicate runs.`
+        : 'This video will be ignored against the rest of this group in future duplicate runs.',
+      kind: 'info',
+      durationMs: 8000,
+      actionLabel: 'Undo',
+      action: () => {
+        removeIgnoredDuplicatePairs(pairKeys);
+        const currentGroups = useStore.getState().duplicateGroups;
+        const withoutGroup = currentGroups.filter((entry) => entry.id !== group.id);
+        const restoredGroups = [...withoutGroup];
+        const insertIndex = originalGroupIndex >= 0
+          ? Math.min(originalGroupIndex, restoredGroups.length)
+          : restoredGroups.length;
+        restoredGroups.splice(insertIndex, 0, group);
+        setDuplicateGroups(restoredGroups);
+      },
+    });
+  }, [
+    addIgnoredDuplicatePairs,
+    groups,
+    pushToast,
+    removeIgnoredDuplicatePairs,
+    setDuplicateGroups,
+    videosById,
+  ]);
+
   const handleSetSelectedKeeper = useCallback((groupId: string, videoId: string | null) => {
     setManualDuplicateKeeper(groupId, videoId);
     const group = groupViewsById.get(groupId);
@@ -864,6 +924,7 @@ function DuplicateGroupsView() {
       onMarkDelete: () => setVideoStatusesBatch([contextMenuVideo.id], 'delete'),
       onMarkKeep: () => setVideoStatusesBatch([contextMenuVideo.id], 'keep'),
       onResetPending: () => setVideoStatusesBatch([contextMenuVideo.id], 'pending'),
+      onExcludeFromGroup: () => excludeVideoFromGroup(contextMenuGroup.group, contextMenuVideo.id),
       onSetSelectedKeeper: () => handleSetSelectedKeeper(contextMenuGroup.group.id, contextMenuVideo.id),
       onCopyPath: () => {
         void handleCopyPath(contextMenuVideo.path);
@@ -874,6 +935,7 @@ function DuplicateGroupsView() {
     contextMenuGroup,
     contextMenuVideo,
     dismissGroup,
+    excludeVideoFromGroup,
     handleCopyPath,
     handlePlayVideo,
     handleSetSelectedKeeper,

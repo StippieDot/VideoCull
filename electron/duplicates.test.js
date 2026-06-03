@@ -40,6 +40,77 @@ test('daisy-chain validation splits weak connected duplicate groups', () => {
   assert.deepEqual(groupedIds, [['a', 'b'], ['c', 'd']]);
 });
 
+test('borderline visual pairs are dropped when pHash strongly disagrees', () => {
+  const settings = normalizeDuplicateSettings({
+    finalSimilarityThreshold: 90,
+    comparisonMode: 'visual',
+    sampleCount: 3,
+    requireEverySample: true,
+  });
+
+  const result = __test__.filterBorderlineVisualPairsWithPHashGuard([
+    { aId: 'a', bId: 'b', similarity: 93, matchType: 'visual' },
+  ], [
+    { video_id: 'a', sample_index: 0, phash_hex: 'ffff000000000000', flipped_phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'a', sample_index: 1, phash_hex: 'ffff000000000000', flipped_phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'a', sample_index: 2, phash_hex: 'ffff000000000000', flipped_phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 0, phash_hex: '0000000000000000', flipped_phash_hex: '0000000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 1, phash_hex: '0000000000000000', flipped_phash_hex: '0000000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 2, phash_hex: '0000000000000000', flipped_phash_hex: '0000000000000000', frame_dark_ratio: 0.1 },
+  ], settings);
+
+  assert.equal(result.pairs.length, 0);
+  assert.equal(result.dropped, 1);
+  assert.equal(result.confirmThreshold, 85);
+});
+
+test('borderline visual pairs are kept when pHash is reasonably close', () => {
+  const settings = normalizeDuplicateSettings({
+    finalSimilarityThreshold: 90,
+    comparisonMode: 'visual',
+    sampleCount: 3,
+    requireEverySample: true,
+  });
+
+  const closeHashA = 'ffffffffffff0000';
+  const closeHashB = 'fffffffffff00000';
+  const result = __test__.filterBorderlineVisualPairsWithPHashGuard([
+    { aId: 'a', bId: 'b', similarity: 92, matchType: 'visual' },
+  ], [
+    { video_id: 'a', sample_index: 0, phash_hex: closeHashA, flipped_phash_hex: closeHashA, frame_dark_ratio: 0.1 },
+    { video_id: 'a', sample_index: 1, phash_hex: closeHashA, flipped_phash_hex: closeHashA, frame_dark_ratio: 0.1 },
+    { video_id: 'a', sample_index: 2, phash_hex: closeHashA, flipped_phash_hex: closeHashA, frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 0, phash_hex: closeHashB, flipped_phash_hex: closeHashB, frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 1, phash_hex: closeHashB, flipped_phash_hex: closeHashB, frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 2, phash_hex: closeHashB, flipped_phash_hex: closeHashB, frame_dark_ratio: 0.1 },
+  ], settings);
+
+  assert.equal(result.pairs.length, 1);
+  assert.equal(result.dropped, 0);
+});
+
+test('high-confidence visual pairs bypass pHash confirmation', () => {
+  const settings = normalizeDuplicateSettings({
+    finalSimilarityThreshold: 90,
+    comparisonMode: 'visual',
+    sampleCount: 3,
+  });
+
+  const result = __test__.filterBorderlineVisualPairsWithPHashGuard([
+    { aId: 'a', bId: 'b', similarity: 97, matchType: 'visual' },
+  ], [
+    { video_id: 'a', sample_index: 0, phash_hex: 'ffff000000000000', flipped_phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'a', sample_index: 1, phash_hex: 'ffff000000000000', flipped_phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'a', sample_index: 2, phash_hex: 'ffff000000000000', flipped_phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 0, phash_hex: '0000000000000000', flipped_phash_hex: '0000000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 1, phash_hex: '0000000000000000', flipped_phash_hex: '0000000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 2, phash_hex: '0000000000000000', flipped_phash_hex: '0000000000000000', frame_dark_ratio: 0.1 },
+  ], settings);
+
+  assert.equal(result.pairs.length, 1);
+  assert.equal(result.dropped, 0);
+});
+
 test('daisy-chain cleanup can drop weak members after similarity is recomputed', () => {
   const videos = ['a', 'b', 'c'].map(video);
   const videosById = new Map(videos.map((item) => [item.id, item]));

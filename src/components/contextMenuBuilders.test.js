@@ -40,6 +40,7 @@ test('duplicate video menu contains only approved items in order', async () => {
     onMarkDelete: noop,
     onMarkKeep: noop,
     onResetPending: noop,
+    onExcludeFromGroup: noop,
     onSetSelectedKeeper: noop,
     onCopyPath: noop,
   });
@@ -50,6 +51,7 @@ test('duplicate video menu contains only approved items in order', async () => {
     { label: 'Mark Delete', disabled: false },
     { label: 'Mark Keep', disabled: false },
     { label: 'Reset pending', disabled: false },
+    { label: 'Exclude from this group', disabled: false },
     { label: 'Mark as selected keeper', disabled: false },
     { label: 'Copy full path', disabled: false },
   ]);

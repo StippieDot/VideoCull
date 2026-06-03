@@ -34,6 +34,7 @@ export function buildDuplicateVideoMenu(actions: {
   onMarkDelete: Action;
   onMarkKeep: Action;
   onResetPending: Action;
+  onExcludeFromGroup: Action;
   onSetSelectedKeeper: Action;
   onCopyPath: Action;
 }): ContextMenuItem[] {
@@ -45,6 +46,7 @@ export function buildDuplicateVideoMenu(actions: {
     { key: 'delete', label: 'Mark Delete', onSelect: actions.onMarkDelete, tone: 'danger' },
     { key: 'keep', label: 'Mark Keep', onSelect: actions.onMarkKeep },
     { key: 'reset', label: 'Reset pending', onSelect: actions.onResetPending, tone: 'secondary' },
+    { key: 'exclude', label: 'Exclude from this group', onSelect: actions.onExcludeFromGroup, tone: 'secondary' },
     { key: 'keeper', label: 'Mark as selected keeper', onSelect: actions.onSetSelectedKeeper },
     separator('sep-bottom'),
     { key: 'copy', label: 'Copy full path', onSelect: actions.onCopyPath, tone: 'secondary' },

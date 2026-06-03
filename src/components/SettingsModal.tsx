@@ -428,7 +428,11 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                             <input type="number" min="80" max="100" value={localSettings.duplicates.finalSimilarityThreshold} onChange={(e) => handleDuplicateChange('finalSimilarityThreshold', Number(e.target.value))} className="number-input" />
                             <span>%</span>
                           </div>
-                          <span className="help-text">Minimum score needed to group videos as duplicates.</span>
+                          <span className="help-text">
+                            {localSettings.duplicates.comparisonMode === 'visual'
+                              ? 'Minimum score needed to group videos as duplicates. Visual results below 95% need more review.'
+                              : 'Minimum score needed to group videos as duplicates. pHash is usually stricter at the same percentage.'}
+                          </span>
                         </div>
                         <div className="form-group">
                           <label>Sample Count</label>
@@ -449,7 +453,12 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                             <option value="phash">pHash</option>
                             <option value="visual">Visual similarity</option>
                           </select>
-                          <span className="help-text">pHash is more flexible. Visual similarity compares sampled frames more directly.</span>
+                          <span className="help-text">
+                            pHash is stricter and better at rejecting false positives. Visual similarity is broader and can find extra duplicates that pHash misses, especially in the low 90s.
+                          </span>
+                          <span className="help-text">
+                            Best coverage: run both methods separately. They work differently and can each find duplicates the other misses.
+                          </span>
                         </div>
                         <div className="form-group duplicates-span-full">
                           <label>Default Scope</label>
