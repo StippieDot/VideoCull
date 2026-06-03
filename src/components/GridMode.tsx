@@ -6,6 +6,12 @@ import useStore from '../store';
 import VideoCard from './VideoCard';
 import { formatSize, isWebSupported } from '../utils';
 import { Check, ChevronDown, RefreshCw, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
+import ContextMenu, { copyTextToClipboard } from './ContextMenu';
+import {
+  buildCopyPathSuccessDetail,
+  buildFolderHeaderMenu,
+  buildLibraryGridVideoMenu,
+} from './contextMenuBuilders';
 import './GridMode.css';
 
 const BASE_CARD_WIDTH = 450;
@@ -22,6 +28,7 @@ interface HeaderRow {
   count: number;
   filteredSize: number;
   totalSize: number;
+  videos: Video[];
 }
 
 interface CardsRow {
@@ -44,7 +51,9 @@ interface GridRowData {
   isSelectionMode: boolean;
   handleCardClick: (video: Video, event: ReactMouseEvent) => void;
   handleCardPlay: (video: Video, event: ReactMouseEvent) => void;
+  handleCardContextMenu: (video: Video, event: ReactMouseEvent) => void;
   onReviewFolder: (folderPath: string) => void;
+  onHeaderContextMenu: (item: HeaderRow, event: ReactMouseEvent) => void;
   persistCurrentScroll: () => void;
   toggleSelection: (video: Video, event: ReactMouseEvent) => void;
 }
@@ -101,7 +110,9 @@ function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSi
     isSelectionMode,
     handleCardClick,
     handleCardPlay,
+    handleCardContextMenu,
     onReviewFolder,
+    onHeaderContextMenu,
     persistCurrentScroll,
     toggleSelection,
   } = data;
@@ -109,7 +120,12 @@ function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSi
 
   if (item.type === 'header') {
     return (
-      <div style={style} className="grid-group-header" {...ariaAttributes}>
+      <div
+        style={style}
+        className="grid-group-header"
+        onContextMenu={(event) => onHeaderContextMenu(item, event)}
+        {...ariaAttributes}
+      >
         <span className="grid-group-label">{item.label}</span>
         <span className="grid-group-meta">
           <span className="grid-group-count">{item.count}</span>
@@ -160,6 +176,7 @@ function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSi
             onClick={handleCardClick}
             onPlay={handleCardPlay}
             onToggleSelect={toggleSelection}
+            onContextMenu={handleCardContextMenu}
           />
         </div>
       ))}
@@ -174,6 +191,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const setReviewIndex = useStore((s) => s.setReviewIndex);
   const setVideoStatusesBatch = useStore((s) => s.setVideoStatusesBatch);
   const pushToast = useStore((s) => s.pushToast);
+  const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
   const selectedIds = useStore((s) => s.gridSelectionIds);
   const selectionAnchorId = useStore((s) => s.gridSelectionAnchorId);
   const setGridSelectionIds = useStore((s) => s.setGridSelectionIds);
@@ -195,7 +213,15 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const lastSelectedIdsRef = useRef(selectedIds);
   const selectionVersionRef = useRef(0);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [contextMenu, setContextMenu] = useState<{
+    kind: 'video' | 'folder';
+    x: number;
+    y: number;
+    videoId?: string;
+    folderPath?: string;
+  } | null>(null);
   const isSelectionMode = selectedIds.size > 0;
+  const videosById = useMemo(() => new Map(videos.map((video) => [video.id, video])), [videos]);
 
   const initialScrollOffset = useMemo(() => {
     if (persistedGridScroll.directory !== directory) return 0;
@@ -284,6 +310,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
           count: group.videos.length,
           filteredSize: group.videos.reduce((sum, v) => sum + v.sizeBytes, 0),
           totalSize: folderSizeByPath.get(folderPath) ?? group.videos.reduce((sum, v) => sum + v.sizeBytes, 0),
+          videos: group.videos,
         });
       }
       for (let i = 0; i < group.videos.length; i += columnCount) {
@@ -468,6 +495,54 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     }
   }, [compatibilityCheckEnabled, persistCurrentScroll]);
 
+  const notifyCopiedPath = useCallback((pathValue: string) => {
+    pushToast({
+      title: 'Path copied',
+      detail: buildCopyPathSuccessDetail(pathValue),
+      kind: 'success',
+    });
+  }, [pushToast]);
+
+  const notifyCopyFailed = useCallback(() => {
+    pushToast({
+      title: 'Copy failed',
+      detail: 'The path could not be copied to the clipboard.',
+      kind: 'error',
+    });
+  }, [pushToast]);
+
+  const handleCopyPath = useCallback(async (pathValue: string) => {
+    try {
+      await copyTextToClipboard(pathValue);
+      notifyCopiedPath(pathValue);
+    } catch (error) {
+      console.error('Failed to copy path:', error);
+      notifyCopyFailed();
+    }
+  }, [notifyCopiedPath, notifyCopyFailed]);
+
+  const handleCardContextMenu = useCallback((video: Video, event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      kind: 'video',
+      x: event.clientX,
+      y: event.clientY,
+      videoId: video.id,
+    });
+  }, []);
+
+  const handleHeaderContextMenu = useCallback((item: HeaderRow, event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      kind: 'folder',
+      x: event.clientX,
+      y: event.clientY,
+      folderPath: item.folderPath,
+    });
+  }, []);
+
   const handleBatchStatus = useCallback((status: 'keep' | 'delete' | 'skipped' | 'pending') => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
@@ -525,10 +600,12 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     isSelectionMode,
     handleCardClick,
     handleCardPlay,
+    handleCardContextMenu,
     onReviewFolder,
+    onHeaderContextMenu: handleHeaderContextMenu,
     persistCurrentScroll,
     toggleSelection,
-  }), [rows, columnWidth, cardHeight, selectedIds, isSelectionMode, handleCardClick, handleCardPlay, onReviewFolder, persistCurrentScroll, toggleSelection]);
+  }), [rows, columnWidth, cardHeight, selectedIds, isSelectionMode, handleCardClick, handleCardContextMenu, handleCardPlay, handleHeaderContextMenu, onReviewFolder, persistCurrentScroll, toggleSelection]);
 
   if (lastRowsRef.current !== rows) {
     lastRowsRef.current = rows;
@@ -548,6 +625,60 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     rowContentVersion: rowContentVersionRef.current,
     selectionVersion: selectionVersionRef.current,
   }), [cardHeight, columnWidth, rows, selectedIds]);
+
+  const contextMenuVideo = contextMenu?.kind === 'video' && contextMenu.videoId
+    ? videosById.get(contextMenu.videoId) ?? null
+    : null;
+  const contextMenuFolder = contextMenu?.kind === 'folder' && contextMenu.folderPath
+    ? rows.find((item): item is HeaderRow => item.type === 'header' && item.folderPath === contextMenu.folderPath) ?? null
+    : null;
+
+  const folderContextMenuItems = useMemo(() => {
+    if (!contextMenuFolder) return [];
+    const folderVideoIds = contextMenuFolder.videos.map((video) => video.id);
+    return buildFolderHeaderMenu({
+      onReviewFolder: () => {
+        persistCurrentScroll();
+        onReviewFolder(contextMenuFolder.folderPath);
+      },
+      onFilterToFolder: () => setFolderFilterPath(contextMenuFolder.folderPath),
+      onRevealFolder: () => {
+        void window.electronAPI?.openInExplorer(contextMenuFolder.folderPath);
+      },
+      onCopyFolderPath: () => {
+        void handleCopyPath(contextMenuFolder.folderPath);
+      },
+      onMarkKeep: () => setVideoStatusesBatch(folderVideoIds, 'keep'),
+      onMarkDelete: () => setVideoStatusesBatch(folderVideoIds, 'delete'),
+      onResetPending: () => setVideoStatusesBatch(folderVideoIds, 'pending'),
+      onRegenerateThumbnails: () => {
+        void onRegenerateThumbnails(contextMenuFolder.videos);
+      },
+    });
+  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, setFolderFilterPath, setVideoStatusesBatch]);
+
+  const videoContextMenuItems = useMemo(() => {
+    if (!contextMenuVideo) return [];
+    return buildLibraryGridVideoMenu({
+      onPlay: () => {
+        const syntheticEvent = { ctrlKey: false } as ReactMouseEvent;
+        handleCardPlay(contextMenuVideo, syntheticEvent);
+      },
+      onOpenExternal: () => {
+        void window.electronAPI?.openVideo(contextMenuVideo.path);
+      },
+      onReveal: () => {
+        void window.electronAPI?.openInExplorer(contextMenuVideo.path);
+      },
+      onResetPending: () => setVideoStatusesBatch([contextMenuVideo.id], 'pending'),
+      onRegenerateThumbnails: () => {
+        void onRegenerateThumbnails([contextMenuVideo]);
+      },
+      onCopyPath: () => {
+        void handleCopyPath(contextMenuVideo.path);
+      },
+    });
+  }, [contextMenuVideo, handleCardPlay, handleCopyPath, onRegenerateThumbnails, setVideoStatusesBatch]);
 
   return (
     <div className="grid-mode" ref={containerRef}>
@@ -610,6 +741,14 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
             </button>
           </div>
         </div>
+      )}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.kind === 'video' ? videoContextMenuItems : folderContextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );

@@ -4,6 +4,8 @@ import type { SortField } from '../types';
 import useStore from '../store';
 import { beginDevInteraction } from '../perf-dev';
 import { formatSize, formatRelativeTime, formatRecentPath } from '../utils';
+import ContextMenu, { copyTextToClipboard } from './ContextMenu';
+import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, HardDrive, FileVideo, X, Maximize2, Settings, ChevronDown,
@@ -412,12 +414,14 @@ export default function Sidebar({
   const recentDirectoryTimestamps = useStore((s) => s.settings.recentDirectoryTimestamps);
   const clearRecentDirectories = useStore((s) => s.clearRecentDirectories);
   const removeRecentDirectory = useStore((s) => s.removeRecentDirectory);
+  const addDirectory = useStore((s) => s.addDirectory);
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [showRecents, setShowRecents] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
   const [showSort, setShowSort] = useState(true);
   const [showView, setShowView] = useState(true);
+  const [recentContextMenu, setRecentContextMenu] = useState<{ x: number; y: number; dir: string } | null>(null);
 
   const handleSelectDir = async () => {
     if (!window.electronAPI) return;
@@ -455,6 +459,69 @@ export default function Sidebar({
       dedupeKey: `recent-removed:${dir}`,
     });
   };
+
+  const handleAddRecentToSession = async (dir: string) => {
+    if (!window.electronAPI) {
+      addDirectory(dir);
+      return;
+    }
+    const result = await window.electronAPI.validateDroppedPath(dir);
+    if (!result.valid || !result.isDirectory) {
+      removeRecentDirectory(dir);
+      onNotify({
+        title: 'Recent unavailable',
+        detail: formatRecentPath(dir),
+        kind: 'error',
+        dedupeKey: `recent-unavailable:${dir}`,
+      });
+      return;
+    }
+    addDirectory(dir);
+    onNotify({
+      title: 'Folder added',
+      detail: formatRecentPath(dir),
+      kind: 'success',
+      dedupeKey: `recent-added:${dir}`,
+    });
+  };
+
+  const handleCopyRecentPath = async (dir: string) => {
+    try {
+      await copyTextToClipboard(dir);
+      onNotify({
+        title: 'Path copied',
+        detail: buildCopyPathSuccessDetail(dir),
+        kind: 'success',
+      });
+    } catch (error) {
+      console.error('Failed to copy path:', error);
+      onNotify({
+        title: 'Copy failed',
+        detail: 'The path could not be copied to the clipboard.',
+        kind: 'error',
+      });
+    }
+  };
+
+  const recentContextMenuItems = useMemo(() => {
+    if (!recentContextMenu) return [];
+    return buildRecentFolderMenu({
+      directory: recentContextMenu.dir,
+      loadedDirectories: directories,
+      onOpen: () => {
+        void handleOpenRecent(recentContextMenu.dir);
+      },
+      onAddToSession: () => {
+        void handleAddRecentToSession(recentContextMenu.dir);
+      },
+      onReveal: () => {
+        void window.electronAPI?.openInExplorer(recentContextMenu.dir);
+      },
+      onCopyPath: () => {
+        void handleCopyRecentPath(recentContextMenu.dir);
+      },
+    });
+  }, [directories, recentContextMenu]);
 
 
   const handleBatchDelete = async () => {
@@ -677,8 +744,11 @@ export default function Sidebar({
                   <button
                     className={`recents-item ${d === directory ? 'recents-item-active' : ''}`}
                     title={`${d} \u2022 opened ${formatRelativeTime(recentDirectoryTimestamps[d])}`}
-                    disabled={d === directory}
                     onClick={() => void handleOpenRecent(d)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setRecentContextMenu({ x: event.clientX, y: event.clientY, dir: d });
+                    }}
                   >
                     <FolderOpen size={12} />
                     <span className="recents-item-copy">
@@ -736,6 +806,14 @@ export default function Sidebar({
         onFindDuplicates={onFindDuplicates}
         onOpenDuplicateSettings={onOpenDuplicateSettings}
       />
+      {recentContextMenu && (
+        <ContextMenu
+          x={recentContextMenu.x}
+          y={recentContextMenu.y}
+          items={recentContextMenuItems}
+          onClose={() => setRecentContextMenu(null)}
+        />
+      )}
 
       {stats.total > 0 && !duplicateGroupsMode && (
         <section className="sidebar-section sidebar-library-section">

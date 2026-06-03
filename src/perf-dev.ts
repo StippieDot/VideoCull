@@ -17,6 +17,7 @@ type DevPerfTiming = {
 };
 
 export type DevPerfSnapshot = RendererPerformanceSnapshot;
+export type DevIdleSnapshot = IdleDiagnosticsSnapshot;
 
 export type DevPerfGlobal = {
   getSnapshot: () => DevPerfSnapshot;
@@ -24,15 +25,24 @@ export type DevPerfGlobal = {
     renderer: DevPerfSnapshot;
     main: PerformanceStatsSnapshot | undefined;
   }>;
+  getIdleDiagnostics: () => Promise<DevIdleSnapshot>;
+  getIdleSamples: () => DevIdleSnapshot[];
+  clearIdleSamples: () => void;
+  startIdleMonitor: (intervalMs?: number) => void;
+  stopIdleMonitor: () => void;
   reset: () => void;
   resetAll: () => Promise<void>;
 };
 
 const REPORT_INTERVAL_MS = 5000;
+const DEFAULT_IDLE_MONITOR_INTERVAL_MS = 30000;
+const MAX_IDLE_SAMPLES = 240;
 const counters = new Map<string, DevPerfCounter>();
 const timings = new Map<string, DevPerfTiming>();
 const interactionStarts = new Map<string, number>();
+const idleSamples: DevIdleSnapshot[] = [];
 let longTaskObserver: PerformanceObserver | null = null;
+let idleMonitorTimer: ReturnType<typeof setInterval> | null = null;
 
 function devPerfEnabled() {
   return import.meta.env.DEV && typeof performance !== 'undefined';
@@ -162,6 +172,76 @@ export function getDevPerfSnapshot(): DevPerfSnapshot {
   };
 }
 
+function getRendererMemorySnapshot(): RendererMemorySnapshot | null {
+  if (typeof performance === 'undefined') return null;
+  const memory = (performance as typeof performance & {
+    memory?: {
+      jsHeapSizeLimit?: number;
+      totalJSHeapSize?: number;
+      usedJSHeapSize?: number;
+    };
+  }).memory;
+  if (!memory) return null;
+  return {
+    jsHeapSizeLimit: Number(memory.jsHeapSizeLimit ?? 0),
+    totalJSHeapSize: Number(memory.totalJSHeapSize ?? 0),
+    usedJSHeapSize: Number(memory.usedJSHeapSize ?? 0),
+  };
+}
+
+function getRendererIdleSnapshot(): RendererIdleDiagnosticsSnapshot {
+  return {
+    timestamp: Date.now(),
+    visibilityState: typeof document === 'undefined' ? 'unknown' : document.visibilityState,
+    hidden: typeof document === 'undefined' ? false : document.hidden,
+    videoElementCount: typeof document === 'undefined' ? 0 : document.querySelectorAll('video').length,
+    mountedVideoCardCount: typeof document === 'undefined' ? 0 : document.querySelectorAll('.video-card').length,
+    memory: getRendererMemorySnapshot(),
+    perf: getDevPerfSnapshot(),
+  };
+}
+
+async function getIdleDiagnosticsSnapshot(): Promise<DevIdleSnapshot> {
+  return {
+    renderer: getRendererIdleSnapshot(),
+    main: await window.electronAPI?.getIdleDiagnostics?.(),
+  };
+}
+
+function pushIdleSample(sample: DevIdleSnapshot) {
+  idleSamples.push(sample);
+  if (idleSamples.length > MAX_IDLE_SAMPLES) {
+    idleSamples.splice(0, idleSamples.length - MAX_IDLE_SAMPLES);
+  }
+}
+
+async function captureIdleSample() {
+  const sample = await getIdleDiagnosticsSnapshot();
+  pushIdleSample(sample);
+  return sample;
+}
+
+function normalizeIdleMonitorInterval(intervalMs?: number) {
+  const parsed = Number(intervalMs);
+  if (!Number.isFinite(parsed)) return DEFAULT_IDLE_MONITOR_INTERVAL_MS;
+  return Math.max(1000, Math.floor(parsed));
+}
+
+function stopIdleMonitor() {
+  if (!idleMonitorTimer) return;
+  clearInterval(idleMonitorTimer);
+  idleMonitorTimer = null;
+}
+
+function startIdleMonitor(intervalMs?: number) {
+  stopIdleMonitor();
+  const delay = normalizeIdleMonitorInterval(intervalMs);
+  void captureIdleSample();
+  idleMonitorTimer = setInterval(() => {
+    void captureIdleSample();
+  }, delay);
+}
+
 export function resetDevPerf() {
   counters.clear();
   timings.clear();
@@ -177,6 +257,17 @@ export function installDevPerfGlobal() {
       renderer: getDevPerfSnapshot(),
       main: await window.electronAPI?.getPerformanceStats?.(),
     }),
+    getIdleDiagnostics: () => getIdleDiagnosticsSnapshot(),
+    getIdleSamples: () => [...idleSamples],
+    clearIdleSamples: () => {
+      idleSamples.length = 0;
+    },
+    startIdleMonitor: (intervalMs?: number) => {
+      startIdleMonitor(intervalMs);
+    },
+    stopIdleMonitor: () => {
+      stopIdleMonitor();
+    },
     reset: () => resetDevPerf(),
     resetAll: async () => {
       resetDevPerf();
@@ -186,4 +277,10 @@ export function installDevPerfGlobal() {
 
   window.__VIDEO_CULL_DEV_PERF__ = globalApi;
 }
-import type { PerformanceStatsSnapshot, RendererPerformanceSnapshot } from './types';
+import type {
+  IdleDiagnosticsSnapshot,
+  PerformanceStatsSnapshot,
+  RendererIdleDiagnosticsSnapshot,
+  RendererMemorySnapshot,
+  RendererPerformanceSnapshot,
+} from './types';

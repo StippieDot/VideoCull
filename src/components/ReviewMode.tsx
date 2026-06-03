@@ -11,7 +11,9 @@ import { createPlayer, videoFeatures } from '@videojs/react';
 import { MinimalVideoSkin, Video } from '@videojs/react/video';
 import { isWebSupported } from '../utils';
 import { matchesKeybind, formatKeybind } from '../keybinds';
-import { beginDevInteraction, completeDevInteractionOnNextPaint } from '../perf-dev';
+import { beginDevInteraction, completeDevInteractionOnNextPaint, recordDevCounter } from '../perf-dev';
+import ContextMenu, { copyTextToClipboard } from './ContextMenu';
+import { buildCopyPathSuccessDetail, buildReviewVideoMenu } from './contextMenuBuilders';
 import './ReviewMode.css';
 
 const Player = createPlayer({ features: videoFeatures });
@@ -70,6 +72,7 @@ export default function ReviewMode() {
   const features = useStore((s) => s.settings.features);
   const pushToast = useStore((s) => s.pushToast);
   const effectiveGlobalMute = features.globalMute && globalMute;
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const scopeIdsRef = useRef<string[] | null>(null);
   if (scopeIdsRef.current === null) {
@@ -182,10 +185,14 @@ export default function ReviewMode() {
     const el = videoRef.current;
     if (!el) return;
 
+    recordDevCounter('review.playbackSessionStart');
     el.playbackRate = playbackSpeed;
 
     const onRateChange = () => setPlaybackSpeed(el.playbackRate);
-    const onTimeUpdate = () => setCurrentTime(el.currentTime);
+    const onTimeUpdate = () => {
+      recordDevCounter('review.playerTimeUpdate');
+      setCurrentTime(el.currentTime);
+    };
 
     el.addEventListener('ratechange', onRateChange);
     el.addEventListener('timeupdate', onTimeUpdate);
@@ -283,6 +290,31 @@ export default function ReviewMode() {
     beginDevInteraction('review.exit');
     setReviewMode(false);
   }, [setReviewMode]);
+
+  const handleReviewContextMenu = useCallback((event: React.MouseEvent) => {
+    if (!video) return;
+    event.preventDefault();
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  }, [video]);
+
+  const handleCopyPath = useCallback(async () => {
+    if (!video) return;
+    try {
+      await copyTextToClipboard(video.path);
+      pushToast({
+        title: 'Path copied',
+        detail: buildCopyPathSuccessDetail(video.path),
+        kind: 'success',
+      });
+    } catch (error) {
+      console.error('Failed to copy path:', error);
+      pushToast({
+        title: 'Copy failed',
+        detail: 'The path could not be copied to the clipboard.',
+        kind: 'error',
+      });
+    }
+  }, [pushToast, video]);
 
   const addBookmarkNow = useCallback(() => {
     if (!video || !videoRef.current) return;
@@ -421,6 +453,18 @@ export default function ReviewMode() {
     video.status === 'keep' ? 'review-keep' :
     video.status === 'delete' ? 'review-delete' : '';
 
+  const contextMenuItems = buildReviewVideoMenu({
+    onOpenExternal: () => {
+      void window.electronAPI?.openVideo(video.path);
+    },
+    onReveal: () => {
+      void window.electronAPI?.openInExplorer(video.path);
+    },
+    onCopyPath: () => {
+      void handleCopyPath();
+    },
+  });
+
   return (
     <div className={`review-mode ${statusClass}`}>
       <button className="review-close" onClick={close} title="Close (Esc)">
@@ -447,7 +491,7 @@ export default function ReviewMode() {
           <ChevronLeft size={28} />
         </button>
 
-        <div className="review-center">
+        <div className="review-center" onContextMenu={handleReviewContextMenu}>
           <div
             className={`review-thumbs ${isPlaying ? 'playing' : ''}`}
             style={!isPlaying ? { aspectRatio: `${dynamicAspectRatio}` } : undefined}
@@ -621,6 +665,14 @@ export default function ReviewMode() {
           <kbd>{formatKeybind(keyKeep)}</kbd>
         </button>
       </div>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

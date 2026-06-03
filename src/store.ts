@@ -392,6 +392,14 @@ let toastIdCounter = 0;
 const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const recentToastByKey = new Map<string, number>();
 
+function pruneRecentToastKeys(now: number) {
+  for (const [key, lastShownAt] of recentToastByKey) {
+    if (now - lastShownAt >= TOAST_DEDUPE_WINDOW_MS) {
+      recentToastByKey.delete(key);
+    }
+  }
+}
+
 const SAVE_RETRY_DELAY_MS = 750;
 const MAX_SAVE_RETRY_ATTEMPTS = 3;
 
@@ -1473,6 +1481,7 @@ const useStore = create<VideoStore>((set, get) => ({
       ? { title: toast, kind }
       : { ...toast, kind: toast.kind ?? kind };
     const now = Date.now();
+    pruneRecentToastKeys(now);
 
     if (input.dedupeKey) {
       const lastShown = recentToastByKey.get(input.dedupeKey) ?? 0;

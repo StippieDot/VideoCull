@@ -14,9 +14,10 @@ interface VideoCardProps {
   onClick?: (video: Video, event: React.MouseEvent) => void;
   onPlay?: (video: Video, event: React.MouseEvent) => void;
   onToggleSelect?: (video: Video, event: React.MouseEvent) => void;
+  onContextMenu?: (video: Video, event: React.MouseEvent) => void;
 }
 
-export default function VideoCard({ video, style, isSelected = false, showSelectionControls = false, onClick, onPlay, onToggleSelect }: VideoCardProps) {
+export default function VideoCard({ video, style, isSelected = false, showSelectionControls = false, onClick, onPlay, onToggleSelect, onContextMenu }: VideoCardProps) {
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -98,6 +99,7 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
         if (e.shiftKey) e.preventDefault();
       }}
       onClick={(e) => onClick?.(video, e)}
+      onContextMenu={(e) => onContextMenu?.(video, e)}
     >
       <div className="card-thumb-area">
         {showSelectionControls && onToggleSelect && (

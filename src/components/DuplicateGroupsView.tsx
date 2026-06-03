@@ -24,6 +24,7 @@ import {
   recordDevPerf,
 } from '../perf-dev';
 import VideoCard from './VideoCard';
+import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import {
   buildDuplicateGalleryRows,
   buildDuplicateRowsRows,
@@ -35,6 +36,12 @@ import {
   getDuplicateVirtualRowHeight,
   type DuplicateVirtualRow,
 } from './duplicateVirtualRows';
+import {
+  buildCopyPathSuccessDetail,
+  buildDuplicateGroupHeaderMenu,
+  buildDuplicateVideoMenu,
+  canPlayDuplicateGroupKeeper,
+} from './contextMenuBuilders';
 import { Ban, Check, CheckCircle2, Play, SkipForward, Trash2 } from 'lucide-react';
 import './DuplicateGroupsView.css';
 
@@ -49,6 +56,21 @@ type DuplicateGroupView = {
   bestFlags: Map<string, MetricFlags>;
 };
 
+type DuplicateContextMenuState =
+  | {
+      kind: 'video';
+      x: number;
+      y: number;
+      groupId: string;
+      videoId: string;
+    }
+  | {
+      kind: 'group';
+      x: number;
+      y: number;
+      groupId: string;
+    };
+
 type DuplicateRowItemProps = {
   video: Video;
   groupVideoIds: string[];
@@ -60,7 +82,7 @@ type DuplicateRowItemProps = {
   isLastInGroup: boolean;
   onToggleSelection: (video: Video) => void;
   onPlayVideo: (videoId: string, scopeIds: string[]) => void;
-  onOpenContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+  onOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
 };
 
 type DuplicateGalleryCardProps = {
@@ -70,7 +92,7 @@ type DuplicateGalleryCardProps = {
   isSelected: boolean;
   onToggleSelection: (video: Video) => void;
   onPlayVideo: (videoId: string, scopeIds: string[]) => void;
-  onOpenContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+  onOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
 };
 
 type DuplicateRowRuntimeData = {
@@ -82,7 +104,8 @@ type DuplicateRowRuntimeData = {
   dismissGroup: (group: DuplicateGroup) => void;
   handleToggleSelection: (video: Video) => void;
   handlePlayVideo: (videoId: string, scopeIds: string[]) => void;
-  handleOpenContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+  handleOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+  handleOpenGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
 };
 
 type DuplicateRowRenderSignals = {
@@ -176,7 +199,7 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
   isLastInGroup,
   onToggleSelection,
   onPlayVideo,
-  onOpenContextMenu,
+  onOpenVideoContextMenu,
 }: DuplicateRowItemProps) {
   const statusBadge = statusBadgeContent(video);
   const chip = (key: string, label: string) => {
@@ -191,7 +214,7 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
   return (
     <div
       className={`duplicate-row ${suggestedKeeperId === video.id ? 'keeper' : ''} ${video.status !== 'pending' ? `status-${video.status}` : ''} ${isSelected ? 'selected' : ''} ${isLastInGroup ? 'last-in-group' : ''}`}
-      onContextMenu={(event) => onOpenContextMenu(event, groupId, video.id)}
+      onContextMenu={(event) => onOpenVideoContextMenu(event, groupId, video.id)}
     >
       <label className="duplicate-select-cell" title="Select video">
         <input
@@ -246,10 +269,10 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   isSelected,
   onToggleSelection,
   onPlayVideo,
-  onOpenContextMenu,
+  onOpenVideoContextMenu,
 }: DuplicateGalleryCardProps) {
   return (
-    <div onContextMenu={(event) => onOpenContextMenu(event, groupId, video.id)}>
+    <div onContextMenu={(event) => onOpenVideoContextMenu(event, groupId, video.id)}>
       <VideoCard
         video={video}
         showSelectionControls
@@ -264,13 +287,18 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
 const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
   groupView,
   onDismissGroup,
+  onOpenGroupContextMenu,
 }: {
   groupView: DuplicateGroupView;
   onDismissGroup: (group: DuplicateGroup) => void;
+  onOpenGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }) {
   return (
     <div className="duplicate-group-panel duplicate-group-panel-header">
-      <div className="duplicate-group-header">
+      <div
+        className="duplicate-group-header"
+        onContextMenu={(event) => onOpenGroupContextMenu(event, groupView.group.id)}
+      >
         <div className="duplicate-group-title">
           <span
             className={`duplicate-match-badge ${groupView.group.matchType === 'exact' ? 'exact' : 'potential'}`}
@@ -318,7 +346,11 @@ function DuplicateVirtualRowRenderer({
   if (row.type === 'group-header') {
     return (
       <div style={rowStyle} className="duplicate-virtual-row-shell group-header" {...ariaAttributes}>
-        <DuplicateGroupHeaderPanel groupView={groupView} onDismissGroup={runtime.dismissGroup} />
+        <DuplicateGroupHeaderPanel
+          groupView={groupView}
+          onDismissGroup={runtime.dismissGroup}
+          onOpenGroupContextMenu={runtime.handleOpenGroupContextMenu}
+        />
       </div>
     );
   }
@@ -340,7 +372,7 @@ function DuplicateVirtualRowRenderer({
             isLastInGroup={row.isLastInGroup}
             onToggleSelection={runtime.handleToggleSelection}
             onPlayVideo={runtime.handlePlayVideo}
-            onOpenContextMenu={runtime.handleOpenContextMenu}
+            onOpenVideoContextMenu={runtime.handleOpenVideoContextMenu}
           />
         </div>
       </div>
@@ -372,7 +404,7 @@ function DuplicateVirtualRowRenderer({
                   isSelected={runtime.selectedIds.has(video.id)}
                   onToggleSelection={runtime.handleToggleSelection}
                   onPlayVideo={runtime.handlePlayVideo}
-                  onOpenContextMenu={runtime.handleOpenContextMenu}
+                  onOpenVideoContextMenu={runtime.handleOpenVideoContextMenu}
                 />
               </div>
             );
@@ -404,12 +436,7 @@ function DuplicateGroupsView() {
   const pushToast = useStore((s) => s.pushToast);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    groupId: string;
-    videoId: string;
-  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<DuplicateContextMenuState | null>(null);
   const listShellRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<ListImperativeAPI | null>(null);
   const lastRowsRef = useRef<DuplicateVirtualRow[] | null>(null);
@@ -495,23 +522,6 @@ function DuplicateGroupsView() {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (!contextMenu) return;
-    const handlePointerDown = () => setContextMenu(null);
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setContextMenu(null);
-    };
-    const handleWindowScroll = () => setContextMenu(null);
-    window.addEventListener('pointerdown', handlePointerDown);
-    window.addEventListener('keydown', handleEscape);
-    window.addEventListener('scroll', handleWindowScroll, true);
-    return () => {
-      window.removeEventListener('pointerdown', handlePointerDown);
-      window.removeEventListener('keydown', handleEscape);
-      window.removeEventListener('scroll', handleWindowScroll, true);
-    };
-  }, [contextMenu]);
-
   const isProtectedFromSuggestion = useCallback((video: Video) => (
     (settings.protectKeep && video.status === 'keep') ||
     (settings.protectSkipped && video.status === 'skipped')
@@ -553,14 +563,26 @@ function DuplicateGroupsView() {
     });
   }, []);
 
-  const openContextMenu = useCallback((event: React.MouseEvent, groupId: string, videoId: string) => {
+  const openVideoContextMenu = useCallback((event: React.MouseEvent, groupId: string, videoId: string) => {
     event.preventDefault();
     event.stopPropagation();
     setContextMenu({
+      kind: 'video',
       x: event.clientX,
       y: event.clientY,
       groupId,
       videoId,
+    });
+  }, []);
+
+  const openGroupContextMenu = useCallback((event: React.MouseEvent, groupId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      kind: 'group',
+      x: event.clientX,
+      y: event.clientY,
+      groupId,
     });
   }, []);
 
@@ -668,7 +690,6 @@ function DuplicateGroupsView() {
 
   const handleSetSelectedKeeper = useCallback((groupId: string, videoId: string | null) => {
     setManualDuplicateKeeper(groupId, videoId);
-    setContextMenu(null);
     const group = groupViewsById.get(groupId);
     const video = videoId ? videosById.get(videoId) : null;
     if (videoId && group && video) {
@@ -724,12 +745,14 @@ function DuplicateGroupsView() {
     dismissGroup,
     handleToggleSelection: toggleVideoSelection,
     handlePlayVideo,
-    handleOpenContextMenu: openContextMenu,
+    handleOpenVideoContextMenu: openVideoContextMenu,
+    handleOpenGroupContextMenu: openGroupContextMenu,
   }), [
     dismissGroup,
     galleryLayout.cardWidth,
     groupViewsById,
-    openContextMenu,
+    openGroupContextMenu,
+    openVideoContextMenu,
     handlePlayVideo,
     selectedIds,
     toggleVideoSelection,
@@ -786,11 +809,78 @@ function DuplicateGroupsView() {
   );
 
   const contextMenuGroup = contextMenu ? groupViewsById.get(contextMenu.groupId) ?? null : null;
-  const contextMenuVideo = contextMenu ? videosById.get(contextMenu.videoId) ?? null : null;
-  const canClearManualKeeper =
-    Boolean(contextMenuGroup && contextMenuGroup.group.manualSuggestedKeeperId === contextMenu?.videoId);
-  const canSetManualKeeper =
-    Boolean(contextMenuGroup && contextMenuGroup.group.manualSuggestedKeeperId !== contextMenu?.videoId);
+  const contextMenuVideo =
+    contextMenu?.kind === 'video'
+      ? videosById.get(contextMenu.videoId) ?? null
+      : null;
+
+  const handleCopyPath = useCallback(async (pathValue: string) => {
+    try {
+      await copyTextToClipboard(pathValue);
+      pushToast({
+        title: 'Path copied',
+        detail: buildCopyPathSuccessDetail(pathValue),
+        kind: 'success',
+      });
+    } catch (error) {
+      console.error('Failed to copy path:', error);
+      pushToast({
+        title: 'Copy failed',
+        detail: 'The path could not be copied to the clipboard.',
+        kind: 'error',
+      });
+    }
+  }, [pushToast]);
+
+  const selectSuggestedDuplicatesForGroup = useCallback((groupView: DuplicateGroupView) => {
+    setSelectedIds(new Set(getMarkableDuplicateIds([groupView])));
+  }, [getMarkableDuplicateIds]);
+
+  const contextMenuItems = useMemo(() => {
+    if (!contextMenuGroup) return [];
+    if (contextMenu?.kind === 'group') {
+      return buildDuplicateGroupHeaderMenu({
+        group: contextMenuGroup.group,
+        canPlaySelectedKeeper: canPlayDuplicateGroupKeeper(contextMenuGroup.group, videosById),
+        onDismissGroup: () => dismissGroup(contextMenuGroup.group),
+        onSelectSuggestedDeletions: () => selectSuggestedDuplicatesForGroup(contextMenuGroup),
+        onClearManualKeeperOverride: () => handleSetSelectedKeeper(contextMenuGroup.group.id, null),
+        onPlaySelectedKeeper: () => {
+          const keeperId = contextMenuGroup.group.suggestedKeeperId;
+          if (!keeperId) return;
+          handlePlayVideo(keeperId, contextMenuGroup.group.videoIds);
+        },
+      });
+    }
+    if (!contextMenuVideo) return [];
+    return buildDuplicateVideoMenu({
+      onPlay: () => handlePlayVideo(contextMenuVideo.id, contextMenuGroup.group.videoIds),
+      onOpenExternal: () => {
+        void window.electronAPI?.openVideo(contextMenuVideo.path);
+      },
+      onReveal: () => {
+        void window.electronAPI?.openInExplorer(contextMenuVideo.path);
+      },
+      onMarkDelete: () => setVideoStatusesBatch([contextMenuVideo.id], 'delete'),
+      onMarkKeep: () => setVideoStatusesBatch([contextMenuVideo.id], 'keep'),
+      onResetPending: () => setVideoStatusesBatch([contextMenuVideo.id], 'pending'),
+      onSetSelectedKeeper: () => handleSetSelectedKeeper(contextMenuGroup.group.id, contextMenuVideo.id),
+      onCopyPath: () => {
+        void handleCopyPath(contextMenuVideo.path);
+      },
+    });
+  }, [
+    contextMenu,
+    contextMenuGroup,
+    contextMenuVideo,
+    dismissGroup,
+    handleCopyPath,
+    handlePlayVideo,
+    handleSetSelectedKeeper,
+    selectSuggestedDuplicatesForGroup,
+    setVideoStatusesBatch,
+    videosById,
+  ]);
 
   const renderToolbar = () => (
     <div className="duplicate-toolbar">
@@ -869,30 +959,13 @@ function DuplicateGroupsView() {
           />
         ) : null}
       </div>
-      {contextMenu && contextMenuGroup && contextMenuVideo && (
-        <div
-          className="duplicate-context-menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="duplicate-context-menu-item"
-            onClick={() => handleSetSelectedKeeper(contextMenu.groupId, contextMenu.videoId)}
-            disabled={!canSetManualKeeper}
-          >
-            Mark as selected keeper
-          </button>
-          {canClearManualKeeper && (
-            <button
-              type="button"
-              className="duplicate-context-menu-item secondary"
-              onClick={() => handleSetSelectedKeeper(contextMenu.groupId, null)}
-            >
-              Use automatic keeper suggestion
-            </button>
-          )}
-        </div>
+      {contextMenu && contextMenuGroup && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );

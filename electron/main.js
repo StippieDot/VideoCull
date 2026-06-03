@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } = requ
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
+const { performance: nodePerformance } = require('perf_hooks');
 const { scanDirectory } = require('./scanner');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
@@ -24,6 +25,9 @@ let menuBarHiddenForVideoFullscreen = false;
 let scanGeneration = 0;
 let updateReadyToInstall = false;
 let activeDuplicateRun = null;
+let lastEventLoopUtilization = typeof nodePerformance.eventLoopUtilization === 'function'
+  ? nodePerformance.eventLoopUtilization()
+  : null;
 const RESPONSIVE_SCAN_YIELD_MS = 16;
 const ALLOWED_EXTERNAL_URLS = new Set([
   'https://github.com/stippie-dot/VideoCull',
@@ -199,6 +203,76 @@ function sendToRenderer(channel, payload) {
   }
 }
 
+async function collectIdleDiagnostics() {
+  const memory = process.memoryUsage();
+  let rendererMemory = null;
+  let rendererProcessId = null;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      rendererProcessId = mainWindow.webContents.getOSProcessId?.() ?? null;
+    } catch {
+      rendererProcessId = null;
+    }
+    try {
+      rendererMemory = await mainWindow.webContents.getProcessMemoryInfo();
+    } catch {
+      rendererMemory = null;
+    }
+  }
+
+  let eventLoopUtilization = null;
+  if (typeof nodePerformance.eventLoopUtilization === 'function') {
+    const currentEventLoopUtilization = nodePerformance.eventLoopUtilization();
+    const delta = lastEventLoopUtilization
+      ? nodePerformance.eventLoopUtilization(lastEventLoopUtilization, currentEventLoopUtilization)
+      : currentEventLoopUtilization;
+    lastEventLoopUtilization = currentEventLoopUtilization;
+    eventLoopUtilization = Number(delta.utilization ?? 0);
+  }
+
+  const appMetrics = app.getAppMetrics().map((metric) => ({
+    cpuPercent: metric.cpu.percentCPUUsage,
+    creationTime: metric.creationTime,
+    memory: {
+      privateKb: metric.memory.private,
+      residentSetKb: metric.memory.residentSet,
+      sharedKb: metric.memory.shared,
+    },
+    pid: metric.pid,
+    serviceName: metric.serviceName,
+    type: metric.type,
+  }));
+
+  return {
+    timestamp: Date.now(),
+    pid: process.pid,
+    memory: {
+      rss: memory.rss,
+      heapTotal: memory.heapTotal,
+      heapUsed: memory.heapUsed,
+      external: memory.external,
+      arrayBuffers: memory.arrayBuffers,
+    },
+    eventLoopUtilization,
+    loadedRootCount: currentScanDirs.size,
+    knownVideoCount: knownVideoPaths.size,
+    activeCacheRootCount: activeCacheRoots.size,
+    activeBatchIntervalCount: activeBatchIntervals.size,
+    activeDuplicateRun: Boolean(activeDuplicateRun),
+    windowVisible: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
+    windowMinimized: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()),
+    rendererProcessId,
+    rendererMemory: rendererMemory
+      ? {
+        privateKb: rendererMemory.private,
+        residentSetKb: rendererMemory.residentSet,
+        sharedKb: rendererMemory.shared,
+      }
+      : null,
+    appMetrics,
+  };
+}
+
 function measurePayloadBytes(payload) {
   try {
     return Buffer.byteLength(JSON.stringify(payload), 'utf8');
@@ -236,11 +310,21 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+  mainWindow.webContents.on('render-process-gone', async (_event, details) => {
     log.error('[renderer-crash] Render process gone', details);
+    try {
+      log.error('[renderer-crash] idle diagnostics', await collectIdleDiagnostics());
+    } catch (err) {
+      log.error('[renderer-crash] failed to collect idle diagnostics', err);
+    }
   });
-  mainWindow.webContents.on('unresponsive', () => {
+  mainWindow.webContents.on('unresponsive', async () => {
     log.warn('[renderer-crash] Renderer became unresponsive');
+    try {
+      log.warn('[renderer-crash] idle diagnostics', await collectIdleDiagnostics());
+    } catch (err) {
+      log.error('[renderer-crash] failed to collect idle diagnostics', err);
+    }
   });
   mainWindow.on('closed', () => {
     menuBarHiddenForVideoFullscreen = false;
@@ -1887,6 +1971,10 @@ ipcMain.handle('get-performance-stats', async () => {
   return perfMetrics.getSnapshot();
 });
 
+ipcMain.handle('get-idle-diagnostics', async () => {
+  return collectIdleDiagnostics();
+});
+
 ipcMain.handle('reset-performance-stats', async () => {
   perfMetrics.reset();
   return true;
@@ -2256,7 +2344,16 @@ ipcMain.handle('save-config', async (_event, config) => {
 
 // 10. Open a directory in explorer
 ipcMain.handle('open-in-explorer', async (_event, filePath) => {
-  if (!knownVideoPaths.has(filePath) && !await isPathWithinAnyDir(filePath, currentScanDirs)) return;
+  let allowed = knownVideoPaths.has(filePath) || await isPathWithinAnyDir(filePath, currentScanDirs);
+  if (!allowed) {
+    try {
+      const stats = await fs.stat(filePath);
+      allowed = stats.isFile() || stats.isDirectory();
+    } catch {
+      allowed = false;
+    }
+  }
+  if (!allowed) return;
   shell.showItemInFolder(filePath);
 });
 

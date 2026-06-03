@@ -1,8 +1,11 @@
+import { useMemo, useState } from 'react';
 import useStore from '../store';
 import { FolderOpen, Film, Settings, X } from 'lucide-react';
 import type { ToastInput, ToastKind } from '../types';
 import { formatKeybind } from '../keybinds';
 import { formatRelativeTime, formatRecentPath } from '../utils';
+import ContextMenu, { copyTextToClipboard } from './ContextMenu';
+import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
 import './EmptyState.css';
 
 interface EmptyStateProps {
@@ -18,6 +21,9 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
   const recentDirectoryTimestamps = settings.recentDirectoryTimestamps;
   const clearRecentDirectories = useStore((s) => s.clearRecentDirectories);
   const removeRecentDirectory = useStore((s) => s.removeRecentDirectory);
+  const directories = useStore((s) => s.directories);
+  const addDirectory = useStore((s) => s.addDirectory);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; dir: string } | null>(null);
 
 
 
@@ -55,6 +61,69 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
       dedupeKey: `recent-removed:${dir}`,
     });
   };
+
+  const handleAddRecentToSession = async (dir: string) => {
+    if (!window.electronAPI) {
+      addDirectory(dir);
+      return;
+    }
+    const result = await window.electronAPI.validateDroppedPath(dir);
+    if (!result.valid || !result.isDirectory) {
+      removeRecentDirectory(dir);
+      onNotify({
+        title: 'Recent unavailable',
+        detail: formatRecentPath(dir),
+        kind: 'error',
+        dedupeKey: `recent-unavailable:${dir}`,
+      });
+      return;
+    }
+    addDirectory(dir);
+    onNotify({
+      title: 'Folder added',
+      detail: formatRecentPath(dir),
+      kind: 'success',
+      dedupeKey: `recent-added:${dir}`,
+    });
+  };
+
+  const handleCopyRecentPath = async (dir: string) => {
+    try {
+      await copyTextToClipboard(dir);
+      onNotify({
+        title: 'Path copied',
+        detail: buildCopyPathSuccessDetail(dir),
+        kind: 'success',
+      });
+    } catch (error) {
+      console.error('Failed to copy path:', error);
+      onNotify({
+        title: 'Copy failed',
+        detail: 'The path could not be copied to the clipboard.',
+        kind: 'error',
+      });
+    }
+  };
+
+  const recentContextMenuItems = useMemo(() => {
+    if (!contextMenu) return [];
+    return buildRecentFolderMenu({
+      directory: contextMenu.dir,
+      loadedDirectories: directories,
+      onOpen: () => {
+        void handleOpenRecent(contextMenu.dir);
+      },
+      onAddToSession: () => {
+        void handleAddRecentToSession(contextMenu.dir);
+      },
+      onReveal: () => {
+        void window.electronAPI?.openInExplorer(contextMenu.dir);
+      },
+      onCopyPath: () => {
+        void handleCopyRecentPath(contextMenu.dir);
+      },
+    });
+  }, [contextMenu, directories]);
 
   return (
     <div className="empty-state">
@@ -109,6 +178,10 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
                   className="empty-recent-item"
                   title={`${dir} \u2022 opened ${formatRelativeTime(recentDirectoryTimestamps[dir])}`}
                   onClick={() => void handleOpenRecent(dir)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setContextMenu({ x: event.clientX, y: event.clientY, dir });
+                  }}
                 >
                   <span className="empty-recent-main">{formatRecentPath(dir)}</span>
                   <span className="empty-recent-meta">{formatRelativeTime(recentDirectoryTimestamps[dir])}</span>
@@ -133,6 +206,14 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
         <span><kbd>{formatKeybind(settings.keySkip)}</kbd> Skip</span>
         <span><kbd>{formatKeybind(settings.keyUndo)}</kbd> Undo</span>
       </div>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={recentContextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

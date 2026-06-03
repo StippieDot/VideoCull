@@ -444,6 +444,67 @@ export interface RendererPerformanceSnapshot {
   latestRuns: Record<string, never>;
 }
 
+export interface RendererMemorySnapshot {
+  jsHeapSizeLimit: number;
+  totalJSHeapSize: number;
+  usedJSHeapSize: number;
+}
+
+export interface MainProcessMemorySnapshot {
+  rss: number;
+  heapTotal: number;
+  heapUsed: number;
+  external: number;
+  arrayBuffers: number;
+}
+
+export interface ElectronProcessMemorySnapshot {
+  privateKb: number | null;
+  residentSetKb: number | null;
+  sharedKb: number | null;
+}
+
+export interface AppProcessMetricSnapshot {
+  cpuPercent: number;
+  creationTime: number;
+  memory: ElectronProcessMemorySnapshot;
+  pid: number;
+  serviceName: string;
+  type: string;
+}
+
+export interface MainIdleDiagnosticsSnapshot {
+  activeBatchIntervalCount: number;
+  activeCacheRootCount: number;
+  activeDuplicateRun: boolean;
+  appMetrics: AppProcessMetricSnapshot[];
+  eventLoopUtilization: number | null;
+  knownVideoCount: number;
+  loadedRootCount: number;
+  memory: MainProcessMemorySnapshot;
+  pid: number;
+  rendererMemory: ElectronProcessMemorySnapshot | null;
+  rendererProcessId: number | null;
+  timestamp: number;
+  windowMinimized: boolean;
+  windowVisible: boolean;
+}
+
+export interface RendererIdleDiagnosticsSnapshot {
+  hidden: boolean;
+  memory: RendererMemorySnapshot | null;
+  mountedVideoCardCount: number;
+  perf: RendererPerformanceSnapshot;
+  timestamp: number;
+  videoElementCount: number;
+  visibilityState: DocumentVisibilityState | 'unknown';
+}
+
+export interface IdleDiagnosticsSnapshot {
+  main: MainIdleDiagnosticsSnapshot | undefined;
+  renderer: RendererIdleDiagnosticsSnapshot;
+}
+
 // ── Electron API (exposed via preload) ─────────────────────────────
 export interface ElectronAPI {
   selectDirectory: () => Promise<string | null>;
@@ -478,6 +539,7 @@ export interface ElectronAPI {
   saveConfig: (config: AppSettings) => Promise<boolean>;
   getAutoConcurrency: (config?: AppSettings) => Promise<number>;
   getPerformanceStats: () => Promise<PerformanceStatsSnapshot>;
+  getIdleDiagnostics: () => Promise<MainIdleDiagnosticsSnapshot>;
   resetPerformanceStats: () => Promise<boolean>;
   validateCacheLocation: (dirPath: string, expectedDriveKey?: string | null) => Promise<{ ok: boolean; error?: string }>;
   confirmDistributedMode: () => Promise<boolean>;
@@ -512,6 +574,11 @@ declare global {
         renderer: RendererPerformanceSnapshot;
         main: PerformanceStatsSnapshot | undefined;
       }>;
+      getIdleDiagnostics: () => Promise<IdleDiagnosticsSnapshot>;
+      getIdleSamples: () => IdleDiagnosticsSnapshot[];
+      clearIdleSamples: () => void;
+      startIdleMonitor: (intervalMs?: number) => void;
+      stopIdleMonitor: () => void;
       reset: () => void;
       resetAll: () => Promise<void>;
     };

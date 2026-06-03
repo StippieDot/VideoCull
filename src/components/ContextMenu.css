@@ -1,0 +1,46 @@
+.app-context-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(145, 132, 255, 0.16);
+  background: rgba(12, 11, 24, 0.98);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(18px);
+}
+
+.app-context-menu-item {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(245, 245, 255, 0.94);
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-context-menu-item:hover:not(:disabled) {
+  background: rgba(145, 132, 255, 0.14);
+}
+
+.app-context-menu-item.secondary {
+  color: rgba(229, 224, 255, 0.9);
+}
+
+.app-context-menu-item.danger {
+  color: rgba(255, 168, 168, 0.96);
+}
+
+.app-context-menu-item:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.app-context-menu-separator {
+  height: 1px;
+  margin: 6px 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
