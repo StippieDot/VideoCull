@@ -106,9 +106,9 @@ function calculateTimestamps(duration, count, skipDelaySecs) {
   const start = skipDelaySecs;
   const end = duration * 0.97;
 
-  // Short clips are adequately represented by a single middle frame. Also fall
-  // back to one frame when the intro skip would exceed the safe capture range.
-  if (duration < SINGLE_THUMBNAIL_VIDEO_DURATION_SECS || duration < skipDelaySecs || end <= start) {
+  // For very short videos, or videos where the intro skip would pass the safe
+  // capture range, take a single frame in the middle.
+  if (duration < skipDelaySecs || end <= start) {
     return [duration * 0.5];
   }
 
