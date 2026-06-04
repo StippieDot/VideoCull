@@ -369,6 +369,22 @@ function loadCacheMap(db) {
   return map;
 }
 
+function deleteVideoArtifactsById(db, videoId) {
+  if (!videoId) return;
+  db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?').run(videoId);
+  db.prepare('DELETE FROM thumbnails WHERE video_id = ?').run(videoId);
+  db.prepare('DELETE FROM videos WHERE id = ?').run(videoId);
+}
+
+function createPathConflictResolver(db) {
+  const selectVideoIdByPath = db.prepare('SELECT id FROM videos WHERE path = ?');
+  return (video) => {
+    const existing = selectVideoIdByPath.get(video.path);
+    if (!existing || existing.id === video.id) return;
+    deleteVideoArtifactsById(db, existing.id);
+  };
+}
+
 // ── Write ─────────────────────────────────────────────────────────────────
 
 /**
@@ -376,6 +392,7 @@ function loadCacheMap(db) {
  * Used for status changes and bookmark updates — no progress IPC needed.
  */
 function saveCache(db, videos) {
+  const resolvePathConflict = createPathConflictResolver(db);
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
@@ -443,6 +460,7 @@ function saveCache(db, videos) {
 
   const upsertAll = db.transaction((vids) => {
     for (const v of vids) {
+      resolvePathConflict(v);
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
@@ -520,6 +538,7 @@ function updateVideoMetadata(db, videoId, metadata) {
  * Yields the event loop between chunks via setImmediate so IPC messages flush.
  */
 async function saveCacheChunked(db, videos, onProgress) {
+  const resolvePathConflict = createPathConflictResolver(db);
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
@@ -587,6 +606,7 @@ async function saveCacheChunked(db, videos, onProgress) {
 
   const insertChunk = db.transaction((chunk) => {
     for (const v of chunk) {
+      resolvePathConflict(v);
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
@@ -622,15 +642,9 @@ async function saveCacheChunked(db, videos, onProgress) {
 
 function deleteVideosByIds(db, videoIds) {
   if (!videoIds.length) return;
-
-  const deleteFingerprints = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
-  const deleteThumbs = db.prepare('DELETE FROM thumbnails WHERE video_id = ?');
-  const deleteVideo = db.prepare('DELETE FROM videos WHERE id = ?');
   const deleteAll = db.transaction((ids) => {
     for (const id of ids) {
-      deleteFingerprints.run(id);
-      deleteThumbs.run(id);
-      deleteVideo.run(id);
+      deleteVideoArtifactsById(db, id);
     }
   });
   deleteAll(videoIds);

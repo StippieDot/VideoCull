@@ -22,8 +22,6 @@ const ONE_MIB = 1024 * 1024;
 const FRAME_BYTE_COUNT = 32 * 32;
 const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 const FRAME_FILTER = 'scale=32:32:flags=bicubic,setsar=1,format=gray';
-const VISUAL_BORDERLINE_CONFIRMATION_SIMILARITY = 95;
-const VISUAL_PHASH_CONFIRMATION_GRACE = 5;
 
 function duplicateLog(message, detail) {
   if (detail === undefined) {
@@ -546,47 +544,6 @@ function recomputeVisualSimilarity(samplesA, samplesB, settings, options = {}) {
   const similarity = 100 - (diffSum / scores.length);
   if (options.enforceThreshold === false) return similarity;
   return similarity >= settings.finalSimilarityThreshold ? similarity : null;
-}
-
-function filterBorderlineVisualPairsWithPHashGuard(pairs, phashRows, settings) {
-  if (!Array.isArray(pairs) || pairs.length === 0 || !Array.isArray(phashRows) || phashRows.length === 0) {
-    return { pairs: Array.isArray(pairs) ? pairs : [], dropped: 0, confirmThreshold: null };
-  }
-
-  const confirmThreshold = Math.max(0, settings.finalSimilarityThreshold - VISUAL_PHASH_CONFIRMATION_GRACE);
-  const phashSamplesByVideo = compactPHashSamples(phashRows, settings.sampleCount);
-  const kept = [];
-  let dropped = 0;
-
-  for (const pair of pairs) {
-    if (!Number.isFinite(pair?.similarity) || pair.similarity >= VISUAL_BORDERLINE_CONFIRMATION_SIMILARITY) {
-      kept.push(pair);
-      continue;
-    }
-
-    const samplesA = phashSamplesByVideo.get(pair.aId);
-    const samplesB = phashSamplesByVideo.get(pair.bId);
-    if (!samplesA || !samplesB) {
-      kept.push(pair);
-      continue;
-    }
-
-    const pHashSimilarityScore = recomputePHashSimilarity(samplesA, samplesB, {
-      ...settings,
-      requireEverySample: false,
-      finalSimilarityThreshold: 0,
-    }, {
-      enforceThreshold: false,
-    });
-    if (pHashSimilarityScore === null || pHashSimilarityScore >= confirmThreshold) {
-      kept.push(pair);
-      continue;
-    }
-
-    dropped++;
-  }
-
-  return { pairs: kept, dropped, confirmThreshold };
 }
 
 function createSimilarityRevalidator(settings, comparisonData = null) {
@@ -1173,19 +1130,10 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
   } else {
     assertNotCancelled(run);
     const grayRows = loadAllGrayRows(representativeVideos, dbByFolder, settings);
-    const phashRows = loadAllPHashes(representativeVideos, dbByFolder, settings);
     comparisonData = { mode: 'visual', rows: grayRows };
     duplicateLog('Gray sample rows loaded', { rows: grayRows.length });
-    duplicateLog('pHash rows loaded for visual confirmation', { rows: phashRows.length });
     const visualPairs = await runVisualWorker(representativeVideos, grayRows, settings, run, sendProgress);
-    const guardedVisualPairs = filterBorderlineVisualPairsWithPHashGuard(visualPairs, phashRows, settings);
-    duplicateLog('Visual borderline confirmation complete', {
-      pairs: visualPairs.length,
-      kept: guardedVisualPairs.pairs.length,
-      dropped: guardedVisualPairs.dropped,
-      confirmThreshold: guardedVisualPairs.confirmThreshold,
-    });
-    similarityPairs = expandRepresentativePairs(guardedVisualPairs.pairs, representativeIndex.membersByRepresentativeId);
+    similarityPairs = expandRepresentativePairs(visualPairs, representativeIndex.membersByRepresentativeId);
   }
   assertNotCancelled(run);
   progress(sendProgress, 'Building groups', { current: 0, total: 1 });
@@ -1220,7 +1168,6 @@ module.exports = {
     shouldFallbackToSingleFrameExtraction,
     expandRepresentativePairs,
     findExactGroups,
-    filterBorderlineVisualPairsWithPHashGuard,
     splitDaisyChainIds,
   },
 };

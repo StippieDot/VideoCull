@@ -1442,15 +1442,24 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     dirPath,
     includeSubfolders: Boolean(includeSubfolders),
   });
+  const stageTimings = {};
+  const recordStageTiming = (name, startedAt, options = {}) => {
+    const durationMs = performance.now() - startedAt;
+    stageTimings[name] = Math.round(durationMs * 100) / 100;
+    perfMetrics.recordRunTiming(perfRun, name, durationMs, options);
+  };
 
   try {
+  let stageStartedAt = performance.now();
   const cacheOptions = await getCacheOptions();
   assertScanCurrent(scanToken);
   const cachePaths = await prepareCacheFolder(dirPath, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
   assertScanCurrent(scanToken);
   const loadedCacheFolderKeys = new Set([createFolderKey(dirPath)]);
+  recordStageTiming('prepareCacheFolder', stageStartedAt);
 
   // Open SQLite DB for this directory (creates schema if first time)
+  stageStartedAt = performance.now();
   let db = await openCacheDbWithRecovery(dirPath, cacheOptions);
   assertScanCurrent(scanToken);
 
@@ -1466,7 +1475,9 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     db = await openCacheDbWithRecovery(dirPath, cacheOptions);
     assertScanCurrent(scanToken);
   }
+  recordStageTiming('openAndRecoverPrimaryCache', stageStartedAt);
 
+  stageStartedAt = performance.now();
   let knownCacheFolders = await getKnownCacheFolders();
   assertScanCurrent(scanToken);
   const parentCacheFolders = knownCacheFolders.filter((folderPath) => isFolderInsideSync(dirPath, folderPath));
@@ -1485,9 +1496,11 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
       log.warn(`[scan-directory] Failed to split parent cache for ${parentFolder}:`, err);
     }
   }
+  recordStageTiming('splitParentCaches', stageStartedAt, { items: parentCacheFolders.length });
 
   // Load existing cache entries for merging. Known subfolder caches are folded in
   // so opening a parent preserves decisions made when a child folder was opened alone.
+  stageStartedAt = performance.now();
   const cachedMap = await loadCacheMapWithRecovery(dirPath, cacheOptions, cachePaths.cacheRootDir);
   assertScanCurrent(scanToken);
   knownCacheFolders = await getKnownCacheFolders();
@@ -1508,11 +1521,13 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
       log.warn(`[scan-directory] Failed to reuse subfolder cache for ${childFolder}:`, err);
     }
   }
+  recordStageTiming('loadAndMergeChildCaches', stageStartedAt, { items: childCacheFolders.length });
 
   // Migrate any old .video-cull-thumbs thumbnails into the cache directory.
   // Filesystem-based: checks disk directly, not the DB, so it works even when
   // the DB has no thumbnail records (e.g. first launch after JSONâ†’SQLite migration).
   // Runs once per folder; subsequent scans find nothing to move and are instant.
+  stageStartedAt = performance.now();
   const oldThumbBase = path.join(dirPath, THUMB_DIR);
   const oldVideoIds = await fs.readdir(oldThumbBase).catch(() => []);
   assertScanCurrent(scanToken);
@@ -1544,7 +1559,9 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     if (remaining.length === 0) await fs.rmdir(oldThumbBase).catch(() => {});
     log.info('[scan-directory] Thumbnail migration complete');
   }
+  recordStageTiming('migrateLegacyThumbs', stageStartedAt, { items: oldVideoIds.length });
 
+  stageStartedAt = performance.now();
   const videos = await scanDirectory(dirPath, includeSubfolders, (progress) => {
     if (scanToken !== scanGeneration) return;
     perfMetrics.recordRunCounter(perfRun, 'scanProgressEventCount');
@@ -1552,11 +1569,15 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     sendToRenderer('scan-progress', progress);
   });
   assertScanCurrent(scanToken);
+  recordStageTiming('scanDirectoryWalk', stageStartedAt, { items: videos.length });
+  stageStartedAt = performance.now();
   await loadOwnerFolderCachesIntoMap(videos, dirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots, loadedCacheFolderKeys);
   assertScanCurrent(scanToken);
+  recordStageTiming('loadOwnerFolderCaches', stageStartedAt);
 
   // Merge with cache: preserve status, thumbnails, bookmarks from SQLite.
   // Thumbnail paths are resolved to absolute here so the renderer can use them directly.
+  stageStartedAt = performance.now();
   const merged = [];
   for (const v of videos) {
     const cached = cachedMap.get(v.id);
@@ -1613,10 +1634,13 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     }
     await yieldToEventLoop();
   }
+  recordStageTiming('mergeVideosWithCache', stageStartedAt, { items: merged.length });
 
   // Persist each video to the cache owned by its immediate parent folder.
+  stageStartedAt = performance.now();
   await saveVideosByParentFolder(merged, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
   assertScanCurrent(scanToken);
+  recordStageTiming('saveVideosByParentFolder', stageStartedAt, { items: merged.length });
 
   // Commit loaded-directory globals only after the scan is still current.
   currentScanDir = currentScanDir || dirPath;
@@ -1629,15 +1653,30 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     knownVideoIdsByPath.set(v.path, v.id);
   });
 
-  perfMetrics.finishRun(perfRun, {
+  const scanSnapshot = perfMetrics.finishRun(perfRun, {
     status: 'ok',
     videoCount: merged.length,
   });
+  log.info('[scan-directory] complete', {
+    dirPath,
+    includeSubfolders: Boolean(includeSubfolders),
+    videoCount: merged.length,
+    durationMs: Math.round((scanSnapshot?.durationMs ?? 0) * 100) / 100,
+    stageTimings,
+    counters: scanSnapshot?.counters ?? {},
+  });
   return merged;
   } catch (err) {
-    perfMetrics.finishRun(perfRun, {
+    const scanSnapshot = perfMetrics.finishRun(perfRun, {
       status: err instanceof ScanSupersededError ? 'superseded' : 'error',
       error: err?.message || String(err),
+    });
+    log.warn('[scan-directory] aborted', {
+      dirPath,
+      status: err instanceof ScanSupersededError ? 'superseded' : 'error',
+      error: err?.message || String(err),
+      durationMs: Math.round((scanSnapshot?.durationMs ?? 0) * 100) / 100,
+      stageTimings,
     });
     throw err;
   }

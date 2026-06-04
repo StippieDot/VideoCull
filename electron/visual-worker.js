@@ -47,6 +47,29 @@ function isDarkSample(sample) {
   return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
 }
 
+function forEachBucketedPair(buckets, unknownDurationCandidates, settings, callback) {
+  const bucketEntries = Array.from(buckets.entries());
+  for (const [, bucketVideos] of bucketEntries) {
+    for (const a of bucketVideos) {
+      const candidateKeys = getCandidateBuckets(a, settings);
+      for (const key of candidateKeys) {
+        const compareBucket = buckets.get(key);
+        if (!compareBucket) continue;
+        for (const b of compareBucket) {
+          if (b.index <= a.index) continue;
+          callback(a, b);
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < unknownDurationCandidates.length; i++) {
+    for (let j = i + 1; j < unknownDurationCandidates.length; j++) {
+      callback(unknownDurationCandidates[i], unknownDurationCandidates[j]);
+    }
+  }
+}
+
 function compareSamples(a, b, settings) {
   const scores = [];
   let diffSum = 0;
@@ -102,9 +125,17 @@ function compareVisuals() {
 
   const pairs = [];
   let compared = 0;
-  const total = Math.max(0, (candidates.length * (candidates.length - 1)) / 2);
   let lastProgressAt = 0;
   const useBuckets = candidates.length >= BUCKET_ACTIVATION_THRESHOLD;
+  const total = useBuckets
+    ? (() => {
+      let count = 0;
+      forEachBucketedPair(buckets, unknownDurationCandidates, settings, () => {
+        count++;
+      });
+      return count;
+    })()
+    : Math.max(0, (candidates.length * (candidates.length - 1)) / 2);
 
   const comparePair = (a, b) => {
     if (!durationsWithinTolerance(a, b, settings)) return;
@@ -130,37 +161,18 @@ function compareVisuals() {
   if (!useBuckets) {
     for (let i = 0; i < candidates.length; i++) {
       const a = candidates[i];
-    for (let j = i + 1; j < candidates.length; j++) {
+      for (let j = i + 1; j < candidates.length; j++) {
         compared++;
         comparePair(a, candidates[j]);
         reportProgress();
       }
     }
   } else {
-    const bucketEntries = Array.from(buckets.entries());
-    for (const [, bucketVideos] of bucketEntries) {
-      for (const a of bucketVideos) {
-        const candidateKeys = getCandidateBuckets(a, settings);
-        for (const key of candidateKeys) {
-          const compareBucket = buckets.get(key);
-          if (!compareBucket) continue;
-          for (const b of compareBucket) {
-            if (b.index <= a.index) continue;
-            compared++;
-            comparePair(a, b);
-            reportProgress();
-          }
-        }
-      }
-    }
-    // Compare unknown-duration wildcards against each other
-    for (let i = 0; i < unknownDurationCandidates.length; i++) {
-      for (let j = i + 1; j < unknownDurationCandidates.length; j++) {
-        comparePair(unknownDurationCandidates[i], unknownDurationCandidates[j]);
-        compared++;
-        reportProgress();
-      }
-    }
+    forEachBucketedPair(buckets, unknownDurationCandidates, settings, (a, b) => {
+      compared++;
+      comparePair(a, b);
+      reportProgress();
+    });
   }
 
   parentPort.postMessage({

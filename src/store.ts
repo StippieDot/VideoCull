@@ -766,7 +766,7 @@ const useStore = create<VideoStore>((set, get) => ({
     maxConcurrent: 'auto',
     cpuThreadsLimited: true,
     skipIntroDelaySecs: 3,
-    hardwareAccel: true,
+    hardwareAccel: false,
     recentDirectories: [],
     recentDirectoryTimestamps: {},
     autoUpdates: true,

@@ -37,6 +37,11 @@ const KEEPER_RULE_LABELS: Record<string, { title: string; description: string }>
   size: { title: 'File size', description: 'Prefer the largest file.' },
 };
 
+type SaveChangeSummary = {
+  hasNextRunChanges: boolean;
+  hasRestartRequiredChanges: boolean;
+};
+
 interface SettingsModalProps {
   initialTab?: SettingsTab;
   tabRequestId?: number;
@@ -164,8 +169,29 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     JSON.stringify(a.perDriveCachePaths || {}) !== JSON.stringify(b.perDriveCachePaths || {})
   );
 
+  const summarizeSaveChanges = (before: AppSettings, after: AppSettings): SaveChangeSummary => {
+    const hasProcessingChanges =
+      before.thumbsPerVideo !== after.thumbsPerVideo ||
+      before.skipIntroDelaySecs !== after.skipIntroDelaySecs ||
+      before.maxConcurrent !== after.maxConcurrent ||
+      before.cpuThreadsLimited !== after.cpuThreadsLimited ||
+      before.hardwareAccel !== after.hardwareAccel;
+
+    const hasDuplicateRunChanges =
+      JSON.stringify(before.duplicates) !== JSON.stringify(after.duplicates);
+
+    const hasCacheChanges = cacheSettingsChanged(before, after);
+    const hasRestartRequiredChanges = before.autoUpdates !== after.autoUpdates;
+
+    return {
+      hasNextRunChanges: hasProcessingChanges || hasDuplicateRunChanges || hasCacheChanges,
+      hasRestartRequiredChanges,
+    };
+  };
+
   const handleSave = async () => {
     let cacheToast: ToastInput | null = null;
+    const changeSummary = summarizeSaveChanges(globalSettings, localSettings);
     if (window.electronAPI?.migrateCacheSettings && cacheSettingsChanged(globalSettings, localSettings)) {
       setCacheMessage('Preparing cache migration...');
       const result = await window.electronAPI.migrateCacheSettings(globalSettings, localSettings, directories);
@@ -218,9 +244,17 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
       updateSettings(localSettings);
       await saveSettings();
       close();
-      pushToast(cacheToast ?? {
+      if (cacheToast) pushToast(cacheToast);
+      const detail = changeSummary.hasRestartRequiredChanges
+        ? (changeSummary.hasNextRunChanges
+          ? 'Visible changes are active now. Scan, processing, and duplicate changes apply on their next run. Restart the app for automatic update checks.'
+          : 'Changed settings are active now. Restart the app for automatic update checks.')
+        : (changeSummary.hasNextRunChanges
+          ? 'Visible changes are active now. Scan, processing, and duplicate changes apply on their next run.'
+          : 'Changed settings are active now.');
+      pushToast({
         title: 'Preferences saved',
-        detail: 'Settings applied immediately.',
+        detail,
         kind: 'success',
         dedupeKey: 'preferences-saved',
       });
@@ -395,6 +429,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
 
             {activeTab === 'duplicates' && (
               <div className="settings-form duplicates-settings">
+                <div className="form-group">
+                  <span className="help-text">Matching changes are used the next time duplicate detection runs. Keeper protection and keeper ordering update the current duplicate view immediately.</span>
+                </div>
                 <label className={`duplicates-enable-row ${localSettings.duplicates.enabled ? 'active' : ''}`}>
                   <span className="duplicates-enable-main">
                     <input type="checkbox" checked={localSettings.duplicates.enabled} onChange={(e) => handleDuplicateChange('enabled', e.target.checked)} />
@@ -643,6 +680,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
             {activeTab === 'cache' && (
               <div className="settings-form">
                 <div className="form-group">
+                  <span className="help-text">Cache location changes are saved now and used on the next scan after migration completes.</span>
+                </div>
+                <div className="form-group">
                   <label>Cache Storage</label>
                   <select
                     value={localSettings.cacheLocation}
@@ -690,6 +730,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
 
             {activeTab === 'processing' && (
               <div className="settings-form">
+                <div className="form-group">
+                  <span className="help-text">Processing changes apply the next time thumbnails, metadata, or duplicate work starts. They do not rebuild current thumbnails until you rescan or regenerate them.</span>
+                </div>
                 <div className="form-group">
                   <label>Thumbnails per Video</label>
                   <select value={localSettings.thumbsPerVideo} onChange={(e) => handleChange('thumbsPerVideo', Number(e.target.value))}>
@@ -857,16 +900,16 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     )}
                   </div>
 
-                  <div className="form-group checkbox-group">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={localSettings.autoUpdates}
-                        onChange={(e) => handleChange('autoUpdates', e.target.checked)}
-                      />
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={localSettings.autoUpdates}
+                      onChange={(e) => handleChange('autoUpdates', e.target.checked)}
+                    />
                       Automatically check for updates on startup
-                    </label>
-                    <span className="help-text">When enabled, updates download silently in the background. You are always notified before anything installs.</span>
+                  </label>
+                    <span className="help-text">When enabled, updates download silently in the background. You are always notified before anything installs. Restart the app after changing this setting.</span>
                   </div>
                 </div>
               );

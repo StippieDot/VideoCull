@@ -493,7 +493,6 @@ function DuplicateGroupsView() {
       if (diff === 0) diff = b.group.similarity - a.group.similarity;
       return duplicateSortOrder === 'asc' ? diff : -diff;
     });
-
     recordDevPerf('duplicates.visibleGroups.compute', performance.now() - startedAt, {
       items: filtered.length,
     });

@@ -53,6 +53,27 @@ function isDarkSample(sample) {
   return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
 }
 
+function forEachCandidatePair(candidates, buckets, unknownDurationCandidates, settings, callback) {
+  for (const a of candidates) {
+    const bucketKeys = getCandidateBucketKeys(a, settings);
+    if (bucketKeys.length === 0) continue;
+    for (const key of bucketKeys) {
+      const compareBucket = buckets.get(key);
+      if (!compareBucket) continue;
+      for (const b of compareBucket) {
+        if (b.index <= a.index) continue;
+        callback(a, b);
+      }
+    }
+  }
+
+  for (let i = 0; i < unknownDurationCandidates.length; i++) {
+    for (let j = i + 1; j < unknownDurationCandidates.length; j++) {
+      callback(unknownDurationCandidates[i], unknownDurationCandidates[j]);
+    }
+  }
+}
+
 function comparePHashes() {
   const settings = normalizeDuplicateSettings(workerData.settings);
   const videos = workerData.videos ?? [];
@@ -63,7 +84,6 @@ function comparePHashes() {
 
   const pairs = [];
   let compared = 0;
-  const total = Math.max(0, (candidates.length * (candidates.length - 1)) / 2);
   let lastProgressAt = 0;
   const buckets = new Map();
   const unknownDurationCandidates = [];
@@ -78,6 +98,11 @@ function comparePHashes() {
     list.push(video);
     buckets.set(key, list);
   }
+
+  let total = 0;
+  forEachCandidatePair(candidates, buckets, unknownDurationCandidates, settings, () => {
+    total++;
+  });
 
   const comparePair = (a, b) => {
     if (!durationsWithinTolerance(a, b, settings)) return;
@@ -110,30 +135,11 @@ function comparePHashes() {
     }
   };
 
-  // Bucketed videos: compare within duration-tolerance buckets only.
-  for (const a of candidates) {
-    const bucketKeys = getCandidateBucketKeys(a, settings);
-    if (bucketKeys.length === 0) continue; // handled separately below
-    for (const key of bucketKeys) {
-      const compareBucket = buckets.get(key);
-      if (!compareBucket) continue;
-      for (const b of compareBucket) {
-        if (b.index <= a.index) continue;
-        compared++;
-        comparePair(a, b);
-        reportProgress();
-      }
-    }
-  }
-
-  // Unknown-duration videos: only compare against each other (not the entire library).
-  for (let i = 0; i < unknownDurationCandidates.length; i++) {
-    for (let j = i + 1; j < unknownDurationCandidates.length; j++) {
-      compared++;
-      comparePair(unknownDurationCandidates[i], unknownDurationCandidates[j]);
-      reportProgress();
-    }
-  }
+  forEachCandidatePair(candidates, buckets, unknownDurationCandidates, settings, (a, b) => {
+    compared++;
+    comparePair(a, b);
+    reportProgress();
+  });
 
   parentPort.postMessage({
     type: 'done',

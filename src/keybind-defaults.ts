@@ -123,6 +123,10 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     result.globalMute = false;
   }
 
+  if (typeof result.hardwareAccel !== 'boolean') {
+    result.hardwareAccel = false;
+  }
+
   if (!result.features || typeof result.features !== 'object' || Array.isArray(result.features)) {
     result.features = { ...DEFAULT_FEATURES };
   } else {

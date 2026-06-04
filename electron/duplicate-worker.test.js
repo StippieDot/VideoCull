@@ -36,6 +36,8 @@ test('unknown-duration videos are NOT compared against known-duration videos', a
   });
 
   assert.equal(result.pairs.length, 0, 'should not cross-compare known vs unknown duration');
+  assert.equal(result.total, 0, 'progress total should reflect the actual candidate comparisons');
+  assert.equal(result.compared, 0, 'no candidate pairs should have been compared');
 });
 
 test('unknown-duration videos ARE compared against each other', async () => {
@@ -61,6 +63,8 @@ test('unknown-duration videos ARE compared against each other', async () => {
   assert.equal(result.pairs.length, 1, 'two unknown-duration videos with same hash should match');
   assert.equal(result.pairs[0].aId, 'unknownA');
   assert.equal(result.pairs[0].bId, 'unknownB');
+  assert.equal(result.total, 1, 'progress total should only count the unknown-duration pair');
+  assert.equal(result.compared, 1, 'the worker should compare the single eligible pair');
 });
 
 test('dark pHash samples are skipped when enough usable samples remain', async () => {

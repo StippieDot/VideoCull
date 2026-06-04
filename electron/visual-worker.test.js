@@ -70,3 +70,34 @@ test('visual match fails when dark-sample filtering leaves fewer than two usable
 
   assert.equal(result.pairs.length, 0, 'matching should fail when only one usable sample remains');
 });
+
+test('bucketed visual progress total reflects only eligible candidate pairs', async () => {
+  const bright = Buffer.alloc(4, 120);
+  const videos = Array.from({ length: 5001 }, (_, index) => ({
+    id: `v${index}`,
+    durationSecs: index < 2 ? 100 : 1000 + index,
+  }));
+  const grayRows = videos.map((video) => ({
+    video_id: video.id,
+    sample_index: 0,
+    gray_bytes: bright,
+    frame_dark_ratio: 0.1,
+  }));
+
+  const result = await runWorker({
+    videos,
+    grayRows,
+    settings: {
+      sampleCount: 1,
+      comparisonMode: 'visual',
+      finalSimilarityThreshold: 95,
+      durationTolerancePercent: 0,
+      requireEverySample: true,
+    },
+  });
+
+  assert.equal(result.bucketed, true, 'large candidate sets should use the bucketed path');
+  assert.equal(result.total, 1, 'progress total should count only the one eligible same-duration pair');
+  assert.equal(result.compared, 1, 'the worker should only compare the one eligible pair');
+  assert.equal(result.pairs.length, 1, 'the single eligible pair should match');
+});
