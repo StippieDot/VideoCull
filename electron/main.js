@@ -29,6 +29,7 @@ let lastEventLoopUtilization = typeof nodePerformance.eventLoopUtilization === '
   ? nodePerformance.eventLoopUtilization()
   : null;
 const RESPONSIVE_SCAN_YIELD_MS = 16;
+const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
 const ALLOWED_EXTERNAL_URLS = new Set([
   'https://github.com/stippie-dot/VideoCull',
   'https://github.com/stippie-dot/VideoCull/releases',
@@ -1861,7 +1862,11 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
   const expectedThumbCount = (video) => {
     if (video.durationSecs != null && video.durationSecs > 0) {
       const end = video.durationSecs * 0.97;
-      if (video.durationSecs < skipIntroDelaySecs || end <= skipIntroDelaySecs) return 1;
+      if (
+        video.durationSecs < SINGLE_THUMBNAIL_VIDEO_DURATION_SECS ||
+        video.durationSecs < skipIntroDelaySecs ||
+        end <= skipIntroDelaySecs
+      ) return 1;
     }
     return targetThumbCount;
   };

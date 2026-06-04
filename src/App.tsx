@@ -17,6 +17,7 @@ import { Volume2, VolumeX } from 'lucide-react';
 import './App.css';
 
 const CURRENT_METADATA_VERSION = 2;
+const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
 
 function normalizeFsPath(value: string): string {
   return value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
@@ -38,6 +39,18 @@ function groupVideosByLoadedRoot(videos: Video[], roots: string[], fallbackRoot:
     groups.set(root, group);
   }
   return groups;
+}
+
+function expectedThumbnailCountForDuration(durationSecs: number | null | undefined, thumbsPerVideo: number, skipIntroDelaySecs: number): number {
+  if (durationSecs !== null && durationSecs !== undefined && durationSecs > 0) {
+    const end = durationSecs * 0.97;
+    if (
+      durationSecs < SINGLE_THUMBNAIL_VIDEO_DURATION_SECS ||
+      durationSecs < skipIntroDelaySecs ||
+      end <= skipIntroDelaySecs
+    ) return 1;
+  }
+  return thumbsPerVideo;
 }
 
 function needsMetadataRefresh(video: Video): boolean {
@@ -294,13 +307,7 @@ export default function App() {
       }
       if (scanId !== scanIdRef.current) return;
       const allVideos = scannedGroups.flatMap((group) => group.videos);
-      const expectedThumbCount = (v: typeof allVideos[number]) => {
-        if (v.durationSecs !== null && v.durationSecs !== undefined && v.durationSecs > 0) {
-          const end = v.durationSecs * 0.97;
-          if (v.durationSecs < skipIntroDelaySecs || end <= skipIntroDelaySecs) return 1;
-        }
-        return thumbsPerVideo;
-      };
+      const expectedThumbCount = (v: typeof allVideos[number]) => expectedThumbnailCountForDuration(v.durationSecs, thumbsPerVideo, skipIntroDelaySecs);
       const normalizeVideoThumbs = (video: typeof allVideos[number]) => ({
         ...video,
         thumbnails: video.thumbnails?.slice(0, expectedThumbCount(video)) ?? [],
@@ -458,13 +465,7 @@ export default function App() {
       return;
     }
 
-    const expectedThumbCount = (video: Video) => {
-      if (video.durationSecs !== null && video.durationSecs !== undefined && video.durationSecs > 0) {
-        const end = video.durationSecs * 0.97;
-        if (video.durationSecs < skipIntroDelaySecs || end <= skipIntroDelaySecs) return 1;
-      }
-      return thumbsPerVideo;
-    };
+    const expectedThumbCount = (video: Video) => expectedThumbnailCountForDuration(video.durationSecs, thumbsPerVideo, skipIntroDelaySecs);
 
     const countIncompleteSelected = () => useStore.getState().videos.filter((video) => (
       selectedIds.has(video.id) &&

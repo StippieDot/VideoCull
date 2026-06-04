@@ -1,0 +1,13 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const { __test } = require('./processor');
+
+test('videos under 10 seconds only expect one thumbnail', () => {
+  assert.equal(__test.expectedThumbnailCount(9.99, 6, 3), 1);
+  assert.equal(__test.expectedThumbnailCount(10, 6, 3), 6);
+});
+
+test('videos under 10 seconds only generate one midpoint timestamp', () => {
+  assert.deepEqual(__test.calculateTimestamps(9, 6, 3), [4.5]);
+});

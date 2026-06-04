@@ -11,6 +11,7 @@ const os = require('os');
 let thumbToken = null;
 let metadataToken = null;
 const METADATA_SCHEMA_VERSION = 2;
+const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
 
 function toFfmpegInputPath(filePath) {
   if (process.platform !== 'win32') return filePath;
@@ -105,9 +106,9 @@ function calculateTimestamps(duration, count, skipDelaySecs) {
   const start = skipDelaySecs;
   const end = duration * 0.97;
 
-  // For very short videos, or videos where the intro skip would pass the safe
-  // capture range, take a single frame in the middle.
-  if (duration < skipDelaySecs || end <= start) {
+  // Short clips are adequately represented by a single middle frame. Also fall
+  // back to one frame when the intro skip would exceed the safe capture range.
+  if (duration < SINGLE_THUMBNAIL_VIDEO_DURATION_SECS || duration < skipDelaySecs || end <= start) {
     return [duration * 0.5];
   }
 
@@ -126,7 +127,7 @@ function calculateTimestamps(duration, count, skipDelaySecs) {
 function expectedThumbnailCount(duration, count, skipDelaySecs) {
   if (duration != null && duration > 0) {
     const end = duration * 0.97;
-    if (duration < skipDelaySecs || end <= skipDelaySecs) return 1;
+    if (duration < SINGLE_THUMBNAIL_VIDEO_DURATION_SECS || duration < skipDelaySecs || end <= skipDelaySecs) return 1;
   }
   return count;
 }
@@ -531,4 +532,16 @@ function cancelProcessing() {
   cancelMetadata();
 }
 
-module.exports = { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit, METADATA_SCHEMA_VERSION };
+module.exports = {
+  processVideos,
+  processMetadata,
+  cancelProcessing,
+  cancelThumbnails,
+  cancelMetadata,
+  getConcurrentLimit,
+  METADATA_SCHEMA_VERSION,
+  __test: {
+    calculateTimestamps,
+    expectedThumbnailCount,
+  },
+};
