@@ -1,6 +1,5 @@
-const test = require('node:test');
 const assert = require('node:assert/strict');
-const perfMetrics = require('./perf-metrics');
+const perfMetrics = require('../../electron/perf-metrics');
 
 test('perf metrics records counters, timings, and run snapshots', async () => {
   perfMetrics.reset();

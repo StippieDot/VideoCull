@@ -1,18 +1,23 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-
-const loadModule = () => import('./contextMenuBuilders.ts');
+import type { ContextMenuItem } from '../../../src/components/ContextMenu';
+import {
+  buildDuplicateGroupHeaderMenu,
+  buildDuplicateVideoMenu,
+  buildFolderHeaderMenu,
+  buildLibraryGridVideoMenu,
+  buildRecentFolderMenu,
+  buildReviewVideoMenu,
+} from '../../../src/components/contextMenuBuilders';
+import type { DuplicateGroup } from '../../../src/types';
 
 const noop = () => {};
 
-function labels(items) {
+function labels(items: ContextMenuItem[]) {
   return items
     .filter((item) => item.type !== 'separator')
     .map((item) => ({ label: item.label, disabled: item.disabled ?? false }));
 }
 
-test('library grid video menu contains only approved items in order', async () => {
-  const { buildLibraryGridVideoMenu } = await loadModule();
+test('library grid video menu contains only approved items in order', () => {
   const items = buildLibraryGridVideoMenu({
     onPlay: noop,
     onOpenExternal: noop,
@@ -21,7 +26,8 @@ test('library grid video menu contains only approved items in order', async () =
     onRegenerateThumbnails: noop,
     onCopyPath: noop,
   });
-  assert.deepEqual(labels(items), [
+
+  expect(labels(items)).toEqual([
     { label: 'Play', disabled: false },
     { label: 'Open in external player', disabled: false },
     { label: 'Reveal in Explorer', disabled: false },
@@ -31,8 +37,7 @@ test('library grid video menu contains only approved items in order', async () =
   ]);
 });
 
-test('duplicate video menu contains only approved items in order', async () => {
-  const { buildDuplicateVideoMenu } = await loadModule();
+test('duplicate video menu contains only approved items in order', () => {
   const items = buildDuplicateVideoMenu({
     onPlay: noop,
     onOpenExternal: noop,
@@ -44,7 +49,8 @@ test('duplicate video menu contains only approved items in order', async () => {
     onSetSelectedKeeper: noop,
     onCopyPath: noop,
   });
-  assert.deepEqual(labels(items), [
+
+  expect(labels(items)).toEqual([
     { label: 'Play', disabled: false },
     { label: 'Open in external player', disabled: false },
     { label: 'Reveal in Explorer', disabled: false },
@@ -57,8 +63,7 @@ test('duplicate video menu contains only approved items in order', async () => {
   ]);
 });
 
-test('duplicate header menu hides manual keeper clear action when not applicable', async () => {
-  const { buildDuplicateGroupHeaderMenu } = await loadModule();
+test('duplicate header menu hides manual keeper clear action when not applicable', () => {
   const group = {
     id: 'g1',
     videoIds: ['a', 'b'],
@@ -67,7 +72,8 @@ test('duplicate header menu hides manual keeper clear action when not applicable
     suggestedKeeperId: 'a',
     reason: 'Exact file match',
     manualSuggestedKeeperId: null,
-  };
+  } satisfies DuplicateGroup;
+
   const items = buildDuplicateGroupHeaderMenu({
     group,
     canPlaySelectedKeeper: true,
@@ -76,15 +82,15 @@ test('duplicate header menu hides manual keeper clear action when not applicable
     onClearManualKeeperOverride: noop,
     onPlaySelectedKeeper: noop,
   });
-  assert.deepEqual(labels(items), [
+
+  expect(labels(items)).toEqual([
     { label: 'Dismiss group', disabled: false },
     { label: 'Select suggested deletions', disabled: false },
     { label: 'Play selected keeper', disabled: false },
   ]);
 });
 
-test('duplicate header menu disables keeper playback when no keeper resolves', async () => {
-  const { buildDuplicateGroupHeaderMenu } = await loadModule();
+test('duplicate header menu disables keeper playback when no keeper resolves', () => {
   const group = {
     id: 'g1',
     videoIds: ['a', 'b'],
@@ -92,7 +98,8 @@ test('duplicate header menu disables keeper playback when no keeper resolves', a
     matchType: 'mixed',
     suggestedKeeperId: null,
     reason: 'Mixed',
-  };
+  } satisfies DuplicateGroup;
+
   const items = buildDuplicateGroupHeaderMenu({
     group,
     canPlaySelectedKeeper: false,
@@ -101,29 +108,29 @@ test('duplicate header menu disables keeper playback when no keeper resolves', a
     onClearManualKeeperOverride: noop,
     onPlaySelectedKeeper: noop,
   });
-  assert.deepEqual(labels(items), [
+
+  expect(labels(items)).toEqual([
     { label: 'Dismiss group', disabled: false },
     { label: 'Select suggested deletions', disabled: false },
     { label: 'Play selected keeper', disabled: true },
   ]);
 });
 
-test('review mode menu contains only approved items in order', async () => {
-  const { buildReviewVideoMenu } = await loadModule();
+test('review mode menu contains only approved items in order', () => {
   const items = buildReviewVideoMenu({
     onOpenExternal: noop,
     onReveal: noop,
     onCopyPath: noop,
   });
-  assert.deepEqual(labels(items), [
+
+  expect(labels(items)).toEqual([
     { label: 'Open in external player', disabled: false },
     { label: 'Reveal in Explorer', disabled: false },
     { label: 'Copy full path', disabled: false },
   ]);
 });
 
-test('folder header menu contains only approved items in order', async () => {
-  const { buildFolderHeaderMenu } = await loadModule();
+test('folder header menu contains only approved items in order', () => {
   const items = buildFolderHeaderMenu({
     onReviewFolder: noop,
     onFilterToFolder: noop,
@@ -134,7 +141,8 @@ test('folder header menu contains only approved items in order', async () => {
     onResetPending: noop,
     onRegenerateThumbnails: noop,
   });
-  assert.deepEqual(labels(items), [
+
+  expect(labels(items)).toEqual([
     { label: 'Review this folder', disabled: false },
     { label: 'Filter to this folder', disabled: false },
     { label: 'Reveal folder in Explorer', disabled: false },
@@ -146,8 +154,7 @@ test('folder header menu contains only approved items in order', async () => {
   ]);
 });
 
-test('recent folder menu disables add to session for already-loaded roots', async () => {
-  const { buildRecentFolderMenu } = await loadModule();
+test('recent folder menu disables add to session for already-loaded roots', () => {
   const items = buildRecentFolderMenu({
     directory: 'F:/Videos',
     loadedDirectories: ['f:\\videos'],
@@ -156,7 +163,8 @@ test('recent folder menu disables add to session for already-loaded roots', asyn
     onReveal: noop,
     onCopyPath: noop,
   });
-  assert.deepEqual(labels(items), [
+
+  expect(labels(items)).toEqual([
     { label: 'Open', disabled: false },
     { label: 'Add to session', disabled: true },
     { label: 'Reveal in Explorer', disabled: false },

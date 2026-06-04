@@ -1,4 +1,3 @@
-const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   getSamplingTimestamps,
@@ -12,7 +11,7 @@ const {
   normalizeDuplicateSettings,
   durationsWithinTolerance,
   chooseSuggestedKeeper,
-} = require('./duplicate-utils');
+} = require('../../electron/duplicate-utils');
 
 test('even sampling uses N+1 spacing', () => {
   assert.deepEqual(getSamplingTimestamps(60, 5, { samplingWindow: 'even' }), [10, 20, 30, 40, 50]);

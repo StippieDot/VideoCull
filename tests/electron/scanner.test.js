@@ -1,9 +1,8 @@
-const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
-const { scanDirectory } = require('./scanner');
+const { scanDirectory } = require('../../electron/scanner');
 
 test('scanDirectory throttles progress events but reports the final count', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
@@ -27,4 +26,3 @@ test('scanDirectory throttles progress events but reports the final count', asyn
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
-

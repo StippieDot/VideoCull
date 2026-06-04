@@ -11,7 +11,10 @@
     "dev": "concurrently -k -n vite,electron -c cyan,green \"npm run dev:vite\" \"npm run dev:electron\"",
     "build": "vite build",
     "check:ipc": "node scripts/check-ipc-contract.js",
-    "test:duplicates": "node --test electron/duplicate-utils.test.js electron/duplicates.test.js electron/duplicate-worker.test.js electron/visual-worker.test.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "test:duplicates": "vitest run tests/electron/duplicate-utils.test.js tests/electron/duplicates.test.js tests/electron/duplicate-worker.test.js tests/electron/visual-worker.test.js",
     "cleanup:cache": "node scripts/cleanup-cache-clutter.js",
     "package": "vite build && electron-builder --win --publish never",
     "rebuild": "electron-rebuild -f -w better-sqlite3"
@@ -35,11 +38,13 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^3.2.4",
     "concurrently": "^9.2.1",
     "electron": "^41.4.0",
     "electron-builder": "^26.8.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
+    "vitest": "^3.2.4",
     "wait-on": "^9.0.5"
   },
   "overrides": {

@@ -1,7 +1,6 @@
-const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { __test } = require('./processor');
+const { __test } = require('../../electron/processor');
 
 test('videos under 10 seconds only expect one thumbnail', () => {
   assert.equal(__test.expectedThumbnailCount(9.99, 6, 3), 1);

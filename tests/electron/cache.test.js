@@ -1,4 +1,3 @@
-const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs/promises');
 const os = require('os');
@@ -7,7 +6,7 @@ let cache = null;
 let cacheLoadError = null;
 
 try {
-  cache = require('./cache');
+  cache = require('../../electron/cache');
 } catch (err) {
   cacheLoadError = err;
 }

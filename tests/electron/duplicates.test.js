@@ -1,11 +1,10 @@
-const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
-const cache = require('./cache');
-const { DuplicateCancelledError, __test__ } = require('./duplicates');
-const { normalizeDuplicateSettings } = require('./duplicate-utils');
+const cache = require('../../electron/cache');
+const { DuplicateCancelledError, __test__ } = require('../../electron/duplicates');
+const { normalizeDuplicateSettings } = require('../../electron/duplicate-utils');
 
 function video(id) {
   return {

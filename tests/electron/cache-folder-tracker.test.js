@@ -1,11 +1,10 @@
-const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
 const {
   collectUnloadedOwnerFolders,
   createFolderKey,
   rememberFolder,
-} = require('./cache-folder-tracker');
+} = require('../../electron/cache-folder-tracker');
 
 test('collectUnloadedOwnerFolders returns unique subfolders not loaded yet', () => {
   const root = path.join('F:\\', 'Library');
