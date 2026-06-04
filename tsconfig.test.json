@@ -4,5 +4,5 @@
     "allowJs": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src", "tests", "vitest.config.ts"]
+  "include": ["src", "tests", "vitest.config.ts", "vitest.renderer.config.ts"]
 }

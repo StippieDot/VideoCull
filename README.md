@@ -149,7 +149,7 @@ The built-in player is intended for compatible web-playable media such as `.mp4`
 
 ## Building from Source
 
-Requires Node.js 25+. FFmpeg and FFprobe are bundled.
+Requires Node.js 24 LTS. FFmpeg and FFprobe are bundled.
 
 ```bash
 git clone https://github.com/stippie-dot/VideoCull.git
@@ -162,8 +162,10 @@ npm run dev
 |---------|-------------|
 | `npm run dev` | Vite + Electron with hot reload |
 | `npm test` | Run the Vitest suite once |
+| `npm run test:renderer` | Run the App-level jsdom renderer integration tests |
 | `npm run test:watch` | Run Vitest in watch mode |
 | `npm run coverage` | Generate terminal, HTML, and summary coverage reports |
+| `npm run test:ci` | IPC contract check, test TS compile, and full coverage run |
 | `npm run build` | Renderer-only production build |
 | `npm run check:ipc` | Validate preload/type IPC contract coverage |
 | `npm run cleanup:cache` | Clean old cache/thumb clutter from earlier builds |
