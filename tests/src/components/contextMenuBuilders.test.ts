@@ -116,6 +116,34 @@ test('duplicate header menu disables keeper playback when no keeper resolves', (
   ]);
 });
 
+test('duplicate header menu shows manual keeper clear action when override exists', () => {
+  const group = {
+    id: 'g1',
+    videoIds: ['a', 'b'],
+    similarity: 99,
+    matchType: 'mixed',
+    suggestedKeeperId: 'a',
+    manualSuggestedKeeperId: 'b',
+    reason: 'Mixed',
+  } satisfies DuplicateGroup;
+
+  const items = buildDuplicateGroupHeaderMenu({
+    group,
+    canPlaySelectedKeeper: true,
+    onDismissGroup: noop,
+    onSelectSuggestedDeletions: noop,
+    onClearManualKeeperOverride: noop,
+    onPlaySelectedKeeper: noop,
+  });
+
+  expect(labels(items)).toEqual([
+    { label: 'Dismiss group', disabled: false },
+    { label: 'Select suggested deletions', disabled: false },
+    { label: 'Clear manual keeper override', disabled: false },
+    { label: 'Play selected keeper', disabled: false },
+  ]);
+});
+
 test('review mode menu contains only approved items in order', () => {
   const items = buildReviewVideoMenu({
     onOpenExternal: noop,

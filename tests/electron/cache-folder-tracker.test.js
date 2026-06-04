@@ -31,3 +31,16 @@ test('rememberFolder normalizes paths so the same folder is only tracked once', 
   assert.equal(rememberFolder(loadedFolderKeys, path.join('f:\\', 'library', 'ChildA')), false);
   assert.equal(loadedFolderKeys.size, 1);
 });
+
+test('collectUnloadedOwnerFolders skips videos in the root folder and de-duplicates case variants', () => {
+  const root = path.join('F:\\', 'Library');
+  const child = path.join(root, 'ChildA');
+
+  const folders = collectUnloadedOwnerFolders([
+    { path: path.join(root, 'root.mp4') },
+    { path: path.join(child, 'a.mp4') },
+    { path: path.join(child.toLowerCase(), 'b.mp4') },
+  ], root);
+
+  assert.deepEqual(folders, [child]);
+});

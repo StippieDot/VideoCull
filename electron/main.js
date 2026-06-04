@@ -10,6 +10,25 @@ const { collectUnloadedOwnerFolders, createFolderKey, rememberFolder } = require
 const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
+const {
+  cacheRelevantSettingsChanged,
+  detectCompatibility,
+  escapeHtml,
+  formatBytes,
+  formatDuration,
+  getDriveKeyForPath,
+  getFilePathFromProtocolRequest,
+  getRangeDetails,
+  isFolderInsideSync,
+  isSameFolderSync,
+  isServableVideoPath,
+  isSqliteCorruptionError,
+  normalizeReportRoots,
+  summarizeMediaProbeError,
+  thumbAbsolute,
+  thumbRelative,
+  videoForDb,
+} = require('./main-helpers');
 const { autoUpdater } = require('electron-updater');
 
 const isDev = !app.isPackaged;
@@ -41,50 +60,12 @@ const ALLOWED_EXTERNAL_URLS = new Set([
 // All IPC handlers that accept file paths validate against this set.
 const knownVideoPaths = new Set();
 const knownVideoIdsByPath = new Map();
-const SERVABLE_VIDEO_EXTENSIONS = new Set([
-  '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm', '.flv', '.m4v', '.ts', '.mts',
-]);
 // Valid video ID format: 16 hex characters (MD5-derived from path+size in scanner.js)
 const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
 
 // Mirrors detectVideoCompatibility in src/utils.ts — kept in sync manually.
 // Used in scan-directory to re-evaluate compatibility from cached codec/format data,
 // so that stale `compatible = false` values from old buggy logic are fixed on rescan.
-const COMPAT_UNSUPPORTED_EXTS = new Set([
-  '.wmv', '.asf', '.avi', '.flv', '.ts', '.mts', '.m2ts', '.mpg', '.mpeg', '.vob', '.divx',
-]);
-const COMPAT_UNSUPPORTED_CODECS = new Set([
-  'wmv1', 'wmv2', 'wmv3', 'vc1', 'msmpeg4v1', 'msmpeg4v2', 'msmpeg4v3', 'mpeg2video',
-  'prores', 'h263', 'dvvideo', 'theora',
-]);
-const COMPAT_SUPPORTED_CODECS = new Set([
-  'h264', 'avc', 'avc1', 'hevc', 'h265', 'hvc1', 'av1', 'av01', 'vp8', 'vp9', 'mpeg4', 'mp4v',
-]);
-const COMPAT_SUPPORTED_FORMATS = ['mp4', 'mov', 'matroska', 'webm', 'ogg', '3gp', '3g2', 'm4a', 'mj2'];
-const COMPAT_WEB_EXTS = ['.mp4', '.webm', '.ogg', '.ogv', '.mov', '.mkv', '.m4v'];
-
-function hasAnyCompatFormat(containerFormat, tokens) {
-  const parts = (containerFormat || '').toLowerCase().split(',').map((p) => p.trim());
-  return tokens.some((t) => parts.includes(t));
-}
-
-function detectCompatibility(containerFormat, videoCodec, filePath) {
-  const extMatch = (filePath || '').match(/\.[^.\\/]+$/);
-  const ext = extMatch ? extMatch[0].toLowerCase() : '';
-  const codec = (videoCodec || '').toLowerCase();
-
-  if (COMPAT_UNSUPPORTED_EXTS.has(ext) || COMPAT_UNSUPPORTED_CODECS.has(codec)) return false;
-  if (codec) {
-    if (!COMPAT_SUPPORTED_CODECS.has(codec)) return false;
-    if (hasAnyCompatFormat(containerFormat, COMPAT_SUPPORTED_FORMATS)) return true;
-    if (hasAnyCompatFormat(containerFormat, ['asf', 'avi', 'flv', 'mpegts', 'mpeg', 'vob'])) return false;
-    return COMPAT_WEB_EXTS.includes(ext);
-  }
-  if (hasAnyCompatFormat(containerFormat, COMPAT_SUPPORTED_FORMATS)) return true;
-  if (COMPAT_WEB_EXTS.includes(ext) && !containerFormat) return true;
-  if (hasAnyCompatFormat(containerFormat, ['asf', 'avi', 'flv', 'mpegts', 'mpeg', 'vob'])) return false;
-  return false;
-}
 
 class ScanSupersededError extends Error {
   constructor() {
@@ -126,55 +107,6 @@ async function isPathWithinDir(candidate, baseDir) {
     // path.resolve check above already passed â€” allow it through.
     return true;
   }
-}
-
-function getRangeDetails(rangeHeader, fileSize) {
-  if (!rangeHeader) {
-    return { hasRange: false, start: 0, end: fileSize - 1, chunkSize: fileSize, valid: true };
-  }
-
-  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
-  if (!match) {
-    return { hasRange: true, valid: false, error: 'Malformed Range header.' };
-  }
-
-  let start;
-  let end;
-  if (match[1] === '' && match[2] === '') {
-    return { hasRange: true, valid: false, error: 'Range start and end are both empty.' };
-  }
-
-  if (match[1] === '') {
-    const suffixLength = Number(match[2]);
-    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
-      return { hasRange: true, valid: false, error: 'Invalid suffix byte range.' };
-    }
-    start = Math.max(0, fileSize - suffixLength);
-    end = fileSize - 1;
-  } else {
-    start = Number(match[1]);
-    end = match[2] === '' ? fileSize - 1 : Number(match[2]);
-  }
-
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || start >= fileSize) {
-    return { hasRange: true, valid: false, start, end, error: 'Requested range is outside the file.' };
-  }
-
-  end = Math.min(end, fileSize - 1);
-  return { hasRange: true, start, end, chunkSize: end - start + 1, valid: true };
-}
-
-function getFilePathFromProtocolRequest(request, scheme) {
-  try {
-    const url = new URL(request.url);
-    if (url.hostname === 'local' && url.pathname.length > 1) {
-      return decodeURIComponent(url.pathname.slice(1));
-    }
-  } catch {
-    // Fall through to the legacy parser below.
-  }
-
-  return decodeURIComponent(request.url.slice(`${scheme}:///`.length));
 }
 
 function canSendToRenderer() {
@@ -713,10 +645,6 @@ async function testWritableDirectory(dirPath) {
   }
 }
 
-function getDriveKeyForPath(targetPath) {
-  return path.parse(path.resolve(targetPath)).root.replace(/[\\/]$/, '').toUpperCase();
-}
-
 async function movePathIfPresent(source, target) {
   try {
     await fs.access(source);
@@ -733,15 +661,6 @@ async function movePathIfPresent(source, target) {
     await fs.rm(source, { recursive: true, force: true });
   }
   return true;
-}
-
-function isSqliteCorruptionError(err) {
-  return (
-    err?.code === 'SQLITE_CORRUPT' ||
-    err?.code === 'SQLITE_CORRUPT_INDEX' ||
-    err?.code === 'SQLITE_NOTADB' ||
-    /database disk image is malformed|file is not a database/i.test(String(err?.message || err))
-  );
 }
 
 async function quarantineCorruptCacheDb(folderPath, cacheOptions, reason) {
@@ -810,24 +729,6 @@ async function getKnownCacheFolders(loadedDirs = []) {
   const knownFolders = Array.isArray(index.knownFolders) ? index.knownFolders : [];
   const knownDistributedPaths = Array.isArray(distributed.knownDistributedPaths) ? distributed.knownDistributedPaths : [];
   return Array.from(new Set([...knownFolders, ...knownDistributedPaths, ...loadedDirs].filter(Boolean)));
-}
-
-function cacheRelevantSettingsChanged(oldSettings = {}, newSettings = {}) {
-  return (
-    oldSettings.cacheLocation !== newSettings.cacheLocation ||
-    (oldSettings.centralCachePath || null) !== (newSettings.centralCachePath || null) ||
-    JSON.stringify(oldSettings.perDriveCachePaths || {}) !== JSON.stringify(newSettings.perDriveCachePaths || {})
-  );
-}
-
-function isFolderInsideSync(childFolder, parentFolder) {
-  const child = path.resolve(childFolder).toLowerCase();
-  const parent = path.resolve(parentFolder).toLowerCase();
-  return child !== parent && child.startsWith(parent + path.sep);
-}
-
-function isSameFolderSync(a, b) {
-  return path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 }
 
 function loadCacheMapWithAbsoluteThumbs(db, cacheRootDir) {
@@ -1003,49 +904,6 @@ async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOpti
 // The DB always stores paths relative to cacheRootDir (e.g. 'thumbs/id/thumb_01.jpg').
 // The renderer always receives absolute paths. main.js converts at the boundary.
 
-function thumbAbsolute(relPath, cacheRootDir) {
-  if (!relPath || path.isAbsolute(relPath)) return relPath; // already absolute (legacy)
-  return path.join(cacheRootDir, relPath);
-}
-
-function thumbRelative(absPath, cacheRootDir) {
-  if (!absPath || !path.isAbsolute(absPath)) return absPath; // already relative
-  const rel = path.relative(cacheRootDir, absPath);
-  return rel.startsWith('..') ? absPath : rel; // keep absolute if outside cacheRootDir
-}
-
-function videoForDb(v, cacheRootDir) {
-  return { ...v, thumbnails: v.thumbnails?.map((thumb) => thumbRelative(thumb, cacheRootDir)) ?? [] };
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function formatBytes(bytes) {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const index = Math.floor(Math.log(bytes) / Math.log(1024));
-  const value = bytes / Math.pow(1024, index);
-  return `${value.toFixed(index > 1 ? 1 : 0)} ${units[index]}`;
-}
-
-function formatDuration(seconds) {
-  if (seconds == null || seconds <= 0) return '--:--';
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
-  }
-  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
-}
-
 function formatDate(timestampMs) {
   if (!timestampMs) return '--';
   return new Date(timestampMs).toLocaleDateString('nl-NL', {
@@ -1071,10 +929,6 @@ function assertScanCurrent(token) {
   if (token !== scanGeneration) {
     throw new ScanSupersededError();
   }
-}
-
-function isServableVideoPath(filePath) {
-  return SERVABLE_VIDEO_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
 
 function isKnownVideoRecord(video) {
@@ -1224,28 +1078,6 @@ async function trashEmptyDeletedVideoFolders(deletedFilePaths) {
     }
   }
   return trashed;
-}
-
-function summarizeMediaProbeError(err) {
-  const raw = err?.message || String(err);
-  const stripExtendedWindowsPrefix = (value) => String(value)
-    .replace(/\\\\\?\\UNC\\/g, '\\\\')
-    .replace(/\\\\\?\\/g, '');
-  const lines = raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const finalLine = stripExtendedWindowsPrefix(lines[lines.length - 1] || raw);
-  if (/no such file or directory/i.test(finalLine)) return `File not available to ffprobe: ${finalLine}`;
-  if (/permission denied/i.test(finalLine)) return `Permission denied: ${finalLine}`;
-  if (/invalid data found/i.test(finalLine)) return `Invalid media data: ${finalLine}`;
-  return finalLine.slice(0, 500);
-}
-
-function normalizeReportRoots(dirPaths) {
-  return (Array.isArray(dirPaths) ? dirPaths : [dirPaths])
-    .filter((dirPath) => typeof dirPath === 'string' && dirPath.length > 0)
-    .map((dirPath) => path.resolve(dirPath));
 }
 
 function buildReportHtml(videos, dirPaths) {

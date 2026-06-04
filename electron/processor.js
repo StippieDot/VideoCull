@@ -541,7 +541,13 @@ module.exports = {
   getConcurrentLimit,
   METADATA_SCHEMA_VERSION,
   __test: {
+    toFfmpegInputPath,
+    parseFpsRational,
+    parseBitrate,
     calculateTimestamps,
     expectedThumbnailCount,
+    getGpuCooldownMs,
+    getGpuCooldownBatchSize,
+    createQueueCursor,
   },
 };

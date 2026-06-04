@@ -1665,4 +1665,22 @@ const useStore = create<VideoStore>((set, get) => ({
 
 notifyToast = (toast, kind) => useStore.getState().pushToast(toast, kind);
 
+export const __test__ = {
+  orderedThumbnails,
+  computeFiltered,
+  computeStats,
+  buildVideoStateUpdate,
+  normalizeDuplicatePairKey,
+  applyDuplicateGroupsToVideos,
+  chooseSuggestedKeeperId,
+  applyKeeperOrderToGroups,
+  getReviewScopeIdsForVideo,
+  getVideoByReviewIndex,
+  isPathInsideRoot,
+  findRootForVideo,
+  folderLabel,
+  plural,
+  uniqueDirectories,
+};
+
 export default useStore;
