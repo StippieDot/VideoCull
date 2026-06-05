@@ -16,6 +16,7 @@ const COMPAT_SUPPORTED_CODECS = new Set([
 ]);
 const COMPAT_SUPPORTED_FORMATS = ['mp4', 'mov', 'matroska', 'webm', 'ogg', '3gp', '3g2', 'm4a', 'mj2'];
 const COMPAT_WEB_EXTS = ['.mp4', '.webm', '.ogg', '.ogv', '.mov', '.mkv', '.m4v'];
+const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
 
 function hasAnyCompatFormat(containerFormat, tokens) {
   const parts = (containerFormat || '').toLowerCase().split(',').map((part) => part.trim());
@@ -110,6 +111,40 @@ function cacheRelevantSettingsChanged(oldSettings = {}, newSettings = {}) {
   );
 }
 
+async function filterValidCacheSaveVideos({
+  dirPath,
+  loadedDirectories,
+  videos,
+  isKnownVideoRecord,
+  isPathWithinDir,
+  onReject = () => {},
+}) {
+  if (!dirPath || typeof dirPath !== 'string' || !loadedDirectories?.has(dirPath)) {
+    onReject('unloaded-directory', dirPath);
+    return [];
+  }
+  if (!Array.isArray(videos)) return [];
+
+  const safeVideos = [];
+  for (const video of videos) {
+    if (!video || !VALID_VIDEO_ID.test(String(video.id || ''))) {
+      onReject('invalid-id', video?.id);
+      continue;
+    }
+    if (!isKnownVideoRecord(video)) {
+      onReject('unknown-record', video.path);
+      continue;
+    }
+    if (!await isPathWithinDir(video.path, dirPath)) {
+      onReject('outside-root', video.path);
+      continue;
+    }
+    safeVideos.push(video);
+  }
+
+  return safeVideos;
+}
+
 function isFolderInsideSync(childFolder, parentFolder) {
   const child = path.resolve(childFolder).toLowerCase();
   const parent = path.resolve(parentFolder).toLowerCase();
@@ -190,6 +225,7 @@ function isServableVideoPath(filePath) {
 }
 
 module.exports = {
+  filterValidCacheSaveVideos,
   cacheRelevantSettingsChanged,
   detectCompatibility,
   escapeHtml,

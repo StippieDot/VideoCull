@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 
 const {
+  filterValidCacheSaveVideos,
   cacheRelevantSettingsChanged,
   detectCompatibility,
   escapeHtml,
@@ -132,6 +133,49 @@ describe('cache safety checks', () => {
     assert.equal(isSqliteCorruptionError({ code: 'SQLITE_CORRUPT' }), true);
     assert.equal(isSqliteCorruptionError(new Error('file is not a database')), true);
     assert.equal(isSqliteCorruptionError(new Error('network timeout')), false);
+  });
+});
+
+describe('cache save payload safety', () => {
+  test('rejects cache writes for unloaded directories before touching any video records', async () => {
+    const rejections = [];
+    const result = await filterValidCacheSaveVideos({
+      dirPath: 'D:\\missing',
+      loadedDirectories: new Set(['D:\\loaded']),
+      videos: [{ id: '0123456789abcdef', path: 'D:\\loaded\\clip.mp4' }],
+      isKnownVideoRecord: () => true,
+      isPathWithinDir: async () => true,
+      onReject: (reason, detail) => rejections.push({ reason, detail }),
+    });
+
+    assert.deepEqual(result, []);
+    assert.deepEqual(rejections, [{ reason: 'unloaded-directory', detail: 'D:\\missing' }]);
+  });
+
+  test('keeps only known video records with valid ids inside the loaded save root', async () => {
+    const rejections = [];
+    const videos = [
+      { id: 'not-hex', path: 'D:\\loaded\\bad-id.mp4' },
+      { id: '0123456789abcdef', path: 'D:\\loaded\\unknown.mp4' },
+      { id: 'fedcba9876543210', path: 'D:\\other\\outside.mp4' },
+      { id: '0011223344556677', path: 'D:\\loaded\\ok.mp4' },
+    ];
+
+    const result = await filterValidCacheSaveVideos({
+      dirPath: 'D:\\loaded',
+      loadedDirectories: new Set(['D:\\loaded']),
+      videos,
+      isKnownVideoRecord: (video) => video.path !== 'D:\\loaded\\unknown.mp4',
+      isPathWithinDir: async (candidate, baseDir) => candidate.startsWith(`${baseDir}\\`),
+      onReject: (reason, detail) => rejections.push({ reason, detail }),
+    });
+
+    assert.deepEqual(result, [{ id: '0011223344556677', path: 'D:\\loaded\\ok.mp4' }]);
+    assert.deepEqual(rejections, [
+      { reason: 'invalid-id', detail: 'not-hex' },
+      { reason: 'unknown-record', detail: 'D:\\loaded\\unknown.mp4' },
+      { reason: 'outside-root', detail: 'D:\\other\\outside.mp4' },
+    ]);
   });
 });
 

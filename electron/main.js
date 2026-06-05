@@ -14,6 +14,7 @@ const {
   cacheRelevantSettingsChanged,
   detectCompatibility,
   escapeHtml,
+  filterValidCacheSaveVideos,
   formatBytes,
   formatDuration,
   getDriveKeyForPath,
@@ -950,30 +951,24 @@ function isKnownVideoRecord(video) {
 }
 
 async function validateCacheSavePayload(dirPath, videos) {
-  if (!dirPath || typeof dirPath !== 'string' || !currentScanDirs.has(dirPath)) {
-    log.warn('[save-cache] Rejected save for unloaded directory:', dirPath);
-    return [];
-  }
-  if (!Array.isArray(videos)) return [];
-
-  const safeVideos = [];
-  for (const video of videos) {
-    if (!video || !VALID_VIDEO_ID.test(String(video.id || ''))) {
-      log.warn(`[save-cache] Rejected video with invalid id: ${video?.id}`);
-      continue;
-    }
-    if (!isKnownVideoRecord(video)) {
-      log.warn(`[save-cache] Rejected mismatched or unknown video record: ${video.path}`);
-      continue;
-    }
-    if (!await isPathWithinDir(video.path, dirPath)) {
-      log.warn(`[save-cache] Rejected path outside save root: ${video.path}`);
-      continue;
-    }
-    safeVideos.push(video);
-  }
-
-  return safeVideos;
+  return filterValidCacheSaveVideos({
+    dirPath,
+    loadedDirectories: currentScanDirs,
+    videos,
+    isKnownVideoRecord,
+    isPathWithinDir,
+    onReject: (reason, detail) => {
+      if (reason === 'unloaded-directory') {
+        log.warn('[save-cache] Rejected save for unloaded directory:', detail);
+      } else if (reason === 'invalid-id') {
+        log.warn(`[save-cache] Rejected video with invalid id: ${detail}`);
+      } else if (reason === 'unknown-record') {
+        log.warn(`[save-cache] Rejected mismatched or unknown video record: ${detail}`);
+      } else if (reason === 'outside-root') {
+        log.warn(`[save-cache] Rejected path outside save root: ${detail}`);
+      }
+    },
+  });
 }
 
 async function mapWithConcurrency(items, limit, worker) {
