@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:renderer": "vitest run -c vitest.renderer.config.ts",
     "test:watch": "vitest",
+    "test:cache-native": "node --test tests/electron/cache.test.js tests/electron/cache.migration.test.js",
     "coverage": "vitest run --coverage",
     "test:ci": "npm run check:ipc && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
     "test:e2e": "npm run build && playwright test",

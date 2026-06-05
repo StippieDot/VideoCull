@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
+const { test: nodeTest } = require('node:test');
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
+const test = globalThis.test || nodeTest;
 let cache = null;
 let cacheLoadError = null;
 
@@ -9,6 +11,31 @@ try {
   cache = require('../../electron/cache');
 } catch (err) {
   cacheLoadError = err;
+}
+
+function skipIfCacheUnavailable(t, err = cacheLoadError) {
+  if (!err) return false;
+  t.skip(`better-sqlite3 is unavailable in plain node test mode: ${err.message}`);
+  return true;
+}
+
+async function openTempCacheDb(t) {
+  if (skipIfCacheUnavailable(t)) return null;
+
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-cache-'));
+  const folderPath = path.join(tempRoot, 'library');
+  await fs.mkdir(folderPath, { recursive: true });
+
+  try {
+    const db = cache.openDb(folderPath, { mode: 'centralised', centralCachePath: tempRoot });
+    return { tempRoot, folderPath, db };
+  } catch (err) {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+    if (skipIfCacheUnavailable(t, err?.code === 'ERR_DLOPEN_FAILED' ? err : null)) {
+      return null;
+    }
+    throw err;
+  }
 }
 
 function insertVideo(db, id, filePath) {
@@ -68,26 +95,9 @@ function buildCachedVideo(id, filePath, overrides = {}) {
 }
 
 test('loadPHashRows and loadGraySampleRows batch rows and keep only complete samples', async (t) => {
-  if (cacheLoadError) {
-    t.skip(`better-sqlite3 is unavailable in plain node test mode: ${cacheLoadError.message}`);
-    return;
-  }
-
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-cache-'));
-  const folderPath = path.join(tempRoot, 'library');
-  await fs.mkdir(folderPath, { recursive: true });
-
-  let db;
-  try {
-    db = cache.openDb(folderPath, { mode: 'centralised', centralCachePath: tempRoot });
-  } catch (err) {
-    if (err?.code === 'ERR_DLOPEN_FAILED') {
-      t.skip(`better-sqlite3 is unavailable in plain node test mode: ${err.message}`);
-      await fs.rm(tempRoot, { recursive: true, force: true });
-      return;
-    }
-    throw err;
-  }
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
 
   try {
     insertVideo(db, 'a', path.join(folderPath, 'a.mp4'));
@@ -115,25 +125,10 @@ test('loadPHashRows and loadGraySampleRows batch rows and keep only complete sam
   }
 });
 
-test('saveCache replaces stale rows when the same path gets a new id', async () => {
-  if (cacheLoadError) {
-    return;
-  }
-
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-cache-'));
-  const folderPath = path.join(tempRoot, 'library');
-  await fs.mkdir(folderPath, { recursive: true });
-
-  let db;
-  try {
-    db = cache.openDb(folderPath, { mode: 'centralised', centralCachePath: tempRoot });
-  } catch (err) {
-    if (err?.code === 'ERR_DLOPEN_FAILED') {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-      return;
-    }
-    throw err;
-  }
+test('saveCache replaces stale rows when the same path gets a new id', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
 
   try {
     const filePath = path.join(folderPath, 'clip.mp4');
@@ -158,25 +153,10 @@ test('saveCache replaces stale rows when the same path gets a new id', async () 
   }
 });
 
-test('saveCacheChunked replaces stale rows when the same path gets a new id', async () => {
-  if (cacheLoadError) {
-    return;
-  }
-
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-cache-'));
-  const folderPath = path.join(tempRoot, 'library');
-  await fs.mkdir(folderPath, { recursive: true });
-
-  let db;
-  try {
-    db = cache.openDb(folderPath, { mode: 'centralised', centralCachePath: tempRoot });
-  } catch (err) {
-    if (err?.code === 'ERR_DLOPEN_FAILED') {
-      await fs.rm(tempRoot, { recursive: true, force: true });
-      return;
-    }
-    throw err;
-  }
+test('saveCacheChunked replaces stale rows when the same path gets a new id', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
 
   try {
     const filePath = path.join(folderPath, 'clip.mp4');

@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
+const { test: nodeTest } = require('node:test');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const test = globalThis.test || nodeTest;
 
 let cache = null;
 let cacheLoadError = null;
