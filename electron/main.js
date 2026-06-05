@@ -29,10 +29,17 @@ const {
   thumbRelative,
   videoForDb,
 } = require('./main-helpers');
-const { autoUpdater } = require('electron-updater');
+const isE2E = process.env.VC_E2E_USE_DIST === '1';
+const e2eUserDataPath = process.env.VC_E2E_USER_DATA_DIR;
+const isDev = !app.isPackaged && !isE2E;
+const updatesEnabled = !isDev && !isE2E && process.env.VC_DISABLE_UPDATES !== '1';
+let autoUpdaterInstance = null;
 
-const isDev = !app.isPackaged;
-if (isDev) app.setPath('userData', app.getPath('userData') + '-dev');
+if (e2eUserDataPath) {
+  app.setPath('userData', e2eUserDataPath);
+} else if (isDev) {
+  app.setPath('userData', app.getPath('userData') + '-dev');
+}
 let mainWindow;
 let currentScanDir = null;
 let currentScanDirs = new Set();
@@ -134,6 +141,13 @@ function sendToRenderer(channel, payload) {
   } catch (err) {
     return false;
   }
+}
+
+function getAutoUpdater() {
+  if (!autoUpdaterInstance) {
+    autoUpdaterInstance = require('electron-updater').autoUpdater;
+  }
+  return autoUpdaterInstance;
 }
 
 async function collectIdleDiagnostics() {
@@ -399,7 +413,7 @@ app.whenReady().then(() => {
   createWindow();
   setApplicationMenu();
   pruneDistributedIndex().catch((err) => log.warn('[cache] Failed to prune distributed index:', err));
-  if (!isDev) setupAutoUpdater();
+  if (updatesEnabled) setupAutoUpdater();
 });
 
 function setApplicationMenu() {
@@ -2244,11 +2258,12 @@ ipcMain.handle('open-external-url', async (_event, url) => {
 
 // 12. Auto-updater IPC
 ipcMain.handle('check-for-updates', async () => {
-  if (isDev) {
-    return { ok: false, status: 'disabled-dev' };
+  if (!updatesEnabled) {
+    return { ok: false, status: isE2E ? 'disabled-e2e' : 'disabled-dev' };
   }
 
   try {
+    const autoUpdater = getAutoUpdater();
     updateReadyToInstall = false;
     await autoUpdater.checkForUpdates();
     return { ok: true, status: 'checking' };
@@ -2264,12 +2279,14 @@ ipcMain.handle('install-update', () => {
     log.warn('[auto-updater] install-update rejected because no downloaded update is ready');
     return false;
   }
+  const autoUpdater = getAutoUpdater();
   autoUpdater.quitAndInstall(false, true);
   return true;
 });
 
 // â”€â”€ Auto-updater setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function setupAutoUpdater() {
+  const autoUpdater = getAutoUpdater();
   autoUpdater.logger = log;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
