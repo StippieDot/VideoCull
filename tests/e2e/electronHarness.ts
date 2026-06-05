@@ -4,10 +4,10 @@ import { execFile } from 'child_process';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import electronPath from 'electron';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
+const electronPath = require('electron') as string;
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
 export async function createUserDataDir() {

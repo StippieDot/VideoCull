@@ -111,7 +111,7 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     result.recentDirectories = [];
   }
 
-  if (!result.recentDirectoryTimestamps || typeof result.recentDirectoryTimestamps !== 'object') {
+  if (!result.recentDirectoryTimestamps || typeof result.recentDirectoryTimestamps !== 'object' || Array.isArray(result.recentDirectoryTimestamps)) {
     result.recentDirectoryTimestamps = {};
   }
 

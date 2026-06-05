@@ -31,6 +31,7 @@ describe('migrateSettings', () => {
       cacheLocation: 'unknown',
       centralCachePath: 123,
       perDriveCachePaths: [],
+      recentDirectoryTimestamps: [],
       autoUpdates: null,
       globalMute: 'no',
       hardwareAccel: undefined,
@@ -43,6 +44,7 @@ describe('migrateSettings', () => {
     expect(migrated.cacheLocation).toBe('centralised');
     expect(migrated.centralCachePath).toBeNull();
     expect(migrated.perDriveCachePaths).toEqual({});
+    expect(migrated.recentDirectoryTimestamps).toEqual({});
     expect(migrated.autoUpdates).toBe(true);
     expect(migrated.globalMute).toBe(false);
     expect(migrated.hardwareAccel).toBe(false);

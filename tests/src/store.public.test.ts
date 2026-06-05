@@ -250,4 +250,43 @@ describe('useStore public behavior', () => {
     expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).toEqual([]);
     expect(electronAPI.saveConfig).toHaveBeenCalled();
   });
+
+  test('loading persisted legacy settings prunes stale recents, migrates invalid fields, and saves the cleaned config', async () => {
+    electronAPI.getConfig.mockResolvedValue({
+      keyKeep: 'K',
+      appMode: 'legacy',
+      cacheLocation: 'unknown',
+      recentDirectories: ['D:\\Keep', 'D:\\Missing'],
+      recentDirectoryTimestamps: {
+        'D:\\Keep': 111,
+        'D:\\Missing': 222,
+      },
+      duplicates: {
+        comparisonMode: 'broken',
+        sampleCount: 6,
+        ignoredDuplicatePairs: ['ABCDEFABCDEFABCD|0011223344556677', 'bad'],
+      },
+    });
+    electronAPI.validateDroppedPath.mockImplementation(async (target: string) => ({
+      valid: target === 'D:\\Keep',
+      isDirectory: target === 'D:\\Keep',
+    }));
+
+    await useStore.getState().loadSettings();
+
+    const { settings } = useStore.getState();
+    expect(settings.keyKeep).toEqual({ key: 'k', ctrl: false, shift: false, alt: false });
+    expect(settings.cacheLocation).toBe('centralised');
+    expect(settings.recentDirectories).toEqual(['D:\\Keep']);
+    expect(settings.recentDirectoryTimestamps).toEqual({ 'D:\\Keep': 111 });
+    expect(settings.duplicates.comparisonMode).toBe('visual');
+    expect(settings.duplicates.sampleCount).toBe(3);
+    expect(settings.duplicates.ignoredDuplicatePairs).toEqual(['abcdefabcdefabcd|0011223344556677']);
+    expect(electronAPI.validateDroppedPath).toHaveBeenCalledTimes(2);
+    expect(electronAPI.saveConfig).toHaveBeenCalledWith(expect.objectContaining({
+      cacheLocation: 'centralised',
+      recentDirectories: ['D:\\Keep'],
+      recentDirectoryTimestamps: { 'D:\\Keep': 111 },
+    }));
+  });
 });
