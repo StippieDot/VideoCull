@@ -26,7 +26,7 @@ When you're done, one command sends everything marked for deletion to the Recycl
 
 Grab the latest installer from the [Releases](https://github.com/stippie-dot/VideoCull/releases) page.
 
-Installs for the current user, no admin rights needed. On first launch Windows may show a SmartScreen prompt since the app isn't code-signed yet; click "Run anyway" to proceed.
+The packaged installer is Windows-first, installs for the current user, and does not require admin rights. On first launch Windows may show a SmartScreen prompt since the app isn't code-signed yet; click "Run anyway" to proceed.
 
 ---
 
@@ -42,6 +42,7 @@ Every video gets a strip of thumbnails pulled from different points in the file.
 - Sort by name, size, duration, date, rating, resolution, or FPS
 - Codec, resolution, FPS, favorite, rating, and compatibility badges
 - Batch selection with Keep, Delete, Skip, Reset, Clear, and Regenerate Thumbnails actions
+- Right-click quick actions for videos and folders, including reveal/copy-path, status changes, and thumbnail regeneration
 - Per-folder Review button to scope review mode to one folder
 - Drag and drop folder opening, multi-directory sessions
 - Recent directories with timestamps, stale-entry auto-cleanup
@@ -59,6 +60,18 @@ Fullscreen, one at a time, keyboard first.
 - External player handoff for files the built-in player should not play
 - Undo any decision before you commit the final delete
 
+### Duplicate Review
+
+Find likely duplicates across all loaded videos or just the current filtered view, then work through them with suggested keepers instead of starting from scratch.
+
+- Two comparison methods: pHash and visual similarity
+- Adjustable similarity threshold and sample count
+- Suggested keeper priority based on resolution, bitrate, duration, FPS, and file size
+- Protection rules for videos already marked Keep or Skip
+- Manual keeper overrides and "Not a match" ignored-pair handling that survives reruns
+- Right-click actions for duplicate rows and groups, including keeper selection, exclusion, and group dismissal
+- Optional "run after scan" mode for duplicate detection
+
 ### Thumbnail Generation
 
 - **Configurable frame count**: 1, 2, 4, 6, or 9 thumbnails per video (default: 6)
@@ -74,11 +87,12 @@ Progress lives in SQLite databases under the configured cache location.
 - Three location modes: Centralised (default), Per-drive, Distributed (`.videocull` next to your files)
 - Old flat-root DBs and legacy `.video-cull-cache.json` files are migrated automatically on first scan
 - Status, ratings, favorites, bookmarks, metadata, and thumbnails survive rescans
+- Cache location changes can migrate existing cache data instead of forcing a fresh start
 - Cache and thumbnail files for deleted videos are cleaned up with the delete action
 
 ### Export
 
-Generate an HTML report from Settings or the app menu, scoped to all videos or filtered results, grouped by folder with separate Keep/Delete/Pending/Skipped sections.
+Generate an HTML report from Settings or the app menu, scoped to all loaded videos or just the current filtered results, grouped by folder with separate Keep/Delete/Pending/Skipped sections.
 
 ---
 
@@ -132,10 +146,12 @@ Review shortcuts are customizable in Settings.
 | Parallel FFmpeg processes | Auto (RAM + CPU aware) / 1 / 2 / 3 / 4 / 6 / 8 / 12 / 16 / 24 / 32 | Auto |
 | Limit each FFmpeg process to 1 CPU thread | On / Off | On |
 | Intro skip delay | 0 - 60 seconds | 3s |
-| Hardware acceleration | On / Off | On |
+| Hardware acceleration | On / Off | Off |
 | Auto updates | On / Off | On |
 | Feature toggles | Ratings, favorites, codec badges, compatibility checks, global mute, next-undecided | On |
 | Keybindings | Any key or combination | K / D / S / Z / Space |
+
+Duplicate detection also has its own settings tab with options for comparison method, similarity threshold, sample count, scope, keeper priority, ignored matches, sampling windows, and retry behavior.
 
 ---
 
@@ -149,12 +165,12 @@ The built-in player is intended for compatible web-playable media such as `.mp4`
 
 ## Building from Source
 
-Requires Node.js 24 LTS. FFmpeg and FFprobe are bundled.
+Requires Node.js 24 LTS. FFmpeg and FFprobe are bundled with the app dependencies.
 
 ```bash
 git clone https://github.com/stippie-dot/VideoCull.git
 cd VideoCull
-npm install
+npm ci
 npm run dev
 ```
 
@@ -166,11 +182,20 @@ npm run dev
 | `npm run test:watch` | Run Vitest in watch mode |
 | `npm run coverage` | Generate terminal, HTML, and summary coverage reports |
 | `npm run test:ci` | IPC contract check, test TS compile, and full coverage run |
+| `npm run test:e2e` | Build the renderer and run the Electron Playwright regression flows |
+| `npm run test:cache-native` | Optional native cache regression lane for clean Node installs; mainly intended for CI because `better-sqlite3` ABI rebuilds conflict with normal Electron-local workflows |
 | `npm run build` | Renderer-only production build |
 | `npm run check:ipc` | Validate preload/type IPC contract coverage |
 | `npm run cleanup:cache` | Clean old cache/thumb clutter from earlier builds |
 | `npm run package` | Full build + Windows installer (NSIS) |
 | `npm run rebuild` | Rebuild native modules against Electron |
+
+Notes:
+- `npm run test:ci` is the normal local verification path.
+- `npm run test:cache-native` is kept separate on purpose. It is useful in clean Node-only installs and CI, but can skip locally after `better-sqlite3` has been rebuilt for Electron packaging.
+- If you run `npm run rebuild` to package or launch Electron with a freshly rebuilt native module, that does not mean the plain Node native-cache lane will also be runnable in the same `node_modules` tree.
+- Development Electron sessions use a separate `userData` folder (`...-dev`) so local settings/cache do not mix with the packaged app.
+- E2E runs use their own temporary `userData` directory and do not touch your normal app data.
 
 ---
 
