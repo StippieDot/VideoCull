@@ -1,7 +1,12 @@
 const assert = require('node:assert/strict');
 
 const {
+  canRevealInExplorerPath,
+  canServeThumbPath,
+  canServeVideoPath,
+  filterLoadedDeletionPaths,
   filterValidCacheSaveVideos,
+  isKnownLoadedFilePath,
   cacheRelevantSettingsChanged,
   detectCompatibility,
   escapeHtml,
@@ -86,6 +91,51 @@ describe('custom protocol paths', () => {
       'D:/Media/clip 1.mp4'
     );
   });
+
+  test('only serves thumbnails from active cache roots with jpg extensions', async () => {
+    assert.equal(await canServeThumbPath({
+      filePath: 'D:\\cache\\thumbs\\clip.jpg',
+      activeCacheRoots: new Set(['D:\\cache']),
+      isPathWithinAnyDir: async (target, dirs) => {
+        for (const dir of dirs) {
+          if (target.startsWith(`${dir}\\`)) return true;
+        }
+        return false;
+      },
+    }), true);
+
+    assert.equal(await canServeThumbPath({
+      filePath: 'D:\\cache\\thumbs\\clip.png',
+      activeCacheRoots: new Set(['D:\\cache']),
+      isPathWithinAnyDir: async () => true,
+    }), false);
+
+    assert.equal(await canServeThumbPath({
+      filePath: 'D:\\other\\thumbs\\clip.jpg',
+      activeCacheRoots: new Set(['D:\\cache']),
+      isPathWithinAnyDir: async () => false,
+    }), false);
+  });
+
+  test('only serves video protocol requests for known servable files', () => {
+    assert.equal(canServeVideoPath({
+      filePath: 'D:\\media\\clip.mp4',
+      knownVideoPaths: new Set(['D:\\media\\clip.mp4']),
+      isServableVideoPath,
+    }), true);
+
+    assert.equal(canServeVideoPath({
+      filePath: 'D:\\media\\clip.txt',
+      knownVideoPaths: new Set(['D:\\media\\clip.txt']),
+      isServableVideoPath,
+    }), false);
+
+    assert.equal(canServeVideoPath({
+      filePath: 'D:\\media\\unknown.mp4',
+      knownVideoPaths: new Set(['D:\\media\\clip.mp4']),
+      isServableVideoPath,
+    }), false);
+  });
 });
 
 describe('cache path helpers', () => {
@@ -133,6 +183,93 @@ describe('cache safety checks', () => {
     assert.equal(isSqliteCorruptionError({ code: 'SQLITE_CORRUPT' }), true);
     assert.equal(isSqliteCorruptionError(new Error('file is not a database')), true);
     assert.equal(isSqliteCorruptionError(new Error('network timeout')), false);
+  });
+
+  test('allows file operations only for known videos that still belong to a loaded root', async () => {
+    const loadedDirectories = new Set(['D:\\loaded']);
+    const knownVideoPaths = new Set(['D:\\loaded\\clip.mp4', 'D:\\stale\\clip.mp4']);
+
+    assert.equal(await isKnownLoadedFilePath({
+      filePath: 'D:\\loaded\\clip.mp4',
+      knownVideoPaths,
+      loadedDirectories,
+      isPathWithinAnyDir: async (target, dirs) => {
+        for (const dir of dirs) {
+          if (target.startsWith(`${dir}\\`)) return true;
+        }
+        return false;
+      },
+    }), true);
+
+    assert.equal(await isKnownLoadedFilePath({
+      filePath: 'D:\\loaded\\unknown.mp4',
+      knownVideoPaths,
+      loadedDirectories,
+      isPathWithinAnyDir: async () => true,
+    }), false);
+
+    assert.equal(await isKnownLoadedFilePath({
+      filePath: 'D:\\stale\\clip.mp4',
+      knownVideoPaths,
+      loadedDirectories,
+      isPathWithinAnyDir: async () => false,
+    }), false);
+  });
+
+  test('keeps only loaded-session paths for batch deletion and reports rejected paths', async () => {
+    const rejections = [];
+    const result = await filterLoadedDeletionPaths({
+      filePaths: ['D:\\loaded\\keep.mp4', 'D:\\outside\\nope.mp4'],
+      isValidLoadedPath: async (filePath) => filePath === 'D:\\loaded\\keep.mp4',
+      onReject: (filePath) => rejections.push(filePath),
+    });
+
+    assert.deepEqual(result, ['D:\\loaded\\keep.mp4']);
+    assert.deepEqual(rejections, ['D:\\outside\\nope.mp4']);
+  });
+
+  test('allows reveal-in-explorer for known videos, loaded directories, and existing fallback paths only', async () => {
+    const loadedDirectories = new Set(['D:\\loaded']);
+    const knownVideoPaths = new Set(['D:\\loaded\\clip.mp4']);
+
+    assert.equal(await canRevealInExplorerPath({
+      filePath: 'D:\\loaded\\clip.mp4',
+      knownVideoPaths,
+      loadedDirectories,
+      isPathWithinAnyDir: async () => false,
+      statPath: async () => ({ isFile: () => false, isDirectory: () => false }),
+    }), true);
+
+    assert.equal(await canRevealInExplorerPath({
+      filePath: 'D:\\loaded\\folder',
+      knownVideoPaths,
+      loadedDirectories,
+      isPathWithinAnyDir: async (target, dirs) => {
+        for (const dir of dirs) {
+          if (target.startsWith(`${dir}\\`)) return true;
+        }
+        return false;
+      },
+      statPath: async () => ({ isFile: () => false, isDirectory: () => false }),
+    }), true);
+
+    assert.equal(await canRevealInExplorerPath({
+      filePath: 'D:\\recent\\folder',
+      knownVideoPaths,
+      loadedDirectories,
+      isPathWithinAnyDir: async () => false,
+      statPath: async () => ({ isFile: () => false, isDirectory: () => true }),
+    }), true);
+
+    assert.equal(await canRevealInExplorerPath({
+      filePath: 'D:\\missing\\folder',
+      knownVideoPaths,
+      loadedDirectories,
+      isPathWithinAnyDir: async () => false,
+      statPath: async () => {
+        throw new Error('missing');
+      },
+    }), false);
   });
 });
 

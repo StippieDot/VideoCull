@@ -41,6 +41,24 @@ function detectCompatibility(containerFormat, videoCodec, filePath) {
   return false;
 }
 
+async function canServeThumbPath({
+  filePath,
+  activeCacheRoots,
+  isPathWithinAnyDir,
+}) {
+  if (!filePath?.toLowerCase().endsWith('.jpg')) return false;
+  if (!activeCacheRoots || activeCacheRoots.size === 0) return false;
+  return isPathWithinAnyDir(filePath, activeCacheRoots);
+}
+
+function canServeVideoPath({
+  filePath,
+  knownVideoPaths,
+  isServableVideoPath,
+}) {
+  return Boolean(filePath && knownVideoPaths?.has(filePath) && isServableVideoPath(filePath));
+}
+
 function getRangeDetails(rangeHeader, fileSize) {
   if (!rangeHeader) {
     return { hasRange: false, start: 0, end: fileSize - 1, chunkSize: fileSize, valid: true };
@@ -145,6 +163,51 @@ async function filterValidCacheSaveVideos({
   return safeVideos;
 }
 
+async function isKnownLoadedFilePath({
+  filePath,
+  knownVideoPaths,
+  loadedDirectories,
+  isPathWithinAnyDir,
+}) {
+  if (!filePath || !knownVideoPaths?.has(filePath)) return false;
+  if (!loadedDirectories || loadedDirectories.size === 0) return false;
+  return isPathWithinAnyDir(filePath, loadedDirectories);
+}
+
+async function filterLoadedDeletionPaths({
+  filePaths,
+  isValidLoadedPath,
+  onReject = () => {},
+}) {
+  const validPaths = [];
+  for (const filePath of Array.isArray(filePaths) ? filePaths : []) {
+    if (await isValidLoadedPath(filePath)) {
+      validPaths.push(filePath);
+    } else {
+      onReject(filePath);
+    }
+  }
+  return validPaths;
+}
+
+async function canRevealInExplorerPath({
+  filePath,
+  knownVideoPaths,
+  loadedDirectories,
+  isPathWithinAnyDir,
+  statPath,
+}) {
+  if (!filePath) return false;
+  if (knownVideoPaths?.has(filePath)) return true;
+  if (loadedDirectories?.size > 0 && await isPathWithinAnyDir(filePath, loadedDirectories)) return true;
+  try {
+    const stats = await statPath(filePath);
+    return stats.isFile() || stats.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function isFolderInsideSync(childFolder, parentFolder) {
   const child = path.resolve(childFolder).toLowerCase();
   const parent = path.resolve(parentFolder).toLowerCase();
@@ -225,7 +288,12 @@ function isServableVideoPath(filePath) {
 }
 
 module.exports = {
+  canServeThumbPath,
+  canServeVideoPath,
+  canRevealInExplorerPath,
+  filterLoadedDeletionPaths,
   filterValidCacheSaveVideos,
+  isKnownLoadedFilePath,
   cacheRelevantSettingsChanged,
   detectCompatibility,
   escapeHtml,

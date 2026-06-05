@@ -12,8 +12,12 @@ const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const {
   cacheRelevantSettingsChanged,
+  canServeThumbPath,
+  canServeVideoPath,
+  canRevealInExplorerPath,
   detectCompatibility,
   escapeHtml,
+  filterLoadedDeletionPaths,
   filterValidCacheSaveVideos,
   formatBytes,
   formatDuration,
@@ -21,6 +25,7 @@ const {
   getFilePathFromProtocolRequest,
   getRangeDetails,
   isFolderInsideSync,
+  isKnownLoadedFilePath,
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,
@@ -304,14 +309,11 @@ app.whenReady().then(() => {
       filePath = filePath.replace(/^\//, '');
     }
 
-    // Security: only serve .jpg files inside the current scan dir's thumb folder
-    if (!filePath.toLowerCase().endsWith('.jpg')) {
-      return new Response('Access Denied', { status: 403 });
-    }
-    if (activeCacheRoots.size === 0) {
-      return new Response('Access Denied', { status: 403 });
-    }
-    if (!await isPathWithinAnyDir(filePath, activeCacheRoots)) {
+    if (!await canServeThumbPath({
+      filePath,
+      activeCacheRoots,
+      isPathWithinAnyDir,
+    })) {
       return new Response('Access Denied', { status: 403 });
     }
     
@@ -342,8 +344,11 @@ app.whenReady().then(() => {
       filePath = filePath.replace(/^\//, '');
     }
 
-    // Security: only stream videos discovered by the scanner for this session.
-    if (!knownVideoPaths.has(filePath) || !isServableVideoPath(filePath)) {
+    if (!canServeVideoPath({
+      filePath,
+      knownVideoPaths,
+      isServableVideoPath,
+    })) {
       return new Response('Access Denied', { status: 403 });
     }
 
@@ -936,8 +941,12 @@ async function isPathWithinAnyDir(filePath, dirs) {
 }
 
 async function isValidLoadedPath(filePath) {
-  if (currentScanDirs.size === 0 || !knownVideoPaths.has(filePath)) return false;
-  return isPathWithinAnyDir(filePath, currentScanDirs);
+  return isKnownLoadedFilePath({
+    filePath,
+    knownVideoPaths,
+    loadedDirectories: currentScanDirs,
+    isPathWithinAnyDir,
+  });
 }
 
 function assertScanCurrent(token) {
@@ -1957,15 +1966,14 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
 ipcMain.handle('batch-delete', async (_event, filePaths) => {
   const results = [];
 
-  const validPaths = [];
-  for (const filePath of filePaths) {
-    if (await isValidLoadedPath(filePath)) {
-      validPaths.push(filePath);
-    } else {
+  const validPaths = await filterLoadedDeletionPaths({
+    filePaths,
+    isValidLoadedPath,
+    onReject: (filePath) => {
       log.warn(`[batch-delete] Rejected path outside loaded directory: ${filePath}`);
       results.push({ path: filePath, success: false, error: 'Path is outside the loaded directory scope.' });
-    }
-  }
+    },
+  });
 
   if (validPaths.length === 0) return results;
   const cacheTargets = await collectDeletionCacheTargets(validPaths);
@@ -2201,7 +2209,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
 
 // 8. Open video in default system player
 ipcMain.handle('open-video', async (_event, filePath) => {
-  if (!knownVideoPaths.has(filePath)) return;
+  if (!await isValidLoadedPath(filePath)) return;
   await shell.openPath(filePath);
 });
 
@@ -2229,15 +2237,13 @@ ipcMain.handle('save-config', async (_event, config) => {
 
 // 10. Open a directory in explorer
 ipcMain.handle('open-in-explorer', async (_event, filePath) => {
-  let allowed = knownVideoPaths.has(filePath) || await isPathWithinAnyDir(filePath, currentScanDirs);
-  if (!allowed) {
-    try {
-      const stats = await fs.stat(filePath);
-      allowed = stats.isFile() || stats.isDirectory();
-    } catch {
-      allowed = false;
-    }
-  }
+  const allowed = await canRevealInExplorerPath({
+    filePath,
+    knownVideoPaths,
+    loadedDirectories: currentScanDirs,
+    isPathWithinAnyDir,
+    statPath: fs.stat,
+  });
   if (!allowed) return;
   shell.showItemInFolder(filePath);
 });
