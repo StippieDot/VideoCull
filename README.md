@@ -90,6 +90,10 @@ Progress lives in SQLite databases under the configured cache location.
 - Cache location changes can migrate existing cache data instead of forcing a fresh start
 - Cache and thumbnail files for deleted videos are cleaned up with the delete action
 
+### Known Issues
+
+- Initial scanning can be very slow on some cloud-mounted drives, confirmed on mounted Google Drive setups. See [issue #2](https://github.com/stippie-dot/VideoCull/issues/2).
+
 ### Export
 
 Generate an HTML report from Settings or the app menu, scoped to all loaded videos or just the current filtered results, grouped by folder with separate Keep/Delete/Pending/Skipped sections.
