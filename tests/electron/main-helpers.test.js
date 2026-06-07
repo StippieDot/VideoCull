@@ -30,12 +30,18 @@ describe('compatibility detection', () => {
   test('allows formats the renderer can play directly', () => {
     assert.equal(detectCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'h264', 'D:\\clip.mp4'), true);
     assert.equal(detectCompatibility('', '', 'D:\\clip.webm'), true);
+    assert.equal(detectCompatibility('ogg', 'vp9', 'D:\\clip.ogg'), true);
+    assert.equal(detectCompatibility('ogg', 'vp9', 'D:\\clip.ogv'), true);
   });
 
   test('rejects unsupported containers and codecs before the app tries to play them', () => {
     assert.equal(detectCompatibility('asf', 'h264', 'D:\\clip.wmv'), false);
     assert.equal(detectCompatibility('matroska,webm', 'prores', 'D:\\clip.mkv'), false);
     assert.equal(detectCompatibility('avi', 'vp9', 'D:\\clip.avi'), false);
+    assert.equal(detectCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'h264', 'D:\\clip.3gp'), false);
+    assert.equal(detectCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'h264', 'D:\\clip.3g2'), false);
+    assert.equal(detectCompatibility('mxf', 'mpeg4', 'D:\\clip.mxf'), false);
+    assert.equal(detectCompatibility('dv', 'dvvideo', 'D:\\clip.dv'), false);
   });
 });
 
@@ -125,6 +131,18 @@ describe('custom protocol paths', () => {
     }), true);
 
     assert.equal(canServeVideoPath({
+      filePath: 'D:\\media\\clip.ogg',
+      knownVideoPaths: new Set(['D:\\media\\clip.ogg']),
+      isServableVideoPath,
+    }), true);
+
+    assert.equal(canServeVideoPath({
+      filePath: 'D:\\media\\clip.ogv',
+      knownVideoPaths: new Set(['D:\\media\\clip.ogv']),
+      isServableVideoPath,
+    }), true);
+
+    assert.equal(canServeVideoPath({
       filePath: 'D:\\media\\clip.txt',
       knownVideoPaths: new Set(['D:\\media\\clip.txt']),
       isServableVideoPath,
@@ -133,6 +151,12 @@ describe('custom protocol paths', () => {
     assert.equal(canServeVideoPath({
       filePath: 'D:\\media\\unknown.mp4',
       knownVideoPaths: new Set(['D:\\media\\clip.mp4']),
+      isServableVideoPath,
+    }), false);
+
+    assert.equal(canServeVideoPath({
+      filePath: 'D:\\media\\legacy.avi',
+      knownVideoPaths: new Set(['D:\\media\\legacy.avi']),
       isServableVideoPath,
     }), false);
   });

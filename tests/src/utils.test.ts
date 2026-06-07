@@ -1,3 +1,4 @@
+import { expect, test, vi } from 'vitest';
 import {
   calcThumbGrid,
   detectVideoCompatibility,
@@ -39,13 +40,21 @@ test('thumbnail grid layout matches common thumbnail counts', () => {
 test('web support and compatibility detection match supported and unsupported formats', () => {
   expect(isWebSupported('video.MP4')).toBe(true);
   expect(isWebSupported('video.avi')).toBe(false);
+  expect(isWebSupported('video.ogg')).toBe(true);
+  expect(isWebSupported('video.ogv')).toBe(true);
 
   expect(detectVideoCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'h264', 'clip.mp4')).toBe(true);
   expect(detectVideoCompatibility(null, 'vp9', 'clip.webm')).toBe(true);
+  expect(detectVideoCompatibility('ogg', 'vp9', 'clip.ogg')).toBe(true);
+  expect(detectVideoCompatibility('ogg', 'vp9', 'clip.ogv')).toBe(true);
   expect(detectVideoCompatibility('avi', 'h264', 'clip.avi')).toBe(false);
   expect(detectVideoCompatibility('matroska,webm', 'wmv3', 'clip.mkv')).toBe(false);
   expect(detectVideoCompatibility(null, null, 'clip.mov')).toBe(true);
   expect(detectVideoCompatibility('mpegts', null, 'clip.ts')).toBe(false);
+  expect(detectVideoCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'h264', 'clip.3gp')).toBe(false);
+  expect(detectVideoCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'h264', 'clip.3g2')).toBe(false);
+  expect(detectVideoCompatibility('mxf', 'mpeg4', 'clip.mxf')).toBe(false);
+  expect(detectVideoCompatibility('dv', 'dvvideo', 'clip.dv')).toBe(false);
 });
 
 test('codec, resolution, and fps labels are formatted for display', () => {

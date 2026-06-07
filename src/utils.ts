@@ -75,6 +75,7 @@ export function formatRecentPath(p: string): string {
 export const WEB_SUPPORTED_EXTS = ['.mp4', '.webm', '.ogg', '.ogv', '.mov', '.mkv', '.m4v'];
 const BUILT_IN_UNSUPPORTED_EXTS = new Set([
   '.wmv', '.asf', '.avi', '.flv', '.ts', '.mts', '.m2ts', '.mpg', '.mpeg', '.vob', '.divx',
+  '.3gp', '.3g2', '.mxf', '.dv',
 ]);
 const BUILT_IN_UNSUPPORTED_CODECS = new Set([
   'wmv1', 'wmv2', 'wmv3', 'vc1', 'msmpeg4v1', 'msmpeg4v2', 'msmpeg4v3', 'mpeg2video',

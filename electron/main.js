@@ -367,7 +367,7 @@ app.whenReady().then(() => {
       const ext = path.extname(filePath).toLowerCase();
       let contentType = 'video/mp4';
       if (ext === '.webm') contentType = 'video/webm';
-      else if (ext === '.ogg') contentType = 'video/ogg';
+      else if (ext === '.ogg' || ext === '.ogv') contentType = 'video/ogg';
 
       const highWaterMark = 5 * 1024 * 1024; // 5MB chunks
       const rangeDetails = getRangeDetails(range, fileSize);

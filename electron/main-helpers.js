@@ -1,11 +1,12 @@
 const path = require('path');
 
 const SERVABLE_VIDEO_EXTENSIONS = new Set([
-  '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm', '.flv', '.m4v', '.ts', '.mts',
+  '.mp4', '.webm', '.ogg', '.ogv', '.mov', '.mkv', '.m4v',
 ]);
 
 const COMPAT_UNSUPPORTED_EXTS = new Set([
   '.wmv', '.asf', '.avi', '.flv', '.ts', '.mts', '.m2ts', '.mpg', '.mpeg', '.vob', '.divx',
+  '.3gp', '.3g2', '.mxf', '.dv',
 ]);
 const COMPAT_UNSUPPORTED_CODECS = new Set([
   'wmv1', 'wmv2', 'wmv3', 'vc1', 'msmpeg4v1', 'msmpeg4v2', 'msmpeg4v3', 'mpeg2video',
