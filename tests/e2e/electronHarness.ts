@@ -1,5 +1,5 @@
-import { _electron as electron } from '@playwright/test';
-import type { ElectronApplication } from '@playwright/test';
+import { _electron as electron, expect } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import { execFile } from 'child_process';
 import fs from 'fs/promises';
 import os from 'os';
@@ -60,6 +60,14 @@ export async function launchElectronApp(userDataDir: string): Promise<ElectronAp
       VC_DISABLE_UPDATES: '1',
     },
   });
+}
+
+export async function openSeededRecentFolder(app: ElectronApplication, fileName = 'alpha.mp4'): Promise<Page> {
+  const page = await app.firstWindow();
+  await expect(page.getByRole('heading', { name: 'Video Cull' })).toBeVisible();
+  await page.locator('.empty-recent-item').first().click();
+  await expect(page.getByText(fileName)).toBeVisible();
+  return page;
 }
 
 export async function removeDir(target: string) {

@@ -180,3 +180,77 @@ test('saveCacheChunked replaces stale rows when the same path gets a new id', as
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('saveCacheChunked round-trips cached video metadata, bookmarks, and thumbnails', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    const filePath = path.join(folderPath, 'trip.mp4');
+    const cachedVideo = buildCachedVideo('trip-1', filePath, {
+      sizeBytes: 987654,
+      date: 1_710_000_000_000,
+      metadataDate: 1_710_000_000_123,
+      metadataCheckedAt: 1_710_000_000_456,
+      metadataVersion: 3,
+      durationSecs: 91.5,
+      fps: 29.97,
+      status: 'keep',
+      rating: 4,
+      favorite: true,
+      compatible: false,
+      videoCodec: 'h264',
+      audioCodec: 'aac',
+      videoBitrate: 2_500_000,
+      audioBitrate: 192_000,
+      totalBitrate: 2_692_000,
+      containerFormat: 'mp4',
+      width: 1920,
+      height: 1080,
+      bookmarks: [12.5, 45, 88.25],
+      osThumbnail: 'D:\\Thumbs\\trip.jpg',
+      duplicateHash: 'dup-trip-1',
+      thumbnails: [
+        'thumbs/trip-1/thumb_1.jpg',
+        'thumbs/trip-1/thumb_2.jpg',
+      ],
+    });
+
+    await cache.saveCacheChunked(db, [cachedVideo]);
+
+    const loadedMap = cache.loadCacheMap(db);
+    const reloaded = loadedMap.get('trip-1');
+
+    assert.equal(loadedMap.size, 1);
+    assert.ok(reloaded);
+    assert.equal(reloaded.path, filePath);
+    assert.equal(reloaded.status, 'keep');
+    assert.equal(reloaded.rating, 4);
+    assert.equal(reloaded.favorite, true);
+    assert.equal(reloaded.compatible, false);
+    assert.equal(reloaded.durationSecs, 91.5);
+    assert.equal(reloaded.fps, 29.97);
+    assert.equal(reloaded.videoCodec, 'h264');
+    assert.equal(reloaded.audioCodec, 'aac');
+    assert.equal(reloaded.videoBitrate, 2_500_000);
+    assert.equal(reloaded.audioBitrate, 192_000);
+    assert.equal(reloaded.totalBitrate, 2_692_000);
+    assert.equal(reloaded.containerFormat, 'mp4');
+    assert.equal(reloaded.width, 1920);
+    assert.equal(reloaded.height, 1080);
+    assert.equal(reloaded.metadataVersion, 3);
+    assert.equal(reloaded.metadataDate, 1_710_000_000_123);
+    assert.equal(reloaded.metadataCheckedAt, 1_710_000_000_456);
+    assert.equal(reloaded.duplicateHash, 'dup-trip-1');
+    assert.equal(reloaded.osThumbnail, 'D:\\Thumbs\\trip.jpg');
+    assert.deepEqual(reloaded.bookmarks, [12.5, 45, 88.25]);
+    assert.deepEqual(reloaded.thumbnails, [
+      'thumbs/trip-1/thumb_1.jpg',
+      'thumbs/trip-1/thumb_2.jpg',
+    ]);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});

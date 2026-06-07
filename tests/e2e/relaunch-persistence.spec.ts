@@ -3,18 +3,11 @@ import {
   createSessionFixture,
   createUserDataDir,
   launchElectronApp,
+  openSeededRecentFolder,
   removeDir,
   seedRecentDirectory,
 } from './electronHarness';
-import type { ElectronApplication, Page } from '@playwright/test';
-
-async function openSeededRecentFolder(app: ElectronApplication): Promise<Page> {
-  const page = await app.firstWindow();
-  await expect(page.getByRole('heading', { name: 'Video Cull' })).toBeVisible();
-  await page.locator('.empty-recent-item').first().click();
-  await expect(page.getByText('alpha.mp4')).toBeVisible();
-  return page;
-}
+import type { ElectronApplication } from '@playwright/test';
 
 test('relaunch preserves review decisions', async () => {
   const userDataDir = await createUserDataDir();

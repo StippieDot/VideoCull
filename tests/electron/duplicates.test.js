@@ -224,13 +224,11 @@ test('exact duplicate pass stops before cache writes after cancellation', async 
     },
   ];
 
-  const originalLoadSignatureRows = cache.loadSignatureRows;
-  const originalUpdateVideoSignatures = cache.updateVideoSignatures;
   let writeAttempts = 0;
-  cache.loadSignatureRows = () => [];
-  cache.updateVideoSignatures = () => {
+  vi.spyOn(cache, 'loadSignatureRows').mockReturnValue([]);
+  vi.spyOn(cache, 'updateVideoSignatures').mockImplementation(() => {
     writeAttempts++;
-  };
+  });
 
   const run = { cancelled: false };
   setImmediate(() => {
@@ -244,8 +242,7 @@ test('exact duplicate pass stops before cache writes after cancellation', async 
     );
     assert.equal(writeAttempts, 0);
   } finally {
-    cache.loadSignatureRows = originalLoadSignatureRows;
-    cache.updateVideoSignatures = originalUpdateVideoSignatures;
+    vi.restoreAllMocks();
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });

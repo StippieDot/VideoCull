@@ -36,24 +36,24 @@ test('scanDirectory skips cache directories and only recurses when requested', a
 test('scanDirectory skips unreadable or non-video entries without failing the scan', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-errors-'));
   const statPath = path.join(tempRoot, 'bad.mp4');
-  const realStat = fs.stat;
+  const realStat = fs.stat.bind(fs);
 
   try {
     await fs.writeFile(path.join(tempRoot, 'good.mp4'), '');
     await fs.writeFile(path.join(tempRoot, 'ignore.txt'), '');
     await fs.writeFile(statPath, '');
 
-    fs.stat = async (targetPath) => {
+    vi.spyOn(fs, 'stat').mockImplementation(async (targetPath) => {
       if (targetPath === statPath) {
         throw new Error('stat failed');
       }
       return realStat(targetPath);
-    };
+    });
 
     const videos = await scanDirectory(tempRoot, false);
     assert.deepEqual(videos.map((video) => video.filename), ['good.mp4']);
   } finally {
-    fs.stat = realStat;
+    vi.restoreAllMocks();
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
