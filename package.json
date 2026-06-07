@@ -7,8 +7,7 @@
   "main": "electron/main.js",
   "scripts": {
     "dev:vite": "vite",
-    "dev:electron": "wait-on http://localhost:5173 && node -e \"setTimeout(()=>require('child_process').execSync('electron .', {stdio:'inherit',cwd:process.cwd()}),1000)\"",
-    "dev": "concurrently -k -n vite,electron -c cyan,green \"npm run dev:vite\" \"npm run dev:electron\"",
+    "dev": "node scripts/dev.js",
     "build": "vite build",
     "check:ipc": "node scripts/check-ipc-contract.js",
     "test": "vitest run",
