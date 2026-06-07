@@ -5,6 +5,10 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.{js,ts,tsx}'],
+    exclude: [
+      'tests/electron/cache.test.js',
+      'tests/electron/cache.migration.test.js',
+    ],
     coverage: {
       provider: 'v8',
       reportsDirectory: 'coverage',

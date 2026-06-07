@@ -5,11 +5,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import useStore from '../../src/store';
+import { resetPerfDevMock } from '../helpers/perfDevMock';
+import { makeVideo } from '../helpers/videoFactory';
 import type {
   DuplicateProgress,
   ThumbReadyEvent,
   UpdateInfo,
-  Video,
   VideoStore,
 } from '../../src/types';
 
@@ -71,11 +72,7 @@ vi.mock('../../src/components/ShortcutsHelp', () => ({
   default: () => <div data-testid="shortcuts-help">Shortcuts Help</div>,
 }));
 
-vi.mock('../../src/perf-dev', () => ({
-  completeDevInteractionOnNextPaint: vi.fn(),
-  recordDevPerf: vi.fn(),
-  recordReactCommit: vi.fn(),
-}));
+vi.mock('../../src/perf-dev', async () => await import('../helpers/perfDevMock'));
 
 import App from '../../src/App';
 
@@ -90,30 +87,6 @@ type ElectronHandlers = {
 };
 
 type ElectronApiMock = ReturnType<typeof createElectronApiMock>;
-
-function makeVideo(id: string, overrides: Partial<Video> = {}): Video {
-  return {
-    id,
-    filename: `${id}.mp4`,
-    path: `D:\\Media\\${id}.mp4`,
-    sizeBytes: 100,
-    date: 0,
-    durationSecs: 12,
-    duplicateHash: null,
-    status: 'pending',
-    thumbnails: [],
-    rating: 0,
-    favorite: false,
-    compatible: false,
-    videoCodec: null,
-    audioCodec: null,
-    containerFormat: null,
-    width: null,
-    height: null,
-    fps: null,
-    ...overrides,
-  };
-}
 
 function getStoreApi() {
   return useStore as typeof useStore & {
@@ -211,6 +184,7 @@ describe('App renderer behavior', () => {
   beforeEach(() => {
     cleanup();
     vi.useRealTimers();
+    resetPerfDevMock();
     electron = createElectronApiMock();
     const store = getStoreApi();
     store.setState(store.getInitialState(), true);
@@ -238,8 +212,8 @@ describe('App renderer behavior', () => {
   test('applies metadata-ready and thumb-ready batches to the rendered video state', async () => {
     getStoreApi().setState({
       directory: 'D:\\Media',
-      videos: [makeVideo('a')],
-      filteredVideos: [makeVideo('a')],
+      videos: [makeVideo('a', { compatible: false })],
+      filteredVideos: [makeVideo('a', { compatible: false })],
       stats: { total: 1, pending: 1, skipped: 0, keep: 0, delete: 0, totalSize: 100, deleteSize: 0 },
     });
 

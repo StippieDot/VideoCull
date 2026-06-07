@@ -117,9 +117,9 @@ type DuplicateRowRenderSignals = {
 
 let duplicateRowRuntime: DuplicateRowRuntimeData | null = null;
 
-function thumbSrc(video: Video): string {
+function thumbSrc(video: Video): string | null {
   if (video.thumbnails[0]) return `thumb://local/${encodeURIComponent(video.thumbnails[0])}`;
-  return video.osThumbnail ?? '';
+  return video.osThumbnail ?? null;
 }
 
 function bitrateLabel(video: Video): string {
@@ -202,6 +202,7 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
   onOpenVideoContextMenu,
 }: DuplicateRowItemProps) {
   const statusBadge = statusBadgeContent(video);
+  const thumbnailSrc = thumbSrc(video);
   const chip = (key: string, label: string) => {
     const state = flags[key] ?? 'equal';
     return (
@@ -223,7 +224,7 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
           onChange={() => onToggleSelection(video)}
         />
       </label>
-      <img src={thumbSrc(video)} alt="" />
+      {thumbnailSrc && <img src={thumbnailSrc} alt="" />}
       <div className="duplicate-row-copy">
         <div className="duplicate-row-title">
           <strong>{video.filename}</strong>

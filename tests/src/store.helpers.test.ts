@@ -1,29 +1,6 @@
 import { __test__ } from '../../src/store';
-import type { DuplicateGroup, Video, VideoStore } from '../../src/types';
-
-function makeVideo(id: string, overrides: Partial<Video> = {}): Video {
-  return {
-    id,
-    filename: `${id}.mp4`,
-    path: `C:\\library\\${id}.mp4`,
-    sizeBytes: 100,
-    date: 0,
-    durationSecs: 10,
-    duplicateHash: null,
-    status: 'pending',
-    thumbnails: [],
-    rating: 0,
-    favorite: false,
-    compatible: true,
-    videoCodec: null,
-    audioCodec: null,
-    containerFormat: null,
-    width: null,
-    height: null,
-    fps: null,
-    ...overrides,
-  };
-}
+import type { DuplicateGroup, VideoStore } from '../../src/types';
+import { makeVideo } from '../helpers/videoFactory';
 
 function makeStoreState(overrides: Partial<VideoStore> = {}): VideoStore {
   return {

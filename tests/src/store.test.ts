@@ -1,41 +1,6 @@
 import { __test__ } from '../../src/store';
-import type { DuplicateGroup, Video, VideoStore } from '../../src/types';
-
-function makeVideo(id: string, overrides: Partial<Video> = {}): Video {
-  return {
-    id,
-    filename: `${id}.mp4`,
-    path: `C:\\library\\${id}.mp4`,
-    sizeBytes: 100,
-    date: 0,
-    durationSecs: 10,
-    duplicateHash: null,
-    status: 'pending',
-    thumbnails: [],
-    rating: 0,
-    favorite: false,
-    compatible: true,
-    videoCodec: null,
-    audioCodec: null,
-    containerFormat: null,
-    width: null,
-    height: null,
-    fps: null,
-    ...overrides,
-  };
-}
-
-function makeGroup(overrides: Partial<DuplicateGroup> = {}): DuplicateGroup {
-  return {
-    id: 'group-1',
-    videoIds: ['a', 'b'],
-    similarity: 98,
-    matchType: 'visual',
-    suggestedKeeperId: 'a',
-    reason: 'Likely duplicate',
-    ...overrides,
-  };
-}
+import type { VideoStore } from '../../src/types';
+import { makeDuplicateGroup as makeGroup, makeVideo } from '../helpers/videoFactory';
 
 type FilterState = Pick<VideoStore,
   'videos' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' |
