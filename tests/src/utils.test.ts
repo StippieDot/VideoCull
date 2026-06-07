@@ -62,7 +62,9 @@ test('codec, resolution, and fps labels are formatted for display', () => {
   expect(formatCodecLabel('xvid')).toBe('XVID');
   expect(formatCodecLabel(null)).toBe('');
   expect(formatResolutionLabel(3840, 2160)).toBe('4K');
+  expect(formatResolutionLabel(2560, 1440)).toBe('1440p');
   expect(formatResolutionLabel(1920, 1080)).toBe('1080p');
+  expect(formatResolutionLabel(1080, 1920)).toBe('1080p');
   expect(formatResolutionLabel(854, 480)).toBe('480p');
   expect(formatResolutionLabel(null, 480)).toBe('');
   expect(formatFps(30)).toBe('30fps');

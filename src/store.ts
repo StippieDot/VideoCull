@@ -104,8 +104,15 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
       }
       case 'rating':
         return (a.rating ?? 0) - (b.rating ?? 0);
-      case 'resolution':
-        return ((a.width ?? 0) * (a.height ?? 0)) - ((b.width ?? 0) * (b.height ?? 0));
+      case 'resolution': {
+        const resolutionA = resolutionSortValue(a);
+        const resolutionB = resolutionSortValue(b);
+        if (resolutionA.pixels !== resolutionB.pixels) return resolutionA.pixels - resolutionB.pixels;
+        if (resolutionA.longestEdge !== resolutionB.longestEdge) {
+          return resolutionA.longestEdge - resolutionB.longestEdge;
+        }
+        return resolutionA.shortestEdge - resolutionB.shortestEdge;
+      }
       case 'fps':
         return (a.fps ?? 0) - (b.fps ?? 0);
     }
@@ -264,6 +271,16 @@ function finiteNumber(value: unknown): number {
 
 function resolutionPixels(video: Video): number {
   return finiteNumber(video.width) * finiteNumber(video.height);
+}
+
+function resolutionSortValue(video: Video) {
+  const width = finiteNumber(video.width);
+  const height = finiteNumber(video.height);
+  return {
+    pixels: width * height,
+    longestEdge: Math.max(width, height),
+    shortestEdge: Math.min(width, height),
+  };
 }
 
 // SYNC NOTE: This function mirrors compareKeeperCandidates in electron/duplicate-utils.js.
@@ -1548,6 +1565,10 @@ const useStore = create<VideoStore>((set, get) => ({
         ...(newSettings.duplicates ?? {}),
       },
     };
+    const defaultSortChanged = mergedSettings.defaultSortBy !== state.settings.defaultSortBy;
+    const defaultSortOrderChanged = mergedSettings.defaultSortOrder !== state.settings.defaultSortOrder;
+    const defaultGroupByFolderChanged = mergedSettings.defaultGroupByFolder !== state.settings.defaultGroupByFolder;
+    const defaultCardScaleChanged = mergedSettings.defaultCardScale !== state.settings.defaultCardScale;
     const duplicateGroups = applyKeeperOrderToGroups(state.duplicateGroups, state.videos, mergedSettings.duplicates.keeperOrder);
     const videos = duplicateGroups.length > 0
       ? applyDuplicateGroupsToVideos(state.videos, duplicateGroups)
@@ -1556,16 +1577,16 @@ const useStore = create<VideoStore>((set, get) => ({
       (!mergedSettings.features.ratings && state.sortBy === 'rating') ||
       (!mergedSettings.features.codecBadges && (state.sortBy === 'resolution' || state.sortBy === 'fps'))
         ? 'name'
-        : (newSettings.defaultSortBy ?? state.sortBy);
+        : (defaultSortChanged ? mergedSettings.defaultSortBy : state.sortBy);
     const newState = {
       ...state,
       videos,
       duplicateGroups,
       settings: mergedSettings,
-      cardScale: newSettings.defaultCardScale ?? state.cardScale,
+      cardScale: defaultCardScaleChanged ? mergedSettings.defaultCardScale : state.cardScale,
       sortBy: nextSortBy,
-      sortOrder: newSettings.defaultSortOrder ?? state.sortOrder,
-      groupByFolder: newSettings.defaultGroupByFolder ?? state.groupByFolder,
+      sortOrder: defaultSortOrderChanged ? mergedSettings.defaultSortOrder : state.sortOrder,
+      groupByFolder: defaultGroupByFolderChanged ? mergedSettings.defaultGroupByFolder : state.groupByFolder,
       minRatingFilter: mergedSettings.features.ratings ? state.minRatingFilter : 0,
       favoritesFilter: mergedSettings.features.favorites ? state.favoritesFilter : false,
       incompatibleFilter: mergedSettings.features.compatibilityCheck ? state.incompatibleFilter : false,

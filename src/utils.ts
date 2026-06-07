@@ -148,10 +148,16 @@ export function formatCodecLabel(codec: string | null | undefined): string {
 
 export function formatResolutionLabel(width: number | null | undefined, height: number | null | undefined): string {
   if (!width || !height) return '';
-  if (width >= 3840) return '4K';
-  if (width >= 1920) return '1080p';
-  if (width >= 1280) return '720p';
-  return `${height}p`;
+  const longestEdge = Math.max(width, height);
+  const shortestEdge = Math.min(width, height);
+
+  if (longestEdge >= 7680) return '8K';
+  if (longestEdge >= 5120) return '5K';
+  if (longestEdge >= 3840) return '4K';
+  if (longestEdge >= 2560) return '1440p';
+  if (longestEdge >= 1920) return '1080p';
+  if (longestEdge >= 1280) return '720p';
+  return `${shortestEdge}p`;
 }
 
 export function formatFps(fps: number | null | undefined): string {

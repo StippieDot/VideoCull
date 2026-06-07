@@ -148,6 +148,22 @@ describe('useStore public behavior', () => {
     expect(state.filteredVideos.map((video) => video.id)).toEqual(['a']);
   });
 
+  test('saving unrelated settings changes preserves the active sort and grouping state', () => {
+    useStore.getState().setSortBy('size');
+    useStore.getState().setSortOrder('desc');
+    useStore.getState().setGroupByFolder(false);
+
+    useStore.getState().updateSettings({
+      ...useStore.getState().settings,
+      hardwareAccel: !useStore.getState().settings.hardwareAccel,
+    });
+
+    const state = useStore.getState();
+    expect(state.sortBy).toBe('size');
+    expect(state.sortOrder).toBe('desc');
+    expect(state.groupByFolder).toBe(false);
+  });
+
   test('duplicate result actions annotate videos and allow a manual keeper override through the store API', () => {
     useStore.getState().setVideos([
       makeVideo('a', { path: 'D:\\Media\\z.mp4', width: 1280, height: 720, sizeBytes: 100 }),

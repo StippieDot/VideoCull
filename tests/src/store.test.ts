@@ -74,6 +74,25 @@ describe('store filtering and grouping behavior', () => {
 
     expect(filtered.map((video) => video.id)).toEqual(['b', 'c', 'a']);
   });
+
+  test('orders resolution sort by actual pixel count regardless of orientation', () => {
+    const videos = [
+      makeVideo('sd', { width: 854, height: 480, path: 'C:\\one\\sd.mp4' }),
+      makeVideo('portrait-hd', { width: 1080, height: 1920, path: 'C:\\one\\portrait.mp4' }),
+      makeVideo('wide-hd', { width: 1920, height: 1080, path: 'C:\\one\\wide.mp4' }),
+      makeVideo('uhd', { width: 3840, height: 2160, path: 'C:\\one\\uhd.mp4' }),
+    ];
+
+    const filtered = __test__.computeFiltered(
+      makeFilterState({
+        videos,
+        sortBy: 'resolution',
+        sortOrder: 'desc',
+      })
+    );
+
+    expect(filtered.map((video) => video.id)).toEqual(['uhd', 'portrait-hd', 'wide-hd', 'sd']);
+  });
 });
 
 describe('duplicate pair normalization', () => {
