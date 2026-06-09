@@ -301,15 +301,20 @@ function closeDb() {
 
 // ── Read ──────────────────────────────────────────────────────────────────
 
-/**
- * Load all cached videos from the DB as a Map<id, cachedVideo>.
- * Returns an empty Map if the DB has no rows yet.
- */
-function loadCacheVideos(db) {
-  const rows = db.prepare('SELECT * FROM videos').all();
-  const thumbRows = db.prepare(
-    'SELECT video_id, file_path FROM thumbnails ORDER BY video_id, idx'
-  ).all();
+function normalizeVideoIds(videoIds) {
+  if (!Array.isArray(videoIds)) return null;
+  const uniqueIds = [];
+  const seen = new Set();
+  for (const videoId of videoIds) {
+    if (!videoId || seen.has(videoId)) continue;
+    seen.add(videoId);
+    uniqueIds.push(videoId);
+  }
+  return uniqueIds;
+}
+
+function hydrateCachedVideos(rows, thumbRows) {
+  if (rows.length === 0) return [];
 
   const thumbsByVideoId = new Map();
   for (const row of thumbRows) {
@@ -360,8 +365,32 @@ function loadCacheVideos(db) {
   return Array.from(map.values());
 }
 
-function loadCacheMap(db) {
-  const videos = loadCacheVideos(db);
+/**
+ * Load cached videos from the DB.
+ * When `videoIds` is provided, only those ids are hydrated.
+ */
+function loadCacheVideos(db, videoIds = null) {
+  const requestedIds = normalizeVideoIds(videoIds);
+  if (requestedIds?.length === 0) return [];
+
+  const rows = requestedIds
+    ? batchSelectIn(db, 'SELECT * FROM videos WHERE id IN (__IN__)', requestedIds)
+    : db.prepare('SELECT * FROM videos').all();
+  const thumbRows = requestedIds
+    ? batchSelectIn(
+      db,
+      'SELECT video_id, file_path FROM thumbnails WHERE video_id IN (__IN__) ORDER BY video_id, idx',
+      requestedIds,
+    )
+    : db.prepare(
+      'SELECT video_id, file_path FROM thumbnails ORDER BY video_id, idx'
+    ).all();
+
+  return hydrateCachedVideos(rows, thumbRows);
+}
+
+function loadCacheMap(db, videoIds = null) {
+  const videos = loadCacheVideos(db, videoIds);
   const map = new Map();
   for (const video of videos) {
     map.set(video.id, video);
@@ -529,6 +558,57 @@ function updateVideoMetadata(db, videoId, metadata) {
     Date.now(),
     videoId
   );
+}
+
+function updateVideoMetadataBatch(db, updates) {
+  if (!Array.isArray(updates) || updates.length === 0) return;
+
+  const now = Date.now();
+  const write = db.prepare(`
+    UPDATE videos SET
+      metadata_date = COALESCE(?, metadata_date),
+      metadata_checked_at = COALESCE(?, metadata_checked_at),
+      metadata_version = COALESCE(?, metadata_version),
+      metadata_failed_at = NULL,
+      metadata_failure_reason = NULL,
+      duration_secs = COALESCE(?, duration_secs),
+      fps = COALESCE(?, fps),
+      video_codec = COALESCE(?, video_codec),
+      audio_codec = COALESCE(?, audio_codec),
+      video_bitrate = COALESCE(?, video_bitrate),
+      audio_bitrate = COALESCE(?, audio_bitrate),
+      total_bitrate = COALESCE(?, total_bitrate),
+      container_format = COALESCE(?, container_format),
+      width = COALESCE(?, width),
+      height = COALESCE(?, height),
+      updated_at = ?
+    WHERE id = ?
+  `);
+
+  const writeAll = db.transaction((batch) => {
+    for (const metadata of batch) {
+      if (!metadata?.videoId) continue;
+      write.run(
+        metadata.metadataDate ?? null,
+        metadata.metadataCheckedAt ?? null,
+        metadata.metadataVersion ?? null,
+        metadata.durationSecs ?? null,
+        metadata.fps ?? null,
+        metadata.videoCodec ?? null,
+        metadata.audioCodec ?? null,
+        metadata.videoBitrate ?? null,
+        metadata.audioBitrate ?? null,
+        metadata.totalBitrate ?? null,
+        metadata.containerFormat ?? null,
+        metadata.width ?? null,
+        metadata.height ?? null,
+        now,
+        metadata.videoId
+      );
+    }
+  });
+
+  writeAll(updates);
 }
 
 /**
@@ -739,6 +819,27 @@ function markMetadataFailure(db, videoId, reason) {
   `).run(Date.now(), String(reason || 'Metadata probe failed').slice(0, 500), videoId);
 }
 
+function markMetadataFailuresBatch(db, failures) {
+  if (!Array.isArray(failures) || failures.length === 0) return;
+
+  const now = Date.now();
+  const write = db.prepare(`
+    UPDATE videos
+    SET metadata_failed_at = ?,
+        metadata_failure_reason = ?
+    WHERE id = ?
+  `);
+
+  const writeAll = db.transaction((batch) => {
+    for (const failure of batch) {
+      if (!failure?.videoId) continue;
+      write.run(now, String(failure.reason || 'Metadata probe failed').slice(0, 500), failure.videoId);
+    }
+  });
+
+  writeAll(failures);
+}
+
 function loadRecentMetadataFailureIds(db, videoIds, retryAfterMs) {
   if (!videoIds.length) return new Set();
   const cutoff = Date.now() - Math.max(0, Number(retryAfterMs) || 0);
@@ -762,7 +863,7 @@ function loadPHashRows(db, videoIds, sampleCount) {
     const placeholders = chunk.map(() => '?').join(',');
     const startedAt = performance.now();
     const batch = db.prepare(`
-      SELECT video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, frame_dark_ratio
+      SELECT video_id, sample_index, phash_hex, flipped_phash_hex, frame_dark_ratio
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
       ORDER BY video_id, sample_index
@@ -963,9 +1064,11 @@ module.exports = {
   markMetadataFailure,
   loadRecentMetadataFailureIds,
   updateVideoMetadata,
+  updateVideoMetadataBatch,
   loadPHashRows,
   loadGraySamples,
   loadGraySampleRows,
+  markMetadataFailuresBatch,
   updateVideoSignatures,
   loadSignatureRows,
   migrateJsonIfNeeded,

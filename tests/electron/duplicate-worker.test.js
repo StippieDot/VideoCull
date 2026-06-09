@@ -23,8 +23,8 @@ test('unknown-duration videos are NOT compared against known-duration videos', a
       { id: 'unknown', durationSecs: null },
     ],
     phashRows: [
-      { video_id: 'known', sample_index: 0, timestamp_secs: 50, phash_hex: 'ffff000000000000' },
-      { video_id: 'unknown', sample_index: 0, timestamp_secs: 0, phash_hex: 'ffff000000000000' },
+      { video_id: 'known', sample_index: 0, phash_hex: 'ffff000000000000' },
+      { video_id: 'unknown', sample_index: 0, phash_hex: 'ffff000000000000' },
     ],
     settings: {
       sampleCount: 1,
@@ -47,9 +47,9 @@ test('unknown-duration videos ARE compared against each other', async () => {
       { id: 'unknownB', durationSecs: 0 },
     ],
     phashRows: [
-      { video_id: 'known', sample_index: 0, timestamp_secs: 50, phash_hex: 'ffff000000000000' },
-      { video_id: 'unknownA', sample_index: 0, timestamp_secs: 0, phash_hex: 'ffff000000000000' },
-      { video_id: 'unknownB', sample_index: 0, timestamp_secs: 0, phash_hex: 'ffff000000000000' },
+      { video_id: 'known', sample_index: 0, phash_hex: 'ffff000000000000' },
+      { video_id: 'unknownA', sample_index: 0, phash_hex: 'ffff000000000000' },
+      { video_id: 'unknownB', sample_index: 0, phash_hex: 'ffff000000000000' },
     ],
     settings: {
       sampleCount: 1,
@@ -73,12 +73,12 @@ test('dark pHash samples are skipped when enough usable samples remain', async (
       { id: 'b', durationSecs: 100 },
     ],
     phashRows: [
-      { video_id: 'a', sample_index: 0, timestamp_secs: 25, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
-      { video_id: 'a', sample_index: 1, timestamp_secs: 50, phash_hex: '0000000000000000', frame_dark_ratio: 0.9 },
-      { video_id: 'a', sample_index: 2, timestamp_secs: 75, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
-      { video_id: 'b', sample_index: 0, timestamp_secs: 25, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
-      { video_id: 'b', sample_index: 1, timestamp_secs: 50, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
-      { video_id: 'b', sample_index: 2, timestamp_secs: 75, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'a', sample_index: 0, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'a', sample_index: 1, phash_hex: '0000000000000000', frame_dark_ratio: 0.9 },
+      { video_id: 'a', sample_index: 2, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'b', sample_index: 0, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'b', sample_index: 1, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'b', sample_index: 2, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
     ],
     settings: {
       sampleCount: 3,
@@ -99,12 +99,12 @@ test('pHash match fails when dark-sample filtering leaves fewer than two usable 
       { id: 'b', durationSecs: 100 },
     ],
     phashRows: [
-      { video_id: 'a', sample_index: 0, timestamp_secs: 25, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.9 },
-      { video_id: 'a', sample_index: 1, timestamp_secs: 50, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
-      { video_id: 'a', sample_index: 2, timestamp_secs: 75, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.9 },
-      { video_id: 'b', sample_index: 0, timestamp_secs: 25, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
-      { video_id: 'b', sample_index: 1, timestamp_secs: 50, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
-      { video_id: 'b', sample_index: 2, timestamp_secs: 75, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'a', sample_index: 0, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.9 },
+      { video_id: 'a', sample_index: 1, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'a', sample_index: 2, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.9 },
+      { video_id: 'b', sample_index: 0, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'b', sample_index: 1, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+      { video_id: 'b', sample_index: 2, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
     ],
     settings: {
       sampleCount: 3,

@@ -254,3 +254,143 @@ test('saveCacheChunked round-trips cached video metadata, bookmarks, and thumbna
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('loadCacheMap can selectively hydrate requested video ids', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    cache.saveCache(db, [
+      buildCachedVideo('keep-a', path.join(folderPath, 'keep-a.mp4'), {
+        status: 'keep',
+        durationSecs: 11,
+        thumbnails: [
+          'thumbs/keep-a/thumb_2.jpg',
+          'thumbs/keep-a/thumb_1.jpg',
+        ],
+      }),
+      buildCachedVideo('skip-b', path.join(folderPath, 'skip-b.mp4'), {
+        status: 'delete',
+        durationSecs: 22,
+        thumbnails: ['thumbs/skip-b/thumb_1.jpg'],
+      }),
+      buildCachedVideo('keep-c', path.join(folderPath, 'keep-c.mp4'), {
+        status: 'pending',
+        durationSecs: 33,
+        thumbnails: ['thumbs/keep-c/thumb_1.jpg'],
+      }),
+    ]);
+
+    const loadedMap = cache.loadCacheMap(db, ['keep-c', 'keep-a', 'missing']);
+
+    assert.deepEqual(Array.from(loadedMap.keys()).sort(), ['keep-a', 'keep-c']);
+    assert.equal(loadedMap.get('keep-a')?.status, 'keep');
+    assert.equal(loadedMap.get('keep-c')?.durationSecs, 33);
+    assert.deepEqual(loadedMap.get('keep-a')?.thumbnails, [
+      'thumbs/keep-a/thumb_1.jpg',
+      'thumbs/keep-a/thumb_2.jpg',
+    ]);
+    assert.equal(loadedMap.has('skip-b'), false);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('updateVideoMetadataBatch applies metadata updates transactionally for multiple videos', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    insertVideo(db, 'a', path.join(folderPath, 'a.mp4'));
+    insertVideo(db, 'b', path.join(folderPath, 'b.mp4'));
+    db.prepare('UPDATE videos SET metadata_failed_at = 123, metadata_failure_reason = ? WHERE id IN (?, ?)')
+      .run('old failure', 'a', 'b');
+
+    cache.updateVideoMetadataBatch(db, [
+      {
+        videoId: 'a',
+        metadataDate: 1000,
+        metadataCheckedAt: 2000,
+        metadataVersion: 2,
+        durationSecs: 12.5,
+        fps: 29.97,
+        videoCodec: 'h264',
+        audioCodec: 'aac',
+        videoBitrate: 2_000_000,
+        audioBitrate: 128_000,
+        totalBitrate: 2_128_000,
+        containerFormat: 'mp4',
+        width: 1920,
+        height: 1080,
+      },
+      {
+        videoId: 'b',
+        metadataDate: 3000,
+        metadataCheckedAt: 4000,
+        metadataVersion: 2,
+        durationSecs: 45,
+        fps: 60,
+        videoCodec: 'hevc',
+        audioCodec: 'aac',
+        videoBitrate: 5_000_000,
+        audioBitrate: 192_000,
+        totalBitrate: 5_192_000,
+        containerFormat: 'mov',
+        width: 3840,
+        height: 2160,
+      },
+    ]);
+
+    const rows = db.prepare(`
+      SELECT id, metadata_date, metadata_checked_at, metadata_version, metadata_failed_at, metadata_failure_reason,
+             duration_secs, fps, video_codec, audio_codec, video_bitrate, audio_bitrate, total_bitrate,
+             container_format, width, height
+      FROM videos
+      ORDER BY id
+    `).all();
+
+    assert.equal(rows[0].metadata_failed_at, null);
+    assert.equal(rows[0].metadata_failure_reason, null);
+    assert.equal(rows[0].metadata_date, 1000);
+    assert.equal(rows[0].metadata_checked_at, 2000);
+    assert.equal(rows[0].metadata_version, 2);
+    assert.equal(rows[0].video_codec, 'h264');
+    assert.equal(rows[1].metadata_failed_at, null);
+    assert.equal(rows[1].metadata_failure_reason, null);
+    assert.equal(rows[1].metadata_date, 3000);
+    assert.equal(rows[1].metadata_checked_at, 4000);
+    assert.equal(rows[1].metadata_version, 2);
+    assert.equal(rows[1].video_codec, 'hevc');
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('markMetadataFailuresBatch records failure state for multiple videos', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    insertVideo(db, 'a', path.join(folderPath, 'a.mp4'));
+    insertVideo(db, 'b', path.join(folderPath, 'b.mp4'));
+
+    cache.markMetadataFailuresBatch(db, [
+      { videoId: 'a', reason: 'ffprobe failed' },
+      { videoId: 'b', reason: 'stream missing' },
+    ]);
+
+    const rows = db.prepare('SELECT id, metadata_failed_at, metadata_failure_reason FROM videos ORDER BY id').all();
+    assert.equal(typeof rows[0].metadata_failed_at, 'number');
+    assert.equal(rows[0].metadata_failure_reason, 'ffprobe failed');
+    assert.equal(typeof rows[1].metadata_failed_at, 'number');
+    assert.equal(rows[1].metadata_failure_reason, 'stream missing');
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});

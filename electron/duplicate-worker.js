@@ -16,7 +16,6 @@ function compactSamples(rows, sampleCount) {
     const list = byVideo.get(row.video_id) ?? [];
     list.push({
       index: Number(row.sample_index),
-      timestampSecs: Number(row.timestamp_secs),
       hash: parsePHashHex(row.phash_hex),
       flippedHash: parsePHashHex(row.flipped_phash_hex ?? row.phash_hex),
       darkRatio: Number(row.frame_dark_ratio ?? 0),

@@ -6,7 +6,6 @@ const { performance: nodePerformance } = require('perf_hooks');
 const { scanDirectory } = require('./scanner');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
-const { collectUnloadedOwnerFolders, createFolderKey, rememberFolder } = require('./cache-folder-tracker');
 const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
@@ -751,8 +750,8 @@ async function getKnownCacheFolders(loadedDirs = []) {
   return Array.from(new Set([...knownFolders, ...knownDistributedPaths, ...loadedDirs].filter(Boolean)));
 }
 
-function loadCacheMapWithAbsoluteThumbs(db, cacheRootDir) {
-  const map = cache.loadCacheMap(db);
+function loadCacheMapWithAbsoluteThumbs(db, cacheRootDir, videoIds = null) {
+  const map = cache.loadCacheMap(db, videoIds);
   for (const cached of map.values()) {
     cached.thumbnails = cached.thumbnails.map((thumb) => thumbAbsolute(thumb, cacheRootDir));
   }
@@ -778,15 +777,15 @@ async function openCacheDbWithRecovery(folderPath, cacheOptions) {
   }
 }
 
-async function loadCacheMapWithRecovery(folderPath, cacheOptions, cacheRootDir) {
+async function loadCacheMapWithRecovery(folderPath, cacheOptions, cacheRootDir, videoIds = null) {
   let db = await openCacheDbWithRecovery(folderPath, cacheOptions);
   try {
-    return loadCacheMapWithAbsoluteThumbs(db, cacheRootDir);
+    return loadCacheMapWithAbsoluteThumbs(db, cacheRootDir, videoIds);
   } catch (err) {
     if (!isSqliteCorruptionError(err)) throw err;
     await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
     db = cache.openDb(folderPath, cacheOptions);
-    return loadCacheMapWithAbsoluteThumbs(db, cacheRootDir);
+    return loadCacheMapWithAbsoluteThumbs(db, cacheRootDir, videoIds);
   }
 }
 
@@ -851,25 +850,27 @@ async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false, 
   }
 }
 
-async function loadOwnerFolderCachesIntoMap(videos, rootDirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots, loadedCacheFolderKeys = new Set()) {
-  const scannedIds = new Set(videos.map((video) => video.id));
-  const ownerFolders = collectUnloadedOwnerFolders(videos, rootDirPath, loadedCacheFolderKeys);
+async function loadRelevantFolderCacheRowsIntoMap(videos, cacheOptions, cachedMap, scanToken, scanCacheRoots) {
+  const videosByFolder = groupVideosByFolder(videos);
   const yieldToEventLoop = createEventLoopYieldController();
 
-  for (const ownerFolder of ownerFolders) {
+  for (const [folderPath, folderVideos] of videosByFolder) {
     try {
       assertScanCurrent(scanToken);
-      const ownerPaths = await prepareCacheFolder(ownerFolder, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
+      const cachePaths = await prepareCacheFolder(folderPath, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
       assertScanCurrent(scanToken);
-      const ownerMap = await loadCacheMapWithRecovery(ownerFolder, cacheOptions, ownerPaths.cacheRootDir);
+      const ownerMap = await loadCacheMapWithRecovery(
+        folderPath,
+        cacheOptions,
+        cachePaths.cacheRootDir,
+        folderVideos.map((video) => video.id),
+      );
       assertScanCurrent(scanToken);
-      // Owner-folder caches are the canonical location after P3. Let them win
-      // over stale parent rows if both exist.
-      mergeCacheMap(cachedMap, ownerMap, scannedIds, { overwrite: true });
+      mergeCacheMap(cachedMap, ownerMap, null, { overwrite: true });
       await yieldToEventLoop();
     } catch (err) {
       if (err instanceof ScanSupersededError) throw err;
-      log.warn(`[scan-directory] Failed to load owner cache for ${ownerFolder}:`, err);
+      log.warn(`[scan-directory] Failed to load relevant cache rows for ${folderPath}:`, err);
     }
   }
 }
@@ -1306,7 +1307,6 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   assertScanCurrent(scanToken);
   const cachePaths = await prepareCacheFolder(dirPath, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
   assertScanCurrent(scanToken);
-  const loadedCacheFolderKeys = new Set([createFolderKey(dirPath)]);
   recordStageTiming('prepareCacheFolder', stageStartedAt);
 
   // Open SQLite DB for this directory (creates schema if first time)
@@ -1348,31 +1348,6 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     }
   }
   recordStageTiming('splitParentCaches', stageStartedAt, { items: parentCacheFolders.length });
-
-  // Load existing cache entries for merging. Known subfolder caches are folded in
-  // so opening a parent preserves decisions made when a child folder was opened alone.
-  stageStartedAt = performance.now();
-  const cachedMap = await loadCacheMapWithRecovery(dirPath, cacheOptions, cachePaths.cacheRootDir);
-  assertScanCurrent(scanToken);
-  knownCacheFolders = await getKnownCacheFolders();
-  assertScanCurrent(scanToken);
-  const childCacheFolders = knownCacheFolders.filter((folderPath) => isFolderInsideSync(folderPath, dirPath));
-  for (const childFolder of childCacheFolders) {
-    try {
-      assertScanCurrent(scanToken);
-      const childPaths = getCachePaths(childFolder, cacheOptions);
-      scanCacheRoots.add(childPaths.cacheRootDir);
-      const childMap = await loadCacheMapWithRecovery(childFolder, cacheOptions, childPaths.cacheRootDir);
-      mergeCacheMap(cachedMap, childMap);
-      rememberFolder(loadedCacheFolderKeys, childFolder);
-      assertScanCurrent(scanToken);
-      await yieldToEventLoop();
-    } catch (err) {
-      if (err instanceof ScanSupersededError) throw err;
-      log.warn(`[scan-directory] Failed to reuse subfolder cache for ${childFolder}:`, err);
-    }
-  }
-  recordStageTiming('loadAndMergeChildCaches', stageStartedAt, { items: childCacheFolders.length });
 
   // Migrate any old .video-cull-thumbs thumbnails into the cache directory.
   // Filesystem-based: checks disk directly, not the DB, so it works even when
@@ -1421,10 +1396,11 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   });
   assertScanCurrent(scanToken);
   recordStageTiming('scanDirectoryWalk', stageStartedAt, { items: videos.length });
+  const cachedMap = new Map();
   stageStartedAt = performance.now();
-  await loadOwnerFolderCachesIntoMap(videos, dirPath, cacheOptions, cachedMap, scanToken, scanCacheRoots, loadedCacheFolderKeys);
+  await loadRelevantFolderCacheRowsIntoMap(videos, cacheOptions, cachedMap, scanToken, scanCacheRoots);
   assertScanCurrent(scanToken);
-  recordStageTiming('loadOwnerFolderCaches', stageStartedAt);
+  recordStageTiming('loadRelevantCacheRows', stageStartedAt, { items: cachedMap.size });
 
   // Merge with cache: preserve status, thumbnails, bookmarks from SQLite.
   // Thumbnail paths are resolved to absolute here so the renderer can use them directly.
@@ -1586,8 +1562,94 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
 
   let readyBatch = [];
   let lastProgress = null;
+  const pendingMetadataSuccesses = new Map();
+  const pendingMetadataFailures = new Map();
+  const metadataFlushPromisesByFolder = new Map();
+  const METADATA_DB_BATCH_SIZE = 16;
+
+  const appendPendingFolderWrite = (map, folderPath, entry) => {
+    const queue = map.get(folderPath) ?? [];
+    queue.push(entry);
+    map.set(folderPath, queue);
+  };
+
+  const takePendingFolderWrites = (map, folderPath) => {
+    const queue = map.get(folderPath);
+    if (!queue || queue.length === 0) return [];
+    map.delete(folderPath);
+    return queue;
+  };
+
+  const writeMetadataFolderBatch = async (folderPath, successes, failures) => {
+    if (successes.length === 0 && failures.length === 0) return;
+
+    const applyBatch = (db) => {
+      if (successes.length > 0) cache.updateVideoMetadataBatch(db, successes);
+      if (failures.length > 0) cache.markMetadataFailuresBatch(db, failures);
+    };
+
+    const applyRowFallback = (db) => {
+      for (const metadata of successes) {
+        cache.updateVideoMetadata(db, metadata.videoId, metadata);
+      }
+      for (const failure of failures) {
+        cache.markMetadataFailure(db, failure.videoId, failure.reason);
+      }
+    };
+
+    let db = await openCacheDbWithRecovery(folderPath, cacheOptions);
+    try {
+      applyBatch(db);
+      return;
+    } catch (err) {
+      if (isSqliteCorruptionError(err)) {
+        await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
+        db = cache.openDb(folderPath, cacheOptions);
+        applyBatch(db);
+        return;
+      }
+
+      log.warn('[process-metadata] metadata batch write failed; retrying row-by-row', {
+        folderPath,
+        successes: successes.length,
+        failures: failures.length,
+        error: err?.message || String(err),
+      });
+      applyRowFallback(db);
+    }
+  };
+
+  const flushMetadataFolderWrites = async (folderPath) => {
+    const queuedPromise = metadataFlushPromisesByFolder.get(folderPath);
+    if (queuedPromise) return queuedPromise;
+
+    const flushPromise = (async () => {
+      while (true) {
+        const successes = takePendingFolderWrites(pendingMetadataSuccesses, folderPath);
+        const failures = takePendingFolderWrites(pendingMetadataFailures, folderPath);
+        if (successes.length === 0 && failures.length === 0) return;
+        await writeMetadataFolderBatch(folderPath, successes, failures);
+      }
+    })().finally(() => {
+      metadataFlushPromisesByFolder.delete(folderPath);
+    });
+
+    metadataFlushPromisesByFolder.set(folderPath, flushPromise);
+    return flushPromise;
+  };
+
+  const flushAllMetadataWrites = async () => {
+    const folderPaths = new Set([
+      ...pendingMetadataSuccesses.keys(),
+      ...pendingMetadataFailures.keys(),
+      ...metadataFlushPromisesByFolder.keys(),
+    ]);
+    if (folderPaths.size === 0) return;
+    await Promise.all(Array.from(folderPaths, (folderPath) => flushMetadataFolderWrites(folderPath)));
+  };
 
   const flushBatch = () => {
+    void flushAllMetadataWrites();
     if (!canSendToRenderer()) return;
     if (readyBatch.length > 0) {
       const batch = readyBatch;
@@ -1632,17 +1694,22 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
         metadataFailureReason: null,
       };
       const videoFolder = getVideoFolderPath(video);
-      const db = await openCacheDbWithRecovery(videoFolder, cacheOptions);
-      cache.updateVideoMetadata(db, videoId, metadataUpdate);
       saved++;
+      appendPendingFolderWrite(pendingMetadataSuccesses, videoFolder, metadataUpdate);
+      if ((pendingMetadataSuccesses.get(videoFolder)?.length ?? 0) >= METADATA_DB_BATCH_SIZE) {
+        await flushMetadataFolderWrites(videoFolder);
+      }
       readyBatch.push(metadataUpdate);
     }, async (videoId, err) => {
       const video = videoById.get(videoId);
       if (!video) return;
       const reason = summarizeMediaProbeError(err);
-      const db = await openCacheDbWithRecovery(getVideoFolderPath(video), cacheOptions);
-      cache.markMetadataFailure(db, videoId, reason);
+      const videoFolder = getVideoFolderPath(video);
       failed++;
+      appendPendingFolderWrite(pendingMetadataFailures, videoFolder, { videoId, reason });
+      if ((pendingMetadataFailures.get(videoFolder)?.length ?? 0) >= METADATA_DB_BATCH_SIZE) {
+        await flushMetadataFolderWrites(videoFolder);
+      }
       if (failureExamples.length < 8) {
         failureExamples.push({
           filename: video.filename,
@@ -1654,6 +1721,7 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
   } finally {
     clearInterval(batchInterval);
     activeBatchIntervals.delete(batchInterval);
+    await flushAllMetadataWrites();
     if (!isQuitting) flushBatch();
   }
   log.info('[process-metadata] complete', {
