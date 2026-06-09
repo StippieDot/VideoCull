@@ -18,6 +18,70 @@ import './ReviewMode.css';
 
 const Player = createPlayer({ features: videoFeatures });
 
+interface ReviewSummary {
+  keep: number;
+  delete: number;
+  skipped: number;
+  pending: number;
+  deleteSize: number;
+}
+
+interface ReviewScopeState {
+  reviewVideos: ReturnType<typeof useStore.getState>['videos'];
+  pendingIndexes: number[];
+  decidedCount: number;
+  remainingCount: number;
+  progressPct: number;
+  summary: ReviewSummary;
+}
+
+function buildReviewScope(videosById: Map<string, ReturnType<typeof useStore.getState>['videos'][number]>, scopeIds: string[]): ReviewScopeState {
+  const reviewVideos: ReturnType<typeof useStore.getState>['videos'] = [];
+  const pendingIndexes: number[] = [];
+  const summary: ReviewSummary = {
+    keep: 0,
+    delete: 0,
+    skipped: 0,
+    pending: 0,
+    deleteSize: 0,
+  };
+
+  for (const id of scopeIds) {
+    const video = videosById.get(id);
+    if (!video) continue;
+
+    const index = reviewVideos.length;
+    reviewVideos.push(video);
+
+    if (video.status === 'keep') {
+      summary.keep += 1;
+      continue;
+    }
+    if (video.status === 'delete') {
+      summary.delete += 1;
+      summary.deleteSize += video.sizeBytes;
+      continue;
+    }
+    if (video.status === 'skipped') {
+      summary.skipped += 1;
+      continue;
+    }
+
+    summary.pending += 1;
+    pendingIndexes.push(index);
+  }
+
+  const decidedCount = reviewVideos.length - summary.pending;
+  return {
+    reviewVideos,
+    pendingIndexes,
+    decidedCount,
+    remainingCount: summary.pending,
+    progressPct: reviewVideos.length > 0 ? (decidedCount / reviewVideos.length) * 100 : 0,
+    summary,
+  };
+}
+
 // Memoized so it never re-renders due to currentTime/bookmark state updates in the parent.
 // Frequent re-renders of the @videojs/react Player stack while the native decoder is active
 // can trigger a 0xC0000005 access violation in Chromium's media pipeline.
@@ -48,7 +112,6 @@ function isFocusableKeyboardTarget(target: EventTarget | null): boolean {
 
 export default function ReviewMode() {
   const allVideos = useStore((s) => s.videos);
-  const videoCount = useStore((s) => s.videos.length);
   const reviewIndex = useStore((s) => s.reviewIndex);
   const reviewScopeIds = useStore((s) => s.reviewScopeIds);
   const setReviewIndex = useStore((s) => s.setReviewIndex);
@@ -79,37 +142,22 @@ export default function ReviewMode() {
     scopeIdsRef.current = reviewScopeIds ?? useStore.getState().filteredVideos.map((item) => item.id);
   }
 
-  const reviewVideos = useMemo(() => {
-    const byId = new Map(allVideos.map((item) => [item.id, item]));
-    return (scopeIdsRef.current ?? []).map((id) => byId.get(id)).filter((item): item is typeof allVideos[number] => Boolean(item));
-  }, [allVideos]);
+  const videosById = useMemo(() => new Map(allVideos.map((item) => [item.id, item])), [allVideos]);
+  const reviewScope = useMemo(() => (
+    buildReviewScope(videosById, scopeIdsRef.current ?? [])
+  ), [videosById]);
+  const { reviewVideos, pendingIndexes, decidedCount, remainingCount, progressPct, summary } = reviewScope;
 
-  const video = reviewVideos[reviewIndex] ?? null;
-  const total = reviewVideos.length;
-  const bookmarks = video?.bookmarks ?? [];
-  const { decidedCount, remainingCount, progressPct } = useMemo(() => {
-    const decided = reviewVideos.reduce((sum, item) => (
-      item.status === 'pending' ? sum : sum + 1
-    ), 0);
-    const remaining = Math.max(0, reviewVideos.length - decided);
-    const pct = reviewVideos.length > 0 ? (decided / reviewVideos.length) * 100 : 0;
-    return { decidedCount: decided, remainingCount: remaining, progressPct: pct };
-  }, [reviewVideos]);
-  const summary = useMemo(() => ({
-    keep: reviewVideos.filter((item) => item.status === 'keep').length,
-    delete: reviewVideos.filter((item) => item.status === 'delete').length,
-    skipped: reviewVideos.filter((item) => item.status === 'skipped').length,
-    pending: reviewVideos.filter((item) => item.status === 'pending').length,
-    deleteSize: reviewVideos
-      .filter((item) => item.status === 'delete')
-      .reduce((sum, item) => sum + item.sizeBytes, 0),
-  }), [reviewVideos]);
   const scopeLabel = useMemo(() => {
     if (folderFilterPath) {
       return folderFilterPath.split(/[/\\]/).filter(Boolean).slice(-1)[0] || folderFilterPath;
     }
-    return total === videoCount ? 'session' : 'filtered selection';
-  }, [folderFilterPath, total, videoCount]);
+    return reviewVideos.length === allVideos.length ? 'session' : 'filtered selection';
+  }, [allVideos.length, folderFilterPath, reviewVideos.length]);
+
+  const video = reviewVideos[reviewIndex] ?? null;
+  const total = reviewVideos.length;
+  const bookmarks = video?.bookmarks ?? [];
 
   const lastVideoIdRef = useRef<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -232,13 +280,11 @@ export default function ReviewMode() {
 
   const jumpToNextUndecided = useCallback(() => {
     if (total === 0) return;
-    const start = reviewIndex + 1;
-    const nextIndex = reviewVideos.findIndex((item, index) => index >= start && item.status === 'pending');
-    const wrappedIndex = nextIndex >= 0
-      ? nextIndex
-      : reviewVideos.findIndex((item, index) => index < start && index !== reviewIndex && item.status === 'pending');
+    const nextAfterCurrent = pendingIndexes.find((index) => index > reviewIndex);
+    const wrappedIndex = nextAfterCurrent
+      ?? pendingIndexes.find((index) => index !== reviewIndex);
 
-    if (wrappedIndex >= 0) {
+    if (wrappedIndex !== undefined) {
       setIsPlaying(false);
       setReviewIndex(wrappedIndex);
       return;
@@ -250,7 +296,7 @@ export default function ReviewMode() {
       kind: 'info',
       dedupeKey: 'review-next-undecided-empty',
     });
-  }, [pushToast, reviewIndex, reviewVideos, setReviewIndex, total]);
+  }, [pendingIndexes, pushToast, reviewIndex, setReviewIndex, total]);
 
   const markKeep = useCallback(() => {
     if (!video) return;
@@ -676,3 +722,7 @@ export default function ReviewMode() {
     </div>
   );
 }
+
+export const __test__ = {
+  buildReviewScope,
+};

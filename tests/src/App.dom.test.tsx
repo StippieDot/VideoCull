@@ -42,12 +42,18 @@ vi.mock('../../src/components/Sidebar', async () => {
 vi.mock('../../src/components/GridMode', async () => {
   const ReactModule = await import('react');
   const storeModule = await import('../../src/store');
+  let mountCount = 0;
   const MockGridMode = () => {
+    const mountIdRef = ReactModule.useRef<number | null>(null);
+    if (mountIdRef.current === null) {
+      mountCount += 1;
+      mountIdRef.current = mountCount;
+    }
     const firstVideo = storeModule.default((state) => state.videos[0] ?? null);
     const text = firstVideo
       ? `thumbs:${firstVideo.thumbnails.length}|codec:${firstVideo.videoCodec ?? 'none'}|compat:${firstVideo.compatible ? 'yes' : 'no'}`
       : 'empty';
-    return ReactModule.createElement('div', { 'data-testid': 'grid-state' }, text);
+    return ReactModule.createElement('div', { 'data-testid': 'grid-state', 'data-mount-id': String(mountIdRef.current) }, text);
   };
   return { default: MockGridMode };
 });
@@ -409,5 +415,45 @@ describe('App renderer behavior', () => {
       expect(electron.api.saveConfig).toHaveBeenCalled();
       expect(screen.getByText('Muted')).toBeTruthy();
     });
+  });
+
+  test('keeps the grid mounted while review mode is open so visible thumbnails do not reset on return', async () => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      videos: [makeVideo('a')],
+      filteredVideos: [makeVideo('a')],
+      reviewMode: false,
+      stats: { total: 1, pending: 1, skipped: 0, keep: 0, delete: 0, totalSize: 100, deleteSize: 0 },
+    }, true);
+
+    render(<App />);
+
+    const gridBefore = screen.getByTestId('grid-state');
+    const originalMountId = gridBefore.getAttribute('data-mount-id');
+    expect(originalMountId).toBeTruthy();
+
+    act(() => {
+      store.setState({ reviewMode: true });
+    });
+
+    expect(screen.getByTestId('review-mode')).toBeTruthy();
+    const gridWhileHidden = screen.getByTestId('grid-state');
+    expect(gridWhileHidden.getAttribute('data-mount-id')).toBe(originalMountId);
+    expect(gridWhileHidden.parentElement?.getAttribute('style')).toContain('display: flex');
+    expect(gridWhileHidden.parentElement?.getAttribute('style')).toContain('visibility: hidden');
+    expect(gridWhileHidden.parentElement?.getAttribute('aria-hidden')).toBe('true');
+
+    act(() => {
+      store.setState({ reviewMode: false });
+    });
+
+    const gridAfter = screen.getByTestId('grid-state');
+    expect(gridAfter.getAttribute('data-mount-id')).toBe(originalMountId);
+    expect(gridAfter.parentElement?.getAttribute('style')).toContain('display: flex');
+    expect(gridAfter.parentElement?.getAttribute('style')).toContain('visibility: visible');
+    expect(gridAfter.parentElement?.getAttribute('aria-hidden')).toBe('false');
   });
 });

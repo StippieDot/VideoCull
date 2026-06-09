@@ -94,6 +94,13 @@ export interface VideoStats {
   deleteSize: number;
 }
 
+export interface SidebarAggregates {
+  maxSizeBytes: number;
+  maxDurationSeconds: number;
+  duplicateCount: number;
+  incompatibleCount: number;
+}
+
 export type ToastKind = 'info' | 'success' | 'warning' | 'error';
 
 export interface ToastNotification {
@@ -320,6 +327,7 @@ export interface VideoStore {
 
   // Statistics
   stats: VideoStats;
+  sidebarAggregates: SidebarAggregates;
 
   // Notifications
   toasts: ToastNotification[];

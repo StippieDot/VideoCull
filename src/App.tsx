@@ -593,18 +593,8 @@ export default function App() {
     });
     const applyMediaBatch = (batch: Parameters<typeof updateVideoThumbnailsBatch>[0]) => {
       const startedAt = import.meta.env.DEV ? performance.now() : 0;
-      const videosById = new Map(useStore.getState().videos.map((item) => [item.id, item]));
-      const preparedBatch = batch.map((item) => {
-        const existing = videosById.get(item.videoId);
-        const containerFormat = item.containerFormat ?? existing?.containerFormat ?? null;
-        const videoCodec = item.videoCodec ?? existing?.videoCodec ?? null;
-        return {
-          ...item,
-          compatible: detectVideoCompatibility(containerFormat, videoCodec, existing?.path),
-        };
-      });
       const preparedAt = import.meta.env.DEV ? performance.now() : 0;
-      updateVideoThumbnailsBatch(preparedBatch);
+      updateVideoThumbnailsBatch(batch);
       const finishedAt = import.meta.env.DEV ? performance.now() : 0;
       recordDevPerf('applyMediaBatch.prepare', preparedAt - startedAt, { items: batch.length });
       recordDevPerf('applyMediaBatch.storeUpdate', finishedAt - preparedAt, { items: batch.length });
@@ -955,11 +945,22 @@ export default function App() {
               </div>
             </Profiler>
           )}
-          {directory && videoCount > 0 && !reviewMode && !duplicateGroupsMode && (
-            <GridMode
-              onReviewFolder={handleReviewFolder}
-              onRegenerateThumbnails={handleRegenerateThumbnails}
-            />
+          {directory && videoCount > 0 && !duplicateGroupsMode && (
+            <div
+              style={{
+                display: 'flex',
+                flex: 1,
+                minHeight: 0,
+                visibility: reviewMode ? 'hidden' : 'visible',
+                pointerEvents: reviewMode ? 'none' : 'auto',
+              }}
+              aria-hidden={reviewMode}
+            >
+              <GridMode
+                onReviewFolder={handleReviewFolder}
+                onRegenerateThumbnails={handleRegenerateThumbnails}
+              />
+            </div>
           )}
           {reviewMode && (
             <Profiler id="ReviewMode" onRender={handleMainProfiler}>

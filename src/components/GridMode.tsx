@@ -1,4 +1,13 @@
-import { useRef, useState, useEffect, useCallback, useMemo, useLayoutEffect, type AriaAttributes, type CSSProperties, type MouseEvent as ReactMouseEvent, type UIEvent as ReactUIEvent } from 'react';
+import {
+  useRef,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useLayoutEffect,
+  type MouseEvent as ReactMouseEvent,
+  type UIEvent as ReactUIEvent,
+} from 'react';
 import { List } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
 import type { Video } from '../types';
@@ -26,14 +35,12 @@ interface HeaderRow {
   label: string;
   folderPath: string;
   count: number;
-  filteredSize: number;
-  totalSize: number;
-  videos: Video[];
+  videoIds: string[];
 }
 
 interface CardsRow {
   type: 'cards';
-  videos: Video[];
+  videoIds: string[];
 }
 
 type RowItem = HeaderRow | CardsRow;
@@ -45,6 +52,9 @@ interface GridModeProps {
 
 interface GridRowData {
   rows: RowItem[];
+  videosById: Map<string, Video>;
+  folderSizeByPath: Map<string, number>;
+  filteredFolderSizeByPath: Map<string, number>;
   columnWidth: number;
   cardHeight: number;
   selectedIds: Set<string>;
@@ -65,9 +75,20 @@ interface GridRowRenderSignals {
   selectionVersion: number;
 }
 
+interface GridRowsResult {
+  rows: RowItem[];
+  headerIndexes: number[];
+  filteredVideoIds: string[];
+}
+
+interface CachedGridRows extends GridRowsResult {
+  columnCount: number;
+  directoriesKey: string;
+  groupByFolder: boolean;
+}
+
 let gridRowRuntime: GridRowData | null = null;
 
-/** Extract display-friendly folder name relative to root directory */
 function getFolderLabel(video: Video, rootDirs: string[]): string {
   const sep = video.path.includes('/') ? '/' : '\\';
   const dir = video.path.substring(0, video.path.lastIndexOf(sep));
@@ -77,11 +98,11 @@ function getFolderLabel(video: Video, rootDirs: string[]): string {
   const rootDir = rootDirs.find((root) => dir === root || dir.startsWith(root + sep));
   if (!rootDir) return dir;
 
-  // Show relative path from root, or "Root" for top-level
   if (dir === rootDir) {
     const rootName = rootDir.split(/[/\\]/).filter(Boolean).slice(-1)[0] || rootDir;
     return rootDirs.length > 1 ? `${rootName} / Root` : 'Root';
   }
+
   const relative = dir.startsWith(rootDir + sep)
     ? dir.substring(rootDir.length + 1)
     : dir;
@@ -99,11 +120,140 @@ function formatFolderSize(bytes: number): string {
   return formatSize(bytes).replace(/\.0\s/, ' ').replace(/\s/g, '');
 }
 
+function sameVideoIdOrder(videos: Video[], ids: string[]) {
+  if (videos.length !== ids.length) return false;
+  for (let i = 0; i < videos.length; i += 1) {
+    if (videos[i]?.id !== ids[i]) return false;
+  }
+  return true;
+}
+
+function buildGridRows(
+  filteredVideos: Video[],
+  columnCount: number,
+  groupByFolder: boolean,
+  directories: string[]
+): GridRowsResult {
+  const filteredVideoIds = filteredVideos.map((video) => video.id);
+
+  if (!groupByFolder) {
+    const rows: RowItem[] = [];
+    for (let i = 0; i < filteredVideoIds.length; i += columnCount) {
+      rows.push({ type: 'cards', videoIds: filteredVideoIds.slice(i, i + columnCount) });
+    }
+    return { rows, headerIndexes: [], filteredVideoIds };
+  }
+
+  const groups: Array<{ label: string; folderPath: string; videoIds: string[] }> = [];
+  let currentLabel: string | null = null;
+  let currentFolderPath: string | null = null;
+  let currentGroupIds: string[] = [];
+
+  for (const video of filteredVideos) {
+    const label = getFolderLabel(video, directories);
+    const folderPath = getFolderPath(video);
+    if (label !== currentLabel) {
+      if (currentLabel !== null && currentFolderPath !== null && currentGroupIds.length > 0) {
+        groups.push({ label: currentLabel, folderPath: currentFolderPath, videoIds: currentGroupIds });
+      }
+      currentLabel = label;
+      currentFolderPath = folderPath;
+      currentGroupIds = [];
+    }
+    currentGroupIds.push(video.id);
+  }
+
+  if (currentLabel !== null && currentFolderPath !== null && currentGroupIds.length > 0) {
+    groups.push({ label: currentLabel, folderPath: currentFolderPath, videoIds: currentGroupIds });
+  }
+
+  const rows: RowItem[] = [];
+  const headerIndexes: number[] = [];
+  for (const group of groups) {
+    if (groups.length > 1) {
+      headerIndexes.push(rows.length);
+      rows.push({
+        type: 'header',
+        label: group.label,
+        folderPath: group.folderPath,
+        count: group.videoIds.length,
+        videoIds: group.videoIds,
+      });
+    }
+    for (let i = 0; i < group.videoIds.length; i += columnCount) {
+      rows.push({ type: 'cards', videoIds: group.videoIds.slice(i, i + columnCount) });
+    }
+  }
+
+  return { rows, headerIndexes, filteredVideoIds };
+}
+
+function getLastSelectedIdInOrder(ids: Set<string>, indexById: Map<string, number>): string | null {
+  let lastSelectedId: string | null = null;
+  let lastSelectedIndex = -1;
+
+  for (const id of ids) {
+    const index = indexById.get(id);
+    if (index === undefined || index < lastSelectedIndex) continue;
+    lastSelectedIndex = index;
+    lastSelectedId = id;
+  }
+
+  return lastSelectedId;
+}
+
+function getRangeAnchorIdForSelection(
+  ids: Set<string>,
+  targetIndex: number,
+  indexById: Map<string, number>
+): string | null {
+  let firstSelectedId: string | null = null;
+  let firstSelectedIndex = Number.POSITIVE_INFINITY;
+  let nearestBeforeId: string | null = null;
+  let nearestBeforeIndex = -1;
+  let nearestAtOrBeforeId: string | null = null;
+  let nearestAtOrBeforeIndex = -1;
+  let hasAfter = false;
+
+  for (const id of ids) {
+    const index = indexById.get(id);
+    if (index === undefined) continue;
+
+    if (index < firstSelectedIndex) {
+      firstSelectedIndex = index;
+      firstSelectedId = id;
+    }
+
+    if (index < targetIndex && index > nearestBeforeIndex) {
+      nearestBeforeIndex = index;
+      nearestBeforeId = id;
+    }
+
+    if (index <= targetIndex && index > nearestAtOrBeforeIndex) {
+      nearestAtOrBeforeIndex = index;
+      nearestAtOrBeforeId = id;
+    }
+
+    if (index > targetIndex) {
+      hasAfter = true;
+    }
+  }
+
+  if (!firstSelectedId) return null;
+  if (nearestBeforeId && hasAfter) return nearestBeforeId;
+  if (nearestAtOrBeforeId) return nearestAtOrBeforeId;
+  return firstSelectedId;
+}
+
 function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSignals>) {
   const data = gridRowRuntime;
   if (!data) return null;
+
   const {
     rows,
+    videosById,
+    folderSizeByPath,
+    filteredFolderSizeByPath,
     columnWidth,
     cardHeight,
     selectedIds,
@@ -116,9 +266,12 @@ function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSi
     persistCurrentScroll,
     toggleSelection,
   } = data;
+
   const item = rows[index];
 
   if (item.type === 'header') {
+    const filteredSize = filteredFolderSizeByPath.get(item.folderPath) ?? 0;
+    const totalSize = folderSizeByPath.get(item.folderPath) ?? filteredSize;
     return (
       <div
         style={style}
@@ -131,13 +284,13 @@ function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSi
           <span className="grid-group-count">{item.count}</span>
           <span
             className="grid-group-size"
-            title={item.filteredSize !== item.totalSize
-              ? `${formatSize(item.filteredSize)} filtered / ${formatSize(item.totalSize)} total`
-              : formatSize(item.totalSize)}
+            title={filteredSize !== totalSize
+              ? `${formatSize(filteredSize)} filtered / ${formatSize(totalSize)} total`
+              : formatSize(totalSize)}
           >
-            {item.filteredSize !== item.totalSize
-              ? `${formatFolderSize(item.filteredSize)}/${formatFolderSize(item.totalSize)}`
-              : formatFolderSize(item.totalSize)}
+            {filteredSize !== totalSize
+              ? `${formatFolderSize(filteredSize)}/${formatFolderSize(totalSize)}`
+              : formatFolderSize(totalSize)}
           </span>
           <button
             className="grid-group-review-btn"
@@ -155,9 +308,13 @@ function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSi
     );
   }
 
+  const rowVideos = item.videoIds
+    .map((videoId) => videosById.get(videoId))
+    .filter((video): video is Video => Boolean(video));
+
   return (
     <div style={style} className="grid-card-row" {...ariaAttributes}>
-      {item.videos.map((video, colIdx) => (
+      {rowVideos.map((video, colIdx) => (
         <div
           key={video.id}
           className="grid-card-cell"
@@ -165,7 +322,7 @@ function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSi
             width: columnWidth,
             height: cardHeight,
             marginLeft: colIdx === 0 ? GAP : GAP / 2,
-            marginRight: colIdx === item.videos.length - 1 ? GAP : GAP / 2,
+            marginRight: colIdx === rowVideos.length - 1 ? GAP : GAP / 2,
             paddingTop: GAP / 2,
           }}
         >
@@ -187,8 +344,6 @@ function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSi
 export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: GridModeProps) {
   const filteredVideos = useStore((s) => s.filteredVideos);
   const videos = useStore((s) => s.videos);
-  const setReviewMode = useStore((s) => s.setReviewMode);
-  const setReviewIndex = useStore((s) => s.setReviewIndex);
   const setVideoStatusesBatch = useStore((s) => s.setVideoStatusesBatch);
   const pushToast = useStore((s) => s.pushToast);
   const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
@@ -209,6 +364,8 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const restoredScrollRef = useRef(false);
   const visibleRowsRef = useRef({ startIndex: 0, stopIndex: 0 });
   const lastRowsRef = useRef<RowItem[] | null>(null);
+  const lastVideosRef = useRef<Video[] | null>(null);
+  const rowStructureCacheRef = useRef<CachedGridRows | null>(null);
   const rowContentVersionRef = useRef(0);
   const lastSelectedIdsRef = useRef(selectedIds);
   const selectionVersionRef = useRef(0);
@@ -222,6 +379,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   } | null>(null);
   const isSelectionMode = selectedIds.size > 0;
   const videosById = useMemo(() => new Map(videos.map((video) => [video.id, video])), [videos]);
+  const directoriesKey = useMemo(() => directories.join('\0'), [directories]);
 
   const initialScrollOffset = useMemo(() => {
     if (persistedGridScroll.directory !== directory) return 0;
@@ -251,7 +409,6 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
   const columnCount = Math.max(1, Math.floor((dimensions.width + GAP) / (cardWidth + GAP)));
 
-  // Build flat row items: headers + card rows
   const folderSizeByPath = useMemo(() => {
     const map = new Map<string, number>();
     for (const video of videos) {
@@ -261,79 +418,57 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     return map;
   }, [videos]);
 
-  const { rows, rowStructureKey, headerIndexes } = useMemo(() => {
-    if (!groupByFolder) {
-      // No grouping — just chunk into rows of cards
-      const result: RowItem[] = [];
-      for (let i = 0; i < filteredVideos.length; i += columnCount) {
-        const videosInRow = filteredVideos.slice(i, i + columnCount);
-        result.push({ type: 'cards', videos: videosInRow });
-      }
-      const structureKey = result
-        .map((row) => (row.type === 'cards' ? `c:${row.videos.length}` : 'h'))
-        .join('|');
-      return { rows: result, rowStructureKey: structureKey, headerIndexes: [] as number[] };
-    }
-
-    // Group by folder
-    const groups: { label: string; videos: Video[] }[] = [];
-    let currentLabel: string | null = null;
-    let currentGroup: Video[] = [];
-
+  const filteredFolderSizeByPath = useMemo(() => {
+    const map = new Map<string, number>();
     for (const video of filteredVideos) {
-      const label = getFolderLabel(video, directories);
-      if (label !== currentLabel) {
-        if (currentGroup.length > 0 && currentLabel !== null) {
-          groups.push({ label: currentLabel, videos: currentGroup });
-        }
-        currentLabel = label;
-        currentGroup = [video];
-      } else {
-        currentGroup.push(video);
-      }
+      const folderPath = getFolderPath(video);
+      map.set(folderPath, (map.get(folderPath) ?? 0) + video.sizeBytes);
     }
-    if (currentGroup.length > 0 && currentLabel !== null) {
-      groups.push({ label: currentLabel, videos: currentGroup });
+    return map;
+  }, [filteredVideos]);
+
+  const { rows, headerIndexes, filteredVideoIds } = useMemo(() => {
+    const cached = rowStructureCacheRef.current;
+    if (
+      cached &&
+      cached.columnCount === columnCount &&
+      cached.groupByFolder === groupByFolder &&
+      cached.directoriesKey === directoriesKey &&
+      sameVideoIdOrder(filteredVideos, cached.filteredVideoIds)
+    ) {
+      return cached;
     }
 
-    const result: RowItem[] = [];
-    const nextHeaderIndexes: number[] = [];
-    for (const group of groups) {
-      // Only show headers if there are multiple groups
-      if (groups.length > 1) {
-        const folderPath = getFolderPath(group.videos[0]);
-        nextHeaderIndexes.push(result.length);
-        result.push({
-          type: 'header',
-          label: group.label,
-          folderPath,
-          count: group.videos.length,
-          filteredSize: group.videos.reduce((sum, v) => sum + v.sizeBytes, 0),
-          totalSize: folderSizeByPath.get(folderPath) ?? group.videos.reduce((sum, v) => sum + v.sizeBytes, 0),
-          videos: group.videos,
-        });
-      }
-      for (let i = 0; i < group.videos.length; i += columnCount) {
-        const videosInRow = group.videos.slice(i, i + columnCount);
-        result.push({ type: 'cards', videos: videosInRow });
-      }
+    const nextRows = buildGridRows(filteredVideos, columnCount, groupByFolder, directories);
+    const nextCache: CachedGridRows = {
+      ...nextRows,
+      columnCount,
+      directoriesKey,
+      groupByFolder,
+    };
+    rowStructureCacheRef.current = nextCache;
+    return nextCache;
+  }, [columnCount, directories, directoriesKey, filteredVideos, groupByFolder]);
+
+  const filteredIdSet = useMemo(() => new Set(filteredVideoIds), [filteredVideoIds]);
+  const filteredIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < filteredVideoIds.length; i += 1) {
+      map.set(filteredVideoIds[i], i);
     }
-    const structureKey = result
-      .map((row) => (row.type === 'header' ? `h:${row.label}` : `c:${row.videos.length}`))
-      .join('|');
-    return { rows: result, rowStructureKey: structureKey, headerIndexes: nextHeaderIndexes };
-  }, [filteredVideos, columnCount, groupByFolder, directories, folderSizeByPath]);
+    return map;
+  }, [filteredVideoIds]);
 
   useEffect(() => {
     if (selectedIds.size > 0) {
-      const next = new Set(Array.from(selectedIds).filter((id) => filteredVideos.some((video) => video.id === id)));
+      const next = new Set(Array.from(selectedIds).filter((id) => filteredIdSet.has(id)));
       if (next.size !== selectedIds.size) setGridSelectionIds(next);
     }
 
-    if (selectionAnchorId && !filteredVideos.some((video) => video.id === selectionAnchorId)) {
+    if (selectionAnchorId && !filteredIdSet.has(selectionAnchorId)) {
       setGridSelectionAnchorId(null);
     }
-  }, [filteredVideos, selectedIds, selectionAnchorId, setGridSelectionIds, setGridSelectionAnchorId]);
+  }, [filteredIdSet, selectedIds, selectionAnchorId, setGridSelectionIds, setGridSelectionAnchorId]);
 
   useEffect(() => {
     if (!isSelectionMode) return;
@@ -346,7 +481,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSelectionMode, clearGridSelection]);
+  }, [clearGridSelection, isSelectionMode]);
 
   const getRowTop = useCallback((rowIndex: number) => {
     let top = 0;
@@ -371,53 +506,21 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   }, [dimensions.height, initialScrollOffset, rows.length]);
 
   const getItemSize = useCallback(
-    (index: number) => rows[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP,
+    (index: number) => (rows[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP),
     [cardHeight, rows]
   );
 
-  const getLastSelectedInList = useCallback((ids: Set<string>): string | null => {
-    let lastSelectedId: string | null = null;
-    for (const video of filteredVideos) {
-      if (ids.has(video.id)) lastSelectedId = video.id;
-    }
-    return lastSelectedId;
-  }, [filteredVideos]);
+  const getLastSelectedInList = useCallback((ids: Set<string>): string | null => (
+    getLastSelectedIdInOrder(ids, filteredIndexById)
+  ), [filteredIndexById]);
 
-  const getRangeAnchorId = useCallback((ids: Set<string>, targetIndex: number): string | null => {
-    const selectedIndexes: number[] = [];
-    for (let i = 0; i < filteredVideos.length; i += 1) {
-      const id = filteredVideos[i]?.id;
-      if (id && ids.has(id)) selectedIndexes.push(i);
-    }
-
-    if (selectedIndexes.length === 0) return null;
-
-    const hasBefore = selectedIndexes.some((idx) => idx < targetIndex);
-    const hasAfter = selectedIndexes.some((idx) => idx > targetIndex);
-
-    // In-between case: anchor from the nearest selected item before target.
-    if (hasBefore && hasAfter) {
-      for (let i = selectedIndexes.length - 1; i >= 0; i -= 1) {
-        const idx = selectedIndexes[i];
-        if (idx < targetIndex) {
-          return filteredVideos[idx]?.id ?? null;
-        }
-      }
-    }
-
-    // Otherwise prefer nearest selected item at or before target.
-    for (let i = targetIndex; i >= 0; i -= 1) {
-      const id = filteredVideos[i]?.id;
-      if (id && ids.has(id)) return id;
-    }
-
-    // Final fallback: first selected item in list.
-    return filteredVideos[selectedIndexes[0]]?.id ?? null;
-  }, [filteredVideos]);
+  const getRangeAnchorId = useCallback((ids: Set<string>, targetIndex: number): string | null => (
+    getRangeAnchorIdForSelection(ids, targetIndex, filteredIndexById)
+  ), [filteredIndexById]);
 
   const applyRangeSelection = useCallback((targetId: string) => {
-    const targetIndex = filteredVideos.findIndex((video) => video.id === targetId);
-    if (targetIndex < 0) return;
+    const targetIndex = filteredIndexById.get(targetId);
+    if (targetIndex === undefined) return;
 
     setGridSelectionIds((prev) => {
       const currentAnchorId = getRangeAnchorId(prev, targetIndex)
@@ -429,8 +532,8 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         return next;
       }
 
-      const anchorIndex = filteredVideos.findIndex((video) => video.id === currentAnchorId);
-      if (anchorIndex < 0) {
+      const anchorIndex = filteredIndexById.get(currentAnchorId);
+      if (anchorIndex === undefined) {
         const next = new Set(prev);
         next.add(targetId);
         return next;
@@ -440,12 +543,13 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       const end = Math.max(anchorIndex, targetIndex);
       const next = new Set(prev);
       for (let i = start; i <= end; i += 1) {
-        next.add(filteredVideos[i].id);
+        const id = filteredVideoIds[i];
+        if (id) next.add(id);
       }
       return next;
     });
     setGridSelectionAnchorId(targetId);
-  }, [filteredVideos, getLastSelectedInList, getRangeAnchorId, selectionAnchorId, setGridSelectionIds, setGridSelectionAnchorId]);
+  }, [filteredIndexById, filteredVideoIds, getLastSelectedInList, getRangeAnchorId, selectionAnchorId, setGridSelectionAnchorId, setGridSelectionIds]);
 
   const toggleSelection = useCallback((video: Video, event: ReactMouseEvent) => {
     if (event.shiftKey) {
@@ -468,7 +572,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       return next;
     });
     setGridSelectionAnchorId(nextAnchorId);
-  }, [applyRangeSelection, getLastSelectedInList, selectionAnchorId, setGridSelectionIds, setGridSelectionAnchorId]);
+  }, [applyRangeSelection, getLastSelectedInList, selectionAnchorId, setGridSelectionAnchorId, setGridSelectionIds]);
 
   const handleCardClick = useCallback((video: Video, event: ReactMouseEvent) => {
     if (isSelectionMode || event.shiftKey) {
@@ -476,14 +580,14 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       return;
     }
 
+    const idx = filteredIndexById.get(video.id);
+    if (idx === undefined) return;
+
+    persistCurrentScroll();
     const state = useStore.getState();
-    const idx = state.filteredVideos.findIndex((v) => v.id === video.id);
-    if (idx >= 0) {
-      persistCurrentScroll();
-      state.setReviewIndex(idx);
-      state.setReviewMode(true);
-    }
-  }, [isSelectionMode, persistCurrentScroll, toggleSelection]);
+    state.setReviewIndex(idx);
+    state.setReviewMode(true);
+  }, [filteredIndexById, isSelectionMode, persistCurrentScroll, toggleSelection]);
 
   const handleCardPlay = useCallback((video: Video, event: ReactMouseEvent) => {
     persistCurrentScroll();
@@ -559,16 +663,20 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       kind: 'success',
       dedupeKey: `batch-status:${status}:${ids.join('|')}`,
     });
-  }, [selectedIds, setVideoStatusesBatch, clearGridSelection, pushToast]);
+  }, [clearGridSelection, pushToast, selectedIds, setVideoStatusesBatch]);
 
   const handleBatchRegenerateThumbnails = useCallback(async () => {
     const ids = new Set(selectedIds);
     if (ids.size === 0 || isScanning || isGenerating) return;
-    const selectedVideos = videos.filter((video) => ids.has(video.id));
+
+    const selectedVideos = Array.from(ids)
+      .map((id) => videosById.get(id))
+      .filter((video): video is Video => Boolean(video));
     if (selectedVideos.length === 0) return;
+
     await onRegenerateThumbnails(selectedVideos);
     clearGridSelection();
-  }, [clearGridSelection, isGenerating, isScanning, onRegenerateThumbnails, selectedIds, videos]);
+  }, [clearGridSelection, isGenerating, isScanning, onRegenerateThumbnails, selectedIds, videosById]);
 
   const handleClearSelection = useCallback(() => {
     clearGridSelection();
@@ -594,6 +702,9 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
   const itemData = useMemo<GridRowData>(() => ({
     rows,
+    videosById,
+    folderSizeByPath,
+    filteredFolderSizeByPath,
     columnWidth,
     cardHeight,
     selectedIds,
@@ -605,10 +716,31 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     onHeaderContextMenu: handleHeaderContextMenu,
     persistCurrentScroll,
     toggleSelection,
-  }), [rows, columnWidth, cardHeight, selectedIds, isSelectionMode, handleCardClick, handleCardContextMenu, handleCardPlay, handleHeaderContextMenu, onReviewFolder, persistCurrentScroll, toggleSelection]);
+  }), [
+    rows,
+    videosById,
+    folderSizeByPath,
+    filteredFolderSizeByPath,
+    columnWidth,
+    cardHeight,
+    selectedIds,
+    isSelectionMode,
+    handleCardClick,
+    handleCardPlay,
+    handleCardContextMenu,
+    onReviewFolder,
+    handleHeaderContextMenu,
+    persistCurrentScroll,
+    toggleSelection,
+  ]);
 
   if (lastRowsRef.current !== rows) {
     lastRowsRef.current = rows;
+    rowContentVersionRef.current += 1;
+  }
+
+  if (lastVideosRef.current !== videos) {
+    lastVideosRef.current = videos;
     rowContentVersionRef.current += 1;
   }
 
@@ -624,7 +756,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     columnWidth,
     rowContentVersion: rowContentVersionRef.current,
     selectionVersion: selectionVersionRef.current,
-  }), [cardHeight, columnWidth, rows, selectedIds]);
+  }), [cardHeight, columnWidth, rows, selectedIds, videos]);
 
   const contextMenuVideo = contextMenu?.kind === 'video' && contextMenu.videoId
     ? videosById.get(contextMenu.videoId) ?? null
@@ -635,7 +767,12 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
   const folderContextMenuItems = useMemo(() => {
     if (!contextMenuFolder) return [];
-    const folderVideoIds = contextMenuFolder.videos.map((video) => video.id);
+
+    const folderVideos = contextMenuFolder.videoIds
+      .map((videoId) => videosById.get(videoId))
+      .filter((video): video is Video => Boolean(video));
+    const folderVideoIds = folderVideos.map((video) => video.id);
+
     return buildFolderHeaderMenu({
       onReviewFolder: () => {
         persistCurrentScroll();
@@ -652,10 +789,10 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       onMarkDelete: () => setVideoStatusesBatch(folderVideoIds, 'delete'),
       onResetPending: () => setVideoStatusesBatch(folderVideoIds, 'pending'),
       onRegenerateThumbnails: () => {
-        void onRegenerateThumbnails(contextMenuFolder.videos);
+        void onRegenerateThumbnails(folderVideos);
       },
     });
-  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, setFolderFilterPath, setVideoStatusesBatch]);
+  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, setFolderFilterPath, setVideoStatusesBatch, videosById]);
 
   const videoContextMenuItems = useMemo(() => {
     if (!contextMenuVideo) return [];
@@ -742,6 +879,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
           </div>
         </div>
       )}
+
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}
@@ -753,3 +891,10 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     </div>
   );
 }
+
+export const __test__ = {
+  sameVideoIdOrder,
+  buildGridRows,
+  getLastSelectedIdInOrder,
+  getRangeAnchorIdForSelection,
+};

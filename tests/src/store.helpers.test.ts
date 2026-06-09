@@ -3,8 +3,9 @@ import type { DuplicateGroup, VideoStore } from '../../src/types';
 import { makeVideo } from '../helpers/videoFactory';
 
 function makeStoreState(overrides: Partial<VideoStore> = {}): VideoStore {
+  const videos = overrides.videos ?? [];
   return {
-    videos: [],
+    videos,
     filteredVideos: [],
     duplicateGroups: [],
     duplicateFilter: false,
@@ -23,6 +24,8 @@ function makeStoreState(overrides: Partial<VideoStore> = {}): VideoStore {
     groupByFolder: false,
     folderSortBy: 'name',
     folderSortOrder: 'asc',
+    stats: __test__.computeStats(videos),
+    sidebarAggregates: __test__.computeSidebarAggregates(videos),
     ...overrides,
   } as VideoStore;
 }
@@ -65,6 +68,53 @@ describe('review statistics', () => {
   });
 });
 
+describe('sidebar aggregates', () => {
+  test('captures max ranges and duplicate and incompatible counts from the loaded library', () => {
+    const aggregates = __test__.computeSidebarAggregates([
+      makeVideo('a', { sizeBytes: 10, durationSecs: 15, duplicateGroupId: 'group-1', compatible: false }),
+      makeVideo('b', { sizeBytes: 25, durationSecs: 45, duplicateGroupId: null, compatible: true }),
+      makeVideo('c', { sizeBytes: 5, durationSecs: null, duplicateGroupId: 'group-2', compatible: false }),
+    ]);
+
+    expect(aggregates).toEqual({
+      maxSizeBytes: 25,
+      maxDurationSeconds: 45,
+      duplicateCount: 2,
+      incompatibleCount: 2,
+    });
+  });
+});
+
+describe('media batch merge helpers', () => {
+  test('recomputes compatibility from merged metadata when the batch updates codec information', () => {
+    const previousVideo = makeVideo('legacy', {
+      path: 'D:\\Media\\legacy.avi',
+      containerFormat: null,
+      videoCodec: null,
+      compatible: true,
+    });
+
+    expect(__test__.resolveMediaBatchCompatibility(previousVideo, {
+      videoId: previousVideo.id,
+      containerFormat: 'avi',
+      videoCodec: 'mpeg4',
+    })).toBe(false);
+  });
+
+  test('preserves the existing compatibility flag when the batch does not change media metadata', () => {
+    const previousVideo = makeVideo('alpha', {
+      compatible: true,
+      containerFormat: 'mov,mp4,m4a,3gp,3g2,mj2',
+      videoCodec: 'h264',
+    });
+
+    expect(__test__.resolveMediaBatchCompatibility(previousVideo, {
+      videoId: previousVideo.id,
+      thumbnails: ['thumb_1.jpg'],
+    })).toBe(true);
+  });
+});
+
 describe('video state updates', () => {
   test('preserves the current filtered order when a change does not invalidate the view', () => {
     const oldVideos = [
@@ -104,6 +154,7 @@ describe('video state updates', () => {
 
     const next = __test__.buildVideoStateUpdate(currentState, newVideos, ['status']);
     expect(next.filteredVideos.map((video) => video.id)).toEqual(['a', 'b']);
+    expect(next.sidebarAggregates).toBe(currentState.sidebarAggregates);
   });
 
   test('carries requested stats and duplicate-view metadata into the next state', () => {
@@ -152,6 +203,30 @@ describe('video state updates', () => {
     expect(next.duplicateGroupsMode).toBe(true);
     expect(next.duplicateGroups).toEqual(groups);
     expect(next.reviewIndex).toBe(1);
+  });
+
+  test('recomputes sidebar aggregates when changed fields affect cached library metrics', () => {
+    const oldVideos = [
+      makeVideo('a', { sizeBytes: 10, durationSecs: 15, duplicateGroupId: null, compatible: true }),
+      makeVideo('b', { sizeBytes: 20, durationSecs: 25, duplicateGroupId: null, compatible: true }),
+    ];
+    const newVideos = [
+      makeVideo('a', { sizeBytes: 10, durationSecs: 60, duplicateGroupId: 'group-1', compatible: false }),
+      makeVideo('b', { sizeBytes: 20, durationSecs: 25, duplicateGroupId: null, compatible: true }),
+    ];
+
+    const currentState = makeStoreState({
+      videos: oldVideos,
+      filteredVideos: oldVideos,
+    });
+
+    const next = __test__.buildVideoStateUpdate(currentState, newVideos, ['duration', 'duplicate', 'compatible']);
+    expect(next.sidebarAggregates).toEqual({
+      maxSizeBytes: 20,
+      maxDurationSeconds: 60,
+      duplicateCount: 1,
+      incompatibleCount: 1,
+    });
   });
 });
 

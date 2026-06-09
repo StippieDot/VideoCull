@@ -9,6 +9,7 @@ Implementation status as of 2026-06-09:
 - Phase 1: implemented
 - Phase 2A: implemented
 - Phase 2B: implemented
+- Phase 3: implemented (`3.1` sidebar aggregate caching, `3.2` GridMode row/selection cost reductions, `3.3` ReviewMode scope-summary caching, `3.4` media-batch merge optimization)
 
 Guardrails:
 - Do not normalize the store in this pass.

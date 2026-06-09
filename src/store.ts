@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   AppSettings, DuplicateGroup,
-  Video, VideoStatus, VideoStats, VideoStore,
+  Video, VideoStatus, VideoStats, SidebarAggregates, VideoStore, ThumbReadyEvent,
   ScanProgress, ThumbProgress, UndoEntry,
   StatusFilter, SortField, SortOrder, FolderSortField, RatingFilter,
   ToastInput, ToastKind,
@@ -9,6 +9,7 @@ import type {
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, normalizeFeatureSettings, pruneRecentDirectories } from './keybind-defaults';
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
+import { detectVideoCompatibility } from './utils';
 
 function thumbnailIndex(filePath: string): number | null {
   const basename = filePath.split(/[\\/]/).pop() ?? filePath;
@@ -180,11 +181,72 @@ function computeStats(videos: Video[]): VideoStats {
   return stats;
 }
 
+function computeSidebarAggregates(videos: Video[]): SidebarAggregates {
+  let maxSizeBytes = 0;
+  let maxDurationSeconds = 0;
+  let duplicateCount = 0;
+  let incompatibleCount = 0;
+
+  for (const video of videos) {
+    if (Number.isFinite(video.sizeBytes) && video.sizeBytes > maxSizeBytes) {
+      maxSizeBytes = video.sizeBytes;
+    }
+    if (Number.isFinite(video.durationSecs) && (video.durationSecs ?? 0) > maxDurationSeconds) {
+      maxDurationSeconds = video.durationSecs ?? 0;
+    }
+    if (video.duplicateGroupId) duplicateCount += 1;
+    if (video.compatible === false) incompatibleCount += 1;
+  }
+
+  return {
+    maxSizeBytes,
+    maxDurationSeconds,
+    duplicateCount,
+    incompatibleCount,
+  };
+}
+
+function changeAffectsSidebarAggregates(changedFields: Iterable<InvalidationField>): boolean {
+  for (const field of changedFields) {
+    switch (field) {
+      case 'duration':
+      case 'size':
+      case 'compatible':
+      case 'duplicate':
+        return true;
+      case 'thumbnails':
+      case 'metadataDate':
+      case 'rating':
+      case 'favorite':
+      case 'status':
+      case 'resolution':
+      case 'fps':
+        break;
+      default:
+        return true;
+    }
+  }
+
+  return false;
+}
+
+function resolveMediaBatchCompatibility(previousVideo: Video, item: ThumbReadyEvent): boolean {
+  if (item.compatible !== undefined) return item.compatible;
+  if (item.containerFormat === undefined && item.videoCodec === undefined) {
+    return previousVideo.compatible ?? false;
+  }
+
+  const containerFormat = item.containerFormat ?? previousVideo.containerFormat;
+  const videoCodec = item.videoCodec ?? previousVideo.videoCodec;
+  return detectVideoCompatibility(containerFormat, videoCodec, previousVideo.path);
+}
+
 type VideoStateUpdateOptions = {
   duplicateFilter?: boolean;
   duplicateGroups?: DuplicateGroup[];
   duplicateGroupsMode?: boolean;
   recomputeStats?: boolean;
+  recomputeSidebarAggregates?: boolean;
   reviewIndex?: number;
   undoStack?: UndoEntry[];
 };
@@ -195,6 +257,7 @@ function buildVideoStateUpdate(
   changedFields: Iterable<InvalidationField>,
   options: VideoStateUpdateOptions = {}
 ) {
+  const changedFieldList = Array.from(changedFields);
   const nextState = {
     ...currentState,
     videos,
@@ -203,13 +266,17 @@ function buildVideoStateUpdate(
     duplicateGroupsMode: options.duplicateGroupsMode ?? currentState.duplicateGroupsMode,
   };
 
-  const filteredVideos = changeAffectsCurrentView(changedFields, nextState)
+  const filteredVideos = changeAffectsCurrentView(changedFieldList, nextState)
     ? computeFiltered(nextState)
     : patchFilteredVideosPreservingOrder(currentState.filteredVideos, videos);
+  const sidebarAggregates = (options.recomputeSidebarAggregates ?? changeAffectsSidebarAggregates(changedFieldList))
+    ? computeSidebarAggregates(videos)
+    : currentState.sidebarAggregates;
 
   return {
     videos,
     filteredVideos,
+    sidebarAggregates,
     ...(options.duplicateFilter !== undefined ? { duplicateFilter: options.duplicateFilter } : {}),
     ...(options.duplicateGroups !== undefined ? { duplicateGroups: options.duplicateGroups } : {}),
     ...(options.duplicateGroupsMode !== undefined ? { duplicateGroupsMode: options.duplicateGroupsMode } : {}),
@@ -812,6 +879,7 @@ const useStore = create<VideoStore>((set, get) => ({
 
   // ── Statistics ──
   stats: { total: 0, pending: 0, skipped: 0, keep: 0, delete: 0, totalSize: 0, deleteSize: 0 },
+  sidebarAggregates: { maxSizeBytes: 0, maxDurationSeconds: 0, duplicateCount: 0, incompatibleCount: 0 },
 
   // ── Notifications ──
   toasts: [],
@@ -862,6 +930,7 @@ const useStore = create<VideoStore>((set, get) => ({
         videos: [],
         filteredVideos: [],
         stats: computeStats([]),
+        sidebarAggregates: computeSidebarAggregates([]),
         folderFilterPath: null,
         reviewMode: false,
         reviewIndex: 0,
@@ -944,6 +1013,7 @@ const useStore = create<VideoStore>((set, get) => ({
       videos: nextVideos,
       filteredVideos: computeFiltered(state),
       stats: computeStats(nextVideos),
+      sidebarAggregates: computeSidebarAggregates(nextVideos),
       ...(shouldClearDuplicates ? {
         duplicateGroups: [],
         duplicateGroupsMode: false,
@@ -965,6 +1035,7 @@ const useStore = create<VideoStore>((set, get) => ({
       if (vIdx === undefined) continue;
 
       const previousVideo = videos[vIdx];
+      const compatible = resolveMediaBatchCompatibility(previousVideo, item);
       const nextVideo: Video = {
         ...previousVideo,
         thumbnails: item.thumbnails ? orderedThumbnails(item.thumbnails) : previousVideo.thumbnails,
@@ -983,7 +1054,7 @@ const useStore = create<VideoStore>((set, get) => ({
         width: item.width ?? previousVideo.width,
         height: item.height ?? previousVideo.height,
         fps: item.fps ?? previousVideo.fps,
-        compatible: item.compatible ?? previousVideo.compatible,
+        compatible,
       };
 
       const changedThumbnails = !arraysEqual(previousVideo.thumbnails, nextVideo.thumbnails);
@@ -1434,6 +1505,7 @@ const useStore = create<VideoStore>((set, get) => ({
       videos,
       filteredVideos: computeFiltered(state),
       stats: computeStats(videos),
+      sidebarAggregates: computeSidebarAggregates(videos),
       undoStack: [],
       ...(groupsChanged ? {
         duplicateGroups: prunedGroups,
@@ -1714,7 +1786,9 @@ export const __test__ = {
   orderedThumbnails,
   computeFiltered,
   computeStats,
+  computeSidebarAggregates,
   buildVideoStateUpdate,
+  resolveMediaBatchCompatibility,
   normalizeDuplicatePairKey,
   applyDuplicateGroupsToVideos,
   chooseSuggestedKeeperId,

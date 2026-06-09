@@ -157,10 +157,7 @@ function SidebarDuplicateSection({
   const duplicateSettings = useStore((s) => s.settings.duplicates);
   const statsTotal = useStore((s) => s.stats.total);
   const videoCount = useStore((s) => s.videos.length);
-  const duplicateCount = useStore((s) => s.videos.reduce(
-    (count, video) => count + (video.duplicateGroupId ? 1 : 0),
-    0
-  ));
+  const duplicateCount = useStore((s) => s.sidebarAggregates.duplicateCount);
   const duplicateGroupCount = useStore((s) => s.duplicateGroups.length);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const setDuplicateGroupsMode = useStore((s) => s.setDuplicateGroupsMode);
@@ -384,7 +381,8 @@ function SidebarFiltersSection({
   const setDuplicateFilter = useStore((s) => s.setDuplicateFilter);
   const features = useStore((s) => s.settings.features);
   const filteredVideoCount = useStore((s) => s.filteredVideos.length);
-  const videos = useStore((s) => s.videos);
+  const videoCount = useStore((s) => s.videos.length);
+  const sidebarAggregates = useStore((s) => s.sidebarAggregates);
 
   const formatDurationInput = (seconds: number): string => {
     const safeSeconds = Math.max(0, Math.floor(seconds));
@@ -399,25 +397,18 @@ function SidebarFiltersSection({
   };
 
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-  const sizeRange = useMemo(() => {
-    const sizes = videos.map((v) => v.sizeBytes).filter((value) => Number.isFinite(value) && value >= 0);
-    if (sizes.length === 0) return { min: 0, max: 0, step: 1 };
-    const max = roundUpSizeBytes(Math.max(...sizes));
-    const min = 0;
-    return { min, max, step: Math.max(1, Math.floor((max - min) / 120)) };
-  }, [videos]);
-  const durationRange = useMemo(() => {
-    const durations = videos
-      .map((v) => v.durationSecs)
-      .filter((value): value is number => Number.isFinite(value) && value !== null && value >= 0);
-    if (durations.length === 0) return { min: 0, max: 0, step: 1 };
-    const max = roundUpDurationSeconds(Math.ceil(Math.max(...durations)));
-    return {
-      min: 0,
-      max,
-      step: max >= 60 * 60 ? 60 : max >= 10 * 60 ? 15 : 1,
-    };
-  }, [videos]);
+  const sizeRangeMax = roundUpSizeBytes(sidebarAggregates.maxSizeBytes);
+  const sizeRange = {
+    min: 0,
+    max: sizeRangeMax,
+    step: sizeRangeMax > 0 ? Math.max(1, Math.floor(sizeRangeMax / 120)) : 1,
+  };
+  const durationRangeMax = roundUpDurationSeconds(Math.ceil(sidebarAggregates.maxDurationSeconds));
+  const durationRange = {
+    min: 0,
+    max: durationRangeMax,
+    step: durationRangeMax >= 60 * 60 ? 60 : durationRangeMax >= 10 * 60 ? 15 : 1,
+  };
 
   const effectiveMinSize = sizeRange.max > sizeRange.min
     ? clamp(minSizeFilter > 0 ? minSizeFilter : sizeRange.min, sizeRange.min, sizeRange.max)
@@ -436,12 +427,12 @@ function SidebarFiltersSection({
   const hasSizeFilter = minSizeFilter > 0 || maxSizeFilter !== null;
   const hasDurationFilter = minDurationFilter > 0 || maxDurationFilter !== null;
   const hasRatingFilter = minRatingFilter > 0;
-  const duplicateCount = videos.filter((v) => Boolean(v.duplicateGroupId)).length;
-  const incompatibleCount = videos.filter((v) => v.compatible === false).length;
+  const duplicateCount = sidebarAggregates.duplicateCount;
+  const incompatibleCount = sidebarAggregates.incompatibleCount;
   const hasIncompatibleVideos = incompatibleCount > 0;
   const hasExtraFilter = favoritesFilter || incompatibleFilter || duplicateFilter;
   const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilterPath) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
-  const filteredSummary = `${filteredVideoCount} / ${videos.length}`;
+  const filteredSummary = `${filteredVideoCount} / ${videoCount}`;
   const sizeRangeStyle = getRangeTrackStyle(sizeRange.min, sizeRange.max, effectiveMinSize, effectiveMaxSize);
   const durationRangeStyle = getRangeTrackStyle(durationRange.min, durationRange.max, effectiveMinDuration, effectiveMaxDuration);
 
