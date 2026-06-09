@@ -152,7 +152,7 @@ Review shortcuts are customizable in Settings.
 | Intro skip delay | 0 - 60 seconds | 3s |
 | Hardware acceleration | On / Off | Off |
 | Auto updates | On / Off | On |
-| Feature toggles | Ratings, favorites, codec badges, compatibility checks, global mute, next-undecided | On |
+| Feature toggles | Ratings, favorites, analytics screen | On |
 | Keybindings | Any key or combination | K / D / S / Z / Space |
 
 Duplicate detection also has its own settings tab with options for comparison method, similarity threshold, sample count, scope, keeper priority, ignored matches, sampling windows, and retry behavior.

@@ -71,6 +71,16 @@ function isMetadataRunning(isGenerating: boolean, phase: string | undefined): bo
   return isGenerating && phase === 'metadata';
 }
 
+function blurPointerActivatedButton(event: MouseEvent) {
+  if (event.detail === 0) return;
+  if (!(event.target instanceof Element)) return;
+  const button = event.target.closest('button');
+  if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+  queueMicrotask(() => {
+    if (document.activeElement === button) button.blur();
+  });
+}
+
 export default function App() {
   const directory = useStore((s) => s.directory);
   const directories = useStore((s) => s.directories);
@@ -753,6 +763,7 @@ export default function App() {
       }
     };
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('click', blurPointerActivatedButton, true);
 
     return () => {
       unsub1();
@@ -764,6 +775,7 @@ export default function App() {
       unsubDuplicates();
       unsub4();
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('click', blurPointerActivatedButton, true);
     };
   }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, handleExportReport, showShortcutsHelp]);
 

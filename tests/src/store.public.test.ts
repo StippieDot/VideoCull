@@ -164,6 +164,35 @@ describe('useStore public behavior', () => {
     expect(state.groupByFolder).toBe(false);
   });
 
+  test('required features stay enabled even if settings updates try to turn them off', () => {
+    const { settings, updateSettings } = useStore.getState();
+
+    updateSettings({
+      ...settings,
+      features: {
+        ...settings.features,
+        ratings: false,
+        favorites: false,
+        analytics: false,
+        codecBadges: false,
+        compatibilityCheck: false,
+        globalMute: false,
+        nextUndecided: false,
+      },
+    });
+
+    expect(useStore.getState().settings.features).toEqual({
+      ...settings.features,
+      ratings: false,
+      favorites: false,
+      analytics: false,
+      codecBadges: true,
+      compatibilityCheck: true,
+      globalMute: true,
+      nextUndecided: true,
+    });
+  });
+
   test('duplicate result actions annotate videos and allow a manual keeper override through the store API', () => {
     useStore.getState().setVideos([
       makeVideo('a', { path: 'D:\\Media\\z.mp4', width: 1280, height: 720, sizeBytes: 100 }),

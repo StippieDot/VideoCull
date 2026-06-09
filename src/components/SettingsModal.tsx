@@ -3,7 +3,7 @@ import useStore from '../store';
 import { ArrowDown, ArrowUp, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake } from 'lucide-react';
 import type { AppSettings, ToastInput, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
-import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS } from '../keybind-defaults';
+import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
 import KeybindInput from './KeybindInput';
 import './SettingsModal.css';
@@ -23,11 +23,11 @@ const FEATURE_TOGGLES = [
   { key: 'ratings', label: '5-star rating', description: 'Show rating controls on video cards and in review mode.' },
   { key: 'favorites', label: 'Favorites', description: 'Show the heart toggle and favorites filter.' },
   { key: 'analytics', label: 'Analytics screen', description: 'Show storage analytics entry points.' },
-  { key: 'codecBadges', label: 'Codec / resolution badges', description: 'Show resolution, codec, and FPS metadata.' },
-  { key: 'compatibilityCheck', label: 'Incompatible codec indicator', description: 'Flag videos that need the external player.' },
-  { key: 'globalMute', label: 'Global mute toggle', description: 'Persist a single mute switch for all in-app video playback.' },
-  { key: 'nextUndecided', label: 'Next Undecided jump', description: 'Enable the review-mode shortcut that jumps to pending videos.' },
-] as const;
+] as const satisfies ReadonlyArray<{
+  key: typeof OPTIONAL_FEATURE_KEYS[number];
+  label: string;
+  description: string;
+}>;
 
 const KEEPER_RULE_LABELS: Record<string, { title: string; description: string }> = {
   resolution: { title: 'Resolution', description: 'Prefer the highest pixel count.' },

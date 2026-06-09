@@ -93,6 +93,24 @@ describe('store filtering and grouping behavior', () => {
 
     expect(filtered.map((video) => video.id)).toEqual(['uhd', 'portrait-hd', 'wide-hd', 'sd']);
   });
+
+  test('orders resolution sort by the displayed resolution tier instead of rewarding wider low-height files', () => {
+    const videos = [
+      makeVideo('400p-wide', { width: 640, height: 400, path: 'C:\\one\\400p-wide.mp4' }),
+      makeVideo('352p-extra-wide', { width: 720, height: 352, path: 'C:\\one\\352p-extra-wide.mp4' }),
+      makeVideo('432p-classic', { width: 576, height: 432, path: 'C:\\one\\432p-classic.mp4' }),
+    ];
+
+    const filtered = __test__.computeFiltered(
+      makeFilterState({
+        videos,
+        sortBy: 'resolution',
+        sortOrder: 'desc',
+      })
+    );
+
+    expect(filtered.map((video) => video.id)).toEqual(['432p-classic', '400p-wide', '352p-extra-wide']);
+  });
 });
 
 describe('duplicate pair normalization', () => {

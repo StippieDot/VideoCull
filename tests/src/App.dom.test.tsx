@@ -263,6 +263,22 @@ describe('App renderer behavior', () => {
     });
   });
 
+  test('pointer-clicked buttons do not retain focus and steal Enter or Space shortcuts afterward', async () => {
+    getStoreApi().setState({
+      directory: 'D:\\Media',
+      videos: [makeVideo('a')],
+      filteredVideos: [makeVideo('a')],
+      stats: { total: 1, pending: 1, skipped: 0, keep: 0, delete: 0, totalSize: 100, deleteSize: 0 },
+    });
+
+    render(<App />);
+
+    const button = screen.getByTestId('sidebar-find-duplicates');
+    await userEvent.click(button);
+
+    expect(document.activeElement).not.toBe(button);
+  });
+
   test('prevents duplicate detection while metadata is still updating and explains why', async () => {
     const store = getStoreApi();
     const initialState = store.getInitialState();

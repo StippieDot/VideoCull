@@ -27,7 +27,14 @@ describe('migrateSettings', () => {
 
   test('falls back to safe defaults for malformed feature and cache settings', () => {
     const migrated = migrateSettings({
-      features: { ratings: false, analytics: 'yes' },
+      features: {
+        ratings: false,
+        analytics: 'yes',
+        codecBadges: false,
+        compatibilityCheck: false,
+        globalMute: false,
+        nextUndecided: false,
+      },
       cacheLocation: 'unknown',
       centralCachePath: 123,
       perDriveCachePaths: [],

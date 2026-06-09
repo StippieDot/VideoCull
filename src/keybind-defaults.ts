@@ -13,6 +13,24 @@ export const DEFAULT_FEATURES: FeatureSettings = {
   nextUndecided: true,
 };
 
+export const OPTIONAL_FEATURE_KEYS = ['ratings', 'favorites', 'analytics'] as const;
+
+export function normalizeFeatureSettings(raw: unknown): FeatureSettings {
+  const rawFeatures = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? raw as Record<string, unknown>
+    : {};
+
+  return {
+    ratings: typeof rawFeatures.ratings === 'boolean' ? rawFeatures.ratings : DEFAULT_FEATURES.ratings,
+    favorites: typeof rawFeatures.favorites === 'boolean' ? rawFeatures.favorites : DEFAULT_FEATURES.favorites,
+    analytics: typeof rawFeatures.analytics === 'boolean' ? rawFeatures.analytics : DEFAULT_FEATURES.analytics,
+    codecBadges: DEFAULT_FEATURES.codecBadges,
+    compatibilityCheck: DEFAULT_FEATURES.compatibilityCheck,
+    globalMute: DEFAULT_FEATURES.globalMute,
+    nextUndecided: DEFAULT_FEATURES.nextUndecided,
+  };
+}
+
 export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keyKeep:               kb('k'),
   keyDelete:             kb('d'),
@@ -127,17 +145,7 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     result.hardwareAccel = false;
   }
 
-  if (!result.features || typeof result.features !== 'object' || Array.isArray(result.features)) {
-    result.features = { ...DEFAULT_FEATURES };
-  } else {
-    const rawFeatures = result.features as Record<string, unknown>;
-    result.features = Object.fromEntries(
-      Object.entries(DEFAULT_FEATURES).map(([key, defaultValue]) => [
-        key,
-        typeof rawFeatures[key] === 'boolean' ? rawFeatures[key] : defaultValue,
-      ])
-    );
-  }
+  result.features = normalizeFeatureSettings(result.features);
 
   if (!result.duplicates || typeof result.duplicates !== 'object' || Array.isArray(result.duplicates)) {
     result.duplicates = { ...DEFAULT_DUPLICATE_SETTINGS };

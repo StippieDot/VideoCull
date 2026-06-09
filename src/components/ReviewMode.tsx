@@ -485,7 +485,7 @@ export default function ReviewMode() {
       <div className={`review-content ${isPlaying ? 'playing' : ''}`}>
         <button
           className="review-nav review-nav-left"
-          onClick={(e) => { e.currentTarget.blur(); goBack(); }}
+          onClick={goBack}
           disabled={reviewIndex === 0}
         >
           <ChevronLeft size={28} />
@@ -612,7 +612,7 @@ export default function ReviewMode() {
 
         <button
           className="review-nav review-nav-right"
-          onClick={(e) => { e.currentTarget.blur(); advance(); }}
+          onClick={advance}
           disabled={reviewIndex >= total}
         >
           <ChevronRight size={28} />

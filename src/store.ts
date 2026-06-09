@@ -6,7 +6,7 @@ import type {
   StatusFilter, SortField, SortOrder, FolderSortField, RatingFilter,
   ToastInput, ToastKind,
 } from './types';
-import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, pruneRecentDirectories } from './keybind-defaults';
+import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, normalizeFeatureSettings, pruneRecentDirectories } from './keybind-defaults';
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
 
@@ -107,6 +107,7 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
       case 'resolution': {
         const resolutionA = resolutionSortValue(a);
         const resolutionB = resolutionSortValue(b);
+        if (resolutionA.tier !== resolutionB.tier) return resolutionA.tier - resolutionB.tier;
         if (resolutionA.pixels !== resolutionB.pixels) return resolutionA.pixels - resolutionB.pixels;
         if (resolutionA.longestEdge !== resolutionB.longestEdge) {
           return resolutionA.longestEdge - resolutionB.longestEdge;
@@ -273,10 +274,26 @@ function resolutionPixels(video: Video): number {
   return finiteNumber(video.width) * finiteNumber(video.height);
 }
 
+function resolutionDisplayTier(video: Video): number {
+  const width = finiteNumber(video.width);
+  const height = finiteNumber(video.height);
+  const longestEdge = Math.max(width, height);
+  const shortestEdge = Math.min(width, height);
+
+  if (longestEdge >= 7680) return 8000;
+  if (longestEdge >= 5120) return 5000;
+  if (longestEdge >= 3840) return 4000;
+  if (longestEdge >= 2560) return 1440;
+  if (longestEdge >= 1920) return 1080;
+  if (longestEdge >= 1280) return 720;
+  return shortestEdge;
+}
+
 function resolutionSortValue(video: Video) {
   const width = finiteNumber(video.width);
   const height = finiteNumber(video.height);
   return {
+    tier: resolutionDisplayTier(video),
     pixels: width * height,
     longestEdge: Math.max(width, height),
     shortestEdge: Math.min(width, height),
@@ -1556,10 +1573,10 @@ const useStore = create<VideoStore>((set, get) => ({
     const mergedSettings = {
       ...state.settings,
       ...newSettings,
-      features: {
+      features: normalizeFeatureSettings({
         ...state.settings.features,
         ...(newSettings.features ?? {}),
-      },
+      }),
       duplicates: {
         ...state.settings.duplicates,
         ...(newSettings.duplicates ?? {}),
@@ -1664,7 +1681,14 @@ const useStore = create<VideoStore>((set, get) => ({
           }
         }
 
-        const fullSettings = { ...get().settings, ...migrated };
+        const fullSettings = {
+          ...get().settings,
+          ...migrated,
+          features: normalizeFeatureSettings({
+            ...get().settings.features,
+            ...(migrated.features ?? {}),
+          }),
+        };
         set({
           settings: fullSettings,
           cardScale: fullSettings.defaultCardScale,
