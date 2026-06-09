@@ -155,4 +155,21 @@ describe('ReviewMode behavior', () => {
       expect(screen.getByRole('button', { name: 'Back to Grid' })).toBeTruthy();
     });
   });
+
+  test('falls back to the current filtered list when review scope ids are not set', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    const beta = makeVideo('beta', { path: 'D:\\Media\\beta.mp4' });
+    useStore.setState({
+      videos: [alpha, beta],
+      filteredVideos: [beta],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: null,
+    });
+
+    render(<ReviewMode />);
+
+    expect(screen.getByText('beta.mp4')).toBeTruthy();
+    expect(screen.queryByText('alpha.mp4')).toBeNull();
+  });
 });

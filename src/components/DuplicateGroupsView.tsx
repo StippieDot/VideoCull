@@ -423,7 +423,8 @@ function DuplicateGroupsView() {
   const reviewMode = useStore((s) => s.reviewMode);
   const setVideoStatusesBatch = useStore((s) => s.setVideoStatusesBatch);
   const enterReviewAndPlay = useStore((s) => s.enterReviewAndPlay);
-  const settings = useStore((s) => s.settings.duplicates);
+  const protectKeep = useStore((s) => s.settings.duplicates.protectKeep);
+  const protectSkipped = useStore((s) => s.settings.duplicates.protectSkipped);
   const duplicatePathFilter = useStore((s) => s.duplicatePathFilter);
   const duplicateMinSimilarity = useStore((s) => s.duplicateMinSimilarity);
   const duplicateSortBy = useStore((s) => s.duplicateSortBy);
@@ -523,9 +524,9 @@ function DuplicateGroupsView() {
   }, []);
 
   const isProtectedFromSuggestion = useCallback((video: Video) => (
-    (settings.protectKeep && video.status === 'keep') ||
-    (settings.protectSkipped && video.status === 'skipped')
-  ), [settings.protectKeep, settings.protectSkipped]);
+    (protectKeep && video.status === 'keep') ||
+    (protectSkipped && video.status === 'skipped')
+  ), [protectKeep, protectSkipped]);
 
   const getMarkableDuplicateIds = useCallback((scopeGroups: DuplicateGroupView[]) => {
     const ids: string[] = [];

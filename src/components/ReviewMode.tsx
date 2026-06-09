@@ -48,7 +48,7 @@ function isFocusableKeyboardTarget(target: EventTarget | null): boolean {
 
 export default function ReviewMode() {
   const allVideos = useStore((s) => s.videos);
-  const filteredVideos = useStore((s) => s.filteredVideos);
+  const videoCount = useStore((s) => s.videos.length);
   const reviewIndex = useStore((s) => s.reviewIndex);
   const reviewScopeIds = useStore((s) => s.reviewScopeIds);
   const setReviewIndex = useStore((s) => s.setReviewIndex);
@@ -76,7 +76,7 @@ export default function ReviewMode() {
 
   const scopeIdsRef = useRef<string[] | null>(null);
   if (scopeIdsRef.current === null) {
-    scopeIdsRef.current = reviewScopeIds ?? filteredVideos.map((item) => item.id);
+    scopeIdsRef.current = reviewScopeIds ?? useStore.getState().filteredVideos.map((item) => item.id);
   }
 
   const reviewVideos = useMemo(() => {
@@ -108,8 +108,8 @@ export default function ReviewMode() {
     if (folderFilterPath) {
       return folderFilterPath.split(/[/\\]/).filter(Boolean).slice(-1)[0] || folderFilterPath;
     }
-    return total === allVideos.length ? 'session' : 'filtered selection';
-  }, [allVideos.length, folderFilterPath, total]);
+    return total === videoCount ? 'session' : 'filtered selection';
+  }, [folderFilterPath, total, videoCount]);
 
   const lastVideoIdRef = useRef<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);

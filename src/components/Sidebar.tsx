@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import type { DuplicateSortField, RatingFilter, StatusFilter, ToastInput, ToastKind } from '../types';
+import type { DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
 import useStore from '../store';
 import { beginDevInteraction } from '../perf-dev';
@@ -156,8 +156,12 @@ function SidebarDuplicateSection({
 }: Pick<SidebarProps, 'onFindDuplicates' | 'onOpenDuplicateSettings'>) {
   const duplicateSettings = useStore((s) => s.settings.duplicates);
   const statsTotal = useStore((s) => s.stats.total);
-  const videos = useStore((s) => s.videos);
-  const duplicateGroups = useStore((s) => s.duplicateGroups);
+  const videoCount = useStore((s) => s.videos.length);
+  const duplicateCount = useStore((s) => s.videos.reduce(
+    (count, video) => count + (video.duplicateGroupId ? 1 : 0),
+    0
+  ));
+  const duplicateGroupCount = useStore((s) => s.duplicateGroups.length);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const setDuplicateGroupsMode = useStore((s) => s.setDuplicateGroupsMode);
   const duplicateViewMode = useStore((s) => s.duplicateViewMode);
@@ -178,13 +182,12 @@ function SidebarDuplicateSection({
   if (statsTotal <= 0) return null;
 
   const metadataRunning = isGenerating && generationPhase === 'metadata';
-  const duplicateDisabled = isFindingDuplicates || metadataRunning || videos.length < 2;
+  const duplicateDisabled = isFindingDuplicates || metadataRunning || videoCount < 2;
   const duplicateDisabledTitle = metadataRunning
     ? 'Available after metadata has finished updating'
-    : videos.length < 2
+    : videoCount < 2
       ? 'Duplicate detection needs at least two videos'
       : 'Find mostly identical whole-video duplicates';
-  const duplicateCount = videos.filter((v) => Boolean(v.duplicateGroupId)).length;
   const duplicateListFiltersActive =
     duplicatePathFilter.trim() !== '' ||
     duplicateMinSimilarity > 0 ||
@@ -211,8 +214,8 @@ function SidebarDuplicateSection({
         </h3>
 
         <div className="duplicate-mode-summary">
-          <strong>{duplicateGroups.length}</strong>
-          <span>{duplicateGroups.length === 1 ? 'group' : 'groups'} / {duplicateCount} videos</span>
+          <strong>{duplicateGroupCount}</strong>
+          <span>{duplicateGroupCount === 1 ? 'group' : 'groups'} / {duplicateCount} videos</span>
         </div>
 
         <div className="duplicate-sidebar-view-toggle" role="tablist" aria-label="Duplicate view mode">
@@ -342,13 +345,330 @@ function SidebarDuplicateSection({
         {isFindingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Find Duplicates'}
       </button>
       <DuplicateProgressInfo />
-      {duplicateGroups.length > 0 && (
+      {duplicateGroupCount > 0 && (
         <button
           className={`btn btn-outline sidebar-wide-action ${duplicateGroupsMode ? 'btn-toggle-active' : ''}`}
           onClick={() => setDuplicateGroupsMode(!duplicateGroupsMode)}
         >
-          {duplicateGroupsMode ? 'Back to Library' : `Duplicate Groups (${duplicateGroups.length})`}
+          {duplicateGroupsMode ? 'Back to Library' : `Duplicate Groups (${duplicateGroupCount})`}
         </button>
+      )}
+    </section>
+  );
+}
+
+function SidebarFiltersSection({
+  showFilters,
+  onToggleFilters,
+}: {
+  showFilters: boolean;
+  onToggleFilters: () => void;
+}) {
+  const statusFilter = useStore((s) => s.statusFilter);
+  const setStatusFilter = useStore((s) => s.setStatusFilter);
+  const folderFilterPath = useStore((s) => s.folderFilterPath);
+  const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
+  const minSizeFilter = useStore((s) => s.minSizeFilter);
+  const maxSizeFilter = useStore((s) => s.maxSizeFilter);
+  const setSizeFilterRange = useStore((s) => s.setSizeFilterRange);
+  const minDurationFilter = useStore((s) => s.minDurationFilter);
+  const maxDurationFilter = useStore((s) => s.maxDurationFilter);
+  const setDurationFilterRange = useStore((s) => s.setDurationFilterRange);
+  const minRatingFilter = useStore((s) => s.minRatingFilter);
+  const setMinRatingFilter = useStore((s) => s.setMinRatingFilter);
+  const favoritesFilter = useStore((s) => s.favoritesFilter);
+  const setFavoritesFilter = useStore((s) => s.setFavoritesFilter);
+  const incompatibleFilter = useStore((s) => s.incompatibleFilter);
+  const setIncompatibleFilter = useStore((s) => s.setIncompatibleFilter);
+  const duplicateFilter = useStore((s) => s.duplicateFilter);
+  const setDuplicateFilter = useStore((s) => s.setDuplicateFilter);
+  const features = useStore((s) => s.settings.features);
+  const filteredVideoCount = useStore((s) => s.filteredVideos.length);
+  const videos = useStore((s) => s.videos);
+
+  const formatDurationInput = (seconds: number): string => {
+    const safeSeconds = Math.max(0, Math.floor(seconds));
+    if (safeSeconds >= 60 * 60) {
+      const hours = Math.floor(safeSeconds / (60 * 60));
+      const mins = Math.floor((safeSeconds % (60 * 60)) / 60);
+      return `${hours}h ${mins}m`;
+    }
+    const mins = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+  const sizeRange = useMemo(() => {
+    const sizes = videos.map((v) => v.sizeBytes).filter((value) => Number.isFinite(value) && value >= 0);
+    if (sizes.length === 0) return { min: 0, max: 0, step: 1 };
+    const max = roundUpSizeBytes(Math.max(...sizes));
+    const min = 0;
+    return { min, max, step: Math.max(1, Math.floor((max - min) / 120)) };
+  }, [videos]);
+  const durationRange = useMemo(() => {
+    const durations = videos
+      .map((v) => v.durationSecs)
+      .filter((value): value is number => Number.isFinite(value) && value !== null && value >= 0);
+    if (durations.length === 0) return { min: 0, max: 0, step: 1 };
+    const max = roundUpDurationSeconds(Math.ceil(Math.max(...durations)));
+    return {
+      min: 0,
+      max,
+      step: max >= 60 * 60 ? 60 : max >= 10 * 60 ? 15 : 1,
+    };
+  }, [videos]);
+
+  const effectiveMinSize = sizeRange.max > sizeRange.min
+    ? clamp(minSizeFilter > 0 ? minSizeFilter : sizeRange.min, sizeRange.min, sizeRange.max)
+    : sizeRange.min;
+  const effectiveMaxSize = sizeRange.max > sizeRange.min
+    ? clamp(maxSizeFilter ?? sizeRange.max, effectiveMinSize, sizeRange.max)
+    : sizeRange.max;
+  const effectiveMinDuration = durationRange.max > durationRange.min
+    ? clamp(minDurationFilter > 0 ? minDurationFilter : durationRange.min, durationRange.min, durationRange.max)
+    : durationRange.min;
+  const effectiveMaxDuration = durationRange.max > durationRange.min
+    ? clamp(maxDurationFilter ?? durationRange.max, effectiveMinDuration, durationRange.max)
+    : durationRange.max;
+  const hasSizeRange = sizeRange.max > sizeRange.min;
+  const hasDurationRange = durationRange.max > durationRange.min;
+  const hasSizeFilter = minSizeFilter > 0 || maxSizeFilter !== null;
+  const hasDurationFilter = minDurationFilter > 0 || maxDurationFilter !== null;
+  const hasRatingFilter = minRatingFilter > 0;
+  const duplicateCount = videos.filter((v) => Boolean(v.duplicateGroupId)).length;
+  const incompatibleCount = videos.filter((v) => v.compatible === false).length;
+  const hasIncompatibleVideos = incompatibleCount > 0;
+  const hasExtraFilter = favoritesFilter || incompatibleFilter || duplicateFilter;
+  const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilterPath) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
+  const filteredSummary = `${filteredVideoCount} / ${videos.length}`;
+  const sizeRangeStyle = getRangeTrackStyle(sizeRange.min, sizeRange.max, effectiveMinSize, effectiveMaxSize);
+  const durationRangeStyle = getRangeTrackStyle(durationRange.min, durationRange.max, effectiveMinDuration, effectiveMaxDuration);
+
+  const updateSizeRange = (nextMin: number, nextMax: number) => {
+    const safeMin = clamp(Math.min(nextMin, nextMax), sizeRange.min, sizeRange.max);
+    const safeMax = clamp(Math.max(nextMin, nextMax), safeMin, sizeRange.max);
+    setSizeFilterRange(safeMin <= sizeRange.min ? 0 : safeMin, safeMax >= sizeRange.max ? null : safeMax);
+  };
+
+  const updateDurationRange = (nextMin: number, nextMax: number) => {
+    const safeMin = clamp(Math.min(nextMin, nextMax), durationRange.min, durationRange.max);
+    const safeMax = clamp(Math.max(nextMin, nextMax), safeMin, durationRange.max);
+    setDurationFilterRange(safeMin <= durationRange.min ? 0 : safeMin, safeMax >= durationRange.max ? null : safeMax);
+  };
+
+  const clearFilters = () => {
+    setStatusFilter('all');
+    setFolderFilterPath(null);
+    setFavoritesFilter(false);
+    setIncompatibleFilter(false);
+    setDuplicateFilter(false);
+    setMinRatingFilter(0);
+    setSizeFilterRange(0, null);
+    setDurationFilterRange(0, null);
+  };
+
+  return (
+    <section className="sidebar-section sidebar-collapsible-section">
+      <div className="sidebar-section-toggle-row">
+        <button className="sidebar-section-toggle" onClick={onToggleFilters} aria-expanded={showFilters}>
+          <span className="sidebar-section-title">
+            <Filter size={14} /> Filters
+          </span>
+          <span className="filter-header-meta">
+            <span className={hasAnyFilter ? 'filter-count filter-count-active' : 'filter-count'}>{filteredSummary}</span>
+          </span>
+        </button>
+        {hasAnyFilter && (
+          <button
+            type="button"
+            className="filter-clear-all-btn"
+            onClick={clearFilters}
+            title="Clear all filters"
+            aria-label="Clear all filters"
+          >
+            <X size={13} />
+          </button>
+        )}
+        <button
+          type="button"
+          className="filter-chevron-btn"
+          onClick={onToggleFilters}
+          title={showFilters ? 'Collapse filters' : 'Expand filters'}
+          aria-label={showFilters ? 'Collapse filters' : 'Expand filters'}
+          aria-expanded={showFilters}
+        >
+          <ChevronDown size={14} className={showFilters ? 'chevron-open' : ''} />
+        </button>
+      </div>
+
+      {showFilters && (
+        <div className="sidebar-section-content">
+          {(features.favorites || (features.compatibilityCheck && hasIncompatibleVideos)) && (
+            <div className="filter-pills filter-pills-extra">
+              {features.favorites && (
+                <button
+                  className={`pill ${favoritesFilter ? 'pill-active' : ''}`}
+                  onClick={() => setFavoritesFilter(!favoritesFilter)}
+                  title={favoritesFilter ? 'Clear favorites filter' : 'Show only favorite videos'}
+                >
+                  <Heart size={12} /> Favorites
+                  {favoritesFilter && <X size={11} className="pill-clear-icon" />}
+                </button>
+              )}
+              {features.compatibilityCheck && hasIncompatibleVideos && (
+                <button
+                  className={`pill pill-delete ${incompatibleFilter ? 'pill-active' : ''}`}
+                  onClick={() => setIncompatibleFilter(!incompatibleFilter)}
+                  title={incompatibleFilter ? 'Clear incompatible filter' : 'Show only videos that need the external player'}
+                >
+                  <AlertTriangle size={12} />
+                  <span className="pill-text">Incompatible</span>
+                  {incompatibleFilter ? <X size={11} className="pill-clear-icon" /> : <span className="pill-count">{incompatibleCount}</span>}
+                </button>
+              )}
+              {duplicateCount > 0 && (
+                <button
+                  className={`pill ${duplicateFilter ? 'pill-active' : ''}`}
+                  onClick={() => setDuplicateFilter(!duplicateFilter)}
+                  title={duplicateFilter ? 'Clear duplicates filter' : 'Show only duplicate videos'}
+                >
+                  <CopyCheck size={12} />
+                  <span className="pill-text">Duplicates</span>
+                  {duplicateFilter ? <X size={11} className="pill-clear-icon" /> : <span className="pill-count">{duplicateCount}</span>}
+                </button>
+              )}
+            </div>
+          )}
+
+          {features.ratings && (
+            <div className="filter-field">
+              <span className="filter-input-label">
+                <Star size={11} /> Rating
+              </span>
+              <div className={`filter-star-row ${minRatingFilter > 0 ? 'has-rating' : ''}`} aria-label="Minimum rating filter">
+                {([1, 2, 3, 4, 5] as const).map((rating) => (
+                  <button
+                    key={rating}
+                    type="button"
+                    className={`filter-star-btn ${minRatingFilter >= rating ? 'active' : ''}`}
+                    onClick={() => setMinRatingFilter(minRatingFilter === rating ? 0 : rating)}
+                    title={rating === 1 ? 'Show 1+ star videos' : `Show ${rating}+ star videos`}
+                    aria-label={rating === 1 ? 'Show 1 or more star videos' : `Show ${rating} or more star videos`}
+                    aria-pressed={minRatingFilter >= rating}
+                  >
+                    <Star size={15} fill={minRatingFilter >= rating ? 'currentColor' : 'none'} />
+                  </button>
+                ))}
+                {minRatingFilter > 0 && (
+                  <button
+                    type="button"
+                    className="filter-star-clear"
+                    onClick={() => setMinRatingFilter(0)}
+                    title="Clear rating filter"
+                    aria-label="Clear rating filter"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="filter-field">
+            <div className="filter-field-heading">
+              <span className="filter-input-label">File size</span>
+              {hasSizeFilter && (
+                <button
+                  type="button"
+                  className="filter-reset-btn"
+                  onClick={() => setSizeFilterRange(0, null)}
+                  title="Reset file size filter"
+                  aria-label="Reset file size filter"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            <div className="range-filter">
+              <div className="range-values">
+                <span>{formatSliderSize(effectiveMinSize)}</span>
+                <span>{formatSliderSize(effectiveMaxSize)}</span>
+              </div>
+              <div className="range-slider" style={sizeRangeStyle}>
+                <input
+                  className="range-input"
+                  type="range"
+                  min={sizeRange.min}
+                  max={sizeRange.max}
+                  step={sizeRange.step}
+                  value={effectiveMinSize}
+                  disabled={!hasSizeRange}
+                  onChange={(e) => updateSizeRange(Number(e.target.value), effectiveMaxSize)}
+                  aria-label="Minimum file size"
+                />
+                <input
+                  className="range-input"
+                  type="range"
+                  min={sizeRange.min}
+                  max={sizeRange.max}
+                  step={sizeRange.step}
+                  value={effectiveMaxSize}
+                  disabled={!hasSizeRange}
+                  onChange={(e) => updateSizeRange(effectiveMinSize, Number(e.target.value))}
+                  aria-label="Maximum file size"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="filter-field">
+            <div className="filter-field-heading">
+              <span className="filter-input-label">Duration</span>
+              {hasDurationFilter && (
+                <button
+                  type="button"
+                  className="filter-reset-btn"
+                  onClick={() => setDurationFilterRange(0, null)}
+                  title="Reset duration filter"
+                  aria-label="Reset duration filter"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            <div className="range-filter">
+              <div className="range-values">
+                <span>{formatDurationInput(effectiveMinDuration)}</span>
+                <span>{formatDurationInput(effectiveMaxDuration)}</span>
+              </div>
+              <div className="range-slider" style={durationRangeStyle}>
+                <input
+                  className="range-input"
+                  type="range"
+                  min={durationRange.min}
+                  max={durationRange.max}
+                  step={durationRange.step}
+                  value={effectiveMinDuration}
+                  disabled={!hasDurationRange}
+                  onChange={(e) => updateDurationRange(Number(e.target.value), effectiveMaxDuration)}
+                  aria-label="Minimum duration"
+                />
+                <input
+                  className="range-input"
+                  type="range"
+                  min={durationRange.min}
+                  max={durationRange.max}
+                  step={durationRange.step}
+                  value={effectiveMaxDuration}
+                  disabled={!hasDurationRange}
+                  onChange={(e) => updateDurationRange(effectiveMinDuration, Number(e.target.value))}
+                  aria-label="Maximum duration"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );
@@ -374,33 +694,17 @@ export default function Sidebar({
   const setIncludeSubfolders = useStore((s) => s.setIncludeSubfolders);
   const statusFilter = useStore((s) => s.statusFilter);
   const setStatusFilter = useStore((s) => s.setStatusFilter);
-  const folderFilterPath = useStore((s) => s.folderFilterPath);
-  const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
   const sortBy = useStore((s) => s.sortBy);
   const setSortBy = useStore((s) => s.setSortBy);
   const sortOrder = useStore((s) => s.sortOrder);
   const setSortOrder = useStore((s) => s.setSortOrder);
-  const minSizeFilter = useStore((s) => s.minSizeFilter);
-  const maxSizeFilter = useStore((s) => s.maxSizeFilter);
-  const setSizeFilterRange = useStore((s) => s.setSizeFilterRange);
-  const minDurationFilter = useStore((s) => s.minDurationFilter);
-  const maxDurationFilter = useStore((s) => s.maxDurationFilter);
-  const setDurationFilterRange = useStore((s) => s.setDurationFilterRange);
-  const minRatingFilter = useStore((s) => s.minRatingFilter);
-  const setMinRatingFilter = useStore((s) => s.setMinRatingFilter);
-  const favoritesFilter = useStore((s) => s.favoritesFilter);
-  const setFavoritesFilter = useStore((s) => s.setFavoritesFilter);
-  const incompatibleFilter = useStore((s) => s.incompatibleFilter);
-  const setIncompatibleFilter = useStore((s) => s.setIncompatibleFilter);
-  const duplicateFilter = useStore((s) => s.duplicateFilter);
-  const setDuplicateFilter = useStore((s) => s.setDuplicateFilter);
   const features = useStore((s) => s.settings.features);
   const stats = useStore((s) => s.stats);
+  const videoCount = useStore((s) => s.videos.length);
+  const filteredVideoCount = useStore((s) => s.filteredVideos.length);
   const isScanning = useStore((s) => s.isScanning);
   const setReviewMode = useStore((s) => s.setReviewMode);
   const setReviewIndex = useStore((s) => s.setReviewIndex);
-  const filteredVideos = useStore((s) => s.filteredVideos);
-  const videos = useStore((s) => s.videos);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const cardScale = useStore((s) => s.cardScale);
   const setCardScale = useStore((s) => s.setCardScale);
@@ -526,7 +830,8 @@ export default function Sidebar({
 
   const handleBatchDelete = async () => {
     if (!window.electronAPI) return;
-    const toDelete = videos.filter((v) => v.status === 'delete');
+    const { videos: currentVideos } = useStore.getState();
+    const toDelete = currentVideos.filter((v) => v.status === 'delete');
     if (toDelete.length === 0) return;
 
     const confirmed = window.confirm(
@@ -594,93 +899,9 @@ export default function Sidebar({
     { key: 'skipped', label: 'Skipped', value: stats.skipped, className: 'stat-skipped' },
     { key: 'delete', label: 'Delete', value: stats.delete, className: 'stat-delete' },
   ];
-
-  const formatDurationInput = (seconds: number): string => {
-    const safeSeconds = Math.max(0, Math.floor(seconds));
-    if (safeSeconds >= 60 * 60) {
-      const hours = Math.floor(safeSeconds / (60 * 60));
-      const mins = Math.floor((safeSeconds % (60 * 60)) / 60);
-      return `${hours}h ${mins}m`;
-    }
-    const mins = Math.floor(safeSeconds / 60);
-    const secs = safeSeconds % 60;
-    return `${mins}:${String(secs).padStart(2, '0')}`;
-  };
-
-  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-  const sizeRange = useMemo(() => {
-    const sizes = videos.map((v) => v.sizeBytes).filter((value) => Number.isFinite(value) && value >= 0);
-    if (sizes.length === 0) return { min: 0, max: 0, step: 1 };
-    const max = roundUpSizeBytes(Math.max(...sizes));
-    const min = 0;
-    return { min, max, step: Math.max(1, Math.floor((max - min) / 120)) };
-  }, [videos]);
-  const durationRange = useMemo(() => {
-    const durations = videos
-      .map((v) => v.durationSecs)
-      .filter((value): value is number => Number.isFinite(value) && value !== null && value >= 0);
-    if (durations.length === 0) return { min: 0, max: 0, step: 1 };
-    const max = roundUpDurationSeconds(Math.ceil(Math.max(...durations)));
-    return {
-      min: 0,
-      max,
-      step: max >= 60 * 60 ? 60 : max >= 10 * 60 ? 15 : 1,
-    };
-  }, [videos]);
-  const effectiveMinSize = sizeRange.max > sizeRange.min
-    ? clamp(minSizeFilter > 0 ? minSizeFilter : sizeRange.min, sizeRange.min, sizeRange.max)
-    : sizeRange.min;
-  const effectiveMaxSize = sizeRange.max > sizeRange.min
-    ? clamp(maxSizeFilter ?? sizeRange.max, effectiveMinSize, sizeRange.max)
-    : sizeRange.max;
-  const effectiveMinDuration = durationRange.max > durationRange.min
-    ? clamp(minDurationFilter > 0 ? minDurationFilter : durationRange.min, durationRange.min, durationRange.max)
-    : durationRange.min;
-  const effectiveMaxDuration = durationRange.max > durationRange.min
-    ? clamp(maxDurationFilter ?? durationRange.max, effectiveMinDuration, durationRange.max)
-    : durationRange.max;
-  const hasSizeRange = sizeRange.max > sizeRange.min;
-  const hasDurationRange = durationRange.max > durationRange.min;
-  const hasSizeFilter = minSizeFilter > 0 || maxSizeFilter !== null;
-  const hasDurationFilter = minDurationFilter > 0 || maxDurationFilter !== null;
-  const hasRatingFilter = minRatingFilter > 0;
-  const duplicateCount = videos.filter((v) => Boolean(v.duplicateGroupId)).length;
-  const hasExtraFilter = favoritesFilter || incompatibleFilter || duplicateFilter;
-  const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilterPath) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
-  const filteredSummary = `${filteredVideos.length} / ${videos.length}`;
-  const sizeRangeStyle = getRangeTrackStyle(sizeRange.min, sizeRange.max, effectiveMinSize, effectiveMaxSize);
-  const durationRangeStyle = getRangeTrackStyle(durationRange.min, durationRange.max, effectiveMinDuration, effectiveMaxDuration);
-
-
-  const updateSizeRange = (nextMin: number, nextMax: number) => {
-    const safeMin = clamp(Math.min(nextMin, nextMax), sizeRange.min, sizeRange.max);
-    const safeMax = clamp(Math.max(nextMin, nextMax), safeMin, sizeRange.max);
-    setSizeFilterRange(safeMin <= sizeRange.min ? 0 : safeMin, safeMax >= sizeRange.max ? null : safeMax);
-  };
-
-  const updateDurationRange = (nextMin: number, nextMax: number) => {
-    const safeMin = clamp(Math.min(nextMin, nextMax), durationRange.min, durationRange.max);
-    const safeMax = clamp(Math.max(nextMin, nextMax), safeMin, durationRange.max);
-    setDurationFilterRange(safeMin <= durationRange.min ? 0 : safeMin, safeMax >= durationRange.max ? null : safeMax);
-  };
-
-  const clearFilters = () => {
-    setStatusFilter('all');
-    setFolderFilterPath(null);
-    setFavoritesFilter(false);
-    setIncompatibleFilter(false);
-    setDuplicateFilter(false);
-    setMinRatingFilter(0);
-    setSizeFilterRange(0, null);
-    setDurationFilterRange(0, null);
-  };
-
-  const reviewLabel = filteredVideos.length === videos.length
-    ? `Review ${filteredVideos.length} ${filteredVideos.length === 1 ? 'video' : 'videos'}`
-    : `Review ${filteredVideos.length} filtered`;
-
-  const hasIncompatibleVideos = videos.some((v) => v.compatible === false);
-  const incompatibleCount = videos.filter((v) => v.compatible === false).length;
+  const reviewLabel = filteredVideoCount === videoCount
+    ? `Review ${filteredVideoCount} ${filteredVideoCount === 1 ? 'video' : 'videos'}`
+    : `Review ${filteredVideoCount} filtered`;
 
   return (
     <aside className="sidebar">
@@ -843,208 +1064,10 @@ export default function Sidebar({
       )}
 
       {stats.total > 0 && !duplicateGroupsMode && (
-        <section className="sidebar-section sidebar-collapsible-section">
-          <div className="sidebar-section-toggle-row">
-            <button className="sidebar-section-toggle" onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}>
-              <span className="sidebar-section-title">
-                <Filter size={14} /> Filters
-              </span>
-              <span className="filter-header-meta">
-                <span className={hasAnyFilter ? 'filter-count filter-count-active' : 'filter-count'}>{filteredSummary}</span>
-              </span>
-            </button>
-            {hasAnyFilter && (
-              <button
-                type="button"
-                className="filter-clear-all-btn"
-                onClick={clearFilters}
-                title="Clear all filters"
-                aria-label="Clear all filters"
-              >
-                <X size={13} />
-              </button>
-            )}
-            <button
-              type="button"
-              className="filter-chevron-btn"
-              onClick={() => setShowFilters((v) => !v)}
-              title={showFilters ? 'Collapse filters' : 'Expand filters'}
-              aria-label={showFilters ? 'Collapse filters' : 'Expand filters'}
-              aria-expanded={showFilters}
-            >
-              <ChevronDown size={14} className={showFilters ? 'chevron-open' : ''} />
-            </button>
-          </div>
-
-          {showFilters && (
-            <div className="sidebar-section-content">
-              {(features.favorites || (features.compatibilityCheck && hasIncompatibleVideos)) && (
-                <div className="filter-pills filter-pills-extra">
-                  {features.favorites && (
-                    <button
-                      className={`pill ${favoritesFilter ? 'pill-active' : ''}`}
-                      onClick={() => setFavoritesFilter(!favoritesFilter)}
-                      title={favoritesFilter ? 'Clear favorites filter' : 'Show only favorite videos'}
-                    >
-                      <Heart size={12} /> Favorites
-                      {favoritesFilter && <X size={11} className="pill-clear-icon" />}
-                    </button>
-                  )}
-                  {features.compatibilityCheck && hasIncompatibleVideos && (
-                    <button
-                      className={`pill pill-delete ${incompatibleFilter ? 'pill-active' : ''}`}
-                      onClick={() => setIncompatibleFilter(!incompatibleFilter)}
-                      title={incompatibleFilter ? 'Clear incompatible filter' : 'Show only videos that need the external player'}
-                    >
-                      <AlertTriangle size={12} />
-                      <span className="pill-text">Incompatible</span>
-                      {incompatibleFilter ? <X size={11} className="pill-clear-icon" /> : <span className="pill-count">{incompatibleCount}</span>}
-                    </button>
-                  )}
-                  {duplicateCount > 0 && (
-                    <button
-                      className={`pill ${duplicateFilter ? 'pill-active' : ''}`}
-                      onClick={() => setDuplicateFilter(!duplicateFilter)}
-                      title={duplicateFilter ? 'Clear duplicates filter' : 'Show only duplicate videos'}
-                    >
-                      <CopyCheck size={12} />
-                      <span className="pill-text">Duplicates</span>
-                      {duplicateFilter ? <X size={11} className="pill-clear-icon" /> : <span className="pill-count">{duplicateCount}</span>}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {features.ratings && (
-                <div className="filter-field">
-                  <span className="filter-input-label">
-                    <Star size={11} /> Rating
-                  </span>
-                  <div className={`filter-star-row ${minRatingFilter > 0 ? 'has-rating' : ''}`} aria-label="Minimum rating filter">
-                    {([1, 2, 3, 4, 5] as const).map((rating) => (
-                      <button
-                        key={rating}
-                        type="button"
-                        className={`filter-star-btn ${minRatingFilter >= rating ? 'active' : ''}`}
-                        onClick={() => setMinRatingFilter(minRatingFilter === rating ? 0 : rating)}
-                        title={rating === 1 ? 'Show 1+ star videos' : `Show ${rating}+ star videos`}
-                        aria-label={rating === 1 ? 'Show 1 or more star videos' : `Show ${rating} or more star videos`}
-                        aria-pressed={minRatingFilter >= rating}
-                      >
-                        <Star size={15} fill={minRatingFilter >= rating ? 'currentColor' : 'none'} />
-                      </button>
-                    ))}
-                    {minRatingFilter > 0 && (
-                      <button
-                        type="button"
-                        className="filter-star-clear"
-                        onClick={() => setMinRatingFilter(0)}
-                        title="Clear rating filter"
-                        aria-label="Clear rating filter"
-                      >
-                        <X size={13} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div className="filter-field">
-                <div className="filter-field-heading">
-                  <span className="filter-input-label">File size</span>
-                  {hasSizeFilter && (
-                    <button
-                      type="button"
-                      className="filter-reset-btn"
-                      onClick={() => setSizeFilterRange(0, null)}
-                      title="Reset file size filter"
-                      aria-label="Reset file size filter"
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
-                </div>
-                <div className="range-filter">
-                  <div className="range-values">
-                    <span>{formatSliderSize(effectiveMinSize)}</span>
-                    <span>{formatSliderSize(effectiveMaxSize)}</span>
-                  </div>
-                  <div className="range-slider" style={sizeRangeStyle}>
-                    <input
-                      className="range-input"
-                      type="range"
-                      min={sizeRange.min}
-                      max={sizeRange.max}
-                      step={sizeRange.step}
-                      value={effectiveMinSize}
-                      disabled={!hasSizeRange}
-                      onChange={(e) => updateSizeRange(Number(e.target.value), effectiveMaxSize)}
-                      aria-label="Minimum file size"
-                    />
-                    <input
-                      className="range-input"
-                      type="range"
-                      min={sizeRange.min}
-                      max={sizeRange.max}
-                      step={sizeRange.step}
-                      value={effectiveMaxSize}
-                      disabled={!hasSizeRange}
-                      onChange={(e) => updateSizeRange(effectiveMinSize, Number(e.target.value))}
-                      aria-label="Maximum file size"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="filter-field">
-                <div className="filter-field-heading">
-                  <span className="filter-input-label">Duration</span>
-                  {hasDurationFilter && (
-                    <button
-                      type="button"
-                      className="filter-reset-btn"
-                      onClick={() => setDurationFilterRange(0, null)}
-                      title="Reset duration filter"
-                      aria-label="Reset duration filter"
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
-                </div>
-                <div className="range-filter">
-                  <div className="range-values">
-                    <span>{formatDurationInput(effectiveMinDuration)}</span>
-                    <span>{formatDurationInput(effectiveMaxDuration)}</span>
-                  </div>
-                  <div className="range-slider" style={durationRangeStyle}>
-                    <input
-                      className="range-input"
-                      type="range"
-                      min={durationRange.min}
-                      max={durationRange.max}
-                      step={durationRange.step}
-                      value={effectiveMinDuration}
-                      disabled={!hasDurationRange}
-                      onChange={(e) => updateDurationRange(Number(e.target.value), effectiveMaxDuration)}
-                      aria-label="Minimum duration"
-                    />
-                    <input
-                      className="range-input"
-                      type="range"
-                      min={durationRange.min}
-                      max={durationRange.max}
-                      step={durationRange.step}
-                      value={effectiveMaxDuration}
-                      disabled={!hasDurationRange}
-                      onChange={(e) => updateDurationRange(effectiveMinDuration, Number(e.target.value))}
-                      aria-label="Maximum duration"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
+        <SidebarFiltersSection
+          showFilters={showFilters}
+          onToggleFilters={() => setShowFilters((v) => !v)}
+        />
       )}
 
       {stats.total > 0 && !duplicateGroupsMode && (
@@ -1197,7 +1220,7 @@ export default function Sidebar({
             <Settings size={18} />
           </button>
 
-          {filteredVideos.length > 0 && !duplicateGroupsMode && (
+          {filteredVideoCount > 0 && !duplicateGroupsMode && (
             <button
               className="btn btn-accent sidebar-review-btn"
               onClick={handleStartReview}

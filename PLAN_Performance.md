@@ -4,6 +4,12 @@
 
 Optimize the current architecture in small, measured steps. The highest-value changes come first: measure, reduce event flooding, remove avoidable queue overhead, then cut unnecessary whole-library recomputation. Keep correctness-first guardrails throughout.
 
+Implementation status as of 2026-06-09:
+- Phase 0: instrumentation landed; baseline 21k-library run still required to mark complete under this plan
+- Phase 1: implemented
+- Phase 2A: implemented
+- Phase 2B: implemented
+
 Guardrails:
 - Do not normalize the store in this pass.
 - Do not replace the public store shape in this pass.

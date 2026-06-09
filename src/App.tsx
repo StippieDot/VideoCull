@@ -84,8 +84,7 @@ function blurPointerActivatedButton(event: MouseEvent) {
 export default function App() {
   const directory = useStore((s) => s.directory);
   const directories = useStore((s) => s.directories);
-  const videos = useStore((s) => s.videos);
-  const filteredVideos = useStore((s) => s.filteredVideos);
+  const videoCount = useStore((s) => s.videos.length);
   const reviewMode = useStore((s) => s.reviewMode);
   const isScanning = useStore((s) => s.isScanning);
   const globalMute = useStore((s) => s.settings.globalMute);
@@ -249,7 +248,8 @@ export default function App() {
   }, [pushToast]);
 
   const handleFindDuplicates = useCallback(async () => {
-    if (!window.electronAPI || videos.length < 2 || isFindingDuplicates || !duplicateSettings.enabled) return;
+    const state = useStore.getState();
+    if (!window.electronAPI || state.videos.length < 2 || isFindingDuplicates || !duplicateSettings.enabled) return;
     if (isMetadataRunning(isGenerating, genProgress.phase)) {
       pushToast({
         title: 'Metadata still updating',
@@ -259,7 +259,7 @@ export default function App() {
       });
       return;
     }
-    const scopeVideos = duplicateSettings.defaultScope === 'filtered' ? filteredVideos : videos;
+    const scopeVideos = duplicateSettings.defaultScope === 'filtered' ? state.filteredVideos : state.videos;
     if (scopeVideos.length < 2) {
       pushToast({
         title: 'Not enough videos',
@@ -295,7 +295,7 @@ export default function App() {
         setIsFindingDuplicates(false);
       }
     }
-  }, [applyDuplicateResult, duplicateSettings, filteredVideos, genProgress.phase, isFindingDuplicates, isGenerating, pushToast, setDuplicateProgress, setIsFindingDuplicates, videos]);
+  }, [applyDuplicateResult, duplicateSettings, genProgress.phase, isFindingDuplicates, isGenerating, pushToast, setDuplicateProgress, setIsFindingDuplicates]);
 
   // Scan directory when selected
   const handleScan = useCallback(async (dirPaths: string[]) => {
@@ -780,8 +780,8 @@ export default function App() {
   }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, handleExportReport, showShortcutsHelp]);
 
   useEffect(() => {
-    window.electronAPI?.setExportReportAvailable(Boolean(directory && videos.length > 0 && !isScanning));
-  }, [directory, videos.length, isScanning]);
+    window.electronAPI?.setExportReportAvailable(Boolean(directory && videoCount > 0 && !isScanning));
+  }, [directory, videoCount, isScanning]);
 
   useEffect(() => {
     if (!reviewMode && folderReviewPathRef.current) {
@@ -941,8 +941,8 @@ export default function App() {
 
       <Profiler id="AppMain" onRender={handleMainProfiler}>
         <main className="app-main">
-          {!directory && !isScanning && videos.length === 0 && <EmptyState onNotify={pushToast} />}
-          {directory && videos.length > 0 && duplicateGroupsMode && (
+          {!directory && !isScanning && videoCount === 0 && <EmptyState onNotify={pushToast} />}
+          {directory && videoCount > 0 && duplicateGroupsMode && (
             <Profiler id="DuplicateGroupsView" onRender={handleMainProfiler}>
               <div
                 style={{
@@ -955,7 +955,7 @@ export default function App() {
               </div>
             </Profiler>
           )}
-          {directory && videos.length > 0 && !reviewMode && !duplicateGroupsMode && (
+          {directory && videoCount > 0 && !reviewMode && !duplicateGroupsMode && (
             <GridMode
               onReviewFolder={handleReviewFolder}
               onRegenerateThumbnails={handleRegenerateThumbnails}
@@ -966,7 +966,7 @@ export default function App() {
               <ReviewMode />
             </Profiler>
           )}
-          {isScanning && videos.length === 0 && (
+          {isScanning && videoCount === 0 && (
             <div className="scanning-overlay">
               <div className="scanning-spinner" />
               <p>Scanning for videos...</p>
