@@ -7,6 +7,7 @@ const VIDEO_EXTENSIONS = new Set([
   '.asf', '.m2ts', '.divx', '.ogv', '.3gp', '.3g2', '.mxf', '.dv',
 ]);
 const SCAN_PROGRESS_BATCH_SIZE = 25;
+const SCAN_FILE_STAT_BATCH_SIZE = 8;
 
 function isVideoFile(filename) {
   return VIDEO_EXTENSIONS.has(path.extname(filename).toLowerCase());
@@ -45,6 +46,47 @@ function createProgressReporter(onProgress) {
   };
 }
 
+async function statVideoEntries(entries, statPath = fs.stat) {
+  const results = new Array(entries.length).fill(null);
+
+  for (let start = 0; start < entries.length; start += SCAN_FILE_STAT_BATCH_SIZE) {
+    const batch = entries.slice(start, start + SCAN_FILE_STAT_BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map(async ({ entryName, fullPath }) => {
+      try {
+        const stat = await statPath(fullPath);
+        return {
+          id: makeVideoId(fullPath, stat.size),
+          filename: entryName,
+          path: fullPath,
+          sizeBytes: stat.size,
+          date: stat.mtimeMs,
+          durationSecs: null,
+          duplicateHash: makeDuplicateHash(stat.size, null),
+          status: 'pending',
+          thumbnails: [],
+          rating: 0,
+          favorite: false,
+          compatible: true,
+          videoCodec: null,
+          audioCodec: null,
+          containerFormat: null,
+          width: null,
+          height: null,
+          fps: null,
+        };
+      } catch {
+        return null;
+      }
+    }));
+
+    for (let i = 0; i < batchResults.length; i += 1) {
+      results[start + i] = batchResults[i];
+    }
+  }
+
+  return results;
+}
+
 /**
  * Recursively walk a directory and collect video file info.
  * @param {string} dirPath - Root directory to scan.
@@ -65,6 +107,21 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
       return; // Skip inaccessible directories
     }
 
+    let pendingVideoEntries = [];
+    const flushPendingVideoEntries = async () => {
+      if (pendingVideoEntries.length === 0) return;
+      const batch = pendingVideoEntries;
+      pendingVideoEntries = [];
+      const scannedVideos = await statVideoEntries(batch);
+      for (let i = 0; i < scannedVideos.length; i += 1) {
+        const video = scannedVideos[i];
+        if (!video) continue;
+        found += 1;
+        videos.push(video);
+        progressReporter.report(found, batch[i].entryName);
+      }
+    };
+
     for (const entry of entries) {
       const fullPath = path.join(currentDir, entry.name);
 
@@ -74,41 +131,17 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
       }
 
       if (entry.isDirectory() && includeSubfolders) {
+        await flushPendingVideoEntries();
         await walk(fullPath);
       } else if (entry.isFile() && isVideoFile(entry.name)) {
-        try {
-          const stat = await fs.stat(fullPath);
-          found++;
-
-          const video = {
-            id: makeVideoId(fullPath, stat.size),
-            filename: entry.name,
-            path: fullPath,
-            sizeBytes: stat.size,
-            date: stat.mtimeMs,
-            durationSecs: null, // Will be filled by processor
-            duplicateHash: makeDuplicateHash(stat.size, null),
-            status: 'pending',
-            thumbnails: [],
-            rating: 0,
-            favorite: false,
-            compatible: true,
-            videoCodec: null,
-            audioCodec: null,
-            containerFormat: null,
-            width: null,
-            height: null,
-            fps: null,
-          };
-
-          videos.push(video);
-
-          progressReporter.report(found, entry.name);
-        } catch {
-          // Skip files we can't stat
+        pendingVideoEntries.push({ entryName: entry.name, fullPath });
+        if (pendingVideoEntries.length >= SCAN_FILE_STAT_BATCH_SIZE) {
+          await flushPendingVideoEntries();
         }
       }
     }
+
+    await flushPendingVideoEntries();
   }
 
   await walk(dirPath);
@@ -116,4 +149,11 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
   return videos;
 }
 
-module.exports = { scanDirectory };
+module.exports = {
+  scanDirectory,
+  __test__: {
+    createProgressReporter,
+    statVideoEntries,
+    SCAN_FILE_STAT_BATCH_SIZE,
+  },
+};

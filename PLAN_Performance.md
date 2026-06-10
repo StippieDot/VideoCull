@@ -11,6 +11,7 @@ Implementation status as of 2026-06-09:
 - Phase 2B: implemented
 - Phase 3: implemented (`3.1` sidebar aggregate caching, `3.2` GridMode row/selection cost reductions, `3.3` ReviewMode scope-summary caching, `3.4` media-batch merge optimization)
 - Phase 4: implemented (`4.1` duplicate fingerprint DB reads use chunked `IN (...)` loads, `4.2` metadata writes are batched transactionally, `4.3` duplicate worker pHash payload is slimmer, `4.4` scan startup now loads only relevant cache rows per owner folder)
+- Phase 5: implemented (`5.1` duplicate results are already windowed through virtual rows in both row and gallery layouts; `5.2` scanner file-stat batching is implemented conservatively)
 
 Guardrails:
 - Do not normalize the store in this pass.
