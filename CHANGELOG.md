@@ -2,6 +2,33 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [2.0.0-beta.2] - 2026-06-11
+
+This beta focuses on scaling duplicate review, reducing large-library slowdown, tightening media compatibility behavior, and raising the regression-testing baseline before the persistent-library work begins.
+
+### Added
+- Expanded duplicate-review tooling with richer group handling, better keeper controls, safer rerun flows, and stronger duplicate-session management.
+- Context-menu actions and idle/performance diagnostics for faster inspection and debugging during heavy review sessions.
+- Broader automated coverage across Electron, renderer integration, duplicate workflows, relaunch persistence, and delete-safety flows.
+- Dedicated CI test workflow and Playwright/Vitest infrastructure for repeatable regression checking.
+
+### Changed
+- Improved app responsiveness across the renderer, sidebar, grid, review mode, scanner traversal, cache startup, and duplicate startup paths for larger libraries.
+- Reduced duplicate-detection overhead with more selective fingerprint loading, cleaner worker flow, and lower main-process startup cost before comparisons begin.
+- Improved cache and metadata persistence behavior with stronger save paths, better migration coverage, and more predictable reload/relaunch behavior.
+- Refined compatibility handling so built-in playback rules better match real browser support, while additional FFmpeg-supported formats are recognized during scanning.
+- Updated development and CI plumbing, including Electron/Vite dev-port coordination and refreshed GitHub Actions usage.
+
+### Fixed
+- Duplicate cleanup and delete flows are safer and more consistent, including reruns, fallback behavior, and follow-up state cleanup after removals.
+- Sort state now persists more reliably, and resolution labels are normalized more consistently across the UI.
+- Feature-setting toggles and related input behavior now behave more predictably.
+- Cache, duplicate, and scan edge cases now fail more safely under heavy or unusual workloads instead of leaving stale state behind.
+
+### Tooling
+- Migrated and expanded the automated test stack around Vitest, renderer integration tests, and E2E release checks.
+- Added more helper utilities, diagnostics hooks, and performance instrumentation to support future release hardening.
+
 ## [2.0.0-beta.1] - 2026-05-12
 
 This beta is a major step toward Video Cull v2.0: richer review decisions, smarter library filtering, clearer media insight, safer cleanup, and more predictable playback for large video collections.
