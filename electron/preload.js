@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('scan-progress', handler);
     return () => ipcRenderer.removeListener('scan-progress', handler);
   },
+  onScanCachedResults: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('scan-cached-results', handler);
+    return () => ipcRenderer.removeListener('scan-cached-results', handler);
+  },
 
   // Thumbnail generation
   processMetadata: (videos, dirPath, options) =>

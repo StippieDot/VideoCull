@@ -522,6 +522,7 @@ export interface ElectronAPI {
   scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<Video[]>;
   resetLoadedDirectories: () => Promise<boolean>;
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;
+  onScanCachedResults?: (callback: (data: { dirPath: string; videos: Video[] }) => void) => () => void;
   processMetadata: (videos: MediaProbeVideoInput[], dirPath: string, options?: { force?: boolean }) => Promise<boolean>;
   onMetadataProgress: (callback: (data: ThumbProgress) => void) => () => void;
   onMetadataReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;

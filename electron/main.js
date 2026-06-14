@@ -789,6 +789,35 @@ async function loadCacheMapWithRecovery(folderPath, cacheOptions, cacheRootDir, 
   }
 }
 
+async function loadIndexedVideosForScan(dirPath, includeSubfolders, cacheOptions, scanToken, scanCacheRoots) {
+  const indexedMap = new Map();
+  const yieldToEventLoop = createEventLoopYieldController();
+  const knownFolders = await getKnownCacheFolders([dirPath]);
+  assertScanCurrent(scanToken);
+  const targetFolders = knownFolders.filter((folderPath) => {
+    if (!folderPath) return false;
+    if (isSameFolderSync(folderPath, dirPath)) return true;
+    return Boolean(includeSubfolders) && isFolderInsideSync(folderPath, dirPath);
+  });
+
+  for (const folderPath of targetFolders) {
+    try {
+      assertScanCurrent(scanToken);
+      const cachePaths = await prepareCacheFolder(folderPath, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
+      assertScanCurrent(scanToken);
+      const folderMap = await loadCacheMapWithRecovery(folderPath, cacheOptions, cachePaths.cacheRootDir);
+      assertScanCurrent(scanToken);
+      mergeCacheMap(indexedMap, folderMap, null, { overwrite: true });
+      await yieldToEventLoop();
+    } catch (err) {
+      if (err instanceof ScanSupersededError) throw err;
+      log.warn(`[scan-directory] Failed to load indexed cache rows for ${folderPath}:`, err);
+    }
+  }
+
+  return Array.from(indexedMap.values());
+}
+
 function getVideoFolderPath(video) {
   return path.dirname(video.path);
 }
@@ -1348,6 +1377,19 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     }
   }
   recordStageTiming('splitParentCaches', stageStartedAt, { items: parentCacheFolders.length });
+
+  stageStartedAt = performance.now();
+  const indexedVideos = await loadIndexedVideosForScan(dirPath, includeSubfolders, cacheOptions, scanToken, scanCacheRoots);
+  assertScanCurrent(scanToken);
+  recordStageTiming('loadIndexedVideos', stageStartedAt, { items: indexedVideos.length });
+  if (indexedVideos.length > 0) {
+    sendToRenderer('scan-cached-results', { dirPath, videos: indexedVideos });
+    for (const indexedVideo of indexedVideos) {
+      if (!indexedVideo?.path) continue;
+      knownVideoPaths.add(indexedVideo.path);
+      knownVideoIdsByPath.set(indexedVideo.path, indexedVideo.id);
+    }
+  }
 
   // Migrate any old .video-cull-thumbs thumbnails into the cache directory.
   // Filesystem-based: checks disk directly, not the DB, so it works even when

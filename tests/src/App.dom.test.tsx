@@ -86,6 +86,7 @@ type Subscription<T> = (payload: T) => void;
 
 type ElectronHandlers = {
   updateStatus?: Subscription<UpdateInfo>;
+  scanCachedResults?: Subscription<{ dirPath: string; videos: ReturnType<typeof makeVideo>[] }>;
   metadataReadyBatch?: Subscription<ThumbReadyEvent[]>;
   thumbReadyBatch?: Subscription<ThumbReadyEvent[]>;
   duplicateProgress?: Subscription<DuplicateProgress>;
@@ -126,6 +127,10 @@ function createElectronApiMock() {
       return vi.fn();
     }),
     onScanProgress: vi.fn(() => vi.fn()),
+    onScanCachedResults: vi.fn((callback: Subscription<{ dirPath: string; videos: ReturnType<typeof makeVideo>[] }>) => {
+      handlers.scanCachedResults = callback;
+      return vi.fn();
+    }),
     onThumbProgress: vi.fn(() => vi.fn()),
     onMetadataProgress: vi.fn(() => vi.fn()),
     onMetadataReadyBatch: vi.fn((callback: Subscription<ThumbReadyEvent[]>) => {
@@ -164,6 +169,11 @@ function createElectronApiMock() {
     emitMetadataReadyBatch(batch: ThumbReadyEvent[]) {
       act(() => {
         handlers.metadataReadyBatch?.(batch);
+      });
+    },
+    emitScanCachedResults(payload: { dirPath: string; videos: ReturnType<typeof makeVideo>[] }) {
+      act(() => {
+        handlers.scanCachedResults?.(payload);
       });
     },
     emitThumbReadyBatch(batch: ThumbReadyEvent[]) {
@@ -243,6 +253,26 @@ describe('App renderer behavior', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('grid-state').textContent).toContain('thumbs:2|codec:h264|compat:yes');
+    });
+  });
+
+  test('hydrates cached scan results while a scan is running', async () => {
+    getStoreApi().setState({
+      isScanning: true,
+      videos: [],
+      filteredVideos: [],
+      stats: { total: 0, pending: 0, skipped: 0, keep: 0, delete: 0, totalSize: 0, deleteSize: 0 },
+    });
+
+    render(<App />);
+
+    electron.emitScanCachedResults({
+      dirPath: 'D:\\Media',
+      videos: [makeVideo('cached', { path: 'D:\\Media\\cached.mp4', filename: 'cached.mp4' })],
+    });
+
+    await waitFor(() => {
+      expect(getStoreApi().getState().videos.map((video) => video.filename)).toEqual(['cached.mp4']);
     });
   });
 

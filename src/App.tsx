@@ -309,6 +309,7 @@ export default function App() {
     setIsScanning(true);
     setIsGenerating(false);
     setScanProgress({ found: 0, currentFile: '' });
+    setVideos([]);
     try {
       const scannedGroups = [];
       for (const dirPath of dirPaths) {
@@ -575,6 +576,21 @@ export default function App() {
     if (!window.electronAPI) return;
 
     const unsub1 = window.electronAPI.onScanProgress((progress) => setScanProgress(progress));
+    const unsubCachedScan = window.electronAPI.onScanCachedResults
+      ? window.electronAPI.onScanCachedResults((payload) => {
+        if (!useStore.getState().isScanning || !Array.isArray(payload?.videos) || payload.videos.length === 0) return;
+        const mergedByPath = new Map<string, typeof payload.videos[number]>();
+        for (const video of useStore.getState().videos) {
+          if (!video?.path) continue;
+          mergedByPath.set(video.path, video);
+        }
+        for (const video of payload.videos) {
+          if (!video?.path) continue;
+          mergedByPath.set(video.path, video);
+        }
+        setVideos(Array.from(mergedByPath.values()));
+      })
+      : () => {};
     const unsub2 = window.electronAPI.onThumbProgress((progress) => {
       const total = genProgressTotalRef.current || progress.total;
       setGenProgress({
@@ -757,6 +773,7 @@ export default function App() {
 
     return () => {
       unsub1();
+      unsubCachedScan();
       unsub2();
       unsubMetadataProgress();
       unsubMetadataReady();
@@ -767,7 +784,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', blurPointerActivatedButton, true);
     };
-  }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, handleExportReport, showShortcutsHelp]);
+  }, [setScanProgress, setVideos, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, handleExportReport, showShortcutsHelp]);
 
   useEffect(() => {
     window.electronAPI?.setExportReportAvailable(Boolean(directory && videoCount > 0 && !isScanning));

@@ -58,6 +58,7 @@ describe('preload electronAPI bridge', () => {
     expect(exposedApi.selectDirectory).toBeTypeOf('function');
     expect(exposedApi.saveConfig).toBeTypeOf('function');
     expect(exposedApi.exportReport).toBeTypeOf('function');
+    expect(exposedApi.onScanCachedResults).toBeTypeOf('function');
     expect(exposedApi.onUpdateStatus).toBeTypeOf('function');
   });
 
