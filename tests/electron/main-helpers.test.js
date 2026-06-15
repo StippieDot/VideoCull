@@ -19,6 +19,7 @@ const {
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,
+  listMissingDescendantCacheFolders,
   normalizeReportRoots,
   summarizeMediaProbeError,
   thumbAbsolute,
@@ -207,6 +208,39 @@ describe('cache safety checks', () => {
     assert.equal(isSqliteCorruptionError({ code: 'SQLITE_CORRUPT' }), true);
     assert.equal(isSqliteCorruptionError(new Error('file is not a database')), true);
     assert.equal(isSqliteCorruptionError(new Error('network timeout')), false);
+  });
+
+  test('finds only descendant cache folders that no longer exist on disk', async () => {
+    const missing = await listMissingDescendantCacheFolders({
+      rootFolder: 'D:\\Media',
+      knownCacheFolders: [
+        'D:\\Media',
+        'D:\\Media\\Keep',
+        'D:\\Media\\Missing',
+        'D:\\Media\\Deep\\MissingToo',
+        'D:\\Other',
+      ],
+      statPath: async (target) => {
+        if (target === 'D:\\Media\\Keep') {
+          return { isDirectory: () => true };
+        }
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      },
+    });
+
+    assert.deepEqual(missing, ['D:\\Media\\Missing', 'D:\\Media\\Deep\\MissingToo']);
+  });
+
+  test('skips cleanup candidates that still resolve to directories', async () => {
+    const missing = await listMissingDescendantCacheFolders({
+      rootFolder: 'D:\\Media',
+      knownCacheFolders: ['D:\\Media\\Keep', 'D:\\Media\\FileLike'],
+      statPath: async (target) => ({
+        isDirectory: () => target === 'D:\\Media\\Keep',
+      }),
+    });
+
+    assert.deepEqual(missing, ['D:\\Media\\FileLike']);
   });
 
   test('allows file operations only for known videos that still belong to a loaded root', async () => {

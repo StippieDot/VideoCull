@@ -27,9 +27,9 @@ describe('migrateSettings', () => {
 
   test('falls back to safe defaults for malformed feature and cache settings', () => {
     const migrated = migrateSettings({
+      autoPruneMissingSubfolderCache: 'yes',
       features: {
         ratings: false,
-        analytics: 'yes',
         codecBadges: false,
         compatibilityCheck: false,
         globalMute: false,
@@ -51,6 +51,7 @@ describe('migrateSettings', () => {
     expect(migrated.cacheLocation).toBe('centralised');
     expect(migrated.centralCachePath).toBeNull();
     expect(migrated.perDriveCachePaths).toEqual({});
+    expect(migrated.autoPruneMissingSubfolderCache).toBe(true);
     expect(migrated.recentDirectoryTimestamps).toEqual({});
     expect(migrated.autoUpdates).toBe(true);
     expect(migrated.globalMute).toBe(false);

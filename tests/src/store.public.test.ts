@@ -173,7 +173,6 @@ describe('useStore public behavior', () => {
         ...settings.features,
         ratings: false,
         favorites: false,
-        analytics: false,
         codecBadges: false,
         compatibilityCheck: false,
         globalMute: false,
@@ -185,7 +184,6 @@ describe('useStore public behavior', () => {
       ...settings.features,
       ratings: false,
       favorites: false,
-      analytics: false,
       codecBadges: true,
       compatibilityCheck: true,
       globalMute: true,
@@ -266,6 +264,7 @@ describe('useStore public behavior', () => {
       keyKeep: 'K',
       appMode: 'legacy',
       cacheLocation: 'unknown',
+      autoPruneMissingSubfolderCache: 'broken',
       recentDirectories: ['D:\\Keep', 'D:\\Missing'],
       recentDirectoryTimestamps: {
         'D:\\Keep': 111,
@@ -287,6 +286,7 @@ describe('useStore public behavior', () => {
     const { settings } = useStore.getState();
     expect(settings.keyKeep).toEqual({ key: 'k', ctrl: false, shift: false, alt: false });
     expect(settings.cacheLocation).toBe('centralised');
+    expect(settings.autoPruneMissingSubfolderCache).toBe(true);
     expect(settings.recentDirectories).toEqual(['D:\\Keep']);
     expect(settings.recentDirectoryTimestamps).toEqual({ 'D:\\Keep': 111 });
     expect(settings.duplicates.comparisonMode).toBe('visual');

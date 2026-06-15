@@ -859,6 +859,7 @@ const useStore = create<VideoStore>((set, get) => ({
     cacheLocation: 'centralised',
     centralCachePath: null,
     perDriveCachePaths: {},
+    autoPruneMissingSubfolderCache: true,
     thumbsPerVideo: 6,
     defaultCardScale: 1,
     defaultSortBy: 'name',

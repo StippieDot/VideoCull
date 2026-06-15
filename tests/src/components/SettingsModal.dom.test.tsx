@@ -162,15 +162,20 @@ describe('SettingsModal integration behavior', () => {
     });
   });
 
-  test('shows only rating, favorites, and analytics as optional feature toggles', async () => {
+  test('shows only rating and favorites as optional feature toggles', async () => {
     render(<SettingsModal initialTab="features" />);
 
     expect(await screen.findByLabelText(/5-star rating/i)).toBeTruthy();
     expect(screen.getByLabelText(/favorites/i)).toBeTruthy();
-    expect(screen.getByLabelText(/analytics screen/i)).toBeTruthy();
     expect(screen.queryByLabelText(/codec \/ resolution badges/i)).toBeNull();
     expect(screen.queryByLabelText(/incompatible codec indicator/i)).toBeNull();
     expect(screen.queryByLabelText(/global mute toggle/i)).toBeNull();
     expect(screen.queryByLabelText(/next undecided jump/i)).toBeNull();
+  });
+
+  test('shows the missing-subfolder cache cleanup toggle on the cache tab', async () => {
+    render(<SettingsModal initialTab="cache" />);
+
+    expect(await screen.findByRole('checkbox', { name: /auto-remove cache for missing subfolders/i })).toBeTruthy();
   });
 });

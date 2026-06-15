@@ -139,7 +139,7 @@ describe('Sidebar recent folder behavior', () => {
     });
   });
 
-  test('applies the keep status filter from the library stats buttons', async () => {
+  test('applies the keep status filter from the status buttons', async () => {
     const keepVideo = makeVideo('keep-1', { status: 'keep' });
     const deleteVideo = makeVideo('delete-1', { status: 'delete' });
     useStore.setState({

@@ -317,7 +317,7 @@ function SidebarDuplicateSection({
         </button>
 
         <button className="btn btn-outline sidebar-wide-action" onClick={() => setDuplicateGroupsMode(false)}>
-          Back to Library
+          Back to Grid
         </button>
 
         <button className="btn btn-outline sidebar-wide-action" onClick={onOpenDuplicateSettings}>
@@ -347,7 +347,7 @@ function SidebarDuplicateSection({
           className={`btn btn-outline sidebar-wide-action ${duplicateGroupsMode ? 'btn-toggle-active' : ''}`}
           onClick={() => setDuplicateGroupsMode(!duplicateGroupsMode)}
         >
-          {duplicateGroupsMode ? 'Back to Library' : `Duplicate Groups (${duplicateGroupCount})`}
+          {duplicateGroupsMode ? 'Back to Grid' : `Duplicate Groups (${duplicateGroupCount})`}
         </button>
       )}
     </section>
@@ -1029,7 +1029,7 @@ export default function Sidebar({
 
       {stats.total > 0 && !duplicateGroupsMode && (
         <section className="sidebar-section sidebar-library-section">
-          <h3 className="sidebar-section-title">Library</h3>
+          <h3 className="sidebar-section-title">Status</h3>
           <div className="stat-grid status-filter-grid">
             {statusStatItems.map((item) => (
               <button

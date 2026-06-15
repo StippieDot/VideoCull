@@ -140,7 +140,6 @@ export type DuplicateSamplingWindow = 'even' | '25-75' | '20-80' | '15-85' | 'cu
 export interface FeatureSettings {
   ratings: boolean;
   favorites: boolean;
-  analytics: boolean;
   codecBadges: boolean;
   compatibilityCheck: boolean;
   globalMute: boolean;
@@ -219,6 +218,7 @@ export interface AppSettings {
   cacheLocation: CacheLocationMode;
   centralCachePath: string | null;
   perDriveCachePaths: Record<string, string>;
+  autoPruneMissingSubfolderCache: boolean;
   thumbsPerVideo: 1 | 2 | 4 | 6 | 9;
   defaultCardScale: number;
   defaultSortBy: SortField;

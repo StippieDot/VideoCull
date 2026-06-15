@@ -219,6 +219,24 @@ function isSameFolderSync(a, b) {
   return path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 }
 
+async function listMissingDescendantCacheFolders({
+  rootFolder,
+  knownCacheFolders,
+  statPath,
+}) {
+  const missingFolders = [];
+  for (const folderPath of Array.isArray(knownCacheFolders) ? knownCacheFolders : []) {
+    if (!folderPath || !isFolderInsideSync(folderPath, rootFolder)) continue;
+    try {
+      const stats = await statPath(folderPath);
+      if (!stats.isDirectory()) missingFolders.push(folderPath);
+    } catch {
+      missingFolders.push(folderPath);
+    }
+  }
+  return missingFolders;
+}
+
 function thumbAbsolute(relPath, cacheRootDir) {
   if (!relPath || path.isAbsolute(relPath)) return relPath;
   return path.join(cacheRootDir, relPath);
@@ -308,6 +326,7 @@ module.exports = {
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,
+  listMissingDescendantCacheFolders,
   normalizeReportRoots,
   summarizeMediaProbeError,
   thumbAbsolute,

@@ -693,7 +693,7 @@ export default function App() {
             } else {
               pushToast({
                 title: 'Moved to Recycle Bin',
-                detail: `${deletedPaths.length} ${deletedPaths.length === 1 ? 'video' : 'videos'} removed from the library.${folderDetail}`,
+                detail: `${deletedPaths.length} ${deletedPaths.length === 1 ? 'video' : 'videos'} removed from the session.${folderDetail}`,
                 kind: 'success',
               });
             }

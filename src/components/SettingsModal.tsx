@@ -22,7 +22,6 @@ const ABOUT_LINKS = {
 const FEATURE_TOGGLES = [
   { key: 'ratings', label: '5-star rating', description: 'Show rating controls on video cards and in review mode.' },
   { key: 'favorites', label: 'Favorites', description: 'Show the heart toggle and favorites filter.' },
-  { key: 'analytics', label: 'Analytics screen', description: 'Show storage analytics entry points.' },
 ] as const satisfies ReadonlyArray<{
   key: typeof OPTIONAL_FEATURE_KEYS[number];
   label: string;
@@ -181,10 +180,12 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
       JSON.stringify(before.duplicates) !== JSON.stringify(after.duplicates);
 
     const hasCacheChanges = cacheSettingsChanged(before, after);
+    const hasCacheMaintenanceChanges =
+      before.autoPruneMissingSubfolderCache !== after.autoPruneMissingSubfolderCache;
     const hasRestartRequiredChanges = before.autoUpdates !== after.autoUpdates;
 
     return {
-      hasNextRunChanges: hasProcessingChanges || hasDuplicateRunChanges || hasCacheChanges,
+      hasNextRunChanges: hasProcessingChanges || hasDuplicateRunChanges || hasCacheChanges || hasCacheMaintenanceChanges,
       hasRestartRequiredChanges,
     };
   };
@@ -724,6 +725,18 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                       : 'Open a folder to configure its drive.'}
                   </span>
                   {cacheMessage && <span className="help-text">{cacheMessage}</span>}
+                </div>
+
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={localSettings.autoPruneMissingSubfolderCache}
+                      onChange={(e) => handleChange('autoPruneMissingSubfolderCache', e.target.checked)}
+                    />
+                    Auto-remove cache for missing subfolders
+                  </label>
+                  <span className="help-text">After a scan with subfolders enabled, Video Cull can automatically delete cached DBs and thumbnails for remembered child folders that no longer exist on disk.</span>
                 </div>
               </div>
             )}

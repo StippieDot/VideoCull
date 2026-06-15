@@ -28,6 +28,7 @@ const {
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,
+  listMissingDescendantCacheFolders,
   normalizeReportRoots,
   summarizeMediaProbeError,
   thumbAbsolute,
@@ -598,6 +599,7 @@ async function getCacheOptions() {
     defaultCentralRoot: defaultCentralCacheRoot,
     centralCachePath: config.centralCachePath || null,
     perDriveCachePaths: config.perDriveCachePaths || {},
+    autoPruneMissingSubfolderCache: config.autoPruneMissingSubfolderCache !== false,
     username: os.userInfo().username,
   };
 }
@@ -613,6 +615,7 @@ function normalizeCacheSettings(settings = {}) {
     defaultCentralRoot: defaultCentralCacheRoot,
     centralCachePath: settings.centralCachePath || null,
     perDriveCachePaths: settings.perDriveCachePaths || {},
+    autoPruneMissingSubfolderCache: settings.autoPruneMissingSubfolderCache !== false,
     username: os.userInfo().username,
   };
 }
@@ -633,6 +636,25 @@ async function registerCacheFolder(folderPath, cachePaths) {
       await writeJsonFile(DISTRIBUTED_INDEX_FILE, { ...distributed, knownDistributedPaths });
     }
   }
+}
+
+async function unregisterCacheFolders(folderPaths) {
+  const folderKeys = new Set(
+    (Array.isArray(folderPaths) ? folderPaths : [])
+      .filter(Boolean)
+      .map((folderPath) => path.resolve(folderPath).toLowerCase())
+  );
+  if (folderKeys.size === 0) return;
+
+  const index = await readJsonFile(CACHE_INDEX_FILE, { knownFolders: [] });
+  const knownFolders = (Array.isArray(index.knownFolders) ? index.knownFolders : [])
+    .filter((folderPath) => !folderKeys.has(path.resolve(folderPath).toLowerCase()));
+  await writeJsonFile(CACHE_INDEX_FILE, { ...index, knownFolders });
+
+  const distributed = await readJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
+  const knownDistributedPaths = (Array.isArray(distributed.knownDistributedPaths) ? distributed.knownDistributedPaths : [])
+    .filter((folderPath) => !folderKeys.has(path.resolve(folderPath).toLowerCase()));
+  await writeJsonFile(DISTRIBUTED_INDEX_FILE, { ...distributed, knownDistributedPaths });
 }
 
 async function pruneDistributedIndex() {
@@ -873,6 +895,33 @@ async function loadRelevantFolderCacheRowsIntoMap(videos, cacheOptions, cachedMa
       log.warn(`[scan-directory] Failed to load relevant cache rows for ${folderPath}:`, err);
     }
   }
+}
+
+async function pruneMissingDescendantCaches(rootFolder, cacheOptions, includeSubfolders) {
+  if (!includeSubfolders || cacheOptions.autoPruneMissingSubfolderCache === false) {
+    return [];
+  }
+
+  const knownCacheFolders = await getKnownCacheFolders();
+  const missingFolders = await listMissingDescendantCacheFolders({
+    rootFolder,
+    knownCacheFolders,
+    statPath: fs.stat,
+  });
+
+  if (missingFolders.length === 0) {
+    return [];
+  }
+
+  for (const folderPath of missingFolders) {
+    const cachePaths = getCachePaths(folderPath, cacheOptions);
+    cache.deleteDb(folderPath, cacheOptions, { quiet: true });
+    await fs.rm(cachePaths.thumbRootDir, { recursive: true, force: true }).catch(() => {});
+  }
+
+  await unregisterCacheFolders(missingFolders);
+  log.info(`[cache] Auto-pruned ${missingFolders.length} missing descendant cache folder(s) under ${rootFolder}`);
+  return missingFolders;
 }
 
 async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOptions, parentCacheRootDir, scanToken = null, scanCacheRoots = null) {
@@ -1469,6 +1518,11 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   assertScanCurrent(scanToken);
   recordStageTiming('saveVideosByParentFolder', stageStartedAt, { items: merged.length });
 
+  stageStartedAt = performance.now();
+  const autoPrunedMissingCacheFolders = await pruneMissingDescendantCaches(dirPath, cacheOptions, includeSubfolders);
+  assertScanCurrent(scanToken);
+  recordStageTiming('pruneMissingDescendantCaches', stageStartedAt, { items: autoPrunedMissingCacheFolders.length });
+
   // Commit loaded-directory globals only after the scan is still current.
   currentScanDir = currentScanDir || dirPath;
   currentScanDirs.add(dirPath);
@@ -1488,6 +1542,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     dirPath,
     includeSubfolders: Boolean(includeSubfolders),
     videoCount: merged.length,
+    autoPrunedMissingCacheFolders: autoPrunedMissingCacheFolders.length,
     durationMs: Math.round((scanSnapshot?.durationMs ?? 0) * 100) / 100,
     stageTimings,
     counters: scanSnapshot?.counters ?? {},

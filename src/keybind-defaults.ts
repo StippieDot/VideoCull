@@ -6,14 +6,13 @@ import type { DuplicateSettings } from './types';
 export const DEFAULT_FEATURES: FeatureSettings = {
   ratings: true,
   favorites: true,
-  analytics: true,
   codecBadges: true,
   compatibilityCheck: true,
   globalMute: true,
   nextUndecided: true,
 };
 
-export const OPTIONAL_FEATURE_KEYS = ['ratings', 'favorites', 'analytics'] as const;
+export const OPTIONAL_FEATURE_KEYS = ['ratings', 'favorites'] as const;
 
 export function normalizeFeatureSettings(raw: unknown): FeatureSettings {
   const rawFeatures = raw && typeof raw === 'object' && !Array.isArray(raw)
@@ -23,7 +22,6 @@ export function normalizeFeatureSettings(raw: unknown): FeatureSettings {
   return {
     ratings: typeof rawFeatures.ratings === 'boolean' ? rawFeatures.ratings : DEFAULT_FEATURES.ratings,
     favorites: typeof rawFeatures.favorites === 'boolean' ? rawFeatures.favorites : DEFAULT_FEATURES.favorites,
-    analytics: typeof rawFeatures.analytics === 'boolean' ? rawFeatures.analytics : DEFAULT_FEATURES.analytics,
     codecBadges: DEFAULT_FEATURES.codecBadges,
     compatibilityCheck: DEFAULT_FEATURES.compatibilityCheck,
     globalMute: DEFAULT_FEATURES.globalMute,
@@ -194,6 +192,10 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
 
   if (!result.perDriveCachePaths || typeof result.perDriveCachePaths !== 'object' || Array.isArray(result.perDriveCachePaths)) {
     result.perDriveCachePaths = {};
+  }
+
+  if (typeof result.autoPruneMissingSubfolderCache !== 'boolean') {
+    result.autoPruneMissingSubfolderCache = true;
   }
 
   return result as Partial<AppSettings>;

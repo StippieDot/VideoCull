@@ -1029,9 +1029,13 @@ async function migrateJsonIfNeeded(folderPath, db) {
  * Delete the SQLite DB file for a folder (used by clear-cache).
  * Closes the connection first if it's the active DB.
  */
-function deleteDb(folderPath, cacheOptions) {
-  log.warn(`[cache] deleteDb called for: ${folderPath}`);
-  log.warn(`[cache] deleteDb stack:\n${new Error().stack}`);
+function deleteDb(folderPath, cacheOptions, options = {}) {
+  if (options.quiet) {
+    log.info(`[cache] Removing cache DB for: ${folderPath}`);
+  } else {
+    log.warn(`[cache] deleteDb called for: ${folderPath}`);
+    log.warn(`[cache] deleteDb stack:\n${new Error().stack}`);
+  }
 
   const dbPath = resolveCachePath(folderPath, cacheOptions);
   closeDbPath(dbPath);
