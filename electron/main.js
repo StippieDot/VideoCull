@@ -847,8 +847,21 @@ async function prepareCacheFolder(folderPath, cacheOptions, { publish = true, ca
   return cachePaths;
 }
 
-async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false, publish = true, cacheRoots = null } = {}) {
+async function saveVideosByParentFolder(videos, cacheOptions, {
+  atomic = false,
+  publish = true,
+  cacheRoots = null,
+  syncVisitedFolders = null,
+  updatedAt = null,
+} = {}) {
   const groups = groupVideosByFolder(videos);
+  const shouldPruneStaleRows = Number.isFinite(updatedAt) && Array.isArray(syncVisitedFolders);
+  const remainingVisitedFolders = shouldPruneStaleRows
+    ? new Map(syncVisitedFolders.filter(Boolean).map((folderPath) => [path.resolve(folderPath).toLowerCase(), folderPath]))
+    : null;
+  let prunedVideoCount = 0;
+  let prunedFolderCount = 0;
+
   for (const [folderPath, folderVideos] of groups) {
     const cachePaths = await prepareCacheFolder(folderPath, cacheOptions, { publish, cacheRoots });
     const payload = folderVideos.map((video) => videoForDb(video, cachePaths.cacheRootDir));
@@ -856,9 +869,17 @@ async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false, 
     const writePayload = async () => {
       const db = await openCacheDbWithRecovery(folderPath, cacheOptions);
       if (atomic && payload.length <= ATOMIC_SAVE_SYNC_LIMIT) {
-        cache.saveCache(db, payload);
+        cache.saveCache(db, payload, { updatedAt });
       } else {
-        await cache.saveCacheChunked(db, payload);
+        await cache.saveCacheChunked(db, payload, null, { updatedAt });
+      }
+      if (shouldPruneStaleRows) {
+        const staleIds = cache.pruneStaleVideosBefore(db, updatedAt);
+        if (staleIds.length > 0) {
+          prunedVideoCount += staleIds.length;
+          prunedFolderCount += 1;
+          await Promise.all(staleIds.map((videoId) => fs.rm(path.join(cachePaths.thumbRootDir, videoId), { recursive: true, force: true }).catch(() => {})));
+        }
       }
     };
 
@@ -869,7 +890,26 @@ async function saveVideosByParentFolder(videos, cacheOptions, { atomic = false, 
       await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
       await writePayload();
     }
+    remainingVisitedFolders?.delete(path.resolve(folderPath).toLowerCase());
   }
+
+  if (remainingVisitedFolders?.size) {
+    for (const folderPath of remainingVisitedFolders.values()) {
+      const cachePaths = getCachePaths(folderPath, cacheOptions);
+      const hasDb = await fs.stat(cachePaths.dbPath).then(() => true).catch(() => false);
+      if (!hasDb) continue;
+
+      const db = await openCacheDbWithRecovery(folderPath, cacheOptions);
+      const staleIds = cache.pruneStaleVideosBefore(db, updatedAt);
+      if (staleIds.length === 0) continue;
+
+      prunedVideoCount += staleIds.length;
+      prunedFolderCount += 1;
+      await Promise.all(staleIds.map((videoId) => fs.rm(path.join(cachePaths.thumbRootDir, videoId), { recursive: true, force: true }).catch(() => {})));
+    }
+  }
+
+  return { prunedVideoCount, prunedFolderCount };
 }
 
 async function loadRelevantFolderCacheRowsIntoMap(videos, cacheOptions, cachedMap, scanToken, scanCacheRoots) {
@@ -1437,13 +1477,15 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   recordStageTiming('migrateLegacyThumbs', stageStartedAt, { items: oldVideoIds.length });
 
   stageStartedAt = performance.now();
-  const videos = await scanDirectory(dirPath, includeSubfolders, (progress) => {
+  const scanResult = await scanDirectory(dirPath, includeSubfolders, (progress) => {
     if (scanToken !== scanGeneration) return;
     perfMetrics.recordRunCounter(perfRun, 'scanProgressEventCount');
     perfMetrics.recordRunCounter(perfRun, 'scanProgressPayloadBytes', measurePayloadBytes(progress));
     sendToRenderer('scan-progress', progress);
-  });
+  }, { includeVisitedDirs: true });
   assertScanCurrent(scanToken);
+  const videos = Array.isArray(scanResult) ? scanResult : scanResult.videos;
+  const visitedDirs = Array.isArray(scanResult?.visitedDirs) ? scanResult.visitedDirs : [dirPath];
   recordStageTiming('scanDirectoryWalk', stageStartedAt, { items: videos.length });
   const cachedMap = new Map();
   stageStartedAt = performance.now();
@@ -1514,9 +1556,18 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
 
   // Persist each video to the cache owned by its immediate parent folder.
   stageStartedAt = performance.now();
-  await saveVideosByParentFolder(merged, cacheOptions, { publish: false, cacheRoots: scanCacheRoots });
+  const cacheSaveResult = await saveVideosByParentFolder(merged, cacheOptions, {
+    publish: false,
+    cacheRoots: scanCacheRoots,
+    syncVisitedFolders: cacheOptions.autoPruneMissingSubfolderCache === false ? null : visitedDirs,
+    updatedAt: cacheOptions.autoPruneMissingSubfolderCache === false ? null : Date.now(),
+  });
   assertScanCurrent(scanToken);
-  recordStageTiming('saveVideosByParentFolder', stageStartedAt, { items: merged.length });
+  recordStageTiming('saveVideosByParentFolder', stageStartedAt, {
+    items: merged.length,
+    prunedVideoCount: cacheSaveResult.prunedVideoCount,
+    prunedFolderCount: cacheSaveResult.prunedFolderCount,
+  });
 
   stageStartedAt = performance.now();
   const autoPrunedMissingCacheFolders = await pruneMissingDescendantCaches(dirPath, cacheOptions, includeSubfolders);
@@ -1542,6 +1593,8 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     dirPath,
     includeSubfolders: Boolean(includeSubfolders),
     videoCount: merged.length,
+    autoPrunedStaleVideos: cacheSaveResult.prunedVideoCount,
+    autoPrunedStaleFolders: cacheSaveResult.prunedFolderCount,
     autoPrunedMissingCacheFolders: autoPrunedMissingCacheFolders.length,
     durationMs: Math.round((scanSnapshot?.durationMs ?? 0) * 100) / 100,
     stageTimings,

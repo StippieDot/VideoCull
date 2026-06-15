@@ -92,10 +92,11 @@ async function statVideoEntries(entries, statPath = fs.stat) {
  * @param {string} dirPath - Root directory to scan.
  * @param {boolean} includeSubfolders - Whether to recurse into subdirectories.
  * @param {function} onProgress - Callback with { found, current, currentFile }.
- * @returns {Promise<Array>} - Array of video objects.
+ * @returns {Promise<Array>|Promise<{ videos: Array, visitedDirs: Array<string> }>} - Scan results.
  */
-async function scanDirectory(dirPath, includeSubfolders, onProgress) {
+async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {}) {
   const videos = [];
+  const visitedDirs = options.includeVisitedDirs ? [] : null;
   let found = 0;
   const progressReporter = createProgressReporter(onProgress);
 
@@ -106,6 +107,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
     } catch {
       return; // Skip inaccessible directories
     }
+    visitedDirs?.push(currentDir);
 
     let pendingVideoEntries = [];
     const flushPendingVideoEntries = async () => {
@@ -146,7 +148,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress) {
 
   await walk(dirPath);
   progressReporter.flush();
-  return videos;
+  return visitedDirs ? { videos, visitedDirs } : videos;
 }
 
 module.exports = {

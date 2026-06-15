@@ -176,6 +176,6 @@ describe('SettingsModal integration behavior', () => {
   test('shows the missing-subfolder cache cleanup toggle on the cache tab', async () => {
     render(<SettingsModal initialTab="cache" />);
 
-    expect(await screen.findByRole('checkbox', { name: /auto-remove cache for missing subfolders/i })).toBeTruthy();
+    expect(await screen.findByRole('checkbox', { name: /auto-clean stale cache after scans/i })).toBeTruthy();
   });
 });

@@ -734,9 +734,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                       checked={localSettings.autoPruneMissingSubfolderCache}
                       onChange={(e) => handleChange('autoPruneMissingSubfolderCache', e.target.checked)}
                     />
-                    Auto-remove cache for missing subfolders
+                    Auto-clean stale cache after scans
                   </label>
-                  <span className="help-text">After a scan with subfolders enabled, Video Cull can automatically delete cached DBs and thumbnails for remembered child folders that no longer exist on disk.</span>
+                  <span className="help-text">After a scan, Video Cull can automatically remove stale cache rows, thumbnail folders for files that disappeared, and remembered child-folder caches that no longer exist on disk.</span>
                 </div>
               </div>
             )}

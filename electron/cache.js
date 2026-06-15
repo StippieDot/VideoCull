@@ -420,8 +420,9 @@ function createPathConflictResolver(db) {
  * Upsert all videos in a single transaction.
  * Used for status changes and bookmark updates — no progress IPC needed.
  */
-function saveCache(db, videos) {
+function saveCache(db, videos, options = {}) {
   const resolvePathConflict = createPathConflictResolver(db);
+  const updatedAt = Number.isFinite(options.updatedAt) ? options.updatedAt : Date.now();
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
@@ -504,7 +505,7 @@ function saveCache(db, videos) {
         v.bookmarks?.length ? JSON.stringify(v.bookmarks) : null,
         v.osThumbnail ?? null,
         v.duplicateHash ?? null,
-        Date.now()
+        updatedAt
       );
       if (Array.isArray(v.thumbnails)) {
         deleteThumbs.run(v.id);
@@ -617,8 +618,9 @@ function updateVideoMetadataBatch(db, updates) {
  * messages need to flush between chunks.
  * Yields the event loop between chunks via setImmediate so IPC messages flush.
  */
-async function saveCacheChunked(db, videos, onProgress) {
+async function saveCacheChunked(db, videos, onProgress, options = {}) {
   const resolvePathConflict = createPathConflictResolver(db);
+  const updatedAt = Number.isFinite(options.updatedAt) ? options.updatedAt : Date.now();
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
@@ -701,7 +703,7 @@ async function saveCacheChunked(db, videos, onProgress) {
         v.bookmarks?.length ? JSON.stringify(v.bookmarks) : null,
         v.osThumbnail ?? null,
         v.duplicateHash ?? null,
-        Date.now()
+        updatedAt
       );
       if (Array.isArray(v.thumbnails)) {
         deleteThumbs.run(v.id);
@@ -718,6 +720,16 @@ async function saveCacheChunked(db, videos, onProgress) {
     if (onProgress) onProgress(Math.min(i + CHUNK_SIZE, videos.length), videos.length);
     await new Promise((resolve) => setImmediate(resolve));
   }
+}
+
+function pruneStaleVideosBefore(db, updatedBefore) {
+  if (!Number.isFinite(updatedBefore)) return [];
+  const staleIds = db.prepare('SELECT id FROM videos WHERE updated_at IS NULL OR updated_at < ?').all(updatedBefore)
+    .map((row) => row.id)
+    .filter(Boolean);
+  if (staleIds.length === 0) return [];
+  db.prepare('DELETE FROM videos WHERE updated_at IS NULL OR updated_at < ?').run(updatedBefore);
+  return staleIds;
 }
 
 function deleteVideosByIds(db, videoIds) {
@@ -1060,6 +1072,7 @@ module.exports = {
   loadCacheMap,
   saveCache,
   saveCacheChunked,
+  pruneStaleVideosBefore,
   deleteVideosByIds,
   getFingerprintCounts,
   saveVideoFingerprints,

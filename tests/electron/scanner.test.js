@@ -73,3 +73,25 @@ test('scanDirectory respects includeSubfolders=false', async () => {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('scanDirectory can return visited directories for safe empty-folder pruning', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
+
+  try {
+    const nested = path.join(tempRoot, 'nested');
+    const empty = path.join(tempRoot, 'empty');
+    await fs.mkdir(nested, { recursive: true });
+    await fs.mkdir(empty, { recursive: true });
+    await fs.writeFile(path.join(nested, 'child.mp4'), '');
+
+    const result = await scanDirectory(tempRoot, true, undefined, { includeVisitedDirs: true });
+
+    assert.deepEqual(result.videos.map((video) => video.filename), ['child.mp4']);
+    assert.deepEqual(
+      result.visitedDirs.sort(),
+      [tempRoot, empty, nested].sort()
+    );
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});

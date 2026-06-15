@@ -394,3 +394,44 @@ test('markMetadataFailuresBatch records failure state for multiple videos', asyn
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('pruneStaleVideosBefore removes videos not touched by the latest folder sync and cascades artifacts', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    const stalePath = path.join(folderPath, 'stale.mp4');
+    const keepPath = path.join(folderPath, 'keep.mp4');
+    cache.saveCache(db, [
+      buildCachedVideo('stale-id', stalePath, {
+        thumbnails: ['thumbs/stale-id/thumb_1.jpg'],
+      }),
+      buildCachedVideo('keep-id', keepPath, {
+        thumbnails: ['thumbs/keep-id/thumb_1.jpg'],
+      }),
+    ], { updatedAt: 10 });
+    insertFingerprint(db, 'stale-id', 0);
+    insertFingerprint(db, 'keep-id', 0);
+
+    cache.saveCache(db, [
+      buildCachedVideo('keep-id', keepPath, {
+        status: 'keep',
+        thumbnails: ['thumbs/keep-id/thumb_1.jpg'],
+      }),
+    ], { updatedAt: 20 });
+
+    const removed = cache.pruneStaleVideosBefore(db, 20);
+    const rows = db.prepare('SELECT id FROM videos ORDER BY id').all();
+    const thumbnails = db.prepare('SELECT video_id FROM thumbnails ORDER BY video_id').all();
+    const fingerprints = db.prepare('SELECT video_id FROM video_fingerprints ORDER BY video_id').all();
+
+    assert.deepEqual(removed, ['stale-id']);
+    assert.deepEqual(rows, [{ id: 'keep-id' }]);
+    assert.deepEqual(thumbnails, [{ video_id: 'keep-id' }]);
+    assert.deepEqual(fingerprints, [{ video_id: 'keep-id' }]);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
