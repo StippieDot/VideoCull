@@ -19,6 +19,7 @@ const {
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,
+  listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
   normalizeReportRoots,
   removeEmptyDeletedVideoFolders,
@@ -209,6 +210,25 @@ describe('cache safety checks', () => {
     assert.equal(isSqliteCorruptionError({ code: 'SQLITE_CORRUPT' }), true);
     assert.equal(isSqliteCorruptionError(new Error('file is not a database')), true);
     assert.equal(isSqliteCorruptionError(new Error('network timeout')), false);
+  });
+
+  test('detects cache migration targets that would be overwritten', async () => {
+    const conflicts = await listExistingMigrationTargets({
+      moves: [
+        { source: 'D:\\old\\cache.db', target: 'E:\\new\\cache.db', kind: 'db' },
+        { source: 'D:\\old\\cache.db-wal', target: 'E:\\new\\cache.db-wal', kind: 'wal' },
+        { source: 'D:\\old\\missing-shm', target: 'E:\\new\\cache.db-shm', kind: 'shm' },
+      ],
+      pathExists: async (target) => (
+        target === 'D:\\old\\cache.db' ||
+        target === 'D:\\old\\cache.db-wal' ||
+        target === 'E:\\new\\cache.db'
+      ),
+    });
+
+    assert.deepEqual(conflicts, [
+      { source: 'D:\\old\\cache.db', target: 'E:\\new\\cache.db', kind: 'db' },
+    ]);
   });
 
   test('finds only descendant cache folders that no longer exist on disk', async () => {

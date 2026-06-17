@@ -165,4 +165,27 @@ describe('Sidebar recent folder behavior', () => {
     expect(useStore.getState().statusFilter).toBe('keep');
     expect(keepButton.getAttribute('aria-pressed')).toBe('true');
   });
+
+  test('disables batch delete while a folder scan is replacing the session', () => {
+    const deleteVideo = makeVideo('delete-1', { status: 'delete' });
+    useStore.setState({
+      directory: 'D:\\Media',
+      videos: [deleteVideo],
+      filteredVideos: [deleteVideo],
+      isScanning: true,
+      stats: {
+        total: 1,
+        pending: 0,
+        keep: 0,
+        skipped: 0,
+        delete: 1,
+        totalSize: 2048,
+        deleteSize: 2048,
+      },
+    });
+
+    renderSidebar();
+
+    expect((screen.getByRole('button', { name: /scanning/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
 });

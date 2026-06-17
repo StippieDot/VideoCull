@@ -28,6 +28,7 @@ const {
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,
+  listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
   normalizeReportRoots,
   removeEmptyDeletedVideoFolders,
@@ -693,22 +694,51 @@ async function testWritableDirectory(dirPath) {
   }
 }
 
-async function movePathIfPresent(source, target) {
+async function pathExists(filePath) {
   try {
-    await fs.access(source);
+    await fs.access(filePath);
+    return true;
   } catch {
     return false;
   }
+}
 
+async function copyPathToTemp(source, target) {
   await fs.mkdir(path.dirname(target), { recursive: true });
-  try {
-    await fs.rename(source, target);
-  } catch (err) {
-    if (err.code !== 'EXDEV') throw err;
-    await fs.cp(source, target, { recursive: true, force: true });
-    await fs.rm(source, { recursive: true, force: true });
+  const stats = await fs.stat(source);
+  if (stats.isDirectory()) {
+    await fs.cp(source, target, { recursive: true, force: false, errorOnExist: true });
+  } else {
+    await fs.copyFile(source, target);
   }
-  return true;
+}
+
+async function copyPromoteThenRemoveSources(moves) {
+  if (moves.length === 0) return [];
+  const tempRoot = path.join(path.dirname(moves[0].target), `.videocull-migration-${Date.now()}-${process.pid}`);
+  const staged = moves.map((move, index) => ({
+    ...move,
+    temp: path.join(tempRoot, `${index}-${path.basename(move.target)}`),
+  }));
+  const promoted = [];
+  try {
+    for (const move of staged) await copyPathToTemp(move.source, move.temp);
+    for (const move of staged) {
+      await fs.mkdir(path.dirname(move.target), { recursive: true });
+      await fs.rename(move.temp, move.target);
+      promoted.push(move);
+    }
+    for (const move of staged) {
+      await fs.rm(move.source, { recursive: true, force: true })
+        .catch((err) => log.warn(`[cache] Migrated cache copied but source cleanup failed for ${move.source}:`, err));
+    }
+    return promoted;
+  } catch (err) {
+    await Promise.all(promoted.map((move) => fs.rm(move.target, { recursive: true, force: true }).catch(() => {})));
+    throw err;
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 async function quarantineCorruptCacheDb(folderPath, cacheOptions, reason) {
@@ -758,13 +788,29 @@ async function migrateOneCache(folderPath, fromOptions, toOptions) {
   }
 
   try {
-    cache.closeDb();
-    for (const sourceDbPath of collectCacheSidecars(fromPaths.dbPath)) {
+    const dbMoves = collectCacheSidecars(fromPaths.dbPath).map((sourceDbPath) => {
       const suffix = sourceDbPath.slice(fromPaths.dbPath.length);
-      const moved = await movePathIfPresent(sourceDbPath, `${toPaths.dbPath}${suffix}`);
-      result.movedDb = result.movedDb || moved;
+      return { source: sourceDbPath, target: `${toPaths.dbPath}${suffix}`, kind: 'db' };
+    });
+    const moves = [
+      ...dbMoves,
+      { source: fromPaths.thumbRootDir, target: toPaths.thumbRootDir, kind: 'thumbs' },
+    ];
+    const conflicts = await listExistingMigrationTargets({ moves, pathExists });
+    if (conflicts.length > 0) {
+      result.error = `Target cache already exists: ${conflicts.map((item) => item.target).join(', ')}`;
+      return result;
     }
-    result.movedThumbs = await movePathIfPresent(fromPaths.thumbRootDir, toPaths.thumbRootDir);
+
+    const existingMoves = [];
+    for (const move of moves) {
+      if (await pathExists(move.source)) existingMoves.push(move);
+    }
+
+    cache.closeDb();
+    const promoted = await copyPromoteThenRemoveSources(existingMoves);
+    result.movedDb = promoted.some((move) => move.kind === 'db');
+    result.movedThumbs = promoted.some((move) => move.kind === 'thumbs');
   } catch (err) {
     result.error = err.message;
   }

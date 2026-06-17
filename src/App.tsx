@@ -659,6 +659,7 @@ export default function App() {
         }
         case 'undo': { state.undo(); break; }
         case 'delete-all': {
+          if (state.isScanning) break;
           const toDelete = state.videos.filter((v) => v.status === 'delete');
           if (toDelete.length === 0) break;
           const confirmed = window.confirm(`Move ${toDelete.length} marked videos to Recycle Bin?`);

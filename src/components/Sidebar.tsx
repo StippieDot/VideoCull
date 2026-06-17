@@ -821,7 +821,8 @@ export default function Sidebar({
 
   const handleBatchDelete = async () => {
     if (!window.electronAPI) return;
-    const { videos: currentVideos } = useStore.getState();
+    const { videos: currentVideos, isScanning: scanningNow } = useStore.getState();
+    if (scanningNow) return;
     const toDelete = currentVideos.filter((v) => v.status === 'delete');
     if (toDelete.length === 0) return;
 
@@ -1197,10 +1198,12 @@ export default function Sidebar({
           <button
             className="btn btn-danger sidebar-delete-btn"
             onClick={handleBatchDelete}
-            disabled={isDeleting}
+            disabled={isDeleting || isScanning}
           >
             <Trash2 size={16} />
-            {isDeleting
+            {isScanning
+              ? 'Scanning...'
+              : isDeleting
               ? 'Deleting...'
               : `Delete ${stats.delete} videos (${formatSize(stats.deleteSize)})`}
           </button>

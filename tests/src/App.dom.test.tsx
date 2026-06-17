@@ -118,6 +118,7 @@ function createElectronApiMock() {
     scanDirectory: vi.fn().mockResolvedValue([]),
     processMetadata: vi.fn().mockResolvedValue(true),
     generateThumbnails: vi.fn().mockResolvedValue(true),
+    batchDelete: vi.fn().mockResolvedValue([]),
     findDuplicates: vi.fn().mockResolvedValue({ status: 'ok', groups: [], videos: [], stats: { groupCount: 0, duplicateVideoCount: 0, exactGroupCount: 0, similarityGroupCount: 0 } }),
     chooseReportScope: vi.fn().mockResolvedValue('all'),
     exportReport: vi.fn().mockResolvedValue('saved'),
@@ -333,6 +334,27 @@ describe('App renderer behavior', () => {
     });
 
     expect(electron.api.scanDirectory).toHaveBeenCalledTimes(1);
+  });
+
+  test('ignores delete-all menu action while a replacement scan is pending', async () => {
+    const deleteVideo = makeVideo('a', { status: 'delete' });
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      videos: [deleteVideo],
+      filteredVideos: [deleteVideo],
+      isScanning: true,
+      stats: { total: 1, pending: 0, skipped: 0, keep: 0, delete: 1, totalSize: 100, deleteSize: 100 },
+    }, true);
+
+    render(<App />);
+
+    await electron.emitMenuAction('delete-all');
+
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(electron.api.batchDelete).not.toHaveBeenCalled();
   });
 
   test('rejects dropped shortcuts and shows a user-facing error toast', async () => {

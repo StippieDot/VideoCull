@@ -340,6 +340,17 @@ function normalizeReportRoots(dirPaths) {
     .map((dirPath) => path.resolve(dirPath));
 }
 
+async function listExistingMigrationTargets({ moves, pathExists }) {
+  const conflicts = [];
+  for (const move of Array.isArray(moves) ? moves : []) {
+    if (!move?.source || !move?.target) continue;
+    if (path.resolve(move.source) === path.resolve(move.target)) continue;
+    if (!(await pathExists(move.source))) continue;
+    if (await pathExists(move.target)) conflicts.push(move);
+  }
+  return conflicts;
+}
+
 function isServableVideoPath(filePath) {
   return SERVABLE_VIDEO_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
@@ -364,6 +375,7 @@ module.exports = {
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,
+  listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
   normalizeReportRoots,
   removeEmptyDeletedVideoFolders,
