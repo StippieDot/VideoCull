@@ -95,3 +95,21 @@ test('scanDirectory can return visited directories for safe empty-folder pruning
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('scanDirectory aborts when the cancellation guard throws', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
+
+  try {
+    await fs.writeFile(path.join(tempRoot, 'root.mp4'), '');
+    await assert.rejects(
+      scanDirectory(tempRoot, true, undefined, {
+        assertNotCancelled() {
+          throw new Error('scan superseded');
+        },
+      }),
+      /scan superseded/
+    );
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});

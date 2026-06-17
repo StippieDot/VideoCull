@@ -97,24 +97,31 @@ async function statVideoEntries(entries, statPath = fs.stat) {
 async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {}) {
   const videos = [];
   const visitedDirs = options.includeVisitedDirs ? [] : null;
+  const assertNotCancelled = typeof options.assertNotCancelled === 'function'
+    ? options.assertNotCancelled
+    : () => {};
   let found = 0;
   const progressReporter = createProgressReporter(onProgress);
 
   async function walk(currentDir) {
+    assertNotCancelled();
     let entries;
     try {
       entries = await fs.readdir(currentDir, { withFileTypes: true });
     } catch {
       return; // Skip inaccessible directories
     }
+    assertNotCancelled();
     visitedDirs?.push(currentDir);
 
     let pendingVideoEntries = [];
     const flushPendingVideoEntries = async () => {
+      assertNotCancelled();
       if (pendingVideoEntries.length === 0) return;
       const batch = pendingVideoEntries;
       pendingVideoEntries = [];
       const scannedVideos = await statVideoEntries(batch);
+      assertNotCancelled();
       for (let i = 0; i < scannedVideos.length; i += 1) {
         const video = scannedVideos[i];
         if (!video) continue;
@@ -125,6 +132,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
     };
 
     for (const entry of entries) {
+      assertNotCancelled();
       const fullPath = path.join(currentDir, entry.name);
 
       // Skip our own cache/thumb directories
@@ -134,6 +142,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
 
       if (entry.isDirectory() && includeSubfolders) {
         await flushPendingVideoEntries();
+        assertNotCancelled();
         await walk(fullPath);
       } else if (entry.isFile() && isVideoFile(entry.name)) {
         pendingVideoEntries.push({ entryName: entry.name, fullPath });
@@ -146,7 +155,9 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
     await flushPendingVideoEntries();
   }
 
+  assertNotCancelled();
   await walk(dirPath);
+  assertNotCancelled();
   progressReporter.flush();
   return visitedDirs ? { videos, visitedDirs } : videos;
 }

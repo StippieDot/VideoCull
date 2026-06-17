@@ -490,6 +490,7 @@ async function processMetadata(videos, config, onProgress, onVideoReady, onVideo
         if (!video) break;
         try {
           const result = await readMetadataForVideo(video);
+          if (token.cancelled) break;
           current++;
           if (onProgress) onProgress({ current, total });
           if (onVideoReady) {

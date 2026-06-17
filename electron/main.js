@@ -1469,7 +1469,10 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     perfMetrics.recordRunCounter(perfRun, 'scanProgressEventCount');
     perfMetrics.recordRunCounter(perfRun, 'scanProgressPayloadBytes', measurePayloadBytes(progress));
     sendToRenderer('scan-progress', progress);
-  }, { includeVisitedDirs: true });
+  }, {
+    includeVisitedDirs: true,
+    assertNotCancelled: () => assertScanCurrent(scanToken),
+  });
   assertScanCurrent(scanToken);
   const videos = Array.isArray(scanResult) ? scanResult : scanResult.videos;
   const visitedDirs = Array.isArray(scanResult?.visitedDirs) ? scanResult.visitedDirs : [dirPath];
