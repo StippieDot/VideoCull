@@ -41,11 +41,10 @@ Security weighting note: this is an offline local Electron media manager, so ren
 
 | Rank | Risk | Delta Status | Release Impact |
 |---:|---|---|---|
-| 1 | `video://` still lacks realpath loaded-root revalidation after scan. | Introduced after `v1.8.2` | Offline lower security priority, but still a stale-grant/path-replacement regression. |
-| 2 | `v1.8.2` cache/settings upgrade is not proven with real fixtures. | Unclear / untested | Release upgrade could lose decisions, metadata, thumbnails, or settings without a fixture catching it. |
-| 3 | `video://` still lacks realpath loaded-root revalidation after scan. | Introduced after `v1.8.2` | Offline lower security priority, but still a stale-grant/path-replacement regression. |
+| 1 | `v1.8.2` cache/settings upgrade is not proven with real fixtures. | Unclear / untested | Release upgrade could lose decisions, metadata, thumbnails, or settings without a fixture catching it. |
+| 2 | `video://` still lacks realpath loaded-root revalidation after scan. | Introduced after `v1.8.2` | Offline lower security priority, but still a stale-grant/path-replacement regression. |
+| 3 | Cache migration and delete safety still need E2E coverage. | Coverage gap | Main risks are now guarded in code, but packaged/E2E behavior is not proven. |
 | 4 | ffprobe failures are still retried every scan. | Introduced/worsened after `v1.8.2` | Performance/UX risk for corrupt/offline media; not currently a blocker by itself. |
-| 5 | Cache migration and delete safety still need E2E coverage. | Coverage gap | Main risks are now guarded in code, but packaged/E2E behavior is not proven. |
 
 Safety assessment: `main` is materially safer than the first audit snapshot. I would no longer block the release on offline-only renderer/path-hardening findings. I would still block a production upgrade until the real `v1.8.2` cache/settings upgrade fixture passes.
 
