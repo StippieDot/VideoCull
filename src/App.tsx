@@ -670,7 +670,7 @@ export default function App() {
             const failedCount = results.filter((r) => !r.success).length;
             const removedFolderCount = new Set(results.map((r) => r.removedFolder).filter(Boolean)).size;
             const folderDetail = removedFolderCount > 0
-              ? ` ${removedFolderCount} empty ${removedFolderCount === 1 ? 'folder was' : 'folders were'} removed.`
+              ? ` ${removedFolderCount} empty ${removedFolderCount === 1 ? 'folder was' : 'folders were'} cleaned up.`
               : '';
             if (permanentSuccessCount > 0 && failedCount > 0) {
               pushToast({

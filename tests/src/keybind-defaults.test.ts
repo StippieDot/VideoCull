@@ -28,6 +28,7 @@ describe('migrateSettings', () => {
   test('falls back to safe defaults for malformed feature and cache settings', () => {
     const migrated = migrateSettings({
       autoPruneMissingSubfolderCache: 'yes',
+      removeEmptyFoldersAfterDelete: 'yes',
       features: {
         ratings: false,
         codecBadges: false,
@@ -51,11 +52,17 @@ describe('migrateSettings', () => {
     expect(migrated.cacheLocation).toBe('centralised');
     expect(migrated.centralCachePath).toBeNull();
     expect(migrated.perDriveCachePaths).toEqual({});
-    expect(migrated.autoPruneMissingSubfolderCache).toBe(true);
+    expect(migrated.autoPruneMissingSubfolderCache).toBe(false);
+    expect(migrated.removeEmptyFoldersAfterDelete).toBe(false);
     expect(migrated.recentDirectoryTimestamps).toEqual({});
     expect(migrated.autoUpdates).toBe(true);
     expect(migrated.globalMute).toBe(false);
     expect(migrated.hardwareAccel).toBe(false);
+  });
+
+  test('preserves explicit empty-folder cleanup preference', () => {
+    expect(migrateSettings({ removeEmptyFoldersAfterDelete: true }).removeEmptyFoldersAfterDelete).toBe(true);
+    expect(migrateSettings({ removeEmptyFoldersAfterDelete: false }).removeEmptyFoldersAfterDelete).toBe(false);
   });
 
   test('normalizes invalid duplicate-detection settings back to supported values', () => {

@@ -265,6 +265,7 @@ describe('useStore public behavior', () => {
       appMode: 'legacy',
       cacheLocation: 'unknown',
       autoPruneMissingSubfolderCache: 'broken',
+      removeEmptyFoldersAfterDelete: 'broken',
       recentDirectories: ['D:\\Keep', 'D:\\Missing'],
       recentDirectoryTimestamps: {
         'D:\\Keep': 111,
@@ -286,7 +287,8 @@ describe('useStore public behavior', () => {
     const { settings } = useStore.getState();
     expect(settings.keyKeep).toEqual({ key: 'k', ctrl: false, shift: false, alt: false });
     expect(settings.cacheLocation).toBe('centralised');
-    expect(settings.autoPruneMissingSubfolderCache).toBe(true);
+    expect(settings.autoPruneMissingSubfolderCache).toBe(false);
+    expect(settings.removeEmptyFoldersAfterDelete).toBe(false);
     expect(settings.recentDirectories).toEqual(['D:\\Keep']);
     expect(settings.recentDirectoryTimestamps).toEqual({ 'D:\\Keep': 111 });
     expect(settings.duplicates.comparisonMode).toBe('visual');

@@ -181,7 +181,8 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
 
     const hasCacheChanges = cacheSettingsChanged(before, after);
     const hasCacheMaintenanceChanges =
-      before.autoPruneMissingSubfolderCache !== after.autoPruneMissingSubfolderCache;
+      before.autoPruneMissingSubfolderCache !== after.autoPruneMissingSubfolderCache ||
+      before.removeEmptyFoldersAfterDelete !== after.removeEmptyFoldersAfterDelete;
     const hasRestartRequiredChanges = before.autoUpdates !== after.autoUpdates;
 
     return {
@@ -737,6 +738,18 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     Auto-clean stale cache after scans
                   </label>
                   <span className="help-text">After a scan, Video Cull can automatically remove stale cache rows, thumbnail folders for files that disappeared, and remembered child-folder caches that no longer exist on disk.</span>
+                </div>
+
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={localSettings.removeEmptyFoldersAfterDelete}
+                      onChange={(e) => handleChange('removeEmptyFoldersAfterDelete', e.target.checked)}
+                    />
+                    Remove empty source folders after delete
+                  </label>
+                  <span className="help-text">After deleting videos, remove only their empty parent folders. Folders that are not empty, unavailable, or outside the loaded scan roots are skipped.</span>
                 </div>
               </div>
             )}

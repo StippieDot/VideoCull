@@ -30,6 +30,7 @@ const {
   isSqliteCorruptionError,
   listMissingDescendantCacheFolders,
   normalizeReportRoots,
+  removeEmptyDeletedVideoFolders,
   summarizeMediaProbeError,
   thumbAbsolute,
   thumbRelative,
@@ -600,9 +601,14 @@ async function getCacheOptions() {
     defaultCentralRoot: defaultCentralCacheRoot,
     centralCachePath: config.centralCachePath || null,
     perDriveCachePaths: config.perDriveCachePaths || {},
-    autoPruneMissingSubfolderCache: config.autoPruneMissingSubfolderCache !== false,
+    autoPruneMissingSubfolderCache: config.autoPruneMissingSubfolderCache === true,
     username: os.userInfo().username,
   };
+}
+
+async function shouldRemoveEmptyFoldersAfterDelete() {
+  const config = await readJsonFile(CONFIG_FILE, {});
+  return config.removeEmptyFoldersAfterDelete === true;
 }
 
 /** Returns the resolved cache paths for a loaded folder. */
@@ -616,7 +622,7 @@ function normalizeCacheSettings(settings = {}) {
     defaultCentralRoot: defaultCentralCacheRoot,
     centralCachePath: settings.centralCachePath || null,
     perDriveCachePaths: settings.perDriveCachePaths || {},
-    autoPruneMissingSubfolderCache: settings.autoPruneMissingSubfolderCache !== false,
+    autoPruneMissingSubfolderCache: settings.autoPruneMissingSubfolderCache === true,
     username: os.userInfo().username,
   };
 }
@@ -1158,35 +1164,15 @@ async function quarantineCacheDirectory(cacheRootDir, sourcePath, label) {
   return targetPath;
 }
 
-async function trashEmptyDeletedVideoFolders(deletedFilePaths) {
-  const folders = Array.from(new Set(deletedFilePaths.map((filePath) => path.dirname(filePath))))
-    .sort((a, b) => b.length - a.length);
-  const trashed = new Set();
-  for (const folderPath of folders) {
-    const resolved = path.resolve(folderPath);
-    if (resolved === path.parse(resolved).root) continue;
-    if (!await isPathWithinAnyDir(resolved, currentScanDirs)) continue;
-    try {
-      const entries = await fs.readdir(resolved);
-      if (entries.length > 0) continue;
-      await shell.trashItem(resolved);
-      trashed.add(resolved);
-    } catch (err) {
-      if (err.code === 'ENOENT' || err.code === 'ENOTEMPTY') continue;
-      try {
-        const entries = await fs.readdir(resolved);
-        if (entries.length > 0) continue;
-        await fs.rmdir(resolved);
-        trashed.add(resolved);
-        log.warn(`[batch-delete] Recycle Bin unavailable for empty folder; permanently removed ${resolved}`);
-      } catch (fallbackErr) {
-        if (fallbackErr.code !== 'ENOENT' && fallbackErr.code !== 'ENOTEMPTY') {
-          log.warn(`[batch-delete] Failed to trash or remove empty folder ${resolved}: ${fallbackErr.message}`);
-        }
-      }
-    }
-  }
-  return trashed;
+async function maybeRemoveEmptyDeletedVideoFolders(deletedFilePaths) {
+  if (!await shouldRemoveEmptyFoldersAfterDelete()) return new Set();
+  return removeEmptyDeletedVideoFolders({
+    deletedFilePaths,
+    loadedDirectories: currentScanDirs,
+    isPathWithinAnyDir,
+    removeDir: (folderPath) => fs.rmdir(folderPath),
+    onWarn: (message) => log.warn(message),
+  });
 }
 
 function buildReportHtml(videos, dirPaths) {
@@ -2173,12 +2159,12 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
       knownVideoPaths.delete(filePath);
       knownVideoIdsByPath.delete(filePath);
     }
-    const trashedFolders1 = await trashEmptyDeletedVideoFolders(Array.from(successful));
-    if (trashedFolders1.size === 0) return results;
+    const removedFolders1 = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successful));
+    if (removedFolders1.size === 0) return results;
     return results.map((r) => {
       if (!r.success) return r;
       const folder = path.resolve(path.dirname(r.path));
-      return trashedFolders1.has(folder) ? { ...r, removedFolder: folder } : r;
+      return removedFolders1.has(folder) ? { ...r, removedFolder: folder } : r;
     });
   }
 
@@ -2200,12 +2186,12 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
       knownVideoPaths.delete(filePath);
       knownVideoIdsByPath.delete(filePath);
     }
-    const trashedFolders2 = await trashEmptyDeletedVideoFolders(Array.from(successfulPaths));
-    if (trashedFolders2.size === 0) return results;
+    const removedFolders2 = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successfulPaths));
+    if (removedFolders2.size === 0) return results;
     return results.map((r) => {
       if (!r.success) return r;
       const folder = path.resolve(path.dirname(r.path));
-      return trashedFolders2.has(folder) ? { ...r, removedFolder: folder } : r;
+      return removedFolders2.has(folder) ? { ...r, removedFolder: folder } : r;
     });
   }
 
@@ -2229,12 +2215,12 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
     knownVideoPaths.delete(filePath);
     knownVideoIdsByPath.delete(filePath);
   }
-  const trashedFolders3 = await trashEmptyDeletedVideoFolders(Array.from(successfulPaths));
-  if (trashedFolders3.size === 0) return mergedResults;
+  const removedFolders3 = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successfulPaths));
+  if (removedFolders3.size === 0) return mergedResults;
   return mergedResults.map((r) => {
     if (!r.success) return r;
     const folder = path.resolve(path.dirname(r.path));
-    return trashedFolders3.has(folder) ? { ...r, removedFolder: folder } : r;
+    return removedFolders3.has(folder) ? { ...r, removedFolder: folder } : r;
   });
 });
 

@@ -21,6 +21,7 @@ const {
   isSqliteCorruptionError,
   listMissingDescendantCacheFolders,
   normalizeReportRoots,
+  removeEmptyDeletedVideoFolders,
   summarizeMediaProbeError,
   thumbAbsolute,
   thumbRelative,
@@ -231,6 +232,21 @@ describe('cache safety checks', () => {
     assert.deepEqual(missing, ['D:\\Media\\Missing', 'D:\\Media\\Deep\\MissingToo']);
   });
 
+  test('does not treat inaccessible descendant cache folders as missing', async () => {
+    const missing = await listMissingDescendantCacheFolders({
+      rootFolder: 'D:\\Media',
+      knownCacheFolders: ['D:\\Media\\Missing', 'D:\\Media\\Inaccessible'],
+      statPath: async (target) => {
+        if (target === 'D:\\Media\\Missing') {
+          throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+        }
+        throw Object.assign(new Error('denied'), { code: 'EACCES' });
+      },
+    });
+
+    assert.deepEqual(missing, ['D:\\Media\\Missing']);
+  });
+
   test('skips cleanup candidates that still resolve to directories', async () => {
     const missing = await listMissingDescendantCacheFolders({
       rootFolder: 'D:\\Media',
@@ -328,6 +344,63 @@ describe('cache safety checks', () => {
         throw new Error('missing');
       },
     }), false);
+  });
+});
+
+describe('empty folder cleanup safety', () => {
+  test('removes only immediate parent folders with an atomic empty-folder remove', async () => {
+    const removed = await removeEmptyDeletedVideoFolders({
+      deletedFilePaths: [
+        'D:\\Media\\Trip\\Day1\\clip.mp4',
+        'D:\\Media\\Busy\\clip.mp4',
+        'D:\\Other\\outside.mp4',
+      ],
+      loadedDirectories: new Set(['D:\\Media']),
+      isPathWithinAnyDir: async (target, dirs) => {
+        for (const dir of dirs) {
+          if (target === dir || target.startsWith(`${dir}\\`)) return true;
+        }
+        return false;
+      },
+      removeDir: async (target) => {
+        if (target === 'D:\\Media\\Trip\\Day1') return;
+        throw Object.assign(new Error('not empty'), { code: 'ENOTEMPTY' });
+      },
+    });
+
+    assert.deepEqual(Array.from(removed), ['D:\\Media\\Trip\\Day1']);
+  });
+
+  test('does not walk upward and remove ancestor folders after child cleanup', async () => {
+    const removeCalls = [];
+    await removeEmptyDeletedVideoFolders({
+      deletedFilePaths: ['D:\\Media\\Trip\\Day1\\clip.mp4'],
+      loadedDirectories: new Set(['D:\\Media']),
+      isPathWithinAnyDir: async () => true,
+      removeDir: async (target) => {
+        removeCalls.push(target);
+      },
+    });
+
+    assert.deepEqual(removeCalls, ['D:\\Media\\Trip\\Day1']);
+  });
+
+  test('quietly skips expected cleanup failures', async () => {
+    const warnings = [];
+    const codes = ['ENOENT', 'ENOTEMPTY', 'EEXIST', 'EPERM', 'EACCES', 'EBUSY'];
+    const removed = await removeEmptyDeletedVideoFolders({
+      deletedFilePaths: codes.map((code) => `D:\\Media\\${code}\\clip.mp4`),
+      loadedDirectories: new Set(['D:\\Media']),
+      isPathWithinAnyDir: async () => true,
+      removeDir: async (target) => {
+        const code = String(target).split(/[\\/]/).pop();
+        throw Object.assign(new Error(code), { code });
+      },
+      onWarn: (message) => warnings.push(message),
+    });
+
+    assert.equal(removed.size, 0);
+    assert.deepEqual(warnings, []);
   });
 });
 

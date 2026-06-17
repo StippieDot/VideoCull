@@ -219,6 +219,10 @@ function isSameFolderSync(a, b) {
   return path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 }
 
+function isMissingPathError(err) {
+  return err?.code === 'ENOENT' || err?.code === 'ENOTDIR';
+}
+
 async function listMissingDescendantCacheFolders({
   rootFolder,
   knownCacheFolders,
@@ -230,11 +234,51 @@ async function listMissingDescendantCacheFolders({
     try {
       const stats = await statPath(folderPath);
       if (!stats.isDirectory()) missingFolders.push(folderPath);
-    } catch {
-      missingFolders.push(folderPath);
+    } catch (err) {
+      if (isMissingPathError(err)) missingFolders.push(folderPath);
     }
   }
   return missingFolders;
+}
+
+const EXPECTED_EMPTY_FOLDER_CLEANUP_ERRORS = new Set([
+  'ENOENT',
+  'ENOTEMPTY',
+  'EEXIST',
+  'EPERM',
+  'EACCES',
+  'EBUSY',
+]);
+
+async function removeEmptyDeletedVideoFolders({
+  deletedFilePaths,
+  loadedDirectories,
+  isPathWithinAnyDir,
+  removeDir,
+  onWarn = () => {},
+}) {
+  const folders = Array.from(new Set(
+    (Array.isArray(deletedFilePaths) ? deletedFilePaths : [])
+      .filter((filePath) => typeof filePath === 'string' && filePath.length > 0)
+      .map((filePath) => path.dirname(filePath))
+  )).sort((a, b) => b.length - a.length);
+
+  const removed = new Set();
+  for (const folderPath of folders) {
+    const resolved = path.resolve(folderPath);
+    if (resolved === path.parse(resolved).root) continue;
+    if (!loadedDirectories || loadedDirectories.size === 0) continue;
+    if (!await isPathWithinAnyDir(resolved, loadedDirectories)) continue;
+    try {
+      await removeDir(resolved);
+      removed.add(resolved);
+    } catch (err) {
+      if (EXPECTED_EMPTY_FOLDER_CLEANUP_ERRORS.has(err?.code)) continue;
+      onWarn(`[batch-delete] Failed to remove empty folder ${resolved}: ${err?.message || err}`);
+    }
+  }
+
+  return removed;
 }
 
 function thumbAbsolute(relPath, cacheRootDir) {
@@ -328,6 +372,7 @@ module.exports = {
   isSqliteCorruptionError,
   listMissingDescendantCacheFolders,
   normalizeReportRoots,
+  removeEmptyDeletedVideoFolders,
   summarizeMediaProbeError,
   thumbAbsolute,
   thumbRelative,

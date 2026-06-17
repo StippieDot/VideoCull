@@ -219,6 +219,7 @@ export interface AppSettings {
   centralCachePath: string | null;
   perDriveCachePaths: Record<string, string>;
   autoPruneMissingSubfolderCache: boolean;
+  removeEmptyFoldersAfterDelete: boolean;
   thumbsPerVideo: 1 | 2 | 4 | 6 | 9;
   defaultCardScale: number;
   defaultSortBy: SortField;

@@ -195,7 +195,11 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
   }
 
   if (typeof result.autoPruneMissingSubfolderCache !== 'boolean') {
-    result.autoPruneMissingSubfolderCache = true;
+    result.autoPruneMissingSubfolderCache = false;
+  }
+
+  if (typeof result.removeEmptyFoldersAfterDelete !== 'boolean') {
+    result.removeEmptyFoldersAfterDelete = false;
   }
 
   return result as Partial<AppSettings>;
