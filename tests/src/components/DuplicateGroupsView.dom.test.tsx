@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
 import { vi } from 'vitest';
@@ -125,6 +125,34 @@ describe('DuplicateGroupsView behavior', () => {
     await waitFor(() => {
       expect(useStore.getState().videos.find((video) => video.id === 'b')?.status).toBe('delete');
       expect(useStore.getState().videos.find((video) => video.id === 'a')?.status).toBe('pending');
+    });
+  });
+
+  test('clears duplicate selections when filters hide the selected videos', async () => {
+    const groupId = 'group-1';
+    const keeper = makeVideo('a', { duplicateGroupId: groupId, path: 'D:\\Media\\keeper.mp4' });
+    const duplicate = makeVideo('b', { duplicateGroupId: groupId, path: 'D:\\Media\\duplicate.mp4' });
+    useStore.setState({
+      videos: [keeper, duplicate],
+      duplicateGroups: [makeDuplicateGroup({
+        id: groupId,
+        videoIds: ['a', 'b'],
+        suggestedKeeperId: 'a',
+      })],
+    });
+
+    render(<DuplicateGroupsView />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Select suggested deletions' }));
+    expect(screen.getByRole('button', { name: /Mark selected for deletion \(1\)/i })).toBeTruthy();
+
+    act(() => {
+      useStore.getState().setDuplicatePathFilter('no matching path');
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Clear selected' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Mark selected for deletion' })).toHaveProperty('disabled', true);
     });
   });
 

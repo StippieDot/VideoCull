@@ -512,6 +512,33 @@ function DuplicateGroupsView() {
     [visibleGroupViews]
   );
 
+  const visibleVideoIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const groupView of visibleGroupViews) {
+      for (const video of groupView.videos) ids.add(video.id);
+    }
+    return ids;
+  }, [visibleGroupViews]);
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(Array.from(prev).filter((id) => visibleVideoIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visibleVideoIds]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    if (!groupViewsById.has(contextMenu.groupId)) {
+      setContextMenu(null);
+      return;
+    }
+    if (contextMenu.kind === 'video' && !visibleVideoIds.has(contextMenu.videoId)) {
+      setContextMenu(null);
+    }
+  }, [contextMenu, groupViewsById, visibleVideoIds]);
+
   useEffect(() => {
     const shell = listShellRef.current;
     if (!shell) return;

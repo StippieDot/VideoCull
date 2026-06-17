@@ -907,7 +907,10 @@ const useStore = create<VideoStore>((set, get) => ({
         directories: [dir],
         settings: newSettings,
         folderFilterPath: null,
+        reviewMode: false,
         reviewIndex: 0,
+        reviewScopeIds: null,
+        activeReviewVideoPath: null,
         duplicateGroupsMode: false,
         duplicateGroups: [],
         duplicateProgress: null,
@@ -936,6 +939,8 @@ const useStore = create<VideoStore>((set, get) => ({
         folderFilterPath: null,
         reviewMode: false,
         reviewIndex: 0,
+        reviewScopeIds: null,
+        activeReviewVideoPath: null,
         duplicateGroupsMode: false,
         duplicateGroups: [],
         duplicateProgress: null,
@@ -986,7 +991,10 @@ const useStore = create<VideoStore>((set, get) => ({
       directory: nextDirs[0] ?? null,
       directories: nextDirs,
       folderFilterPath: null,
+      reviewMode: false,
       reviewIndex: 0,
+      reviewScopeIds: null,
+      activeReviewVideoPath: null,
       gridSelectionIds: new Set(),
       gridSelectionAnchorId: null,
     });
@@ -1020,6 +1028,12 @@ const useStore = create<VideoStore>((set, get) => ({
         duplicateGroups: [],
         duplicateGroupsMode: false,
         duplicateFilter: false,
+        reviewMode: false,
+        reviewIndex: 0,
+        reviewScopeIds: null,
+        activeReviewVideoPath: null,
+        gridSelectionIds: new Set(),
+        gridSelectionAnchorId: null,
       } : {}),
     });
   },
@@ -1475,13 +1489,35 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── Batch delete ──
   removeDeletedVideos: (deletedPaths: string[]) => {
     const pathSet = new Set(deletedPaths);
-    const videos = get().videos.filter((v) => !pathSet.has(v.path));
+    const stateBefore = get();
+    const videos = stateBefore.videos.filter((v) => !pathSet.has(v.path));
+    const remainingVideoIds = new Set(videos.map((video) => video.id));
+    const nextGridSelectionIds = new Set(
+      Array.from(stateBefore.gridSelectionIds).filter((id) => remainingVideoIds.has(id))
+    );
+    const nextGridSelectionAnchorId = stateBefore.gridSelectionAnchorId && remainingVideoIds.has(stateBefore.gridSelectionAnchorId)
+      ? stateBefore.gridSelectionAnchorId
+      : null;
+    const activeReviewVideoId = stateBefore.videos.find((video) => video.path === stateBefore.activeReviewVideoPath)?.id ?? null;
+    const nextReviewScopeIds = stateBefore.reviewScopeIds
+      ? stateBefore.reviewScopeIds.filter((id) => remainingVideoIds.has(id))
+      : null;
+    const activeReviewRemoved = Boolean(activeReviewVideoId && !remainingVideoIds.has(activeReviewVideoId));
+    const shouldCloseReview = stateBefore.reviewMode && (
+      activeReviewRemoved ||
+      (Boolean(stateBefore.reviewScopeIds) && (nextReviewScopeIds?.length ?? 0) === 0)
+    );
+    const nextReviewIndex = shouldCloseReview
+      ? 0
+      : Math.max(0, activeReviewVideoId && nextReviewScopeIds
+        ? nextReviewScopeIds.indexOf(activeReviewVideoId)
+        : Math.min(stateBefore.reviewIndex, Math.max(0, videos.length - 1)));
 
     // Prune deleted video IDs from duplicate groups and drop groups with < 2 members.
     const deletedVideoIds = new Set(
-      get().videos.filter((v) => pathSet.has(v.path)).map((v) => v.id)
+      stateBefore.videos.filter((v) => pathSet.has(v.path)).map((v) => v.id)
     );
-    const prevGroups = get().duplicateGroups;
+    const prevGroups = stateBefore.duplicateGroups;
     const prunedGroups = deletedVideoIds.size > 0
       ? applyKeeperOrderToGroups(
         prevGroups
@@ -1497,18 +1533,24 @@ const useStore = create<VideoStore>((set, get) => ({
           }))
           .filter((group) => group.videoIds.length >= 2),
         videos,
-        get().settings.duplicates.keeperOrder
+        stateBefore.settings.duplicates.keeperOrder
       )
       : prevGroups;
     const groupsChanged = prunedGroups !== prevGroups;
 
-    const state = { ...get(), videos, duplicateGroups: prunedGroups };
+    const state = { ...stateBefore, videos, duplicateGroups: prunedGroups };
     set({
       videos,
       filteredVideos: computeFiltered(state),
       stats: computeStats(videos),
       sidebarAggregates: computeSidebarAggregates(videos),
       undoStack: [],
+      reviewMode: shouldCloseReview ? false : stateBefore.reviewMode,
+      reviewIndex: nextReviewIndex,
+      reviewScopeIds: shouldCloseReview ? null : nextReviewScopeIds,
+      activeReviewVideoPath: shouldCloseReview ? null : stateBefore.activeReviewVideoPath,
+      gridSelectionIds: nextGridSelectionIds,
+      gridSelectionAnchorId: nextGridSelectionAnchorId,
       ...(groupsChanged ? {
         duplicateGroups: prunedGroups,
         ...(prunedGroups.length === 0 ? { duplicateGroupsMode: false } : {}),

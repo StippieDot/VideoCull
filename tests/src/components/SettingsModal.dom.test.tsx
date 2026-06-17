@@ -178,4 +178,10 @@ describe('SettingsModal integration behavior', () => {
 
     expect(await screen.findByRole('checkbox', { name: /auto-clean stale cache after scans/i })).toBeTruthy();
   });
+
+  test('warns that increasing thumbnails per video rebuilds affected thumbnails', async () => {
+    render(<SettingsModal initialTab="processing" />);
+
+    expect(await screen.findByText(/Increasing this after thumbnails already exist rebuilds videos that need more shots on the next scan/i)).toBeTruthy();
+  });
 });

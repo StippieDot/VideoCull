@@ -53,6 +53,8 @@ describe('useStore public behavior', () => {
       duplicateFilter: true,
       reviewIndex: 5,
       reviewMode: true,
+      reviewScopeIds: ['old'],
+      activeReviewVideoPath: 'D:\\Old\\old.mp4',
     });
 
     useStore.getState().setDirectory('D:\\Media');
@@ -61,7 +63,10 @@ describe('useStore public behavior', () => {
     const state = useStore.getState();
     expect(state.directory).toBe('D:\\Media');
     expect(state.directories).toEqual(['D:\\Media']);
+    expect(state.reviewMode).toBe(false);
     expect(state.reviewIndex).toBe(0);
+    expect(state.reviewScopeIds).toBeNull();
+    expect(state.activeReviewVideoPath).toBeNull();
     expect(state.duplicateGroupsMode).toBe(false);
     expect(state.duplicateGroups).toEqual([]);
     expect(state.duplicateFilter).toBe(false);
@@ -102,6 +107,37 @@ describe('useStore public behavior', () => {
     state = useStore.getState();
     expect(state.duplicateGroupsMode).toBe(true);
     expect(state.duplicateGroups).toHaveLength(1);
+  });
+
+  test('loading a different video set clears stale duplicate selection and review state', () => {
+    const store = getStoreApi();
+    store.setState({
+      videos: [makeVideo('a'), makeVideo('b')],
+      filteredVideos: [makeVideo('a'), makeVideo('b')],
+      duplicateGroups: [makeGroup({ videoIds: ['a', 'b'] })],
+      duplicateGroupsMode: true,
+      duplicateFilter: true,
+      reviewMode: true,
+      reviewIndex: 1,
+      reviewScopeIds: ['a', 'b'],
+      activeReviewVideoPath: 'D:\\Media\\b.mp4',
+      gridSelectionIds: new Set(['a', 'b']),
+      gridSelectionAnchorId: 'b',
+    });
+
+    useStore.getState().setVideos([makeVideo('c', { path: 'D:\\Media\\c.mp4' })]);
+
+    const state = useStore.getState();
+    expect(state.videos.map((video) => video.id)).toEqual(['c']);
+    expect(state.duplicateGroups).toEqual([]);
+    expect(state.duplicateGroupsMode).toBe(false);
+    expect(state.duplicateFilter).toBe(false);
+    expect(state.reviewMode).toBe(false);
+    expect(state.reviewIndex).toBe(0);
+    expect(state.reviewScopeIds).toBeNull();
+    expect(state.activeReviewVideoPath).toBeNull();
+    expect(Array.from(state.gridSelectionIds)).toEqual([]);
+    expect(state.gridSelectionAnchorId).toBeNull();
   });
 
   test('setting and undoing a review decision updates status, stats, and persisted cache payloads', async () => {
@@ -227,6 +263,8 @@ describe('useStore public behavior', () => {
     ]);
 
     useStore.getState().enterReviewAndPlay('b', ['c', 'b']);
+    useStore.getState().setGridSelectionIds(new Set(['a', 'b', 'c']));
+    useStore.getState().setGridSelectionAnchorId('b');
     let state = useStore.getState();
     expect(state.reviewMode).toBe(true);
     expect(state.reviewScopeIds).toEqual(['c', 'b']);
@@ -238,6 +276,12 @@ describe('useStore public behavior', () => {
     expect(state.videos.map((video) => video.id)).toEqual(['a', 'c']);
     expect(state.duplicateGroups).toEqual([]);
     expect(state.duplicateGroupsMode).toBe(false);
+    expect(state.reviewMode).toBe(false);
+    expect(state.reviewIndex).toBe(0);
+    expect(state.reviewScopeIds).toBeNull();
+    expect(state.activeReviewVideoPath).toBeNull();
+    expect(Array.from(state.gridSelectionIds)).toEqual(['a', 'c']);
+    expect(state.gridSelectionAnchorId).toBeNull();
   });
 
   test('ignored duplicate pair settings are normalized and persisted through the public settings actions', async () => {

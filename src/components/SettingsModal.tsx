@@ -768,7 +768,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     <option value={6}>6 Frames</option>
                     <option value={9}>9 Frames</option>
                   </select>
-                  <span className="help-text">Number of preview shots extracted evenly per video. Videos with fewer cached shots are rebuilt on the next scan.</span>
+                  <span className="help-text">Number of preview shots extracted evenly per video. Increasing this after thumbnails already exist rebuilds videos that need more shots on the next scan.</span>
                 </div>
 
                 <div className="form-group">
