@@ -2296,6 +2296,24 @@ ipcMain.handle('confirm-distributed-mode', async () => {
   });
   return response === 0;
 });
+
+ipcMain.handle('confirm-thumbnail-rebuild', async (_event, fromCount, toCount, videoCount) => {
+  const from = Number.isFinite(Number(fromCount)) ? Number(fromCount) : 0;
+  const to = Number.isFinite(Number(toCount)) ? Number(toCount) : 0;
+  const count = Number.isFinite(Number(videoCount)) ? Math.max(0, Number(videoCount)) : 0;
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: 'Thumbnail count changed',
+    message: 'Increasing thumbnails per video will rebuild affected thumbnails on the next scan.',
+    detail: `Changed from ${from} to ${to} frames. ${count} loaded video${count === 1 ? '' : 's'} already have thumbnails. Video files are not modified.`,
+    buttons: ['Save preference', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  });
+  return response === 0;
+});
+
 ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSettings) => {
   const persistedSettings = await readJsonFile(CONFIG_FILE, {});
   if (!cacheRelevantSettingsChanged(persistedSettings, newSettings)) {

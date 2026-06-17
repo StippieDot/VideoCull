@@ -552,6 +552,7 @@ export interface ElectronAPI {
   resetPerformanceStats: () => Promise<boolean>;
   validateCacheLocation: (dirPath: string, expectedDriveKey?: string | null) => Promise<{ ok: boolean; error?: string }>;
   confirmDistributedMode: () => Promise<boolean>;
+  confirmThumbnailRebuild: (fromCount: number, toCount: number, videoCount: number) => Promise<boolean>;
   migrateCacheSettings: (
     oldSettings: AppSettings,
     newSettings: AppSettings,

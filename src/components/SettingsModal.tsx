@@ -194,6 +194,19 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const handleSave = async () => {
     let cacheToast: ToastInput | null = null;
     const changeSummary = summarizeSaveChanges(globalSettings, localSettings);
+    const thumbnailVideoCount = videos.filter((video) => (video.thumbnails?.length ?? 0) > 0).length;
+    if (
+      localSettings.thumbsPerVideo > globalSettings.thumbsPerVideo &&
+      thumbnailVideoCount > 0 &&
+      window.electronAPI?.confirmThumbnailRebuild
+    ) {
+      const confirmed = await window.electronAPI.confirmThumbnailRebuild(
+        globalSettings.thumbsPerVideo,
+        localSettings.thumbsPerVideo,
+        thumbnailVideoCount
+      );
+      if (!confirmed) return;
+    }
     if (window.electronAPI?.migrateCacheSettings && cacheSettingsChanged(globalSettings, localSettings)) {
       setCacheMessage('Preparing cache migration...');
       const result = await window.electronAPI.migrateCacheSettings(globalSettings, localSettings, directories);
@@ -768,7 +781,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     <option value={6}>6 Frames</option>
                     <option value={9}>9 Frames</option>
                   </select>
-                  <span className="help-text">Number of preview shots extracted evenly per video. Increasing this after thumbnails already exist rebuilds videos that need more shots on the next scan.</span>
+                  <span className="help-text">Number of preview shots extracted evenly per video. Increasing this rebuilds videos that need more shots; lowering keeps extra cached files, so raising it again can reuse them if the cache still exists.</span>
                 </div>
 
                 <div className="form-group">

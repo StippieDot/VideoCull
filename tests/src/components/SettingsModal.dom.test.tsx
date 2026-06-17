@@ -13,6 +13,7 @@ type ElectronApiMock = {
   getAutoConcurrency: ReturnType<typeof vi.fn>;
   onUpdateStatus: ReturnType<typeof vi.fn>;
   migrateCacheSettings: ReturnType<typeof vi.fn>;
+  confirmThumbnailRebuild: ReturnType<typeof vi.fn>;
   saveConfig: ReturnType<typeof vi.fn>;
   validateCacheLocation: ReturnType<typeof vi.fn>;
   selectDirectory: ReturnType<typeof vi.fn>;
@@ -37,6 +38,7 @@ function installElectronApiMock(): ElectronApiMock {
       };
     }),
     migrateCacheSettings: vi.fn().mockResolvedValue({ status: 'error', migrated: 0, errors: ['Cannot write to target cache root'] }),
+    confirmThumbnailRebuild: vi.fn().mockResolvedValue(true),
     saveConfig: vi.fn().mockResolvedValue(true),
     validateCacheLocation: vi.fn().mockResolvedValue({ ok: true }),
     selectDirectory: vi.fn().mockResolvedValue(null),
@@ -179,9 +181,41 @@ describe('SettingsModal integration behavior', () => {
     expect(await screen.findByRole('checkbox', { name: /auto-clean stale cache after scans/i })).toBeTruthy();
   });
 
-  test('warns that increasing thumbnails per video rebuilds affected thumbnails', async () => {
+  test('explains thumbnail count rebuild and reuse behavior', async () => {
     render(<SettingsModal initialTab="processing" />);
 
-    expect(await screen.findByText(/Increasing this after thumbnails already exist rebuilds videos that need more shots on the next scan/i)).toBeTruthy();
+    expect(await screen.findByText(/Increasing this rebuilds videos that need more shots; lowering keeps extra cached files, so raising it again can reuse them if the cache still exists/i)).toBeTruthy();
+  });
+
+  test('confirms before saving a thumbnail count increase when loaded videos have thumbnails', async () => {
+    useStore.setState({
+      videos: [makeVideo('a', { thumbnails: ['thumb_1.jpg'] })],
+    });
+    render(<SettingsModal initialTab="processing" />);
+
+    await userEvent.selectOptions(screen.getAllByRole('combobox')[0]!, '9');
+    await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
+
+    await waitFor(() => {
+      expect(electronAPI.confirmThumbnailRebuild).toHaveBeenCalledWith(6, 9, 1);
+      expect(electronAPI.saveConfig).toHaveBeenCalled();
+    });
+  });
+
+  test('keeps preferences open when thumbnail rebuild confirmation is cancelled', async () => {
+    electronAPI.confirmThumbnailRebuild.mockResolvedValue(false);
+    useStore.setState({
+      videos: [makeVideo('a', { thumbnails: ['thumb_1.jpg'] })],
+    });
+    render(<SettingsModal initialTab="processing" />);
+
+    await userEvent.selectOptions(screen.getAllByRole('combobox')[0]!, '9');
+    await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
+
+    await waitFor(() => {
+      expect(electronAPI.confirmThumbnailRebuild).toHaveBeenCalledWith(6, 9, 1);
+    });
+    expect(electronAPI.saveConfig).not.toHaveBeenCalled();
+    expect(useStore.getState().isSettingsModalOpen).toBe(true);
   });
 });

@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resetPerformanceStats: () => ipcRenderer.invoke('reset-performance-stats'),
   validateCacheLocation: (dirPath, expectedDriveKey) => ipcRenderer.invoke('validate-cache-location', dirPath, expectedDriveKey),
   confirmDistributedMode: () => ipcRenderer.invoke('confirm-distributed-mode'),
+  confirmThumbnailRebuild: (fromCount, toCount, videoCount) =>
+    ipcRenderer.invoke('confirm-thumbnail-rebuild', fromCount, toCount, videoCount),
   migrateCacheSettings: (oldSettings, newSettings, loadedDirs) =>
     ipcRenderer.invoke('migrate-cache-settings', oldSettings, newSettings, loadedDirs),
 

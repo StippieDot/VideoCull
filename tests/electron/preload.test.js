@@ -65,12 +65,14 @@ describe('preload electronAPI bridge', () => {
     await exposedApi.selectDirectory();
     await exposedApi.openVideo('D:\\Media\\clip.mp4');
     await exposedApi.exportReport([{ id: 'a' }], ['D:\\Media']);
+    await exposedApi.confirmThumbnailRebuild(6, 9, 12);
     exposedApi.setExportReportAvailable(true);
     exposedApi.getPathForFile({ path: 'D:\\Media\\clip.mp4' });
 
     expect(invoke).toHaveBeenNthCalledWith(1, 'select-directory');
     expect(invoke).toHaveBeenNthCalledWith(2, 'open-video', 'D:\\Media\\clip.mp4');
     expect(invoke).toHaveBeenNthCalledWith(3, 'export-report', [{ id: 'a' }], ['D:\\Media']);
+    expect(invoke).toHaveBeenNthCalledWith(4, 'confirm-thumbnail-rebuild', 6, 9, 12);
     expect(send).toHaveBeenCalledWith('set-export-report-available', true);
     expect(getPathForFile).toHaveBeenCalledWith({ path: 'D:\\Media\\clip.mp4' });
   });
