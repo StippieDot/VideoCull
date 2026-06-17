@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 
-const { __test } = require('../../electron/processor');
+const { processVideos, cancelThumbnails, __test } = require('../../electron/processor');
 
 test('videos under 10 seconds only expect one thumbnail', () => {
   assert.equal(__test.expectedThumbnailCount(9.99, 6, 3), 1);
@@ -13,4 +13,13 @@ test('videos under 10 seconds still generate the normal thumbnail count when cap
 
 test('videos shorter than the intro skip still generate one midpoint timestamp', () => {
   assert.deepEqual(__test.calculateTimestamps(2, 6, 3), [1]);
+});
+
+test('thumbnail cancellation marks the active thumbnail run token', async () => {
+  await processVideos([], 'D:\\thumbs', {}, null, null);
+  const token = __test.getThumbToken();
+
+  assert.equal(token?.cancelled, false);
+  cancelThumbnails();
+  assert.equal(token?.cancelled, true);
 });

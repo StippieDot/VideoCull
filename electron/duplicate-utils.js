@@ -117,6 +117,19 @@ function getSamplingTimestamps(durationSecs, sampleCount, settings = {}) {
   return timestamps;
 }
 
+function getDuplicateFingerprintKey(input = {}) {
+  const settings = normalizeDuplicateSettings(input);
+  const bounds = getSamplingBounds(settings);
+  const maxDuration = Number(settings.maxSamplingDuration) > 0 ? Number(settings.maxSamplingDuration) : 0;
+  return [
+    'gray32-v1',
+    settings.sampleCount,
+    bounds.start,
+    bounds.end,
+    maxDuration,
+  ].join('|');
+}
+
 function calculateDctPHash(grayBytes, size = 32, lowSize = 8) {
   if (!grayBytes || grayBytes.length < size * size) {
     throw new Error('Expected a 32x32 grayscale frame buffer.');
@@ -259,6 +272,7 @@ module.exports = {
   DEFAULT_DUPLICATE_SETTINGS,
   normalizeDuplicateSettings,
   getSamplingTimestamps,
+  getDuplicateFingerprintKey,
   calculateDctPHash,
   flipGrayBytes,
   parsePHashHex,

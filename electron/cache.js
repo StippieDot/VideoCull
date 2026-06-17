@@ -173,6 +173,7 @@ const SCHEMA = `
     file_signature_full  TEXT,
     signature_updated_at INTEGER,
     fingerprint_failed_at INTEGER,
+    fingerprint_failure_key TEXT,
     bookmarks         TEXT,
     os_thumbnail_path TEXT,
     updated_at        INTEGER
@@ -193,6 +194,7 @@ const SCHEMA = `
     flipped_phash_hex TEXT,
     gray_bytes       BLOB NOT NULL,
     frame_dark_ratio REAL,
+    fingerprint_key  TEXT,
     created_at       INTEGER,
     updated_at       INTEGER,
     PRIMARY KEY (video_id, sample_index)
@@ -231,6 +233,7 @@ const VIDEO_SCHEMA_COLUMNS = {
   file_signature_full: 'TEXT',
   signature_updated_at: 'INTEGER',
   fingerprint_failed_at: 'INTEGER',
+  fingerprint_failure_key: 'TEXT',
   bookmarks: 'TEXT',
   os_thumbnail_path: 'TEXT',
   updated_at: 'INTEGER',
@@ -238,6 +241,7 @@ const VIDEO_SCHEMA_COLUMNS = {
 
 const FINGERPRINT_SCHEMA_COLUMNS = {
   flipped_phash_hex: 'TEXT',
+  fingerprint_key: 'TEXT',
 };
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
@@ -762,14 +766,16 @@ function getFingerprintCounts(db, videoIds, sampleCount, options = {}) {
   for (let i = 0; i < videoIds.length; i += BATCH_CHUNK_SIZE) {
     const chunk = videoIds.slice(i, i + BATCH_CHUNK_SIZE);
     const placeholders = chunk.map(() => '?').join(',');
+    const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const batch = db.prepare(`
       SELECT video_id,
              COUNT(*) AS sample_count,
              SUM(CASE WHEN flipped_phash_hex IS NOT NULL AND flipped_phash_hex <> '' THEN 1 ELSE 0 END) AS flipped_count
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
+        ${fingerprintFilter}
       GROUP BY video_id
-    `).all(...chunk);
+    `).all(...chunk, ...(options.fingerprintKey ? [options.fingerprintKey] : []));
     rows.push(...batch);
   }
   const result = new Map();
@@ -781,14 +787,14 @@ function getFingerprintCounts(db, videoIds, sampleCount, options = {}) {
   return result;
 }
 
-function saveVideoFingerprints(db, videoId, fingerprints) {
+function saveVideoFingerprints(db, videoId, fingerprints, options = {}) {
   if (!videoId || !Array.isArray(fingerprints) || fingerprints.length === 0) return;
   const now = Date.now();
   const clear = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
   const insert = db.prepare(`
     INSERT INTO video_fingerprints
-      (video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio, fingerprint_key, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const write = db.transaction(() => {
     clear.run(videoId);
@@ -801,23 +807,37 @@ function saveVideoFingerprints(db, videoId, fingerprints) {
         fp.flippedPHashHex ?? null,
         fp.grayBytes,
         fp.frameDarkRatio ?? null,
+        options.fingerprintKey ?? null,
         now,
         now
       );
     }
-    db.prepare('UPDATE videos SET fingerprint_failed_at = NULL WHERE id = ?').run(videoId);
+    db.prepare('UPDATE videos SET fingerprint_failed_at = NULL, fingerprint_failure_key = NULL WHERE id = ?').run(videoId);
   });
   write();
 }
 
-function markFingerprintFailure(db, videoId) {
+function markFingerprintFailure(db, videoId, options = {}) {
   if (!videoId) return;
-  db.prepare('UPDATE videos SET fingerprint_failed_at = ? WHERE id = ?').run(Date.now(), videoId);
+  db.prepare('UPDATE videos SET fingerprint_failed_at = ?, fingerprint_failure_key = ? WHERE id = ?')
+    .run(Date.now(), options.fingerprintKey ?? null, videoId);
 }
 
-function loadFingerprintFailureIds(db, videoIds) {
+function loadFingerprintFailureIds(db, videoIds, options = {}) {
   if (!videoIds.length) return new Set();
-  const rows = batchSelectIn(db, 'SELECT id FROM videos WHERE id IN (__IN__) AND fingerprint_failed_at IS NOT NULL', videoIds);
+  const rows = [];
+  for (let i = 0; i < videoIds.length; i += BATCH_CHUNK_SIZE) {
+    const chunk = videoIds.slice(i, i + BATCH_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(',');
+    const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_failure_key = ?' : '';
+    rows.push(...db.prepare(`
+      SELECT id
+      FROM videos
+      WHERE id IN (${placeholders})
+        AND fingerprint_failed_at IS NOT NULL
+        ${fingerprintFilter}
+    `).all(...chunk, ...(options.fingerprintKey ? [options.fingerprintKey] : [])));
+  }
   return new Set(rows.map((row) => row.id));
 }
 
@@ -867,19 +887,21 @@ function loadRecentMetadataFailureIds(db, videoIds, retryAfterMs) {
   return new Set(results.map((row) => row.id));
 }
 
-function loadPHashRows(db, videoIds, sampleCount) {
+function loadPHashRows(db, videoIds, sampleCount, options = {}) {
   if (!videoIds.length) return [];
   const rows = [];
   for (let i = 0; i < videoIds.length; i += BATCH_CHUNK_SIZE) {
     const chunk = videoIds.slice(i, i + BATCH_CHUNK_SIZE);
     const placeholders = chunk.map(() => '?').join(',');
+    const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const startedAt = performance.now();
     const batch = db.prepare(`
       SELECT video_id, sample_index, phash_hex, flipped_phash_hex, frame_dark_ratio
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
+        ${fingerprintFilter}
       ORDER BY video_id, sample_index
-    `).all(...chunk);
+    `).all(...chunk, ...(options.fingerprintKey ? [options.fingerprintKey] : []));
     const durationMs = performance.now() - startedAt;
     const duplicateRun = perfMetrics.getActiveRun('duplicate');
     if (duplicateRun) {
@@ -891,30 +913,34 @@ function loadPHashRows(db, videoIds, sampleCount) {
   return selectCompleteSampleRows(rows, sampleCount);
 }
 
-function loadGraySamples(db, videoId, sampleCount) {
+function loadGraySamples(db, videoId, sampleCount, options = {}) {
   if (!videoId) return [];
+  const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
   return db.prepare(`
     SELECT sample_index, timestamp_secs, gray_bytes, frame_dark_ratio
     FROM video_fingerprints
     WHERE video_id = ?
+      ${fingerprintFilter}
     ORDER BY sample_index
     LIMIT ?
-  `).all(videoId, sampleCount);
+  `).all(videoId, ...(options.fingerprintKey ? [options.fingerprintKey] : []), sampleCount);
 }
 
-function loadGraySampleRows(db, videoIds, sampleCount) {
+function loadGraySampleRows(db, videoIds, sampleCount, options = {}) {
   if (!videoIds.length) return [];
   const rows = [];
   for (let i = 0; i < videoIds.length; i += BATCH_CHUNK_SIZE) {
     const chunk = videoIds.slice(i, i + BATCH_CHUNK_SIZE);
     const placeholders = chunk.map(() => '?').join(',');
+    const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const startedAt = performance.now();
     const batch = db.prepare(`
       SELECT video_id, sample_index, gray_bytes, frame_dark_ratio
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
+        ${fingerprintFilter}
       ORDER BY video_id, sample_index
-    `).all(...chunk);
+    `).all(...chunk, ...(options.fingerprintKey ? [options.fingerprintKey] : []));
     const durationMs = performance.now() - startedAt;
     const duplicateRun = perfMetrics.getActiveRun('duplicate');
     if (duplicateRun) {

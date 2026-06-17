@@ -411,7 +411,7 @@ function getConcurrentLimit(config = {}) {
 
 async function processVideos(videos, thumbDir, config, onProgress, onVideoReady, options = {}) {
   const token = { cancelled: false };
-  currentToken = token;
+  thumbToken = token;
   const total = videos.length;
   let current = 0;
   const concurrentLimit = getConcurrentLimit(config);
@@ -549,5 +549,6 @@ module.exports = {
     getGpuCooldownMs,
     getGpuCooldownBatchSize,
     createQueueCursor,
+    getThumbToken: () => thumbToken,
   },
 };

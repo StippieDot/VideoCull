@@ -9,6 +9,7 @@ const {
   rawGraySimilarity,
   average,
   normalizeDuplicateSettings,
+  getDuplicateFingerprintKey,
   durationsWithinTolerance,
   chooseSuggestedKeeper,
 } = require('../../electron/duplicate-utils');
@@ -70,6 +71,23 @@ test('users can choose comparison method and similarity directly', () => {
 test('two and four samples are valid duplicate settings', () => {
   assert.equal(normalizeDuplicateSettings({ sampleCount: 2 }).sampleCount, 2);
   assert.equal(normalizeDuplicateSettings({ sampleCount: 4 }).sampleCount, 4);
+});
+
+test('fingerprint cache key changes only when extraction settings change', () => {
+  const base = getDuplicateFingerprintKey({
+    sampleCount: 3,
+    samplingWindow: 'even',
+    finalSimilarityThreshold: 95,
+  });
+
+  assert.notEqual(base, getDuplicateFingerprintKey({ sampleCount: 5, samplingWindow: 'even' }));
+  assert.notEqual(base, getDuplicateFingerprintKey({ sampleCount: 3, samplingWindow: '25-75' }));
+  assert.equal(base, getDuplicateFingerprintKey({
+    sampleCount: 3,
+    samplingWindow: 'even',
+    finalSimilarityThreshold: 90,
+    keeperOrder: ['size', 'resolution'],
+  }));
 });
 
 test('average ignores non-finite values', () => {

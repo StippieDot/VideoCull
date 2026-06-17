@@ -302,7 +302,7 @@ describe('cache safety checks', () => {
     assert.deepEqual(rejections, ['D:\\outside\\nope.mp4']);
   });
 
-  test('allows reveal-in-explorer for known videos, loaded directories, and existing fallback paths only', async () => {
+  test('allows reveal-in-explorer only for paths in the loaded session scope', async () => {
     const loadedDirectories = new Set(['D:\\loaded']);
     const knownVideoPaths = new Set(['D:\\loaded\\clip.mp4']);
 
@@ -310,7 +310,7 @@ describe('cache safety checks', () => {
       filePath: 'D:\\loaded\\clip.mp4',
       knownVideoPaths,
       loadedDirectories,
-      isPathWithinAnyDir: async () => false,
+      isPathWithinAnyDir: async () => true,
       statPath: async () => ({ isFile: () => false, isDirectory: () => false }),
     }), true);
 
@@ -333,7 +333,7 @@ describe('cache safety checks', () => {
       loadedDirectories,
       isPathWithinAnyDir: async () => false,
       statPath: async () => ({ isFile: () => false, isDirectory: () => true }),
-    }), true);
+    }), false);
 
     assert.equal(await canRevealInExplorerPath({
       filePath: 'D:\\missing\\folder',
@@ -343,6 +343,14 @@ describe('cache safety checks', () => {
       statPath: async () => {
         throw new Error('missing');
       },
+    }), false);
+
+    assert.equal(await canRevealInExplorerPath({
+      filePath: 'D:\\stale\\clip.mp4',
+      knownVideoPaths: new Set(['D:\\stale\\clip.mp4']),
+      loadedDirectories,
+      isPathWithinAnyDir: async () => false,
+      statPath: async () => ({ isFile: () => true, isDirectory: () => false }),
     }), false);
   });
 });

@@ -8,6 +8,7 @@ const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path.replace('app.asar', 
 const cache = require('./cache');
 const {
   normalizeDuplicateSettings,
+  getDuplicateFingerprintKey,
   getSamplingTimestamps,
   calculateDctPHash,
   flipGrayBytes,
@@ -348,6 +349,7 @@ async function buildFingerprintsForVideo(video, settings, run, executionOptions)
 }
 
 async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgress, maxConcurrency = 2, executionOptions = {}) {
+  const fingerprintKey = getDuplicateFingerprintKey(settings);
   const byFolder = groupVideosByFolder(videos);
   const missing = [];
   let skippedFailed = 0;
@@ -355,10 +357,13 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
     const db = dbByFolder.get(folder);
     if (!db) continue;
     const folderVideoIds = folderVideos.map((video) => video.id);
-    const completeById = cache.getFingerprintCounts(db, folderVideoIds, settings.sampleCount, { requireFlipped: settings.compareFlipped });
+    const completeById = cache.getFingerprintCounts(db, folderVideoIds, settings.sampleCount, {
+      requireFlipped: settings.compareFlipped,
+      fingerprintKey,
+    });
     const failedIds = settings.retryFailedFingerprintExtraction
       ? new Set()
-      : cache.loadFingerprintFailureIds(db, folderVideos.map((video) => video.id));
+      : cache.loadFingerprintFailureIds(db, folderVideos.map((video) => video.id), { fingerprintKey });
     for (const video of folderVideos) {
       if (!completeById.get(video.id) && !failedIds.has(video.id)) missing.push(video);
       else if (!completeById.get(video.id) && failedIds.has(video.id)) skippedFailed++;
@@ -396,7 +401,7 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
         const db = dbByFolder.get(path.dirname(video.path));
         if (db) {
           assertNotCancelled(run);
-          cache.saveVideoFingerprints(db, video.id, fingerprints);
+          cache.saveVideoFingerprints(db, video.id, fingerprints, { fingerprintKey });
           saved++;
         } else {
           failed++;
@@ -411,7 +416,7 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
       } catch (err) {
         if (err instanceof DuplicateCancelledError) throw err;
         const db = dbByFolder.get(path.dirname(video.path));
-        if (db && !run?.cancelled) cache.markFingerprintFailure(db, video.id);
+        if (db && !run?.cancelled) cache.markFingerprintFailure(db, video.id, { fingerprintKey });
         failed++;
         if (failureExamples.length < 8) {
           failureExamples.push({
@@ -441,21 +446,23 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
 }
 
 function loadAllPHashes(videos, dbByFolder, settings) {
+  const fingerprintKey = getDuplicateFingerprintKey(settings);
   const rows = [];
   for (const [folder, folderVideos] of groupVideosByFolder(videos)) {
     const db = dbByFolder.get(folder);
     if (!db) continue;
-    rows.push(...cache.loadPHashRows(db, folderVideos.map((video) => video.id), settings.sampleCount));
+    rows.push(...cache.loadPHashRows(db, folderVideos.map((video) => video.id), settings.sampleCount, { fingerprintKey }));
   }
   return rows;
 }
 
 function loadAllGrayRows(videos, dbByFolder, settings) {
+  const fingerprintKey = getDuplicateFingerprintKey(settings);
   const rows = [];
   for (const [folder, folderVideos] of groupVideosByFolder(videos)) {
     const db = dbByFolder.get(folder);
     if (!db) continue;
-    rows.push(...cache.loadGraySampleRows(db, folderVideos.map((video) => video.id), settings.sampleCount));
+    rows.push(...cache.loadGraySampleRows(db, folderVideos.map((video) => video.id), settings.sampleCount, { fingerprintKey }));
   }
   return rows;
 }

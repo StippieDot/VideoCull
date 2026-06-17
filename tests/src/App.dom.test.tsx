@@ -306,6 +306,35 @@ describe('App renderer behavior', () => {
     expect(electron.api.findDuplicates).not.toHaveBeenCalled();
   });
 
+  test('does not rescan loaded directories when only processing settings change', async () => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+    }, true);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(electron.api.scanDirectory).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      store.getState().updateSettings({
+        ...store.getState().settings,
+        thumbsPerVideo: 4,
+      });
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(electron.api.scanDirectory).toHaveBeenCalledTimes(1);
+  });
+
   test('rejects dropped shortcuts and shows a user-facing error toast', async () => {
     electron.api.getPathForFile.mockReturnValue('C:\\Incoming\\shortcut.lnk');
     electron.api.validateDroppedPath.mockResolvedValue({ valid: false, isDirectory: false });

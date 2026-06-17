@@ -196,17 +196,11 @@ async function canRevealInExplorerPath({
   knownVideoPaths,
   loadedDirectories,
   isPathWithinAnyDir,
-  statPath,
 }) {
   if (!filePath) return false;
-  if (knownVideoPaths?.has(filePath)) return true;
-  if (loadedDirectories?.size > 0 && await isPathWithinAnyDir(filePath, loadedDirectories)) return true;
-  try {
-    const stats = await statPath(filePath);
-    return stats.isFile() || stats.isDirectory();
-  } catch {
-    return false;
-  }
+  if (!loadedDirectories || loadedDirectories.size === 0) return false;
+  if (!await isPathWithinAnyDir(filePath, loadedDirectories)) return false;
+  return true;
 }
 
 function isFolderInsideSync(childFolder, parentFolder) {

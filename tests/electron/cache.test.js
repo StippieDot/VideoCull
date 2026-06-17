@@ -125,6 +125,52 @@ test('loadPHashRows and loadGraySampleRows batch rows and keep only complete sam
   }
 });
 
+test('fingerprint reads ignore rows created for different extraction settings', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    insertVideo(db, 'a', path.join(folderPath, 'a.mp4'));
+    const fingerprint = {
+      sampleIndex: 0,
+      timestampSecs: 10,
+      phashHex: 'ffff000000000000',
+      flippedPHashHex: null,
+      grayBytes: Buffer.from([1]),
+      frameDarkRatio: 0.1,
+    };
+
+    cache.saveVideoFingerprints(db, 'a', [fingerprint], { fingerprintKey: 'samples:3:even' });
+
+    assert.equal(cache.getFingerprintCounts(db, ['a'], 1, { fingerprintKey: 'samples:3:even' }).get('a'), true);
+    assert.equal(cache.getFingerprintCounts(db, ['a'], 1, { fingerprintKey: 'samples:5:center' }).get('a'), undefined);
+    assert.equal(cache.loadPHashRows(db, ['a'], 1, { fingerprintKey: 'samples:5:center' }).length, 0);
+    assert.equal(cache.loadGraySampleRows(db, ['a'], 1, { fingerprintKey: 'samples:5:center' }).length, 0);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('fingerprint failures are scoped to the extraction settings key', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    insertVideo(db, 'a', path.join(folderPath, 'a.mp4'));
+
+    cache.markFingerprintFailure(db, 'a', { fingerprintKey: 'samples:3:even' });
+
+    assert.equal(cache.loadFingerprintFailureIds(db, ['a'], { fingerprintKey: 'samples:3:even' }).has('a'), true);
+    assert.equal(cache.loadFingerprintFailureIds(db, ['a'], { fingerprintKey: 'samples:5:center' }).has('a'), false);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('saveCache replaces stale rows when the same path gets a new id', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;

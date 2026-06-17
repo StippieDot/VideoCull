@@ -2405,7 +2405,6 @@ ipcMain.handle('open-in-explorer', async (_event, filePath) => {
     knownVideoPaths,
     loadedDirectories: currentScanDirs,
     isPathWithinAnyDir,
-    statPath: fs.stat,
   });
   if (!allowed) return;
   shell.showItemInFolder(filePath);

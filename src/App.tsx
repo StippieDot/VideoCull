@@ -122,6 +122,7 @@ export default function App() {
   const folderReviewPathRef = useRef<string | null>(null);
   const settingsSaveQueueRef = useRef(Promise.resolve());
   const previousReviewModeRef = useRef(reviewMode);
+  const autoScannedDirectoriesKeyRef = useRef('');
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
@@ -781,6 +782,9 @@ export default function App() {
   }, [reviewMode, setFolderFilterPath]);
 
   useEffect(() => {
+    const key = `${directories.join('\0')}|subfolders:${includeSubfolders}`;
+    if (key === autoScannedDirectoriesKeyRef.current) return;
+    autoScannedDirectoriesKeyRef.current = key;
     if (directories.length > 0) handleScan(directories);
   }, [directories, handleScan]);
 
