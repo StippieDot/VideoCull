@@ -898,6 +898,10 @@ function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold, rev
   return { groups: splitGroups, stats: { groupsSplit, removedSingletons } };
 }
 
+function stableDuplicateGroupId(ids) {
+  return `dup-${crypto.createHash('sha1').update([...ids].sort().join('\0')).digest('hex').slice(0, 16)}`;
+}
+
 function buildGroups(exactGroups, matchedPairs, videosById, settings, options = {}) {
   const ignoredPairKeys = new Set(settings.ignoredDuplicatePairs ?? []);
   const isIgnoredPair = (aId, bId) => ignoredPairKeys.has(storedPairKey(aId, bId));
@@ -999,7 +1003,6 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
   }
 
   const groups = [];
-  let groupIndex = 1;
   for (const candidate of validatedGroups) {
     const ids = Array.from(candidate.ids);
     if (ids.length < 2) continue;
@@ -1034,7 +1037,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     const matchType = hasExact && fuzzyMatchType ? 'mixed' : hasExact ? 'exact' : fuzzyMatchType || settings.comparisonMode;
     const comparisonLabel = matchType === 'phash' ? 'pHash average' : 'visual average';
     groups.push({
-      id: `dup-${groupIndex++}`,
+      id: stableDuplicateGroupId(ids),
       videoIds: ids,
       similarity: Math.round(average(similarities) * 10) / 10,
       matchType,

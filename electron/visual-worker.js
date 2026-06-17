@@ -7,7 +7,6 @@ const {
 } = require('./duplicate-utils');
 
 const BUCKET_SIZE_SECS = 1;
-const BUCKET_ACTIVATION_THRESHOLD = 5000;
 const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 
 function compactGraySamples(rows, sampleCount) {
@@ -57,6 +56,7 @@ function forEachBucketedPair(buckets, unknownDurationCandidates, settings, callb
         if (!compareBucket) continue;
         for (const b of compareBucket) {
           if (b.index <= a.index) continue;
+          if (!durationsWithinTolerance(a, b, settings)) continue;
           callback(a, b);
         }
       }
@@ -126,16 +126,10 @@ function compareVisuals() {
   const pairs = [];
   let compared = 0;
   let lastProgressAt = 0;
-  const useBuckets = candidates.length >= BUCKET_ACTIVATION_THRESHOLD;
-  const total = useBuckets
-    ? (() => {
-      let count = 0;
-      forEachBucketedPair(buckets, unknownDurationCandidates, settings, () => {
-        count++;
-      });
-      return count;
-    })()
-    : Math.max(0, (candidates.length * (candidates.length - 1)) / 2);
+  let total = 0;
+  forEachBucketedPair(buckets, unknownDurationCandidates, settings, () => {
+    total++;
+  });
 
   const comparePair = (a, b) => {
     if (!durationsWithinTolerance(a, b, settings)) return;
@@ -158,29 +152,18 @@ function compareVisuals() {
     }
   };
 
-  if (!useBuckets) {
-    for (let i = 0; i < candidates.length; i++) {
-      const a = candidates[i];
-      for (let j = i + 1; j < candidates.length; j++) {
-        compared++;
-        comparePair(a, candidates[j]);
-        reportProgress();
-      }
-    }
-  } else {
-    forEachBucketedPair(buckets, unknownDurationCandidates, settings, (a, b) => {
-      compared++;
-      comparePair(a, b);
-      reportProgress();
-    });
-  }
+  forEachBucketedPair(buckets, unknownDurationCandidates, settings, (a, b) => {
+    compared++;
+    comparePair(a, b);
+    reportProgress();
+  });
 
   parentPort.postMessage({
     type: 'done',
     pairs,
     compared,
     total,
-    bucketed: useBuckets,
+    bucketed: true,
     bucketCount: buckets.size,
   });
 }

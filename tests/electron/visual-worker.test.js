@@ -70,6 +70,32 @@ test('visual match fails when dark-sample filtering leaves fewer than two usable
   assert.equal(result.pairs.length, 0, 'matching should fail when only one usable sample remains');
 });
 
+test('known-duration videos are not compared with unknown-duration videos below bucket threshold', async () => {
+  const bright = Buffer.alloc(4, 120);
+  const result = await runWorker({
+    videos: [
+      { id: 'known', durationSecs: 100 },
+      { id: 'unknown', durationSecs: null },
+    ],
+    grayRows: [
+      { video_id: 'known', sample_index: 0, gray_bytes: bright, frame_dark_ratio: 0.1 },
+      { video_id: 'unknown', sample_index: 0, gray_bytes: bright, frame_dark_ratio: 0.1 },
+    ],
+    settings: {
+      sampleCount: 1,
+      comparisonMode: 'visual',
+      finalSimilarityThreshold: 95,
+      durationTolerancePercent: 20,
+      requireEverySample: true,
+    },
+  });
+
+  assert.equal(result.bucketed, true);
+  assert.equal(result.total, 0);
+  assert.equal(result.compared, 0);
+  assert.equal(result.pairs.length, 0);
+});
+
 test('bucketed visual progress total reflects only eligible candidate pairs', async () => {
   const bright = Buffer.alloc(4, 120);
   const videos = Array.from({ length: 5001 }, (_, index) => ({

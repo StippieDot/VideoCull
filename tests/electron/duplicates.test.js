@@ -197,6 +197,24 @@ test('expanded representative matches still build full mixed groups', () => {
   assert.equal(groups[0].matchType, 'mixed');
 });
 
+test('duplicate group IDs are stable when unrelated groups sort before them', () => {
+  const videos = ['a', 'b', 'c', 'd'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const baseGroups = __test__.buildGroups([], [
+    { aId: 'a', bId: 'b', similarity: 96, matchType: 'phash' },
+  ], videosById, settings);
+  const expandedGroups = __test__.buildGroups([], [
+    { aId: 'c', bId: 'd', similarity: 99, matchType: 'phash' },
+    { aId: 'a', bId: 'b', similarity: 96, matchType: 'phash' },
+  ], videosById, settings);
+
+  const baseId = baseGroups.find((group) => group.videoIds.includes('a'))?.id;
+  const expandedId = expandedGroups.find((group) => group.videoIds.includes('a'))?.id;
+
+  assert.equal(expandedId, baseId);
+});
+
 test('exact duplicate pass stops before cache writes after cancellation', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-duplicates-'));
   const folder = path.join(tempRoot, 'videos');
