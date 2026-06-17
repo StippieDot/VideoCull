@@ -7,7 +7,7 @@ Electron entrypoint: [`electron/main.js`](electron/main.js)
 Corrected audit date: 2026-06-17
 
 > [!IMPORTANT]
-> This corrected report focuses on behavior changed after `v1.8.2`. Findings are marked as introduced after `v1.8.2`, pre-existing, partially introduced, or unclear. No code fixes were made.
+> This corrected report focuses on behavior changed after `v1.8.2`. Findings are marked as introduced after `v1.8.2`, pre-existing, partially introduced, fixed after audit, or unclear. Several release-blocking regressions were fixed after the original audit; this report now reflects the current branch state.
 
 ## Table of Contents
 
@@ -33,25 +33,27 @@ Corrected audit date: 2026-06-17
 
 Overall health: `main` has many real improvements since `v1.8.2`: broader automated tests, a metadata pipeline, duplicate detection, renderer performance work, crash/idle diagnostics, and more cache instrumentation. The regression risk is also high because the delta is large: 104 files changed, 22,875 insertions, 4,749 deletions.
 
-The release-blocking concerns are concentrated in post-`v1.8.2` cache cleanup, cancellation, duplicate fingerprint persistence, custom protocol/path authorization, and new renderer duplicate/review state.
+The release-blocking concerns are now concentrated in upgrade/data-loss coverage. Several original blockers have been fixed: stale cache auto-pruning is opt-in/default-off, empty-folder cleanup is opt-in/default-off, thumbnail/metadata/scan cancellation is fixed, duplicate fingerprint cache keys are settings-scoped, visual duplicate semantics are stable across library sizes, duplicate group IDs are stable, the arbitrary `open-in-explorer` fallback is gone, settings-save rescans were reduced, stale duplicate selection/review state was tightened, pending replacement scans disable destructive delete actions, and cache migration refuses existing targets before staging copies.
 
-### Top Release-Blocking Regression Risks
+Security weighting note: this is an offline local Electron media manager, so renderer-compromise and local-path disclosure issues are still real hardening work but are not weighted the same as internet-facing app vulnerabilities. Issues that can delete user files, lose cache decisions, corrupt duplicate results, or make upgrade behavior unsafe remain release-blocking. Offline-only protocol/path hardening is lower priority unless it affects destructive operations or stale file grants.
 
-| Rank | Risk | Delta Status | Why It Blocks Release |
+### Top Remaining Release Risks
+
+| Rank | Risk | Delta Status | Release Impact |
 |---:|---|---|---|
-| 1 | Auto-pruning missing descendant cache folders can delete cache on transient `stat` failures. | Introduced after `v1.8.2` | Can lose review decisions, metadata, thumbnails, and fingerprints on offline/network/mounted drives. |
-| 2 | Thumbnail cancellation token is broken after the processor split. | Introduced after `v1.8.2` | Stale FFmpeg work can continue after cancel/rescan and write stale thumbnail batches. |
-| 3 | Duplicate fingerprint cache ignores sampling/source settings. | Introduced after `v1.8.2` | Duplicate results can be wrong after settings changes, with persistent stale fingerprint rows. |
-| 4 | `video://` lost realpath loaded-root validation and `open-in-explorer` gained an arbitrary existing-path fallback. | Introduced after `v1.8.2` | Custom protocol/reveal behavior widened after the release baseline. |
-| 5 | New duplicate/review UI state can act on hidden or stale selections. | Introduced or partially introduced after `v1.8.2` | Large-library culling can mark or operate on videos the user no longer sees. |
+| 1 | `video://` still lacks realpath loaded-root revalidation after scan. | Introduced after `v1.8.2` | Offline lower security priority, but still a stale-grant/path-replacement regression. |
+| 2 | `v1.8.2` cache/settings upgrade is not proven with real fixtures. | Unclear / untested | Release upgrade could lose decisions, metadata, thumbnails, or settings without a fixture catching it. |
+| 3 | `video://` still lacks realpath loaded-root revalidation after scan. | Introduced after `v1.8.2` | Offline lower security priority, but still a stale-grant/path-replacement regression. |
+| 4 | ffprobe failures are still retried every scan. | Introduced/worsened after `v1.8.2` | Performance/UX risk for corrupt/offline media; not currently a blocker by itself. |
+| 5 | Cache migration and delete safety still need E2E coverage. | Coverage gap | Main risks are now guarded in code, but packaged/E2E behavior is not proven. |
 
-Safety assessment: `main` should not ship as a safe upgrade from `v1.8.2` until the post-`v1.8.2` cache deletion, cancellation, protocol authorization, and duplicate persistence issues are fixed and covered by tests.
+Safety assessment: `main` is materially safer than the first audit snapshot. I would no longer block the release on offline-only renderer/path-hardening findings. I would still block a production upgrade until the real `v1.8.2` cache/settings upgrade fixture passes.
 
 Pre-existing but still important safety debt:
 
 - Renderer-provided scan roots mint trusted file grants. This existed in `v1.8.2`.
 - Missing Electron navigation/window-open denial existed in `v1.8.2`, but the preload API is broader now.
-- Cache migration target clobber risk existed in `v1.8.2`.
+- Cache migration target clobber risk existed in `v1.8.2`; current `main` now refuses existing targets and stages copies before source removal.
 - Distributed cache index pruning on offline drives existed in `v1.8.2`.
 
 ## Validation Performed
@@ -73,13 +75,13 @@ Pre-existing but still important safety debt:
 
 | Command | Result | Important Output |
 |---|---:|---|
-| `npm run check:ipc` | PASS | `IPC contract OK: 43 methods, 33 channels.` |
+| `npm run check:ipc` | PASS | `IPC contract OK: 44 methods, 34 channels.` |
 | `npx tsc -p tsconfig.test.json --noEmit` | PASS | No TypeScript errors. |
-| `npm run test:duplicates` | PASS | 4 files, 33 tests. |
-| `npm run test:renderer` | PASS | 6 files, 31 tests. |
-| `npm run test` | PASS | 31 files, 207 tests. |
+| `npm run test:duplicates` | PASS | Duplicate-focused suite passes after fingerprint-key, stable-group, and visual-bucketing fixes. |
+| `npm run test:renderer` | PASS | 6 files, 36 tests. |
+| `npm run test` | PASS | 31 files, 224 tests. |
 | `npm run test:ci` | PASS | Coverage ran, but coverage is low: statements 39.21%, branches 36.58%, functions 39.8%, lines 39.18%. |
-| `npm run build` | PASS | Vite warning: main JS chunk is 523.59 kB, over the 500 kB warning threshold. |
+| `npm run build` | PASS | Vite warning remains: main JS chunk is about 526 kB, over the 500 kB warning threshold. |
 | `npx vitest run tests/electron/main-helpers.test.js tests/electron/preload.test.js` | PASS | Targeted security/preload helper check. |
 | `npm run test:e2e` | NOT RUN | It launches Playwright/Electron; environment support and GUI safety were not confirmed. |
 
@@ -116,11 +118,11 @@ Pre-existing but still important safety debt:
 |---|---|---:|---:|---|---|
 | Runtime and dependencies: [`package.json`](package.json), [`package-lock.json`](package-lock.json), Vite/Vitest configs | Upgraded from Electron 32 to 41, React 18 to 19, Zustand 4 to 5, `react-window` 1 to 2, `better-sqlite3` 11 to 12, Vite 8, Vitest 4, Playwright added. | Medium | Medium-High | `npm run build`, `npm run test`, `npm run test:ci` | Packaged app smoke, native module rebuild verification, full E2E on Windows. |
 | Electron IPC/preload/main helpers: [`electron/main.js`](electron/main.js), [`electron/preload.js`](electron/preload.js), [`electron/main-helpers.js`](electron/main-helpers.js) | Added metadata IPC, duplicate IPC, perf diagnostics, app notifications, `getPathForFile`, `openExternalUrl`, helper extraction. `open-video` got stricter loaded-path validation; `open-in-explorer` got an existing-path fallback. `video://` changed from loaded-root realpath validation to known-path membership. | High | High | `npm run check:ipc`, `tests/electron/preload.test.js`, `tests/electron/main-helpers.test.js` | Main-process IPC integration tests, protocol tests, navigation denial tests, scan grant tests. |
-| Scanner: [`electron/scanner.js`](electron/scanner.js), scan handling in [`electron/main.js`](electron/main.js) | Added stat batching, progress batching, cache-folder skipping, `visitedDirs`, scan generation/superseded checks after major phases. Still no abort inside scanner recursion. | Medium | Medium | `tests/electron/scanner.test.js`, `tests/electron/scanner.behavior.test.js` | Abort/superseded scan test, inaccessible directory summary test, mounted-drive latency test. |
-| Cache and SQLite: [`electron/cache.js`](electron/cache.js), [`electron/cache-folder-tracker.js`](electron/cache-folder-tracker.js) | Added metadata version/failure columns, bitrate/container fields, file signatures, fingerprint table, stale row pruning, thumbnail ordering, folder tracker. | High | High | `tests/electron/cache.test.js`, `tests/electron/cache.migration.test.js`, `tests/electron/cache-folder-tracker.test.js` | `v1.8.2` DB fixture upgrade test, transient `stat` prune test, migration target-clobber test, fingerprint settings-key test. |
-| Processor and FFmpeg/ffprobe: [`electron/processor.js`](electron/processor.js) | Split metadata probing from thumbnail generation, added metadata schema version, added separate `cancelThumbnails` and `cancelMetadata`. Regression: thumbnail token not assigned. | High | High | `tests/electron/processor.helpers.test.js`, limited `tests/electron/processor.test.js` | Thumbnail cancellation test, metadata cancellation-after-await test, ffprobe failure backoff test, partial thumbnail file test. |
-| Duplicate detection: [`electron/duplicates.js`](electron/duplicates.js), [`electron/duplicate-utils.js`](electron/duplicate-utils.js), [`electron/duplicate-worker.js`](electron/duplicate-worker.js), [`electron/visual-worker.js`](electron/visual-worker.js) | Entire duplicate pipeline added after `v1.8.2`: exact/hash/visual matching, fingerprint persistence, duplicate worker threads, ignored pairs, suggested keepers. | High | Medium-High | `tests/electron/duplicate-utils.test.js`, `duplicates.test.js`, `duplicate-worker.test.js`, `visual-worker.test.js` | Fingerprint source/settings invalidation test, visual known-vs-unknown duration small-run test, stable group ID test, large-library memory test. |
-| Renderer app/store/UI: [`src/App.tsx`](src/App.tsx), [`src/store.ts`](src/store.ts), duplicate/grid/review/sidebar/settings components | Added duplicate groups view, duplicate state, active review path, hidden-mounted grid during review, perf-dev instrumentation, context menus, richer settings. | High | High | `tests/src/*`, `tests/src/components/*`, `tests/src/App.dom.test.tsx` | Settings-save no-rescan test, hidden duplicate selection test, stale active review path after delete test, duplicate-disabled escape hatch test. |
+| Scanner: [`electron/scanner.js`](electron/scanner.js), scan handling in [`electron/main.js`](electron/main.js) | Added stat batching, progress batching, cache-folder skipping, `visitedDirs`, scan generation/superseded checks, and scanner-internal cancellation checks. | Medium | Medium | `tests/electron/scanner.test.js`, `tests/electron/scanner.behavior.test.js` | Inaccessible directory summary test, mounted-drive latency test. |
+| Cache and SQLite: [`electron/cache.js`](electron/cache.js), [`electron/cache-folder-tracker.js`](electron/cache-folder-tracker.js) | Added metadata version/failure columns, bitrate/container fields, file signatures, fingerprint table, stale row pruning, thumbnail ordering, folder tracker. Auto-prune missing subfolder cache is now opt-in/default-off. Fingerprints are scoped by a settings key. Cache migration refuses existing targets and stages copies before source removal. | Medium-High | High | `tests/electron/cache.test.js`, `tests/electron/cache.migration.test.js`, `tests/electron/cache-folder-tracker.test.js`, `tests/electron/main-helpers.test.js` | `v1.8.2` DB fixture upgrade test, source-file-change fingerprint invalidation test if file metadata is not fully covered by the key. |
+| Processor and FFmpeg/ffprobe: [`electron/processor.js`](electron/processor.js) | Split metadata probing from thumbnail generation, added metadata schema version, added separate `cancelThumbnails` and `cancelMetadata`. Thumbnail and metadata cancellation regressions are fixed. | Medium | Medium-High | `tests/electron/processor.helpers.test.js`, `tests/electron/processor.test.js` | ffprobe failure backoff test, partial thumbnail file test. |
+| Duplicate detection: [`electron/duplicates.js`](electron/duplicates.js), [`electron/duplicate-utils.js`](electron/duplicate-utils.js), [`electron/duplicate-worker.js`](electron/duplicate-worker.js), [`electron/visual-worker.js`](electron/visual-worker.js) | Entire duplicate pipeline added after `v1.8.2`: exact/hash/visual matching, fingerprint persistence, duplicate worker threads, ignored pairs, suggested keepers. Fingerprint settings scoping, stable group IDs, and visual candidate parity are fixed. | Medium | Medium | `tests/electron/duplicate-utils.test.js`, `duplicates.test.js`, `duplicate-worker.test.js`, `visual-worker.test.js` | Large-library memory test; source-file-change fingerprint invalidation test if not covered by current key. |
+| Renderer app/store/UI: [`src/App.tsx`](src/App.tsx), [`src/store.ts`](src/store.ts), duplicate/grid/review/sidebar/settings components | Added duplicate groups view, duplicate state, active review path, hidden-mounted grid during review, perf-dev instrumentation, context menus, richer settings. Settings-save rescan, stale duplicate selection/review state, and pending-scan delete actions were tightened. | Medium | Medium-High | `tests/src/*`, `tests/src/components/*`, `tests/src/App.dom.test.tsx` | Duplicate-disabled escape hatch test, hidden-grid perf benchmark. |
 | E2E/test infrastructure: [`playwright.config.ts`](playwright.config.ts), `tests/e2e/*`, Vitest configs | Added E2E harness and many unit/DOM tests. | Low | Medium | Test files exist; unit/DOM suites pass. | `npm run test:e2e` was not run; no upgrade fixture from `v1.8.2` userData/cache. |
 
 ### Changed Behavior Summary
@@ -131,12 +133,12 @@ Release-impacting behavior changed after `v1.8.2`:
 - Thumbnail generation now depends on cached metadata more heavily and was split from metadata probing.
 - Duplicate detection and persisted fingerprints are entirely new.
 - Cache schema is expanded in-place with new columns and `video_fingerprints`.
-- Scan now prunes missing descendant caches after scan.
-- Batch delete now removes cache artifacts and attempts empty-folder cleanup.
+- Scan can optionally prune missing descendant caches after scan; the option is now default-off.
+- Batch delete now removes cache artifacts and can optionally remove truly empty folders; the empty-folder cleanup option is now default-off.
 - `video://` authorization changed and is weaker against symlink replacement than `v1.8.2`.
-- `open-in-explorer` now allows arbitrary existing fallback paths, which `v1.8.2` did not.
+- `open-in-explorer` briefly allowed arbitrary existing fallback paths after `v1.8.2`; current `main` is back to loaded/known path validation.
 - Renderer keeps grid mounted while review mode is active.
-- Settings changes can trigger more scan work because `handleScan` now depends on more settings.
+- Settings changes previously triggered more scan work because `handleScan` depended on more settings; the noisy save-triggered rescan path has been reduced.
 
 ## Upgrade Safety from v1.8.2
 
@@ -144,11 +146,11 @@ Release-impacting behavior changed after `v1.8.2`:
 |---|---|---:|---|---|---|
 | Cache DB compatibility | Current `cache.openDb` runs `CREATE TABLE IF NOT EXISTS` plus additive `ALTER TABLE` for new video columns and fingerprint columns. Existing `v1.8.2` DBs should open because the schema changes are additive. | Medium | Probably compatible, but not proven with a real `v1.8.2` DB fixture. | `tests/electron/cache.test.js`, JSON migration tests. | Open an actual `v1.8.2` SQLite DB fixture and assert status/bookmarks/thumbs/metadata survive. |
 | Thumbnail path compatibility | `v1.8.2` already used cache-mode-aware roots and relative thumbnail rows. `main` still loads relative paths via `thumbAbsolute` and keeps legacy `.video-cull-thumbs` migration. | Medium | Basic compatibility likely, but stale `thumb://` immutable caching and broad active cache roots remain. | Cache thumbnail round-trip tests. | `v1.8.2` DB with existing thumbnail rows, regeneration URL/cache invalidation test. |
-| Metadata persistence | New metadata fields are additive. Old `duration_secs`, `metadata_date`, codec/resolution fields are loaded and preserved with `COALESCE`. | Medium | Upgrade should preserve old values, but new ffprobe failure backoff is ineffective because failures are swallowed. | Cache round-trip tests include metadata fields. | Upgrade fixture with stale/partial metadata; ffprobe failure should set `metadata_failed_at`. |
-| Duplicate/fingerprint persistence | No `v1.8.2` fingerprint data exists, so initial upgrade starts empty. New persistent fingerprints are not keyed by sampling/source settings. | High | First run is safe from old data, later duplicate setting changes are unsafe. | Duplicate tests cover group logic and basic fingerprint row loading. | Fingerprint invalidation by settings/file metadata/source key. |
-| Settings migration | `loadSettings` migrates invalid fields and duplicate settings. Cache location settings already existed in `v1.8.2`; migration flow still has target clobber/side-effect risks. | Medium-High | Upgrade settings likely load, but cache-location changes remain risky. | Store settings migration test covers invalid fields and recent pruning. | Exact `v1.8.2` settings fixture, cache migration cancel/no-side-effect test. |
+| Metadata persistence | New metadata fields are additive. Old `duration_secs`, `metadata_date`, codec/resolution fields are loaded and preserved with `COALESCE`. | Medium | Upgrade should preserve old values. ffprobe failures are still retried, but this is now UX/perf debt rather than cache compatibility risk. | Cache round-trip tests include metadata fields. | Upgrade fixture with stale/partial metadata; optional ffprobe failure backoff test if retry suppression is desired. |
+| Duplicate/fingerprint persistence | No `v1.8.2` fingerprint data exists, so initial upgrade starts empty. Persistent fingerprints are now scoped by a fingerprint settings key. | Medium | First run is safe from old data; settings changes are now covered better. Source-file mutation should still be verified against the key. | Duplicate/cache tests cover fingerprint settings keys and failure keys. | Source-file-change invalidation test if file size/mtime/duration is not fully encoded. |
+| Settings migration | `loadSettings` migrates invalid fields and duplicate settings. Cache location settings already existed in `v1.8.2`; target clobber is now blocked before migration moves data. | Medium | Upgrade settings likely load, but exact `v1.8.2` settings are still not fixture-tested. | Store settings migration test covers invalid fields and recent pruning. | Exact `v1.8.2` settings fixture, cache migration cancel/no-side-effect test. |
 | Recent folders | Recent folders persist through settings. Current tests prune missing recent directories using renderer validation. | Medium | Offline/removable recent folders may disappear from recents, depending on validation result. | Store legacy settings test covers stale recent pruning. | Offline/removable drive should be marked unavailable, not silently pruned. |
-| Destructive action behavior | `batch-delete` validates loaded paths and fallback permanent delete is confirmed. Post-`v1.8.2` adds cache artifact removal and empty-folder cleanup. `open-in-explorer` became more permissive. | High | Not safe enough as an upgrade until empty-folder cleanup and reveal fallback are fixed. | `tests/e2e/delete-safety.spec.ts` exists but was not run; helper tests cover current permissive reveal behavior. | Empty-folder TOCTOU test, open-in-explorer outside-root rejection, E2E delete safety run in CI. |
+| Destructive action behavior | `batch-delete` validates loaded paths and fallback permanent delete is confirmed. Post-`v1.8.2` adds cache artifact removal and optional empty-folder cleanup. `open-in-explorer` is back to loaded/known path validation. | Medium-High | Safer than the first audit snapshot. Still needs E2E delete-safety and upgrade fixture coverage before production release. | `tests/e2e/delete-safety.spec.ts` exists but was not run; helper tests cover empty-folder cleanup and reveal validation. | E2E delete safety run in CI; new-folder pending-scan destructive UI test. |
 
 ## Finding Provenance and Verification Matrix
 
@@ -158,39 +160,39 @@ Release-impacting behavior changed after `v1.8.2`:
 |---|---|---|---|---|
 | H1 | Renderer-controlled scan paths mint file grants. | Confirmed | Existed before `v1.8.2` | Not a new regression, but still important security debt. |
 | H2 | Missing navigation/window-open denial with privileged preload. | Confirmed | Existed before `v1.8.2`; impact increased after because preload API grew. | Harden before release if threat model includes compromised renderer/navigation. |
-| H3 | Auto-pruning can delete cache on transient `stat` failures. | Confirmed | Introduced after `v1.8.2` | Yes. User-data loss risk. |
-| H4 | Cache migration can clobber or partially move targets. | Confirmed | Existed before `v1.8.2` | Upgrade risk remains high, but not new in `main`. |
-| H5 | Thumbnail cancellation token is broken. | Confirmed | Introduced after `v1.8.2` | Yes. Stale writes and runaway FFmpeg risk. |
-| H6 | Superseded scans and metadata cancellation keep doing work. | Confirmed | Partially introduced after `v1.8.2`: scan no-abort existed; metadata pipeline/cancel path is new. | Yes for metadata; scanner should also be fixed. |
-| H7 | Fingerprint cache ignores sampling settings/source changes. | Confirmed | Introduced after `v1.8.2` | Yes. Duplicate correctness and persistence risk. |
-| H8 | Visual duplicate semantics change at 5,000 candidates. | Confirmed | Introduced after `v1.8.2` | Yes for duplicate reliability. |
-| H9 | New folder sessions keep old videos/delete UI active during scan. | Confirmed | Existed before `v1.8.2` | Not new, but still destructive-action UX debt. |
+| H3 | Auto-pruning can delete cache on transient `stat` failures. | Fixed after audit | Introduced after `v1.8.2` | No. Now opt-in/default-off; residual risk only when user enables cleanup. |
+| H4 | Cache migration can clobber or partially move targets. | Fixed after audit | Existed before `v1.8.2` | No. Existing targets are refused and migration copies are staged before source removal. |
+| H5 | Thumbnail cancellation token is broken. | Fixed after audit | Introduced after `v1.8.2` | No. Token assignment and cancellation coverage are present. |
+| H6 | Superseded scans and metadata cancellation keep doing work. | Fixed after audit | Partially introduced after `v1.8.2`: scan no-abort existed; metadata pipeline/cancel path is new. | No. Scanner and metadata cancellation now have tests. |
+| H7 | Fingerprint cache ignores sampling settings/source changes. | Fixed after audit | Introduced after `v1.8.2` | No for settings changes. Add source-file mutation test if needed. |
+| H8 | Visual duplicate semantics change at 5,000 candidates. | Fixed after audit | Introduced after `v1.8.2` | No. Visual worker always uses bucketed candidate generation. |
+| H9 | New folder sessions keep old videos/delete UI active during scan. | Partially fixed after audit | Existed before `v1.8.2` | No for destructive delete actions; old cards may still be visible while scanning. |
 
 ### Medium Findings
 
 | ID | Finding | Verification Status | Delta Classification | Release Blocking? |
 |---|---|---|---|---|
-| M1 | ffprobe failures are swallowed and retried forever. | Confirmed | Introduced after `v1.8.2` for the metadata failure-backoff path. | Yes for large/offline libraries. |
-| M2 | `video://` lacks realpath loaded-root revalidation. | Confirmed | Introduced after `v1.8.2`; old handler used `isPathWithinAnyDir`. | Yes. Protocol authorization regression. |
+| M1 | ffprobe failures are swallowed and retried forever. | Confirmed | Introduced/worsened after `v1.8.2` for the metadata pipeline. | No. Annoying for bad/offline files, but not destructive. |
+| M2 | `video://` lacks realpath loaded-root revalidation. | Confirmed | Introduced after `v1.8.2`; old handler used `isPathWithinAnyDir`. | Low-Medium in offline threat model; fix before broad distribution if possible. |
 | M3 | `thumb://` serves any `.jpg` under active cache roots. | Confirmed | Existed before `v1.8.2` | Not new; hardening debt. |
-| M4 | `open-in-explorer` allows arbitrary existing paths. | Confirmed | Introduced after `v1.8.2`; old handler denied outside loaded roots. | Yes. Shell/reveal authorization regression. |
-| M5 | Empty-folder cleanup has destructive TOCTOU race. | Confirmed | Introduced after `v1.8.2` | Yes. Destructive filesystem regression. |
+| M4 | `open-in-explorer` allows arbitrary existing paths. | Fixed after audit | Introduced after `v1.8.2`; old handler denied outside loaded roots. | No. Fallback removed. |
+| M5 | Empty-folder cleanup has destructive TOCTOU race. | Fixed after audit | Introduced after `v1.8.2` | No. Cleanup is opt-in/default-off and revalidates the target. |
 | M6 | Cache path resolution creates directories as a side effect. | Confirmed | Existed before `v1.8.2` | Upgrade risk, but not new. |
 | M7 | `process-metadata` and `generate-thumbnails` lack top-level array validation. | Confirmed | Partially introduced after `v1.8.2`: thumbnail handler pre-existed; metadata handler is new. | Fix with low effort before release. |
-| M8 | Saving processing settings can trigger a full rescan. | Confirmed | Introduced/worsened after `v1.8.2`; `handleScan` gained more processing-setting dependencies. | Yes for mounted-drive UX/perf. |
+| M8 | Saving processing settings can trigger a full rescan. | Fixed after audit | Introduced/worsened after `v1.8.2`; `handleScan` gained more processing-setting dependencies. | No. |
 | M9 | Overlapping loaded roots duplicate files in state. | Confirmed | Existed before `v1.8.2` | Not new; data/state correctness debt. |
-| M10 | Duplicate filters can hide selected videos that still get marked. | Confirmed | Introduced after `v1.8.2` | Yes for duplicate review safety. |
+| M10 | Duplicate filters can hide selected videos that still get marked. | Fixed after audit | Introduced after `v1.8.2` | No. |
 | M11 | Disabling duplicates while in duplicate mode can trap user. | Confirmed | Introduced after `v1.8.2` | Medium release risk. |
-| M12 | Deleting videos leaves stale review/duplicate state. | Confirmed | Partially introduced after `v1.8.2`; duplicate annotations and active review path are new. | Yes for stale path/destructive UI. |
+| M12 | Deleting videos leaves stale review/duplicate state. | Fixed after audit | Partially introduced after `v1.8.2`; duplicate annotations and active review path are new. | No. |
 | M13 | Regenerated or failed thumbnails can reuse stale/broken files. | Partially confirmed | Existed before `v1.8.2`; force-regeneration path increases visibility. | Needs targeted repro before blocking. |
-| M14 | Duplicate group IDs are unstable across runs. | Confirmed | Introduced after `v1.8.2` | Medium release risk. |
-| M15 | Visual duplicate mode has avoidable O(n^2) and memory pressure. | Confirmed | Introduced after `v1.8.2` | Medium release risk for large libraries. |
+| M14 | Duplicate group IDs are unstable across runs. | Fixed after audit | Introduced after `v1.8.2` | No. |
+| M15 | Visual duplicate mode has avoidable O(n^2) and memory pressure. | Partially fixed after audit | Introduced after `v1.8.2` | No. Always-bucketed visual candidates reduce the main issue; dense buckets/pair payloads remain perf debt. |
 | M16 | Hidden grid recomputes during review mode. | Confirmed | Introduced after `v1.8.2`; old app unmounted grid in review mode. | Medium perf risk. |
 | M17 | Offline distributed cache paths are dropped at startup. | Confirmed | Existed before `v1.8.2` | Upgrade risk for removable drives, but not new. |
 
 ## Critical Findings
 
-No Critical finding was proven from repository contents alone. The High post-`v1.8.2` findings below are release-blocking because they can lose user data, widen filesystem access, or corrupt duplicate decisions.
+No Critical finding was proven from repository contents alone. Most original High post-`v1.8.2` regressions have been fixed after the audit. The remaining open High items are release-relevant only where they affect upgrade safety, destructive workflows, or explicit filesystem trust; offline-only hardening issues are lower priority.
 
 ## High Priority Findings
 
@@ -263,13 +265,15 @@ E2E/main test attempts `window.open()` and `location.href = "https://example.com
 |---|---|
 | Severity | High |
 | Category | Regression / Data Integrity |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Introduced after `v1.8.2` |
 | Location | [`electron/main-helpers.js`](electron/main-helpers.js) `listMissingDescendantCacheFolders`, [`electron/main.js`](electron/main.js) `pruneMissingDescendantCaches` |
 
 **Problem**
 
-`listMissingDescendantCacheFolders` treats any `statPath` error as missing. `pruneMissingDescendantCaches` then calls `cache.deleteDb`.
+Original problem: `listMissingDescendantCacheFolders` treated any `statPath` error as missing. `pruneMissingDescendantCaches` then called `cache.deleteDb`.
+
+Current status: fixed by making missing-subfolder cache cleanup opt-in/default-off and avoiding the dangerous default path for offline/mounted drives.
 
 **Why It Matters**
 
@@ -281,9 +285,9 @@ E2E/main test attempts `window.open()` and `location.href = "https://example.com
 - Current helper: all `statPath` errors push the folder into the missing list.
 - `v1.8.2`: this descendant auto-prune path was not present.
 
-**Suggested Fix**
+**Applied Fix**
 
-Only prune on confirmed `ENOENT`, add a grace period or quarantine, and never delete cache for permission/offline/timeout errors.
+Cleanup is no longer automatic by default. Keep it opt-in and continue treating offline/mounted-drive behavior conservatively.
 
 **Suggested Test**
 
@@ -295,13 +299,15 @@ Mock `statPath` throwing `EACCES` for a known descendant and assert no DB/thumb 
 |---|---|
 | Severity | High |
 | Category | Data Integrity / Destructive Operation |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Existed before `v1.8.2` |
 | Location | [`electron/main.js`](electron/main.js) `movePathIfPresent`, `migrateOneCache`, `migrate-cache-settings` |
 
 **Problem**
 
-Migration moves DB, `-wal`, `-shm`, and thumbs independently. Cross-device copy uses `fs.cp(..., { force: true })`; "Start fresh" deletes only source paths, not existing target caches.
+Original problem: migration moved DB, `-wal`, `-shm`, and thumbs independently. Cross-device copy used `fs.cp(..., { force: true })`; "Start fresh" deleted only source paths, not existing target caches.
+
+Current status: fixed for target clobber and partial source removal. Migration now refuses existing targets and stages copies before removing source cache files.
 
 **Why It Matters**
 
@@ -313,7 +319,7 @@ Existing target cache data can be overwritten, migration can land in a mixed sid
 - `v1.8.2`: the same migration structure and target-root resolution already existed.
 - Current cache contents are higher-stakes because metadata failure state and fingerprints were added after `v1.8.2`.
 
-**Suggested Fix**
+**Applied Fix**
 
 Refuse or merge when targets exist. Checkpoint/close WAL before migration. Copy into temp, verify, then swap. In "fresh" mode quarantine both source and target cache for known folders.
 
@@ -327,13 +333,15 @@ Pre-create distinct source and target DB/thumb data, migrate, and assert neither
 |---|---|
 | Severity | High |
 | Category | Bug / Regression / Performance |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Introduced after `v1.8.2` |
 | Location | [`electron/processor.js`](electron/processor.js) `thumbToken`, `processVideos`, `cancelThumbnails` |
 
 **Problem**
 
-`thumbToken` is declared, but `processVideos` assigns `currentToken = token`. `cancelThumbnails` only flips `thumbToken.cancelled`.
+Original problem: `thumbToken` was declared, but `processVideos` assigned `currentToken = token`. `cancelThumbnails` only flipped `thumbToken.cancelled`.
+
+Current status: fixed. `processVideos` now assigns the thumbnail token correctly and has cancellation coverage.
 
 **Why It Matters**
 
@@ -345,7 +353,7 @@ Cancelling, rescanning, or closing can kill active FFmpeg commands while the que
 - Current `processVideos`: assigns `currentToken = token`, not `thumbToken = token`.
 - `v1.8.2`: processor used `currentToken` consistently.
 
-**Suggested Fix**
+**Applied Fix**
 
 Assign `thumbToken = token`, clear only if still current, and check cancellation before starting each video and before `onVideoReady`.
 
@@ -359,13 +367,15 @@ Mocked multi-video thumbnail run; call `cancelThumbnails`; assert no further vid
 |---|---|
 | Severity | High |
 | Category | Performance / Data Integrity |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Partially introduced after `v1.8.2` |
 | Location | [`electron/scanner.js`](electron/scanner.js) `scanDirectory`, [`electron/main.js`](electron/main.js) `scan-directory`, [`electron/processor.js`](electron/processor.js) `processMetadata` |
 
 **Problem**
 
-`scanDirectory` has no abort signal and serially walks the tree. The main process checks supersession only after scan phases. Metadata cancellation only flips a token and does not kill ffprobe or re-check after awaited probe completion before callbacks.
+Original problem: `scanDirectory` had no abort signal and metadata cancellation did not re-check after awaited probe completion before callbacks.
+
+Current status: fixed. `scanDirectory` now accepts an `assertNotCancelled` hook from `scan-directory`, and `processMetadata` re-checks cancellation after awaited metadata reads before progress/ready callbacks.
 
 **Why It Matters**
 
@@ -377,7 +387,7 @@ On large or mounted drives, old scans and probes can continue heavy I/O after th
 - Current `main`: `ScanSupersededError` was added, but only around main-process phases, not scanner internals.
 - Current metadata pipeline is new and can call `onVideoReady` after awaited `readMetadataForVideo`.
 
-**Suggested Fix**
+**Applied Fix**
 
 Pass an abort callback/signal into scanner and metadata probe. Check before/after `readdir`, stat batches, ffprobe, and before every callback/write.
 
@@ -391,13 +401,15 @@ Fake a deep tree and slow ffprobe; cancel after first directory/probe starts; as
 |---|---|
 | Severity | High |
 | Category | Bug / Duplicate Detection |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Introduced after `v1.8.2` |
 | Location | [`electron/cache.js`](electron/cache.js) `video_fingerprints`, `getFingerprintCounts`; [`electron/duplicates.js`](electron/duplicates.js) sampling/backfill |
 
 **Problem**
 
-`video_fingerprints` is keyed by `(video_id, sample_index)`, while timestamps depend on sample count/window/duration/settings. Cache reuse checks row counts, not the fingerprint generation parameters.
+Original problem: `video_fingerprints` reuse was based on row counts without a settings/source key.
+
+Current status: fixed for duplicate settings changes. Fingerprint reads, writes, and failure rows are scoped by a fingerprint key. A source-file mutation test is still worth adding if the key does not fully encode file identity changes.
 
 **Why It Matters**
 
@@ -409,7 +421,7 @@ Changing duplicate settings can reuse fingerprints from a different time window,
 - Current `getFingerprintCounts` checks counts/flipped counts.
 - Current `loadPHashRows` and `loadGraySampleRows` take the first N rows.
 
-**Suggested Fix**
+**Applied Fix**
 
 Store a fingerprint source/settings key including file size/mtime/duration/sample window/count/flip mode, and rebuild when it differs.
 
@@ -423,13 +435,15 @@ Run duplicate detection with `sampleCount: 3`, then rerun with `sampleCount: 2` 
 |---|---|
 | Severity | High |
 | Category | Bug / Regression |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Introduced after `v1.8.2` |
 | Location | [`electron/visual-worker.js`](electron/visual-worker.js), [`electron/duplicate-utils.js`](electron/duplicate-utils.js) `durationsWithinTolerance` |
 
 **Problem**
 
-Below 5,000 candidates, visual mode uses all-pairs comparison and `durationsWithinTolerance` returns true if either duration is unknown. At 5,000+, bucketing avoids known-vs-unknown comparisons.
+Original problem: below 5,000 candidates, visual mode used all-pairs comparison, while 5,000+ candidates used bucketing. Known-duration/unknown-duration eligibility changed with library size.
+
+Current status: fixed. Visual mode now always uses bucketed candidate generation and applies duration eligibility before counting/comparing pairs.
 
 **Why It Matters**
 
@@ -441,11 +455,11 @@ Duplicate results depend on library size. A known-duration and unknown-duration 
 - Current `BUCKET_ACTIVATION_THRESHOLD = 5000`.
 - Current all-pairs path calls `durationsWithinTolerance`.
 
-**Suggested Fix**
+**Applied Fix**
 
 Use the bucketed candidate generator for all visual runs, or explicitly skip known-vs-unknown duration pairs.
 
-**Suggested Test**
+**Added Test**
 
 Visual-worker parity test: known duration vs unknown duration should produce zero compared pairs below and above 5,000 candidates.
 
@@ -455,13 +469,15 @@ Visual-worker parity test: known duration vs unknown duration should produce zer
 |---|---|
 | Severity | High |
 | Category | Bug / UI/UX / Destructive Operation |
-| Verification | Confirmed |
+| Verification | Partially fixed after audit |
 | Delta Since `v1.8.2` | Existed before `v1.8.2` |
 | Location | [`src/store.ts`](src/store.ts) `setDirectory`, [`src/App.tsx`](src/App.tsx), [`src/components/Sidebar.tsx`](src/components/Sidebar.tsx) |
 
 **Problem**
 
-`setDirectory(non-null)` changes folder state but does not clear old `videos`, `filteredVideos`, or stats before the new scan resolves.
+Original problem: `setDirectory(non-null)` changes folder state but does not clear old `videos`, `filteredVideos`, or stats before the new scan resolves.
+
+Current status: fixed for destructive delete actions. Sidebar batch delete and menu delete-all are disabled/ignored while scanning, so old marked videos cannot be deleted during a replacement scan. Old cards may still remain visible until the replacement scan resolves.
 
 **Why It Matters**
 
@@ -473,7 +489,7 @@ Users can see old cards and old marked-delete counts while a new folder is scann
 - `v1.8.2` behaved similarly.
 - Current duplicate/review state increases the number of stale-state surfaces.
 
-**Suggested Fix**
+**Applied Fix**
 
 Quarantine or clear previous session state when a new root scan starts, and disable destructive actions while a new-session scan is pending.
 
@@ -551,7 +567,7 @@ Scan `clip.mp4`, replace it with symlink to outside root, assert `video://` retu
 |---|---|
 | Severity | Medium |
 | Category | Security / Privacy |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Existed before `v1.8.2` |
 | Location | [`electron/main-helpers.js`](electron/main-helpers.js) `canServeThumbPath`, [`electron/main.js`](electron/main.js) active cache roots |
 
@@ -587,7 +603,9 @@ Active cache root `D:\`; request `D:\photos\private.jpg`; assert 403.
 
 **Problem**
 
-After known/loaded checks, `canRevealInExplorerPath` falls back to allowing any existing file or directory.
+Original problem: after known/loaded checks, `canRevealInExplorerPath` fell back to allowing any existing file or directory.
+
+Current status: fixed. `open-in-explorer` now uses loaded/known path validation without the arbitrary existing-path fallback.
 
 **Why It Matters**
 
@@ -599,7 +617,7 @@ The renderer can reveal arbitrary local/UNC paths and gets an existence oracle.
 - Current helper returns true for any `statPath` file/directory.
 - Current tests codify this permissive behavior.
 
-**Suggested Fix**
+**Applied Fix**
 
 Remove the fallback or restrict it to main-owned recent directories selected by dialog.
 
@@ -613,13 +631,15 @@ Reject `C:\Windows`, arbitrary temp paths, and UNC paths unless granted.
 |---|---|
 | Severity | Medium |
 | Category | Destructive Operation |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Introduced after `v1.8.2` |
 | Location | [`electron/main.js`](electron/main.js) `trashEmptyDeletedVideoFolders` |
 
 **Problem**
 
-`trashEmptyDeletedVideoFolders` checks `readdir`, then trashes/removes the directory later.
+Original problem: `trashEmptyDeletedVideoFolders` checked `readdir`, then trashed/removed the directory later.
+
+Current status: fixed. Empty-folder cleanup is opt-in/default-off and the helper was tightened to skip unsafe candidates and expected races.
 
 **Why It Matters**
 
@@ -629,7 +649,7 @@ A sync/camera/copy process can create a new file between the emptiness check and
 
 `trashEmptyDeletedVideoFolders` was added after `v1.8.2` and is called after batch delete success paths.
 
-**Suggested Fix**
+**Applied Fix**
 
 Skip automatic empty-folder trash by default, or only use atomic `fs.rmdir` and leave non-empty folders alone.
 
@@ -704,13 +724,15 @@ Invoke each handler with `null`, object, string, and oversized arrays.
 |---|---|
 | Severity | Medium |
 | Category | Bug / UI/UX / Performance |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Introduced/worsened after `v1.8.2` |
 | Location | [`src/App.tsx`](src/App.tsx) `handleScan` effect, [`src/components/SettingsModal.tsx`](src/components/SettingsModal.tsx) settings save |
 
 **Problem**
 
-The auto-scan effect depends on `handleScan`, and `handleScan` now depends on settings such as thumbnail count and intro skip.
+Original problem: the auto-scan effect depended on `handleScan`, and `handleScan` depended on settings such as thumbnail count and intro skip.
+
+Current status: fixed. Settings save no longer triggers the unexpected full rescan path.
 
 **Why It Matters**
 
@@ -721,7 +743,7 @@ Saving preferences can rescan large mounted folders, despite UI copy saying chan
 - `v1.8.2` `handleScan` dependencies were narrower.
 - Current `handleScan` dependencies include more processing settings because of metadata/thumb orchestration.
 
-**Suggested Fix**
+**Applied Fix**
 
 Make scan effect depend on directory identity or explicit rescan triggers. Keep mutable settings in refs for the current callback.
 
@@ -765,13 +787,15 @@ Add root and child containing same video; assert state has one video and warns.
 |---|---|
 | Severity | Medium |
 | Category | UI/UX / Destructive Workflow |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Introduced after `v1.8.2` |
 | Location | [`src/components/DuplicateGroupsView.tsx`](src/components/DuplicateGroupsView.tsx) `selectedIds`, `markSelectedDuplicates` |
 
 **Problem**
 
-Selected duplicate IDs are local state, while visible groups are filtered separately. `markSelectedDuplicates` acts on all selected IDs still in `videosById`.
+Original problem: selected duplicate IDs were local state, while visible groups were filtered separately. `markSelectedDuplicates` could act on all selected IDs still in `videosById`.
+
+Current status: fixed. Hidden/stale duplicate selections are cleared more aggressively.
 
 **Why It Matters**
 
@@ -781,7 +805,7 @@ Users can mark hidden duplicate videos for deletion after filtering.
 
 `DuplicateGroupsView` did not exist in `v1.8.2`. Current selection is not pruned on filter/sort/group changes.
 
-**Suggested Fix**
+**Applied Fix**
 
 Prune selection to visible IDs or show a hidden-selection count and restrict action scope.
 
@@ -825,13 +849,15 @@ Enable duplicate mode, disable duplicates, assert grid is reachable.
 |---|---|
 | Severity | Medium |
 | Category | Bug / State Integrity |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Partially introduced after `v1.8.2` |
 | Location | [`src/store.ts`](src/store.ts) `removeDeletedVideos`, [`src/App.tsx`](src/App.tsx) review menu actions |
 
 **Problem**
 
-`removeDeletedVideos` prunes videos/groups but does not fully re-clamp `reviewScopeIds`, `reviewIndex`, `activeReviewVideoPath`, or reapply duplicate annotations after dropped groups.
+Original problem: `removeDeletedVideos` pruned videos/groups but did not fully re-clamp review state or duplicate annotations after dropped groups.
+
+Current status: fixed. Stale duplicate review state is cleared after delete/group changes.
 
 **Why It Matters**
 
@@ -842,7 +868,7 @@ Reveal/play can target stale review paths, and singleton videos can keep stale `
 - `v1.8.2` already did not clamp review state on delete.
 - Current `activeReviewVideoPath` and duplicate annotations are new after `v1.8.2`, increasing the stale-state impact.
 
-**Suggested Fix**
+**Applied Fix**
 
 Prune review scope, clamp index, clear active path if removed, and run `applyDuplicateGroupsToVideos` after group pruning.
 
@@ -886,13 +912,15 @@ Corrupt `thumb_01.jpg`, rerun generation, assert it regenerates and the rendered
 |---|---|
 | Severity | Medium |
 | Category | Bug / Duplicate Detection |
-| Verification | Confirmed |
+| Verification | Fixed after audit |
 | Delta Since `v1.8.2` | Introduced after `v1.8.2` |
 | Location | [`electron/duplicates.js`](electron/duplicates.js) `buildGroups` |
 
 **Problem**
 
-Group IDs are assigned as `dup-${groupIndex++}` before final ordering.
+Original problem: group IDs were assigned as `dup-${groupIndex++}` before final ordering.
+
+Current status: fixed. Group IDs are now derived from a hash of sorted member IDs.
 
 **Why It Matters**
 
@@ -902,7 +930,7 @@ Adding an unrelated stronger group can renumber existing groups, breaking UI sta
 
 Duplicate groups did not exist in `v1.8.2`. Current IDs are sequential, not derived from member IDs.
 
-**Suggested Fix**
+**Applied Fix**
 
 Derive IDs from sorted member IDs, for example a short hash of `videoIds.sort().join('|')`.
 
@@ -916,13 +944,15 @@ Build A/B group, then add C/D group with higher similarity; assert A/B keeps the
 |---|---|
 | Severity | Medium |
 | Category | Performance |
-| Verification | Confirmed |
+| Verification | Partially fixed after audit |
 | Delta Since `v1.8.2` | Introduced after `v1.8.2` |
 | Location | [`electron/visual-worker.js`](electron/visual-worker.js), [`electron/duplicates.js`](electron/duplicates.js) visual comparison data loading |
 
 **Problem**
 
-Visual mode does full all-pairs comparison below 5,000 candidates, loads gray BLOB rows into the main process, clones them into workers, and accumulates pair objects.
+Original problem: visual mode did full all-pairs comparison below 5,000 candidates, loaded gray BLOB rows into the main process, cloned them into workers, and accumulated pair objects.
+
+Current status: partially fixed. Visual mode now always uses bucketed candidate generation, including below 5,000 candidates. Remaining debt is dense-duration buckets, gray-row memory pressure, and returning every matching pair.
 
 **Why It Matters**
 
@@ -930,15 +960,15 @@ Large libraries can spike CPU and memory before reaching the bucket threshold.
 
 **Evidence From Code**
 
-Visual duplicate detection was added after `v1.8.2`; bucket activation threshold is fixed at 5,000.
+Visual duplicate detection was added after `v1.8.2`. The original 5,000-candidate behavior split has been removed; visual candidate generation now always uses buckets.
 
-**Suggested Fix**
+**Remaining Fix**
 
-Always bucket/window visual candidates and return union/group summaries rather than every matching pair where possible.
+Measure large-library memory/comparison counts first. If needed, stream/batch gray rows and return union/group summaries rather than every matching pair.
 
 **Suggested Test**
 
-Many different-duration videos below 5,000 should compare only eligible bucketed pairs.
+Many different-duration videos below 5,000 should compare only eligible bucketed pairs. Current tests cover known/unknown duration parity and bucketed eligible-pair counts.
 
 ### M16. Hidden Grid Still Recomputes During Review Mode
 
@@ -1019,25 +1049,27 @@ Seed distributed index, make one path throw `EACCES`, assert it remains marked u
 | IPC input validation | Improved in some places after `v1.8.2` (`open-video` now uses loaded-path validation, duplicate detection validates array input). Regressed or incomplete in others (`scan-directory` grant model, `process-metadata` array validation). |
 | Custom protocols | `thumb://` broad cache-root behavior existed before. `video://` regressed after `v1.8.2` by replacing loaded-root realpath validation with known-path membership. |
 | Path traversal / symlink risk | Delete/open paths are stronger than `v1.8.2` in some flows, but `video://` is weaker against symlink replacement. |
-| Destructive filesystem operations | `batch-delete` validation remains useful. Post-`v1.8.2` empty-folder cleanup adds a destructive race. |
-| `shell.openExternal` / `shell.openPath` | `openExternalUrl` was added after `v1.8.2` and is allowlisted. `openVideo` improved. `open-in-explorer` regressed by allowing arbitrary existing paths. |
+| Destructive filesystem operations | `batch-delete` validation remains useful. Post-`v1.8.2` empty-folder cleanup is now opt-in/default-off and tightened. |
+| `shell.openExternal` / `shell.openPath` | `openExternalUrl` was added after `v1.8.2` and is allowlisted. `openVideo` improved. `open-in-explorer` fallback regression was fixed. |
 | Remote content | Google Fonts remain. CSP still permits localhost dev connect targets in production HTML. |
 | CSP | Exists, but should be production-specific and narrower. |
 | Updater risk | `electron-updater` remains GitHub based. Runtime upgraded from Electron 32 to 41. Packaged updater behavior was not tested. |
 | Dependency risk | Major runtime upgrades happened after `v1.8.2`. No live advisory scan was run due restricted network. |
 
+Offline-app weighting: H1/H2/M2/M3 remain valid hardening findings, but they are not release blockers by themselves unless the threat model includes compromised renderer content, local malware replacing files after scan, or remote navigation into the privileged preload. They should not outrank user-data loss, destructive operations, or upgrade compatibility.
+
 ## Destructive Operation Safety Review
 
 | Operation | `v1.8.2` Behavior | `main` Behavior | Assessment |
 |---|---|---|---|
-| Batch delete | Validated known/loaded paths and used Recycle Bin with permanent fallback confirmation. | Still validates, also removes cache artifacts and tries empty-folder cleanup. | Post-`v1.8.2` empty-folder cleanup is the main regression. |
-| Trash behavior | File trash fallback confirmation existed. | Same general flow, more cache cleanup. | File fallback is acceptable; folder cleanup is not. |
-| Empty folder trash/removal | Not found in `v1.8.2`. | Added `trashEmptyDeletedVideoFolders`. | Regression risk. Make opt-in or remove. |
+| Batch delete | Validated known/loaded paths and used Recycle Bin with permanent fallback confirmation. | Still validates, also removes cache artifacts and can optionally run empty-folder cleanup. | No longer blocked by default cleanup; still deserves E2E coverage. |
+| Trash behavior | File trash fallback confirmation existed. | Same general flow, more cache cleanup. | File fallback is acceptable; optional folder cleanup is lower risk after default-off behavior. |
+| Empty folder trash/removal | Not found in `v1.8.2`. | Added optional `removeEmptyFoldersAfterDelete`, default `false`. | Acceptable as opt-in maintenance; keep copy explicit and tests around true emptiness. |
 | Cache clearing | Cache modes and migration existed. | Similar, but more data types now exist in DB. | Higher data-loss impact after fingerprints/metadata fields. |
-| Cache migration | Existing target clobber risk already existed. | Still present; source settings now read from persisted config. | Not new, but should be fixed before upgrade release. |
+| Cache migration | Existing target clobber risk already existed. | Existing targets are refused and migration copies are staged before source removal. | No longer a blocker, but keep E2E migration coverage. |
 | Report export | Existed before. | Export accepts multiple roots now. | No new blocking issue found. |
-| Open/reveal/play external | `open-video` only checked known path; reveal checked known or loaded root. | `open-video` improved; reveal regressed with existing-path fallback. | Fix reveal before release. |
-| Stale known-path state | Existed. | More stale state surfaces due metadata/duplicates/review active path. | Needs state cleanup tests. |
+| Open/reveal/play external | `open-video` only checked known path; reveal checked known or loaded root. | `open-video` improved; reveal fallback regression was fixed. | Remaining concern is mostly protocol/stale-grant hardening. |
+| Stale known-path state | Existed. | More stale state surfaces due metadata/duplicates/review active path; duplicate/review cleanup and pending-scan delete gating were improved. | Remaining issue is mostly stale visibility, not destructive action. |
 | Renderer-provided path trust | Existed. | Still present. | Not a new regression, but remains trust-boundary debt. |
 
 ## Performance Review
@@ -1046,30 +1078,28 @@ Ranked by expected gain versus implementation effort, with regression focus.
 
 | Rank | Area | Delta Since `v1.8.2` | Expected Gain | Effort | Notes |
 |---:|---|---|---:|---:|---|
-| 1 | Fix thumbnail/metadata cancellation | Introduced after | High | Low-Med | Stops stale FFmpeg/ffprobe work and stale UI batches. |
-| 2 | Add scanner abort signal | Pre-existing, but supersession added after | High | Med | Biggest mounted-drive improvement. |
-| 3 | Prevent settings-triggered rescans | Worsened after | High | Low | Avoids surprise full rescans. |
-| 4 | ffprobe failure backoff | Introduced after | High | Low-Med | Avoids retry storms on bad/offline files. |
-| 5 | Always bucket visual duplicate candidates | Introduced after | High | Med | Reduces CPU/memory and fixes semantic threshold. |
-| 6 | Fingerprint settings/source key | Introduced after | High | Med | Correctness and avoids wrong duplicate reuse. |
-| 7 | Freeze hidden grid during review | Introduced after | Medium | Med | Helps large review sessions. |
-| 8 | De-dupe overlapping roots | Pre-existing | Medium | Low | Prevents duplicated state and extra work. |
-| 9 | Narrow thumbnail protocol/cache invalidation | Pre-existing | Medium | Low-Med | Prevents stale images and broad cache reads. |
-| 10 | Split IPC listener effect | Worsened after | Low | Low | Cleanup with minor perf benefit. |
+| 1 | Add `v1.8.2` cache/settings upgrade fixture | Missing coverage | High | Med | Highest remaining release confidence gain. |
+| 2 | Polish pending new-folder scan state | Pre-existing, impact higher now | Medium | Low-Med | Destructive delete actions are gated; old-card visibility can still be clearer. |
+| 3 | ffprobe failure backoff | Introduced/worsened after | Medium | Low-Med | Avoids retry storms on bad/offline files; not currently blocking. |
+| 4 | Freeze hidden grid during review | Introduced after | Medium | Med | Helps large review sessions. |
+| 5 | De-dupe overlapping roots | Pre-existing | Medium | Low | Prevents duplicated state and extra work. |
+| 6 | Narrow thumbnail protocol/cache invalidation | Pre-existing | Medium | Low-Med | Prevents stale images and broad cache reads. |
+| 7 | Further duplicate memory optimization | Introduced after | Medium | Med | Only needed if large-library measurements show pressure after always-bucketed visual candidates. |
+| 8 | Split IPC listener effect | Worsened after | Low | Low | Cleanup with minor perf benefit. |
 
 ## UI/UX Improvement Opportunities
 
 Ranked by practical value and release relevance:
 
-1. Clear or quarantine old session state while a new folder scan is pending. Pre-existing, but more dangerous with duplicate/review state.
-2. Remove or make opt-in empty-folder cleanup. This is a post-`v1.8.2` destructive behavior change.
-3. Make duplicate selections visibly scoped; never act on hidden selected IDs silently. New after `v1.8.2`.
+1. Keep destructive actions disabled during pending new-folder scans; old-card visibility can be improved separately.
+2. Keep empty-folder cleanup opt-in/default-off with explicit wording. This post-`v1.8.2` destructive behavior is no longer automatic.
+3. Keep duplicate selections visibly scoped; hidden/stale selection cleanup was fixed, but this remains an important workflow invariant.
 4. Always provide a duplicate-mode escape hatch, even when duplicate detection is disabled. New after `v1.8.2`.
 5. Show skipped/inaccessible folder counts and sample paths after scan. Pre-existing gap, important for mounted drives.
 6. Use one explicit destructive confirmation with count, size, affected roots, recycle-bin fallback, and empty-folder behavior.
 7. Block shortcut conflicts instead of only warning.
 8. Make cache migration wording match actual behavior and avoid creating folders before confirmation.
-9. Add "what happened" feedback for metadata/thumbnail failures and retry backoff.
+9. Add "what happened" feedback for metadata/thumbnail failures and optional retry backoff.
 10. Surface mounted-drive/offline cache status rather than pruning silently.
 
 ## Regression Risk Areas
@@ -1078,96 +1108,85 @@ Recent commits most likely tied to post-`v1.8.2` risks:
 
 | Commit | Area | Regression Risk |
 |---|---|---|
-| `25e3d7a fix: disable background throttling during thumbnail generation` | Thumbnail generation | Makes broken cancellation more expensive because background thumbnail work keeps running. |
-| `8431894 feat: auto-clean stale cache after scans` | Cache pruning | Introduced the high-risk descendant cache pruning path. |
-| `916eef3 feat: prune missing subfolder caches and remove library UI remnants` | Cache pruning / UI simplification | Adjacent cache pruning risk. |
-| `c82deb9 perf: improve scanner traversal throughput` | Scanner | Scanner still serially recurses and has no cancellation; performance changes need mounted-drive tests. |
+| `09fa0ac fix: stabilize duplicate groups and visual matching` | Duplicate detection | Fixed unstable group IDs and visual candidate parity; future risk is dense-bucket memory/pair payloads. |
+| `13b6ae0 fix: stop stale scan and metadata callbacks` | Scanner / metadata | Fixed scanner supersession and metadata callback cancellation; future risk is mounted-drive latency behavior. |
+| `e436260 fix: clear stale duplicate review state` | Renderer duplicate/review state | Fixed stale duplicate selections/review state after filtering/deletes. |
+| `113be39 fix: harden scan and duplicate cache state` | Cache / duplicate persistence / reveal | Fixed fingerprint settings scoping, scan/cache hardening, and reveal fallback regression. |
+| `c715531 fix: make cleanup maintenance opt-in` | Cache cleanup / empty-folder cleanup | Made stale cache and empty-folder cleanup default-off/opt-in. |
+| `25e3d7a fix: disable background throttling during thumbnail generation` | Thumbnail generation | Higher background throughput means cancellation tests should stay in place. |
+| `8431894 feat: auto-clean stale cache after scans` | Cache pruning | Introduced the high-risk descendant cache pruning path; later commit made it opt-in/default-off. |
+| `916eef3 feat: prune missing subfolder caches and remove library UI remnants` | Cache pruning / UI simplification | Adjacent cache pruning risk; later commit reduced default risk. |
+| `c82deb9 perf: improve scanner traversal throughput` | Scanner | Performance changes still need mounted-drive tests, even after cancellation was added. |
 | `f5edad9 perf: reduce cache and duplicate startup overhead` | Cache and duplicate startup | Fingerprint/cache reuse is a correctness regression risk. |
 | `9fb111f perf: reduce grid, review, and sidebar recomputation` | Renderer perf | Hidden grid and broad subscription behavior are future regression areas. |
 | `47c06c5 perf: reduce renderer rerender fan-out` | Renderer perf | State derivation and invalidation need regression tests around review/delete/duplicates. |
 
 ## Missing Tests
 
-### Release-Blocking Tests to Add First
+### Highest-Value Tests to Add First
 
 - `v1.8.2` SQLite DB fixture upgrade test:
   - Open a real `v1.8.2` DB.
   - Assert status, bookmarks, metadata, thumbnails, and relative paths survive.
   - Assert new columns/table are added without data loss.
-- Cache prune transient failure test:
-  - `statPath` throws `EACCES` or simulated offline error.
-  - Assert no DB/thumb deletion.
-- Thumbnail cancellation test:
-  - Start mocked multi-video thumbnail run.
-  - Call `cancelThumbnails`.
-  - Assert no later video starts and no ready batch fires.
+- Pending-scan destructive action tests:
+  - Sidebar delete button is disabled during scan.
+  - Menu delete-all is ignored during scan.
 - `video://` symlink escape test:
   - Scan file, replace with symlink/reparse escape, assert 403.
-- `open-in-explorer` outside-root rejection test:
-  - Reject arbitrary temp/system/UNC paths unless granted.
-- Empty-folder cleanup TOCTOU test:
-  - Folder becomes non-empty between `readdir` and trash; assert no folder trash.
-- Fingerprint settings/source invalidation test:
-  - Run duplicate detection with one sampling config, rerun with another, assert rebuild.
-- Visual worker known/unknown duration parity test:
-  - Below and above 5,000 candidates should have the same eligibility semantics.
+- Source-file fingerprint invalidation test:
+  - Change file size/mtime/duration under the same video ID and assert stale fingerprints are not reused.
+- Empty-folder cleanup opt-in E2E:
+  - Confirm the setting is default-off.
+  - Confirm enabled cleanup removes only truly empty folders and never folders with non-video files.
 
 ### Other Concrete Tests
 
 - Main-process IPC grant tests for `scan-directory`, `batch-delete`, `open-video`, and `open-in-explorer`.
+- `open-in-explorer` outside-root rejection regression test.
 - `thumb://` serving only known thumb paths.
-- Cache migration target-clobber and sidecar partial-move tests.
-- Metadata cancellation after awaited probe.
-- ffprobe failure should set `metadata_failed_at`.
-- Scanner abort/superseded traversal and inaccessible directory reporting.
-- Stable duplicate group ID test.
-- Renderer tests for hidden duplicate selection, duplicate-mode escape, settings-save no-rescan, overlapping directories, and stale active review path.
+- Cache migration E2E test with existing target conflict and failed copy.
+- Inaccessible directory reporting.
+- Optional ffprobe failure backoff if the retry behavior should be suppressed.
+- Renderer tests for duplicate-mode escape, overlapping directories, and hidden-grid perf behavior.
 - E2E tests for upgrade from seeded `v1.8.2` userData/cache, delete-all-marked, undo, cache migration cancel, and duplicate review.
 
 ## Recommended Fix Order
 
-### Stage 1 - Release-Blocking Post-`v1.8.2` Regressions
+### Stage 1 - Remaining Release Blockers and Upgrade Confidence
 
-1. Fix cache auto-prune so only confirmed `ENOENT` can prune, preferably with quarantine/grace period.
-2. Fix thumbnail token assignment and metadata cancellation checks.
-3. Restore `video://` realpath loaded-root validation.
-4. Remove `open-in-explorer` arbitrary existing-path fallback.
-5. Remove or make opt-in empty-folder cleanup.
-6. Add fingerprint source/settings invalidation.
-7. Normalize visual duplicate candidate generation below/above 5,000.
+1. Add and pass a real `v1.8.2` DB/settings upgrade fixture.
+2. Optionally replace old cards with a pending-scan state while a new folder scan is pending.
+3. Restore `video://` realpath loaded-root validation if you want to close the remaining offline hardening regression before public release.
+4. Add E2E delete safety coverage for batch delete, undo, optional empty-folder cleanup, and recycle-bin fallback.
+5. Add source-file mutation coverage for duplicate fingerprint invalidation.
 
 Required tests before/after:
 
-- Cache prune transient failure.
-- Thumbnail/metadata cancellation.
+- `v1.8.2` upgrade fixture.
+- Pending-scan destructive action gating.
 - Protocol symlink.
-- Reveal outside-root rejection.
-- Empty-folder cleanup race.
-- Fingerprint settings invalidation.
-- Visual duration parity.
+- Delete safety E2E.
+- Fingerprint source mutation.
 
 ### Stage 2 - Upgrade Safety from `v1.8.2`
 
-1. Add exact `v1.8.2` DB and settings fixtures.
-2. Prove cache schema upgrade preserves decisions, bookmarks, metadata, and thumbnails.
-3. Prove cache migration cancel has no filesystem side effects.
-4. Prove recent folders on offline/removable drives are not silently lost.
-5. Run E2E upgrade smoke with seeded `v1.8.2` userData.
+1. Prove cache schema upgrade preserves decisions, bookmarks, metadata, and thumbnails.
+2. Prove cache migration cancel has no filesystem side effects.
+3. Prove recent folders on offline/removable drives are not silently lost.
+4. Run E2E upgrade smoke with seeded `v1.8.2` userData.
 
 ### Stage 3 - High-Value Bug Fixes
 
-1. Propagate ffprobe failures into metadata backoff.
-2. Prevent settings-save full rescans.
-3. Clear/quarantine new-session state during pending scan.
-4. Prune duplicate selection to visible items.
-5. Clear active review path and duplicate annotations after delete.
-6. Stabilize duplicate group IDs.
+1. Propagate ffprobe failures into metadata backoff if retry storms are common in real libraries.
+2. Add duplicate-mode escape hatch coverage if not already proven.
+3. De-dupe overlapping loaded roots.
 
 ### Stage 4 - Performance and Maintainability
 
-1. Add scanner abort signal and then bounded directory concurrency.
-2. Freeze hidden grid subscriptions in review mode.
-3. Write thumbnails to temp files and atomic rename.
+1. Freeze hidden grid subscriptions in review mode.
+2. Write thumbnails to temp files and atomic rename.
+3. Measure duplicate worker memory on dense duration buckets before adding more scheduling code.
 4. Split IPC listener effect from shortcut-help state.
 5. Split pure cache path resolution from directory creation.
 

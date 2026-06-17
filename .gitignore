@@ -38,3 +38,4 @@ testspace/
 # Claude Code local config
 .claude/
 .dual-graph/
+.codegraph/
