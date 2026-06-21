@@ -218,4 +218,24 @@ describe('SettingsModal integration behavior', () => {
     expect(electronAPI.saveConfig).not.toHaveBeenCalled();
     expect(useStore.getState().isSettingsModalOpen).toBe(true);
   });
+
+  test('blocks saving while configurable shortcuts conflict', async () => {
+    const current = useStore.getState();
+    useStore.setState({
+      settings: {
+        ...current.settings,
+        keyDelete: current.settings.keyKeep,
+      },
+    });
+
+    render(<SettingsModal initialTab="keybindings" />);
+
+    expect(await screen.findByText(/conflicts with Mark as Keep/i)).toBeTruthy();
+    const saveButton = screen.getByRole('button', { name: /save preferences/i }) as HTMLButtonElement;
+    expect(saveButton.disabled).toBe(true);
+
+    await userEvent.click(saveButton);
+    expect(electronAPI.saveConfig).not.toHaveBeenCalled();
+    expect(useStore.getState().isSettingsModalOpen).toBe(true);
+  });
 });

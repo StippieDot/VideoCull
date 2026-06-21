@@ -162,6 +162,15 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     setLocalSettings((prev) => ({ ...prev, ...DEFAULT_KEYBINDS }));
   };
 
+  const countKeybindConflicts = (settings: AppSettings) => {
+    const binds = Object.fromEntries(
+      ALL_SHORTCUTS.map((s) => [s.id, settings[s.id] as Keybind])
+    ) as Record<KeybindSettingKey, Keybind>;
+    return ALL_SHORTCUTS.filter((shortcut) => (
+      Boolean(findConflict(shortcut.id, binds[shortcut.id], binds))
+    )).length;
+  };
+
   const cacheSettingsChanged = (a: AppSettings, b: AppSettings) => (
     a.cacheLocation !== b.cacheLocation ||
     (a.centralCachePath || null) !== (b.centralCachePath || null) ||
@@ -192,6 +201,14 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   };
 
   const handleSave = async () => {
+    if (countKeybindConflicts(localSettings) > 0) {
+      pushToast({
+        title: 'Shortcut conflict',
+        detail: 'Fix shortcut conflicts before saving preferences.',
+        kind: 'warning',
+      });
+      return;
+    }
     let cacheToast: ToastInput | null = null;
     const changeSummary = summarizeSaveChanges(globalSettings, localSettings);
     const thumbnailVideoCount = videos.filter((video) => (video.thumbnails?.length ?? 0) > 0).length;
@@ -311,6 +328,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const currentBinds = Object.fromEntries(
     ALL_SHORTCUTS.map((s) => [s.id, localSettings[s.id] as Keybind])
   ) as Record<KeybindSettingKey, Keybind>;
+  const keybindConflictCount = countKeybindConflicts(localSettings);
 
   const currentDriveKey = directory
     ? directory.match(/^[a-zA-Z]:/)?.[0].toUpperCase()
@@ -874,6 +892,11 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                               onChange={(newBind) => handleKeybind(shortcut.id, newBind)}
                               conflict={conflict}
                             />
+                            {conflict && (
+                              <span className="help-text keybind-conflict-text">
+                                Conflicts with {conflict}
+                              </span>
+                            )}
                           </div>
                         );
                       })}
@@ -995,7 +1018,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
 
         <div className="settings-footer">
           <button className="btn-cancel" onClick={close}>Cancel</button>
-          <button className="btn-save" onClick={handleSave}>Save Preferences</button>
+          <button className="btn-save" onClick={handleSave} disabled={keybindConflictCount > 0}>Save Preferences</button>
         </div>
       </div>
     </div>

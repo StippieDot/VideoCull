@@ -34,7 +34,7 @@ describe('EmptyState recent folder behavior', () => {
     vi.restoreAllMocks();
   });
 
-  test('removes an unavailable recent folder and reports the error', async () => {
+  test('keeps an unavailable recent folder listed and reports the offline state', async () => {
     const electronAPI = installElectronApiMock();
     const notify = vi.fn();
     const staleDir = 'D:\\Videos\\Trip';
@@ -54,16 +54,17 @@ describe('EmptyState recent folder behavior', () => {
 
     await waitFor(() => {
       expect(electronAPI.validateDroppedPath).toHaveBeenCalledWith(staleDir);
-      expect(useStore.getState().settings.recentDirectories).toEqual([]);
+      expect(useStore.getState().settings.recentDirectories).toEqual([staleDir]);
     });
 
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Recent unavailable',
+        title: 'Folder unavailable',
         detail: 'Videos / Trip',
-        kind: 'error',
+        kind: 'warning',
       }),
     );
+    expect(screen.getByText('Unavailable')).toBeTruthy();
   });
 
   test('clears all recent folders from the empty-state panel and reports how many were removed', async () => {

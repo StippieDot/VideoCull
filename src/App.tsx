@@ -10,8 +10,8 @@ import SettingsModal from './components/SettingsModal';
 import DuplicateGroupsView from './components/DuplicateGroupsView';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
-import type { MediaProbeVideoInput, UpdateInfo, Video } from './types';
-import { detectVideoCompatibility, formatRecentPath } from './utils';
+import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, UpdateInfo, Video } from './types';
+import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
 import './App.css';
@@ -67,6 +67,14 @@ function toMediaProbeInput(video: Video): MediaProbeVideoInput {
   };
 }
 
+function normalizeScanResult(result: ScanDirectoryResult): { videos: Video[]; summary?: ScanSummary } {
+  return Array.isArray(result) ? { videos: result } : result;
+}
+
+function sameStrings(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
 function isMetadataRunning(isGenerating: boolean, phase: string | undefined): boolean {
   return isGenerating && phase === 'metadata';
 }
@@ -118,6 +126,7 @@ export default function App() {
   const genProgressTotalRef = useRef(0);
   const genProgressPhaseRef = useRef<'thumbnails' | 'metadata' | 'media'>('thumbnails');
   const isPrivateRef = useRef(false);
+  const showShortcutsHelpRef = useRef(false);
   const dragDepthRef = useRef(0);
   const folderReviewPathRef = useRef<string | null>(null);
   const settingsSaveQueueRef = useRef(Promise.resolve());
@@ -165,6 +174,10 @@ export default function App() {
   useEffect(() => {
     isPrivateRef.current = isPrivate;
   }, [isPrivate]);
+
+  useEffect(() => {
+    showShortcutsHelpRef.current = showShortcutsHelp;
+  }, [showShortcutsHelp]);
 
   useEffect(() => {
     if (previousReviewModeRef.current && !reviewMode) {
@@ -312,9 +325,11 @@ export default function App() {
     setScanProgress({ found: 0, currentFile: '' });
     try {
       const scannedGroups = [];
+      const scanSummaries: ScanSummary[] = [];
       for (const dirPath of dirPaths) {
-        const scannedVideos = await window.electronAPI.scanDirectory(dirPath, includeSubfolders);
-        scannedGroups.push({ dirPath, videos: scannedVideos });
+        const scanResult = normalizeScanResult(await window.electronAPI.scanDirectory(dirPath, includeSubfolders));
+        scannedGroups.push({ dirPath, videos: scanResult.videos });
+        if (scanResult.summary) scanSummaries.push(scanResult.summary);
       }
       if (scanId !== scanIdRef.current) return;
       const allVideos = scannedGroups.flatMap((group) => group.videos);
@@ -348,6 +363,17 @@ export default function App() {
         kind: 'success',
         dedupeKey: `scan-loaded:${dirPaths.join('|')}`,
       });
+      const skippedDirectoryCount = scanSummaries.reduce((sum, summary) => sum + (summary.skippedDirectoryCount ?? 0), 0);
+      if (skippedDirectoryCount > 0) {
+        const sample = scanSummaries.flatMap((summary) => summary.skippedDirectorySamples ?? [])[0];
+        pushToast({
+          title: 'Some folders were skipped',
+          detail: `${skippedDirectoryCount} ${skippedDirectoryCount === 1 ? 'folder' : 'folders'} could not be scanned.${sample ? ` Example: ${formatRecentPath(sample.path)} (${sample.reason})` : ''}`,
+          kind: 'warning',
+          dedupeKey: `scan-skipped:${dirPaths.join('|')}`,
+          durationMs: 8000,
+        });
+      }
       const needsThumbnails = (v: typeof allVideos[number]) => (
         !v.thumbnails ||
         v.thumbnails.length < expectedThumbCount(v)
@@ -662,7 +688,11 @@ export default function App() {
           if (state.isScanning) break;
           const toDelete = state.videos.filter((v) => v.status === 'delete');
           if (toDelete.length === 0) break;
-          const confirmed = window.confirm(`Move ${toDelete.length} marked videos to Recycle Bin?`);
+          const confirmed = window.confirm(formatDeleteConfirmation({
+            count: toDelete.length,
+            sizeBytes: state.stats.deleteSize,
+            removeEmptyFoldersAfterDelete: state.settings.removeEmptyFoldersAfterDelete,
+          }));
           if (confirmed) {
             const results = await window.electronAPI.batchDelete(toDelete.map((v) => v.path));
             const deletedPaths = results.filter((r) => r.success).map((r) => r.path);
@@ -742,7 +772,7 @@ export default function App() {
       ) return;
       if (document.body.hasAttribute('data-capturing-keybind')) return;
       const s = useStore.getState().settings;
-      const modalOpen = useStore.getState().isSettingsModalOpen || showShortcutsHelp;
+      const modalOpen = useStore.getState().isSettingsModalOpen || showShortcutsHelpRef.current;
       if (!modalOpen && s.features.globalMute && matchesKeybind(e, s.keyGlobalMute)) {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -769,7 +799,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', blurPointerActivatedButton, true);
     };
-  }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, handleExportReport, showShortcutsHelp]);
+  }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, handleExportReport]);
 
   useEffect(() => {
     window.electronAPI?.setExportReportAvailable(Boolean(directory && videoCount > 0 && !isScanning));
@@ -842,15 +872,25 @@ export default function App() {
 
   const handleDropModalAddSession = useCallback(() => {
     if (!dropModalPath) return;
+    const beforeDirs = useStore.getState().directories;
     useStore.getState().addDirectory(dropModalPath);
+    const afterDirs = useStore.getState().directories;
+    const changed = !sameStrings(beforeDirs, afterDirs);
     setDropModalPath(null);
     setTimeout(() => {
-      pushToast({
-        title: 'Folder added',
-        detail: formatRecentPath(dropModalPath),
-        kind: 'success',
-        dedupeKey: `folder-added:${dropModalPath}`,
-      });
+      pushToast(changed
+        ? {
+          title: 'Folder added',
+          detail: formatRecentPath(dropModalPath),
+          kind: 'success',
+          dedupeKey: `folder-added:${dropModalPath}`,
+        }
+        : {
+          title: 'Folder already covered',
+          detail: formatRecentPath(dropModalPath),
+          kind: 'info',
+          dedupeKey: `folder-covered:${dropModalPath}`,
+        });
     }, 50);
   }, [dropModalPath, pushToast]);
 
@@ -976,6 +1016,12 @@ export default function App() {
             <div className="scanning-overlay">
               <div className="scanning-spinner" />
               <p>Scanning for videos...</p>
+            </div>
+          )}
+          {isScanning && videoCount > 0 && (
+            <div className="scanning-overlay">
+              <div className="scanning-spinner" />
+              <p>Scanning folders...</p>
             </div>
           )}
         </main>

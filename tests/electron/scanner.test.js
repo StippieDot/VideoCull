@@ -96,6 +96,34 @@ test('scanDirectory can return visited directories for safe empty-folder pruning
   }
 });
 
+test('scanDirectory summarizes inaccessible directories without failing the scan', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
+
+  try {
+    const blocked = path.join(tempRoot, 'blocked');
+    await fs.mkdir(blocked, { recursive: true });
+    await fs.writeFile(path.join(tempRoot, 'root.mp4'), '');
+
+    const result = await scanDirectory(tempRoot, true, undefined, {
+      includeVisitedDirs: true,
+      readdir: async (dir, opts) => {
+        if (dir === blocked) {
+          const error = new Error('permission denied');
+          error.code = 'EACCES';
+          throw error;
+        }
+        return fs.readdir(dir, opts);
+      },
+    });
+
+    assert.deepEqual(result.videos.map((video) => video.filename), ['root.mp4']);
+    assert.equal(result.summary.skippedDirectoryCount, 1);
+    assert.deepEqual(result.summary.skippedDirectorySamples, [{ path: blocked, reason: 'EACCES' }]);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('scanDirectory aborts when the cancellation guard throws', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
 

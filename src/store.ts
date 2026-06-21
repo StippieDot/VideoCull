@@ -457,12 +457,16 @@ function findRootForVideo(video: Video, directories: string[], fallback: string 
 }
 
 function uniqueDirectories(dirs: string[]): string[] {
-  const seen = new Set<string>();
   const result: string[] = [];
   for (const dir of dirs) {
     const key = normalizePathForCompare(dir);
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (result.some((existing) => isPathInsideRoot(dir, existing))) continue;
+    for (let i = result.length - 1; i >= 0; i -= 1) {
+      const existing = result[i];
+      if (normalizePathForCompare(existing) !== key && isPathInsideRoot(existing, dir)) {
+        result.splice(i, 1);
+      }
+    }
     result.push(dir);
   }
   return result;

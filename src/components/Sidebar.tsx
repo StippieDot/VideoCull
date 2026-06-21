@@ -3,7 +3,7 @@ import type { DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '..
 import type { SortField } from '../types';
 import useStore from '../store';
 import { beginDevInteraction } from '../perf-dev';
-import { formatSize, formatRelativeTime, formatRecentPath } from '../utils';
+import { formatDeleteConfirmation, formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
 import {
@@ -25,6 +25,10 @@ interface SidebarProps {
   globalMuteEnabled: boolean;
   globalMuteLabel: string;
   onToggleGlobalMute: () => void;
+}
+
+function sameStrings(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
 const BYTE_UNITS = [1, 1024, 1024 ** 2, 1024 ** 3, 1024 ** 4];
@@ -191,7 +195,25 @@ function SidebarDuplicateSection({
     duplicateSortBy !== 'similarity' ||
     duplicateSortOrder !== 'desc';
 
-  if (!duplicateSettings.enabled && !duplicateGroupsMode) {
+  if (!duplicateSettings.enabled && duplicateGroupsMode) {
+    return (
+      <section className="sidebar-section sidebar-duplicate-mode-section">
+        <h3 className="sidebar-section-title">
+          <CopyCheck size={14} /> Duplicates
+        </h3>
+        <p className="help-text">Duplicate detection is disabled.</p>
+        <button className="btn btn-outline sidebar-wide-action" onClick={() => setDuplicateGroupsMode(false)}>
+          Back to Grid
+        </button>
+        <button className="btn btn-outline sidebar-wide-action" onClick={onOpenDuplicateSettings}>
+          <Settings size={14} />
+          Duplicate Settings
+        </button>
+      </section>
+    );
+  }
+
+  if (!duplicateSettings.enabled) {
     return (
       <section className="sidebar-section">
         <button className="btn btn-outline sidebar-wide-action" onClick={onOpenDuplicateSettings}>
@@ -200,8 +222,6 @@ function SidebarDuplicateSection({
       </section>
     );
   }
-
-  if (!duplicateSettings.enabled) return null;
 
   if (duplicateGroupsMode) {
     return (
@@ -717,6 +737,7 @@ export default function Sidebar({
   const [showSort, setShowSort] = useState(true);
   const [showView, setShowView] = useState(true);
   const [recentContextMenu, setRecentContextMenu] = useState<{ x: number; y: number; dir: string } | null>(null);
+  const [unavailableRecents, setUnavailableRecents] = useState<Set<string>>(() => new Set());
 
   const handleSelectDir = async () => {
     if (!window.electronAPI) return;
@@ -732,15 +753,21 @@ export default function Sidebar({
     }
     const result = await window.electronAPI.validateDroppedPath(dir);
     if (!result.valid || !result.isDirectory) {
-      removeRecentDirectory(dir);
+      setUnavailableRecents((prev) => new Set(prev).add(dir));
       onNotify({
-        title: 'Recent unavailable',
+        title: 'Folder unavailable',
         detail: formatRecentPath(dir),
-        kind: 'error',
+        kind: 'warning',
         dedupeKey: `recent-unavailable:${dir}`,
       });
       return;
     }
+    setUnavailableRecents((prev) => {
+      if (!prev.has(dir)) return prev;
+      const next = new Set(prev);
+      next.delete(dir);
+      return next;
+    });
     onDirectoryPicked(dir);
     setShowRecents(false);
   };
@@ -762,22 +789,38 @@ export default function Sidebar({
     }
     const result = await window.electronAPI.validateDroppedPath(dir);
     if (!result.valid || !result.isDirectory) {
-      removeRecentDirectory(dir);
+      setUnavailableRecents((prev) => new Set(prev).add(dir));
       onNotify({
-        title: 'Recent unavailable',
+        title: 'Folder unavailable',
         detail: formatRecentPath(dir),
-        kind: 'error',
+        kind: 'warning',
         dedupeKey: `recent-unavailable:${dir}`,
       });
       return;
     }
-    addDirectory(dir);
-    onNotify({
-      title: 'Folder added',
-      detail: formatRecentPath(dir),
-      kind: 'success',
-      dedupeKey: `recent-added:${dir}`,
+    setUnavailableRecents((prev) => {
+      if (!prev.has(dir)) return prev;
+      const next = new Set(prev);
+      next.delete(dir);
+      return next;
     });
+    const beforeDirs = useStore.getState().directories;
+    addDirectory(dir);
+    const afterDirs = useStore.getState().directories;
+    const changed = !sameStrings(beforeDirs, afterDirs);
+    onNotify(changed
+      ? {
+        title: 'Folder added',
+        detail: formatRecentPath(dir),
+        kind: 'success',
+        dedupeKey: `recent-added:${dir}`,
+      }
+      : {
+        title: 'Folder already covered',
+        detail: formatRecentPath(dir),
+        kind: 'info',
+        dedupeKey: `recent-covered:${dir}`,
+      });
   };
 
   const handleCopyRecentPath = async (dir: string) => {
@@ -826,9 +869,11 @@ export default function Sidebar({
     const toDelete = currentVideos.filter((v) => v.status === 'delete');
     if (toDelete.length === 0) return;
 
-    const confirmed = window.confirm(
-      `Are you sure you want to move ${toDelete.length} videos (${formatSize(stats.deleteSize)}) to the Recycle Bin?`
-    );
+    const confirmed = window.confirm(formatDeleteConfirmation({
+      count: toDelete.length,
+      sizeBytes: stats.deleteSize,
+      removeEmptyFoldersAfterDelete: useStore.getState().settings.removeEmptyFoldersAfterDelete,
+    }));
     if (!confirmed) return;
 
     setIsDeleting(true);
@@ -956,7 +1001,7 @@ export default function Sidebar({
                 <li key={d} className="recents-row">
                   <button
                     className={`recents-item ${d === directory ? 'recents-item-active' : ''}`}
-                    title={`${d} \u2022 opened ${formatRelativeTime(recentDirectoryTimestamps[d])}`}
+                    title={`${d} \u2022 ${unavailableRecents.has(d) ? 'unavailable' : `opened ${formatRelativeTime(recentDirectoryTimestamps[d])}`}`}
                     onClick={() => void handleOpenRecent(d)}
                     onContextMenu={(event) => {
                       event.preventDefault();
@@ -966,7 +1011,9 @@ export default function Sidebar({
                     <FolderOpen size={12} />
                     <span className="recents-item-copy">
                       <span className="recents-item-path">{formatRecentPath(d)}</span>
-                      <span className="recents-item-meta">{formatRelativeTime(recentDirectoryTimestamps[d])}</span>
+                      <span className="recents-item-meta">
+                        {unavailableRecents.has(d) ? 'Unavailable' : formatRelativeTime(recentDirectoryTimestamps[d])}
+                      </span>
                     </span>
                   </button>
                   <button

@@ -97,6 +97,11 @@ async function statVideoEntries(entries, statPath = fs.stat) {
 async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {}) {
   const videos = [];
   const visitedDirs = options.includeVisitedDirs ? [] : null;
+  const readDir = typeof options.readdir === 'function' ? options.readdir : fs.readdir;
+  const summary = {
+    skippedDirectoryCount: 0,
+    skippedDirectorySamples: [],
+  };
   const assertNotCancelled = typeof options.assertNotCancelled === 'function'
     ? options.assertNotCancelled
     : () => {};
@@ -107,8 +112,15 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
     assertNotCancelled();
     let entries;
     try {
-      entries = await fs.readdir(currentDir, { withFileTypes: true });
-    } catch {
+      entries = await readDir(currentDir, { withFileTypes: true });
+    } catch (err) {
+      summary.skippedDirectoryCount += 1;
+      if (summary.skippedDirectorySamples.length < 5) {
+        summary.skippedDirectorySamples.push({
+          path: currentDir,
+          reason: err?.code || err?.message || 'unknown',
+        });
+      }
       return; // Skip inaccessible directories
     }
     assertNotCancelled();
@@ -159,7 +171,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
   await walk(dirPath);
   assertNotCancelled();
   progressReporter.flush();
-  return visitedDirs ? { videos, visitedDirs } : videos;
+  return visitedDirs ? { videos, visitedDirs, summary } : videos;
 }
 
 module.exports = {

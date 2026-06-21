@@ -86,6 +86,17 @@ describe('useStore public behavior', () => {
     expect(state.settings.recentDirectories.slice(0, 2)).toEqual(['E:\\Clips', 'd:/media/']);
   });
 
+  test('adding nested session roots keeps only the broadest scan root', async () => {
+    useStore.getState().setDirectory('D:\\Media');
+    useStore.getState().addDirectory('D:\\Media\\Trips');
+    useStore.getState().addDirectory('E:\\Clips\\Summer');
+    useStore.getState().addDirectory('E:\\Clips');
+    await flushMicrotasks();
+
+    const state = useStore.getState();
+    expect(state.directories).toEqual(['D:\\Media', 'E:\\Clips']);
+  });
+
   test('loading a new video set orders thumbnails and clears stale duplicate annotations', () => {
     const firstVideos = [
       makeVideo('a', { duplicateGroupId: 'old', thumbnails: ['thumb_2.jpg', 'thumb_01.jpg'] }),

@@ -12,6 +12,10 @@ interface EmptyStateProps {
   onNotify: (toast: ToastInput | string, kind?: ToastKind) => void;
 }
 
+function sameStrings(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
 export default function EmptyState({ onNotify }: EmptyStateProps) {
   const setDirectory = useStore((s) => s.setDirectory);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
@@ -24,6 +28,7 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
   const directories = useStore((s) => s.directories);
   const addDirectory = useStore((s) => s.addDirectory);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; dir: string } | null>(null);
+  const [unavailableRecents, setUnavailableRecents] = useState<Set<string>>(() => new Set());
 
 
 
@@ -40,15 +45,21 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
     }
     const result = await window.electronAPI.validateDroppedPath(dir);
     if (!result.valid || !result.isDirectory) {
-      removeRecentDirectory(dir);
+      setUnavailableRecents((prev) => new Set(prev).add(dir));
       onNotify({
-        title: 'Recent unavailable',
+        title: 'Folder unavailable',
         detail: formatRecentPath(dir),
-        kind: 'error',
+        kind: 'warning',
         dedupeKey: `recent-unavailable:${dir}`,
       });
       return;
     }
+    setUnavailableRecents((prev) => {
+      if (!prev.has(dir)) return prev;
+      const next = new Set(prev);
+      next.delete(dir);
+      return next;
+    });
     setDirectory(dir);
   };
 
@@ -69,22 +80,38 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
     }
     const result = await window.electronAPI.validateDroppedPath(dir);
     if (!result.valid || !result.isDirectory) {
-      removeRecentDirectory(dir);
+      setUnavailableRecents((prev) => new Set(prev).add(dir));
       onNotify({
-        title: 'Recent unavailable',
+        title: 'Folder unavailable',
         detail: formatRecentPath(dir),
-        kind: 'error',
+        kind: 'warning',
         dedupeKey: `recent-unavailable:${dir}`,
       });
       return;
     }
-    addDirectory(dir);
-    onNotify({
-      title: 'Folder added',
-      detail: formatRecentPath(dir),
-      kind: 'success',
-      dedupeKey: `recent-added:${dir}`,
+    setUnavailableRecents((prev) => {
+      if (!prev.has(dir)) return prev;
+      const next = new Set(prev);
+      next.delete(dir);
+      return next;
     });
+    const beforeDirs = useStore.getState().directories;
+    addDirectory(dir);
+    const afterDirs = useStore.getState().directories;
+    const changed = !sameStrings(beforeDirs, afterDirs);
+    onNotify(changed
+      ? {
+        title: 'Folder added',
+        detail: formatRecentPath(dir),
+        kind: 'success',
+        dedupeKey: `recent-added:${dir}`,
+      }
+      : {
+        title: 'Folder already covered',
+        detail: formatRecentPath(dir),
+        kind: 'info',
+        dedupeKey: `recent-covered:${dir}`,
+      });
   };
 
   const handleCopyRecentPath = async (dir: string) => {
@@ -176,7 +203,7 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
               <li key={dir} className="empty-recent-row">
                 <button
                   className="empty-recent-item"
-                  title={`${dir} \u2022 opened ${formatRelativeTime(recentDirectoryTimestamps[dir])}`}
+                  title={`${dir} \u2022 ${unavailableRecents.has(dir) ? 'unavailable' : `opened ${formatRelativeTime(recentDirectoryTimestamps[dir])}`}`}
                   onClick={() => void handleOpenRecent(dir)}
                   onContextMenu={(event) => {
                     event.preventDefault();
@@ -184,7 +211,9 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
                   }}
                 >
                   <span className="empty-recent-main">{formatRecentPath(dir)}</span>
-                  <span className="empty-recent-meta">{formatRelativeTime(recentDirectoryTimestamps[dir])}</span>
+                  <span className="empty-recent-meta">
+                    {unavailableRecents.has(dir) ? 'Unavailable' : formatRelativeTime(recentDirectoryTimestamps[dir])}
+                  </span>
                 </button>
                 <button
                   className="empty-recent-remove"

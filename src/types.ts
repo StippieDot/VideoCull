@@ -47,6 +47,16 @@ export interface ScanProgress {
   currentFile: string;
 }
 
+export interface ScanSummary {
+  skippedDirectoryCount: number;
+  skippedDirectorySamples: Array<{ path: string; reason: string }>;
+}
+
+export type ScanDirectoryResult = Video[] | {
+  videos: Video[];
+  summary?: ScanSummary;
+};
+
 export interface ThumbProgress {
   current: number;
   total: number;
@@ -520,7 +530,7 @@ export interface ElectronAPI {
   getPathForFile: (file: File) => string;
   validateDroppedPath: (droppedPath: string) => Promise<{ valid: boolean; isDirectory: boolean }>;
   openInExplorer: (filePath: string) => Promise<void>;
-  scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<Video[]>;
+  scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<ScanDirectoryResult>;
   resetLoadedDirectories: () => Promise<boolean>;
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;
   processMetadata: (videos: MediaProbeVideoInput[], dirPath: string, options?: { force?: boolean }) => Promise<boolean>;

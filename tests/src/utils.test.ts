@@ -3,6 +3,7 @@ import {
   calcThumbGrid,
   detectVideoCompatibility,
   formatCodecLabel,
+  formatDeleteConfirmation,
   formatDuration,
   formatFps,
   formatRecentPath,
@@ -70,4 +71,12 @@ test('codec, resolution, and fps labels are formatted for display', () => {
   expect(formatFps(30)).toBe('30fps');
   expect(formatFps(29.97)).toBe('29.97fps');
   expect(formatFps(null)).toBe('');
+});
+
+test('delete confirmation describes recycle bin, fallback, and empty-folder cleanup', () => {
+  expect(formatDeleteConfirmation({
+    count: 2,
+    sizeBytes: 1536,
+    removeEmptyFoldersAfterDelete: true,
+  })).toBe('Move 2 marked videos (2 KB) to the Recycle Bin? If the Recycle Bin is unavailable, Video Cull will ask before permanently deleting. Empty source folders will be cleaned up when they are truly empty.');
 });

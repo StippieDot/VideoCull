@@ -1522,6 +1522,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   assertScanCurrent(scanToken);
   const videos = Array.isArray(scanResult) ? scanResult : scanResult.videos;
   const visitedDirs = Array.isArray(scanResult?.visitedDirs) ? scanResult.visitedDirs : [dirPath];
+  const scanSummary = Array.isArray(scanResult) ? undefined : scanResult.summary;
   recordStageTiming('scanDirectoryWalk', stageStartedAt, { items: videos.length });
   const cachedMap = new Map();
   stageStartedAt = performance.now();
@@ -1632,11 +1633,12 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     autoPrunedStaleVideos: cacheSaveResult.prunedVideoCount,
     autoPrunedStaleFolders: cacheSaveResult.prunedFolderCount,
     autoPrunedMissingCacheFolders: autoPrunedMissingCacheFolders.length,
+    skippedDirectoryCount: scanSummary?.skippedDirectoryCount ?? 0,
     durationMs: Math.round((scanSnapshot?.durationMs ?? 0) * 100) / 100,
     stageTimings,
     counters: scanSnapshot?.counters ?? {},
   });
-  return merged;
+  return { videos: merged, summary: scanSummary };
   } catch (err) {
     const scanSnapshot = perfMetrics.finishRun(perfRun, {
       status: err instanceof ScanSupersededError ? 'superseded' : 'error',

@@ -133,15 +133,14 @@ function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
   for (const v of videos) flags.set(v.id, {});
   if (videos.length < 2) return flags;
 
-  const metrics: { key: string; value: (v: Video) => number; higher: boolean }[] = [
+  const qualityMetrics: { key: string; value: (v: Video) => number; higher: boolean }[] = [
     { key: 'resolution', value: (v) => (v.width ?? 0) * (v.height ?? 0), higher: true },
     { key: 'fps', value: (v) => v.fps ?? 0, higher: true },
     { key: 'bitrate', value: (v) => v.videoBitrate ?? v.totalBitrate ?? 0, higher: true },
     { key: 'duration', value: (v) => v.durationSecs ?? 0, higher: true },
-    { key: 'size', value: (v) => v.sizeBytes ?? 0, higher: false },
   ];
 
-  for (const metric of metrics) {
+  for (const metric of qualityMetrics) {
     const values = videos.map((v) => metric.value(v));
     const best = metric.higher ? Math.max(...values) : Math.min(...values);
     const allEqual = values.every((val) => val === best);
@@ -151,6 +150,34 @@ function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
         : values[i] === best
           ? 'best'
           : 'worse';
+    }
+  }
+  const qualityDominates = (a: Video, b: Video) => {
+    let better = false;
+    for (const metric of qualityMetrics) {
+      const aValue = metric.value(a);
+      const bValue = metric.value(b);
+      if (aValue < bValue) return false;
+      if (aValue > bValue) better = true;
+    }
+    return better;
+  };
+  const allQualityEqual = qualityMetrics.every((metric) => {
+    const values = videos.map((v) => metric.value(v));
+    return values.every((value) => value === values[0]);
+  });
+  if (allQualityEqual) {
+    const sizes = videos.map((v) => v.sizeBytes ?? 0);
+    const bestSize = Math.min(...sizes);
+    const allSizesEqual = sizes.every((size) => size === bestSize);
+    for (let i = 0; i < videos.length; i += 1) {
+      flags.get(videos[i].id)!.size = allSizesEqual ? 'equal' : sizes[i] === bestSize ? 'best' : 'worse';
+    }
+  } else {
+    for (const video of videos) {
+      const isDominated = videos.some((other) => other.id !== video.id && qualityDominates(other, video));
+      const dominatesAny = videos.some((other) => other.id !== video.id && qualityDominates(video, other));
+      flags.get(video.id)!.size = isDominated ? 'worse' : dominatesAny ? 'best' : 'equal';
     }
   }
   return flags;

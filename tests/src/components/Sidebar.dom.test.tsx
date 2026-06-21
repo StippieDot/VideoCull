@@ -35,6 +35,7 @@ function installElectronApiMock() {
     selectDirectory: vi.fn().mockResolvedValue(null),
     validateDroppedPath: vi.fn().mockResolvedValue({ valid: true, isDirectory: true }),
     openInExplorer: vi.fn().mockResolvedValue(true),
+    saveConfig: vi.fn().mockResolvedValue(true),
   };
   Object.assign(window, { electronAPI });
   return electronAPI;
@@ -137,6 +138,68 @@ describe('Sidebar recent folder behavior', () => {
     await waitFor(() => {
       expect(electronAPI.openInExplorer).toHaveBeenCalledWith(recentDir);
     });
+  });
+
+  test('keeps unavailable recent folders listed in case a drive is offline', async () => {
+    const electronAPI = installElectronApiMock();
+    const onNotify = vi.fn();
+    const currentDir = 'D:\\Media\\Current';
+    const recentDir = 'D:\\Media\\Trips';
+    useStore.setState({
+      directory: currentDir,
+      directories: [currentDir],
+      settings: {
+        ...useStore.getState().settings,
+        recentDirectories: [currentDir, recentDir],
+        recentDirectoryTimestamps: {
+          [currentDir]: Date.now() - 60_000,
+          [recentDir]: Date.now() - 120_000,
+        },
+      },
+    });
+    electronAPI.validateDroppedPath.mockResolvedValue({ valid: false, isDirectory: false });
+
+    renderSidebar({ onNotify });
+
+    await userEvent.click(screen.getByRole('button', { name: /recent folders/i }));
+    const [recentOpenButton] = screen.getAllByRole('button', { name: /Media \/ Trips/i });
+    await userEvent.click(recentOpenButton);
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.recentDirectories).toEqual([currentDir, recentDir]);
+      expect(screen.getByText('Unavailable')).toBeTruthy();
+    });
+    expect(onNotify).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Folder unavailable',
+      kind: 'warning',
+    }));
+  });
+
+  test('shows a back-to-grid escape hatch when duplicate mode is active but duplicates are disabled', async () => {
+    useStore.setState({
+      duplicateGroupsMode: true,
+      settings: {
+        ...useStore.getState().settings,
+        duplicates: {
+          ...useStore.getState().settings.duplicates,
+          enabled: false,
+        },
+      },
+      stats: {
+        total: 2,
+        pending: 2,
+        keep: 0,
+        skipped: 0,
+        delete: 0,
+        totalSize: 2048,
+        deleteSize: 0,
+      },
+    });
+
+    renderSidebar();
+
+    expect(screen.getByRole('button', { name: /back to grid/i })).toBeTruthy();
+    expect(screen.getByText(/duplicate detection is disabled/i)).toBeTruthy();
   });
 
   test('applies the keep status filter from the status buttons', async () => {

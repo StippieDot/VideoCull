@@ -286,6 +286,17 @@ describe('App renderer behavior', () => {
     expect(document.activeElement).not.toBe(button);
   });
 
+  test('opening shortcut help does not rebuild IPC progress subscriptions', async () => {
+    render(<App />);
+
+    expect(electron.api.onScanProgress).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(window, { key: '?', shiftKey: true });
+
+    expect(await screen.findByTestId('shortcuts-help')).toBeTruthy();
+    expect(electron.api.onScanProgress).toHaveBeenCalledTimes(1);
+  });
+
   test('prevents duplicate detection while metadata is still updating and explains why', async () => {
     const store = getStoreApi();
     const initialState = store.getInitialState();
@@ -357,6 +368,54 @@ describe('App renderer behavior', () => {
     expect(electron.api.batchDelete).not.toHaveBeenCalled();
   });
 
+  test('shows a scan message while old videos are still visible', async () => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    let finishScan!: (videos: unknown[]) => void;
+    electron.api.scanDirectory.mockReturnValue(new Promise((resolve) => {
+      finishScan = resolve;
+    }));
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+      videos: [makeVideo('old')],
+      filteredVideos: [makeVideo('old')],
+      stats: { total: 1, pending: 1, skipped: 0, keep: 0, delete: 0, totalSize: 100, deleteSize: 0 },
+    }, true);
+
+    render(<App />);
+
+    expect(await screen.findByText(/scanning folders/i)).toBeTruthy();
+    expect(screen.getByTestId('grid-state').textContent).toContain('thumbs:0');
+
+    await act(async () => {
+      finishScan([]);
+    });
+  });
+
+  test('reports skipped folders from scan results', async () => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    electron.api.scanDirectory.mockResolvedValue({
+      videos: [makeVideo('a')],
+      summary: {
+        skippedDirectoryCount: 1,
+        skippedDirectorySamples: [{ path: 'D:\\Media\\Offline', reason: 'EACCES' }],
+      },
+    });
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+    }, true);
+
+    render(<App />);
+
+    expect(await screen.findByText('Some folders were skipped')).toBeTruthy();
+    expect(screen.getByText(/1 folder could not be scanned/i)).toBeTruthy();
+  });
+
   test('rejects dropped shortcuts and shows a user-facing error toast', async () => {
     electron.api.getPathForFile.mockReturnValue('C:\\Incoming\\shortcut.lnk');
     electron.api.validateDroppedPath.mockResolvedValue({ valid: false, isDirectory: false });
@@ -412,6 +471,41 @@ describe('App renderer behavior', () => {
       expect(electron.api.saveConfig).toHaveBeenCalled();
     });
   });
+
+  test('explains when a dropped folder is already covered by a loaded parent folder', async () => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+      videos: [makeVideo('a')],
+      filteredVideos: [makeVideo('a')],
+      stats: { total: 1, pending: 1, skipped: 0, keep: 0, delete: 0, totalSize: 100, deleteSize: 0 },
+    }, true);
+
+    electron.api.getPathForFile.mockReturnValue('D:\\Media\\Trips');
+    electron.api.validateDroppedPath.mockResolvedValue({ valid: true, isDirectory: true });
+
+    render(<App />);
+
+    const layout = document.querySelector('.app-layout');
+    expect(layout).toBeTruthy();
+
+    fireEvent.drop(layout!, {
+      dataTransfer: { files: [new File([''], 'trips')], types: ['Files'] },
+    });
+
+    expect(await screen.findByRole('button', { name: 'Add to session' })).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add to session' }));
+
+    await waitFor(() => {
+      expect(getStoreApi().getState().directories).toEqual(['D:\\Media']);
+      expect(screen.getByText('Folder already covered')).toBeTruthy();
+    });
+  });
+
 
   test('exports the filtered report from the menu action and confirms success to the user', async () => {
     const store = getStoreApi();

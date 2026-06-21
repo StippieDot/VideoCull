@@ -239,4 +239,100 @@ describe('DuplicateGroupsView behavior', () => {
       expect(screen.getByText('Selected keeper')).toBeTruthy();
     });
   });
+
+  test('does not mark the smaller file size as best when a larger file has better bitrate', async () => {
+    const groupId = 'group-1';
+    const smaller = makeVideo('small', {
+      duplicateGroupId: groupId,
+      filename: 'small.mp4',
+      sizeBytes: 100,
+      videoBitrate: 1_000_000,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      durationSecs: 10,
+      path: 'D:\\Media\\small.mp4',
+    });
+    const better = makeVideo('better', {
+      duplicateGroupId: groupId,
+      filename: 'better.mp4',
+      sizeBytes: 200,
+      videoBitrate: 2_000_000,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      durationSecs: 10,
+      path: 'D:\\Media\\better.mp4',
+    });
+    useStore.setState({
+      videos: [smaller, better],
+      duplicateGroups: [makeDuplicateGroup({
+        id: groupId,
+        videoIds: ['small', 'better'],
+        suggestedKeeperId: 'better',
+      })],
+    });
+
+    const { container } = render(<DuplicateGroupsView />);
+
+    await screen.findByText('small.mp4');
+    const smallSizeChip = Array.from(container.querySelectorAll('.duplicate-row'))
+      .find((row) => row.textContent?.includes('small.mp4'))
+      ?.querySelector('.duplicate-meta-chips .meta-chip:last-child');
+    const betterSizeChip = Array.from(container.querySelectorAll('.duplicate-row'))
+      .find((row) => row.textContent?.includes('better.mp4'))
+      ?.querySelector('.duplicate-meta-chips .meta-chip:last-child');
+
+    expect(smallSizeChip?.textContent).toBe('100 B');
+    expect(smallSizeChip?.classList.contains('best')).toBe(false);
+    expect(betterSizeChip?.textContent).toBe('200 B');
+    expect(betterSizeChip?.classList.contains('best')).toBe(true);
+  });
+
+  test('still marks the smaller file size as best when duplicate quality is equal', async () => {
+    const groupId = 'group-1';
+    const smaller = makeVideo('small', {
+      duplicateGroupId: groupId,
+      filename: 'small.mp4',
+      sizeBytes: 100,
+      videoBitrate: 2_000_000,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      durationSecs: 10,
+      path: 'D:\\Media\\small.mp4',
+    });
+    const larger = makeVideo('large', {
+      duplicateGroupId: groupId,
+      filename: 'large.mp4',
+      sizeBytes: 200,
+      videoBitrate: 2_000_000,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      durationSecs: 10,
+      path: 'D:\\Media\\large.mp4',
+    });
+    useStore.setState({
+      videos: [smaller, larger],
+      duplicateGroups: [makeDuplicateGroup({
+        id: groupId,
+        videoIds: ['small', 'large'],
+        suggestedKeeperId: 'small',
+      })],
+    });
+
+    const { container } = render(<DuplicateGroupsView />);
+
+    await screen.findByText('small.mp4');
+    const smallSizeChip = Array.from(container.querySelectorAll('.duplicate-row'))
+      .find((row) => row.textContent?.includes('small.mp4'))
+      ?.querySelector('.duplicate-meta-chips .meta-chip:last-child');
+    const largeSizeChip = Array.from(container.querySelectorAll('.duplicate-row'))
+      .find((row) => row.textContent?.includes('large.mp4'))
+      ?.querySelector('.duplicate-meta-chips .meta-chip:last-child');
+
+    expect(smallSizeChip?.classList.contains('best')).toBe(true);
+    expect(largeSizeChip?.classList.contains('best')).toBe(false);
+  });
 });

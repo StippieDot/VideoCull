@@ -9,6 +9,22 @@ export function formatSize(bytes: number): string {
   return `${value.toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
 }
 
+export function formatDeleteConfirmation({
+  count,
+  sizeBytes,
+  removeEmptyFoldersAfterDelete,
+}: {
+  count: number;
+  sizeBytes: number;
+  removeEmptyFoldersAfterDelete: boolean;
+}): string {
+  const videoLabel = count === 1 ? 'marked video' : 'marked videos';
+  const folderDetail = removeEmptyFoldersAfterDelete
+    ? ' Empty source folders will be cleaned up when they are truly empty.'
+    : ' Empty source folders will not be removed.';
+  return `Move ${count} ${videoLabel} (${formatSize(sizeBytes)}) to the Recycle Bin? If the Recycle Bin is unavailable, Video Cull will ask before permanently deleting.${folderDetail}`;
+}
+
 /**
  * Format seconds to HH:MM:SS or MM:SS.
  */
