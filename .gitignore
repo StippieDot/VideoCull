@@ -32,6 +32,8 @@ coverage
 build/*
 !build/icon.png
 !build/installerSidebar.bmp
+!build/installerHeader.bmp
+!build/installer.nsh
 release/
 testspace/
 
