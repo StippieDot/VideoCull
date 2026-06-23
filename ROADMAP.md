@@ -258,7 +258,7 @@ Users can override the path pattern per-drive in Settings via a folder picker. T
 path is stored in config as a map of drive letter to custom path:
 ```json
 "perDriveCachePaths": {
-  "C:": "C:\\Users\\Matthijs\\.videocull\\cache",
+  "C:": "C:\\Users\\ExampleUser\\.videocull\\cache",
   "D:": "D:\\MyCustomCacheFolder"
 }
 ```
@@ -270,7 +270,7 @@ All cache stored in a single directory. Default location is `%APPDATA%\Video-Cul
 but users can choose a custom path via a folder picker in Settings.
 ```
 %APPDATA%\Video-Cull\cache\      ← default, user can change this
-  C__Users_Matthijs_Videos_Footage.db
+  C__Users_ExampleUser_Videos_Footage.db
   D__Footage.db
 ```
 Downside: cache is lost if videos move to a different drive or the machine changes.

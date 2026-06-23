@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
+const crypto = require('crypto');
 const log = require('./logger');
 const perfMetrics = require('./perf-metrics');
 
@@ -46,7 +47,7 @@ function parseBookmarks(rawBookmarks, videoId) {
 
 /**
  * Convert an absolute folder path to a safe SQLite DB filename.
- * e.g. "C:\Users\Matthijs\Videos\Footage" → "C_Users_Matthijs_Videos_Footage.db"
+ * e.g. "C:\Users\Example\Videos\Footage" -> "C_Users_Example_Videos_Footage.db"
  */
 function sanitizePathForFilename(folderPath) {
   return folderPath
@@ -55,6 +56,24 @@ function sanitizePathForFilename(folderPath) {
     .replace(/[^a-zA-Z0-9_.-]/g, '_') // anything else → _
     .replace(/_+/g, '_')           // collapse consecutive _
     .replace(/^_|_$/g, '');        // trim leading/trailing _
+}
+
+function normalizePathForCacheKey(folderPath) {
+  const normalized = path.resolve(folderPath);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function pathHashForFilename(folderPath) {
+  return crypto
+    .createHash('sha256')
+    .update(normalizePathForCacheKey(folderPath))
+    .digest('hex')
+    .slice(0, 12);
+}
+
+function cacheKeyForFolder(folderPath) {
+  const legacyKey = sanitizePathForFilename(folderPath) || 'root';
+  return `${legacyKey}-${pathHashForFilename(folderPath)}`;
 }
 
 /**
@@ -103,7 +122,8 @@ function normalizeCacheOptions(cacheOptions) {
 
 function resolveCachePaths(folderPath, cacheOptions) {
   const options = normalizeCacheOptions(cacheOptions);
-  const folderKey = sanitizePathForFilename(folderPath);
+  const legacyFolderKey = sanitizePathForFilename(folderPath) || 'root';
+  const folderKey = cacheKeyForFolder(folderPath);
   const mode = options.mode;
 
   if (mode === 'distributed') {
@@ -112,9 +132,12 @@ function resolveCachePaths(folderPath, cacheOptions) {
     return {
       mode,
       folderKey,
+      legacyFolderKey,
       cacheRootDir,
       dbPath: path.join(cacheRootDir, 'cache.db'),
       thumbRootDir: path.join(cacheRootDir, 'thumbs'),
+      legacyDbPath: path.join(cacheRootDir, 'cache.db'),
+      legacyThumbRootDir: path.join(cacheRootDir, 'thumbs'),
     };
   }
 
@@ -130,14 +153,49 @@ function resolveCachePaths(folderPath, cacheOptions) {
   return {
     mode,
     folderKey,
+    legacyFolderKey,
     cacheRootDir,
     dbPath: path.join(cacheRootDir, `${folderKey}.db`),
     thumbRootDir: path.join(cacheRootDir, 'thumbs', folderKey),
+    legacyDbPath: path.join(cacheRootDir, `${legacyFolderKey}.db`),
+    legacyThumbRootDir: path.join(cacheRootDir, 'thumbs', legacyFolderKey),
   };
 }
 
 function resolveCachePath(folderPath, cacheOptions) {
   return resolveCachePaths(folderPath, cacheOptions).dbPath;
+}
+
+async function copyIfExists(source, target) {
+  try {
+    await fs.copyFile(source, target, fsSync.constants.COPYFILE_EXCL);
+    return true;
+  } catch (err) {
+    if (err?.code === 'ENOENT' || err?.code === 'EEXIST') return false;
+    throw err;
+  }
+}
+
+async function migrateLegacyCacheKeyIfNeeded(cachePaths) {
+  if (
+    !cachePaths ||
+    cachePaths.mode === 'distributed' ||
+    !cachePaths.legacyDbPath ||
+    cachePaths.legacyDbPath === cachePaths.dbPath ||
+    fsSync.existsSync(cachePaths.dbPath) ||
+    !fsSync.existsSync(cachePaths.legacyDbPath)
+  ) {
+    return false;
+  }
+
+  await fs.mkdir(path.dirname(cachePaths.dbPath), { recursive: true });
+  const copied = await copyIfExists(cachePaths.legacyDbPath, cachePaths.dbPath);
+  if (!copied) return false;
+
+  for (const ext of ['-wal', '-shm']) {
+    await copyIfExists(cachePaths.legacyDbPath + ext, cachePaths.dbPath + ext);
+  }
+  return true;
 }
 
 // ── Schema ────────────────────────────────────────────────────────────────
@@ -726,14 +784,16 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
   }
 }
 
-function pruneStaleVideosBefore(db, updatedBefore) {
+function pruneStaleVideosBefore(db, updatedBefore, options = {}) {
   if (!Number.isFinite(updatedBefore)) return [];
-  const staleIds = db.prepare('SELECT id FROM videos WHERE updated_at IS NULL OR updated_at < ?').all(updatedBefore)
+  const staleRows = db.prepare('SELECT id, path FROM videos WHERE updated_at IS NULL OR updated_at < ?').all(updatedBefore)
+    .filter((row) => row.id);
+  const staleIds = staleRows
     .map((row) => row.id)
     .filter(Boolean);
   if (staleIds.length === 0) return [];
   db.prepare('DELETE FROM videos WHERE updated_at IS NULL OR updated_at < ?').run(updatedBefore);
-  return staleIds;
+  return options.details ? staleRows : staleIds;
 }
 
 function deleteVideosByIds(db, videoIds) {
@@ -1092,6 +1152,7 @@ function deleteDb(folderPath, cacheOptions, options = {}) {
 module.exports = {
   resolveCachePaths,
   resolveCachePath,
+  migrateLegacyCacheKeyIfNeeded,
   openDb,
   closeDb,
   loadCacheVideos,

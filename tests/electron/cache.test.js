@@ -481,3 +481,60 @@ test('pruneStaleVideosBefore removes videos not touched by the latest folder syn
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('pruneStaleVideosBefore can return video paths for scan diagnostics', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    const stalePath = path.join(folderPath, 'stale.mp4');
+    const keepPath = path.join(folderPath, 'keep.mp4');
+    cache.saveCache(db, [
+      buildCachedVideo('stale-id', stalePath),
+      buildCachedVideo('keep-id', keepPath),
+    ], { updatedAt: 10 });
+    cache.saveCache(db, [buildCachedVideo('keep-id', keepPath)], { updatedAt: 20 });
+
+    const removed = cache.pruneStaleVideosBefore(db, 20, { details: true });
+
+    assert.deepEqual(removed, [{ id: 'stale-id', path: stalePath }]);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('resolveCachePaths gives underscore-similar folders distinct central cache files', async (t) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-cache-key-'));
+  try {
+    const options = { mode: 'centralised', defaultCentralRoot: tempRoot };
+    const first = cache.resolveCachePaths('X:\\Fixture\\Folder__', options);
+    const second = cache.resolveCachePaths('X:\\Fixture\\Folder___', options);
+
+    assert.notEqual(first.dbPath, second.dbPath);
+    assert.notEqual(first.thumbRootDir, second.thumbRootDir);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('migrateLegacyCacheKeyIfNeeded copies old cache db and sidecars to hashed path', async (t) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-cache-migrate-key-'));
+  try {
+    const options = { mode: 'centralised', defaultCentralRoot: tempRoot };
+    const paths = cache.resolveCachePaths('X:\\Fixture\\Folder__', options);
+    await fs.writeFile(paths.legacyDbPath, 'db');
+    await fs.writeFile(paths.legacyDbPath + '-wal', 'wal');
+    await fs.writeFile(paths.legacyDbPath + '-shm', 'shm');
+
+    const migrated = await cache.migrateLegacyCacheKeyIfNeeded(paths);
+
+    assert.equal(migrated, true);
+    assert.equal(await fs.readFile(paths.dbPath, 'utf8'), 'db');
+    assert.equal(await fs.readFile(paths.dbPath + '-wal', 'utf8'), 'wal');
+    assert.equal(await fs.readFile(paths.dbPath + '-shm', 'utf8'), 'shm');
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
