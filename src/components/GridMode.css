@@ -10,18 +10,36 @@
 }
 
 .grid-toolbar {
-  flex: 0 0 50px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 50px;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 7px 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
+  padding: 8px 18px 6px;
+  background: linear-gradient(180deg, rgba(12, 12, 18, 0.22), rgba(12, 12, 18, 0));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 10;
+  pointer-events: none;
+}
+
+.grid-toolbar > * {
+  pointer-events: auto;
 }
 
 .grid-result-count {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(10, 10, 15, 0.56);
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
@@ -31,20 +49,26 @@
 
 .grid-search-field {
   margin-left: auto;
-  width: min(320px, 50%);
-  height: 34px;
+  width: min(380px, 54%);
+  height: 36px;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 8px;
+  gap: 8px;
+  padding: 0 9px 0 11px;
   border: 1px solid var(--border);
-  background: var(--bg-app);
+  border-radius: 999px;
+  background: rgba(10, 10, 15, 0.62);
+  backdrop-filter: var(--blur-sm);
+  -webkit-backdrop-filter: var(--blur-sm);
   color: var(--text-tertiary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
 }
 
 .grid-search-field:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-dim);
+  background: rgba(10, 10, 16, 0.82);
+  box-shadow: 0 0 0 2px var(--accent-dim), var(--glass-glow);
   color: var(--text-secondary);
 }
 
@@ -56,7 +80,11 @@
   background: transparent;
   color: var(--text-primary);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
+}
+
+.grid-search-field input::placeholder {
+  color: var(--text-tertiary);
 }
 
 .grid-search-field input::-webkit-search-cancel-button {
@@ -64,18 +92,22 @@
 }
 
 .grid-search-field button {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 0;
+  border-radius: 50%;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-tertiary);
+  transition: color var(--transition), background var(--transition), border-color var(--transition);
 }
 
 .grid-search-field button:hover {
   color: var(--text-primary);
+  background: var(--bg-surface-hover);
+  border-color: var(--border);
 }
 
 .grid-empty {

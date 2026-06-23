@@ -27,7 +27,6 @@ const BASE_CARD_WIDTH = 450;
 const BASE_CARD_HEIGHT = 360;
 const GAP = 12;
 const HEADER_HEIGHT = 44;
-const TOOLBAR_HEIGHT = 50;
 
 let persistedGridScroll = { directory: null as string | null, offset: 0 };
 
@@ -884,7 +883,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
           overscanCount={2}
           onRowsRendered={handleRowsRendered}
           onScroll={handleScroll}
-          style={{ height: Math.max(0, dimensions.height - TOOLBAR_HEIGHT), width: dimensions.width }}
+          style={{ height: dimensions.height, width: dimensions.width }}
         />
       )}
 
