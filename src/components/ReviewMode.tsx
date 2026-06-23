@@ -17,6 +17,27 @@ import { buildCopyPathSuccessDetail, buildReviewVideoMenu } from './contextMenuB
 import './ReviewMode.css';
 
 const Player = createPlayer({ features: videoFeatures });
+const REVIEW_MAX_MEDIA_WIDTH = 1950;
+const REVIEW_ASPECT_RATIO = 16 / 9;
+
+function getReviewMediaWidth(viewportWidth: number, viewportHeight: number, isPlaying: boolean): number {
+  const horizontalReserve = viewportWidth >= 1600 ? 280 : 160;
+  const verticalReserve = viewportWidth >= 1800 && viewportHeight >= 1000
+    ? 470
+    : viewportHeight >= 1400
+      ? 520
+      : isPlaying ? 370 : 320;
+  const widthLimit = Math.max(320, viewportWidth - horizontalReserve);
+  const heightLimit = Math.max(240, (viewportHeight - verticalReserve) * REVIEW_ASPECT_RATIO);
+  return Math.round(Math.min(REVIEW_MAX_MEDIA_WIDTH, widthLimit, heightLimit));
+}
+
+function getViewportSize() {
+  return {
+    width: window.innerWidth || 1280,
+    height: window.innerHeight || 800,
+  };
+}
 
 interface ReviewSummary {
   keep: number;
@@ -164,6 +185,7 @@ export default function ReviewMode() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDecodeError, setAudioDecodeError] = useState(false);
+  const [viewportSize, setViewportSize] = useState(getViewportSize);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const dynamicAspectRatio = useMemo(() => {
@@ -180,10 +202,19 @@ export default function ReviewMode() {
   const videoUrl = useMemo(() => (
     video ? `video://local/${encodeURIComponent(video.path)}` : ''
   ), [video]);
+  const reviewMediaWidth = useMemo(() => (
+    getReviewMediaWidth(viewportSize.width, viewportSize.height, isPlaying)
+  ), [isPlaying, viewportSize.height, viewportSize.width]);
 
   useEffect(() => {
     completeDevInteractionOnNextPaint('review.enter');
   }, [video?.id]);
+
+  useEffect(() => {
+    const onResize = () => setViewportSize(getViewportSize());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   useEffect(() => {
     return () => setActiveReviewVideoPath(null);
@@ -512,7 +543,10 @@ export default function ReviewMode() {
   });
 
   return (
-    <div className={`review-mode ${statusClass}`}>
+    <div
+      className={`review-mode ${statusClass}`}
+      style={{ '--review-media-width': `${reviewMediaWidth}px` } as CSSProperties}
+    >
       <button className="review-close" onClick={close} title="Close (Esc)">
         <X size={20} />
       </button>
@@ -725,4 +759,5 @@ export default function ReviewMode() {
 
 export const __test__ = {
   buildReviewScope,
+  getReviewMediaWidth,
 };

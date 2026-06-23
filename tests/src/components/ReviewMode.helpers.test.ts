@@ -30,4 +30,17 @@ describe('ReviewMode helpers', () => {
       deleteSize: 300,
     });
   });
+
+  test('sizes review media by both viewport width and available height', () => {
+    const defaultWindow = __test__.getReviewMediaWidth(1984, 1275, true);
+    const maximized4k = __test__.getReviewMediaWidth(4096, 2160, true);
+    const scaled4kWindow = __test__.getReviewMediaWidth(2048, 1117, true);
+    const shortWindow = __test__.getReviewMediaWidth(1366, 768, true);
+
+    expect(defaultWindow).toBeLessThan(1984 - 280);
+    expect(maximized4k).toBe(1950);
+    expect(scaled4kWindow).toBeLessThan(1950);
+    expect(maximized4k).toBeGreaterThan(defaultWindow);
+    expect(shortWindow).toBeLessThan(defaultWindow);
+  });
 });
