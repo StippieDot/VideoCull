@@ -172,4 +172,26 @@ describe('ReviewMode behavior', () => {
     expect(screen.getByText('beta.mp4')).toBeTruthy();
     expect(screen.queryByText('alpha.mp4')).toBeNull();
   });
+
+  test('uses centered preview layout until playback starts', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha'],
+    });
+
+    const { container } = render(<ReviewMode />);
+    const root = container.querySelector('.review-mode');
+
+    expect(root?.classList.contains('review-preview')).toBe(true);
+    expect(root?.classList.contains('review-playing')).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
+
+    expect(root?.classList.contains('review-playing')).toBe(true);
+    expect(root?.classList.contains('review-preview')).toBe(false);
+  });
 });

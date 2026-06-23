@@ -6,16 +6,23 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   min-height: 0;
   overflow: hidden;
-  padding-top: 72px;
+  padding-top: 0;
+  padding-bottom: 128px;
   transition: background var(--transition);
+}
+
+.review-mode.review-playing {
+  justify-content: flex-start;
+  padding-top: 72px;
 }
 
 .review-mode:has(.review-finished) {
   justify-content: center;
   padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* Status flash - solid gradients for focus */
@@ -108,8 +115,12 @@
   max-width: none;
   min-height: 0;
   padding: 0 clamp(72px, 8vw, 144px);
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   transition: max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.review-mode.review-playing .review-content {
+  flex: 1 1 auto;
 }
 
 .review-content.playing {
@@ -306,6 +317,10 @@
 
 /* ── Actions ── */
 .review-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -314,6 +329,7 @@
   gap: 12px;
   padding: clamp(10px, 2vh, 24px) 24px;
   width: 100%;
+  z-index: 12;
 }
 
 .review-action-btn {
@@ -486,7 +502,7 @@
 }
 
 @media (max-height: 900px) {
-  .review-mode {
+  .review-mode.review-playing {
     padding-top: 56px;
   }
 
@@ -537,7 +553,7 @@
 }
 
 @media (min-width: 1800px) and (min-height: 1000px) {
-  .review-mode {
+  .review-mode.review-playing {
     padding-top: 104px;
   }
 
@@ -551,7 +567,7 @@
   }
 
   .review-actions {
-    margin-top: 12px;
+    margin-top: 0;
     padding-top: 18px;
     padding-bottom: 34px;
   }

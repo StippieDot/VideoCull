@@ -490,7 +490,7 @@ export default function ReviewMode() {
 
   if (!video) {
     return (
-      <div className="review-mode">
+      <div className="review-mode review-preview">
         <div className="review-finished">
           <div className="review-finished-kicker">Review complete</div>
           <h2>{scopeLabel}</h2>
@@ -544,7 +544,7 @@ export default function ReviewMode() {
 
   return (
     <div
-      className={`review-mode ${statusClass}`}
+      className={`review-mode ${isPlaying ? 'review-playing' : 'review-preview'} ${statusClass}`}
       style={{ '--review-media-width': `${reviewMediaWidth}px` } as CSSProperties}
     >
       <button className="review-close" onClick={close} title="Close (Esc)">
