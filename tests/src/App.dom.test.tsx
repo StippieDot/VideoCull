@@ -17,7 +17,7 @@ import type {
 vi.mock('../../src/components/Sidebar', async () => {
   const ReactModule = await import('react');
   const storeModule = await import('../../src/store');
-  const MockSidebar = (props: { onFindDuplicates?: () => void }) => {
+  const MockSidebar = (props: { onFindDuplicates?: () => void; onCloseSession?: () => void }) => {
     const duplicateProgress = storeModule.default((state) => state.duplicateProgress);
     return ReactModule.createElement(ReactModule.Fragment, null,
       ReactModule.createElement(
@@ -33,6 +33,15 @@ vi.mock('../../src/components/Sidebar', async () => {
           onClick: props.onFindDuplicates,
         },
         'Find duplicates'
+      ),
+      ReactModule.createElement(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'sidebar-close-session',
+          onClick: props.onCloseSession,
+        },
+        'Close'
       )
     );
   };
@@ -414,6 +423,35 @@ describe('App renderer behavior', () => {
 
     expect(await screen.findByText('Some folders were skipped')).toBeTruthy();
     expect(screen.getByText(/1 folder could not be scanned/i)).toBeTruthy();
+  });
+
+  test('closes the loaded session before Electron cleanup finishes', async () => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    const video = makeVideo('a');
+    let finishReset!: () => void;
+    electron.api.resetLoadedDirectories.mockReturnValue(new Promise((resolve) => {
+      finishReset = () => resolve(true);
+    }));
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+      videos: [video],
+      filteredVideos: [video],
+      stats: { total: 1, pending: 1, skipped: 0, keep: 0, delete: 0, totalSize: 100, deleteSize: 0 },
+    }, true);
+
+    render(<App />);
+
+    await userEvent.click(screen.getByTestId('sidebar-close-session'));
+
+    expect(screen.getByTestId('empty-state')).toBeTruthy();
+    expect(store.getState().videos).toEqual([]);
+
+    await act(async () => {
+      finishReset();
+    });
   });
 
   test('rejects dropped shortcuts and shows a user-facing error toast', async () => {

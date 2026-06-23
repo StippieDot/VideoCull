@@ -918,17 +918,23 @@ export default function App() {
     useStore.getState().setReviewMode(true);
   }, [setFolderFilterPath]);
 
-  const handleCloseSession = useCallback(async () => {
+  const handleCloseSession = useCallback(() => {
     scanIdRef.current += 1;
     duplicateRunIdRef.current += 1;
-    await window.electronAPI?.cancelGeneration();
-    await window.electronAPI?.cancelDuplicateDetection();
-    await window.electronAPI?.resetLoadedDirectories();
     setIsScanning(false);
     setIsGenerating(false);
     setScanProgress({ found: 0, currentFile: '' });
     setGenProgress({ current: 0, total: 0 });
     useStore.getState().setDirectory(null);
+    void (async () => {
+      try {
+        await window.electronAPI?.cancelGeneration();
+        await window.electronAPI?.cancelDuplicateDetection();
+        await window.electronAPI?.resetLoadedDirectories();
+      } catch (err) {
+        console.warn('[app] Failed to finish session cleanup:', err);
+      }
+    })();
     pushToast({
       title: 'Session closed',
       detail: 'Loaded folders and generated work were cancelled.',
