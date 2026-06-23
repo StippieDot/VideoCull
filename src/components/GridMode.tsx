@@ -883,7 +883,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
           overscanCount={2}
           onRowsRendered={handleRowsRendered}
           onScroll={handleScroll}
-          style={{ height: dimensions.height, width: dimensions.width }}
+          style={{ height: dimensions.height, width: dimensions.width, paddingTop: 44 }}
         />
       )}
 

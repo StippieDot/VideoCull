@@ -18,11 +18,28 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 18px 6px;
-  background: linear-gradient(180deg, rgba(12, 12, 18, 0.22), rgba(12, 12, 18, 0));
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  padding: 9px 18px 7px;
+  background:
+    linear-gradient(180deg, rgba(8, 8, 12, 0.9), rgba(8, 8, 12, 0.68) 58%, rgba(8, 8, 12, 0));
+  backdrop-filter: blur(18px) saturate(0.82);
+  -webkit-backdrop-filter: blur(18px) saturate(0.82);
   z-index: 10;
+  pointer-events: none;
+}
+
+.grid-toolbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -44px;
+  height: 44px;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 8, 12, 0.32) 0%,
+    rgba(8, 8, 12, 0.16) 45%,
+    rgba(8, 8, 12, 0) 100%
+  );
   pointer-events: none;
 }
 
@@ -35,9 +52,9 @@
   align-items: center;
   height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  background: rgba(10, 10, 15, 0.56);
+  background: rgba(14, 14, 20, 0.68);
   backdrop-filter: var(--blur-sm);
   -webkit-backdrop-filter: var(--blur-sm);
   color: var(--text-secondary);
@@ -49,25 +66,25 @@
 
 .grid-search-field {
   margin-left: auto;
-  width: min(380px, 54%);
-  height: 36px;
+  width: min(390px, 54%);
+  height: 35px;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 0 9px 0 11px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 999px;
-  background: rgba(10, 10, 15, 0.62);
+  background: rgba(8, 8, 12, 0.78);
   backdrop-filter: var(--blur-sm);
   -webkit-backdrop-filter: var(--blur-sm);
   color: var(--text-tertiary);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 10px 28px rgba(0, 0, 0, 0.24);
   transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
 }
 
 .grid-search-field:focus-within {
   border-color: var(--accent);
-  background: rgba(10, 10, 16, 0.82);
+  background: rgba(10, 10, 16, 0.9);
   box-shadow: 0 0 0 2px var(--accent-dim), var(--glass-glow);
   color: var(--text-secondary);
 }
@@ -84,7 +101,7 @@
 }
 
 .grid-search-field input::placeholder {
-  color: var(--text-tertiary);
+  color: rgba(180, 180, 194, 0.64);
 }
 
 .grid-search-field input::-webkit-search-cancel-button {
