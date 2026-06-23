@@ -14,6 +14,7 @@ import type { Video } from '../types';
 import useStore from '../store';
 import VideoCard from './VideoCard';
 import { formatSize, isWebSupported } from '../utils';
+import { matchesKeybind } from '../keybinds';
 import { Check, ChevronDown, RefreshCw, Search, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import {
@@ -346,6 +347,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const videos = useStore((s) => s.videos);
   const searchQuery = useStore((s) => s.searchQuery);
   const setSearchQuery = useStore((s) => s.setSearchQuery);
+  const keySearch = useStore((s) => s.settings.keySearch);
   const reviewMode = useStore((s) => s.reviewMode);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const setVideoStatusesBatch = useStore((s) => s.setVideoStatusesBatch);
@@ -479,7 +481,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!gridActive) return;
-      if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
+      if (matchesKeybind(event, keySearch)) {
         if (useStore.getState().isSettingsModalOpen || document.body.hasAttribute('data-capturing-keybind')) return;
         event.preventDefault();
         searchInputRef.current?.focus();
@@ -505,7 +507,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [clearGridSelection, gridActive, isSelectionMode, searchQuery, setSearchQuery]);
+  }, [clearGridSelection, gridActive, isSelectionMode, keySearch, searchQuery, setSearchQuery]);
 
   const getRowTop = useCallback((rowIndex: number) => {
     let top = 0;

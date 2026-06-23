@@ -26,7 +26,7 @@ export type KeybindSettingKey =
   | 'keyNextUndecided'
   | 'keySeekBack' | 'keySeekForward' | 'keySpeedDown' | 'keySpeedUp'
   | 'keyBookmark' | 'keyShowHelp'
-  | 'keyGlobalMute'
+  | 'keyGlobalMute' | 'keySearch'
   | 'keyPreviewSeekBack' | 'keyPreviewSeekForward';
 
 export const ALL_SHORTCUTS: ShortcutDef[] = [
@@ -56,6 +56,7 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   // Global
   { id: 'keyShowHelp',           description: 'Show keyboard shortcuts',   group: 'Global' },
   { id: 'keyGlobalMute',         description: 'Toggle global mute',        group: 'Global' },
+  { id: 'keySearch',             description: 'Search loaded videos',      group: 'Global' },
 ];
 
 // Fixed shortcuts that are never configurable (displayed in help only)

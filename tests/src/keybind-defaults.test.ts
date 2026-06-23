@@ -25,6 +25,13 @@ describe('migrateSettings', () => {
     expect(migrated.keyShowHelp).toEqual(DEFAULT_KEYBINDS.keyShowHelp);
   });
 
+  test('adds a configurable default search shortcut for existing settings', () => {
+    const migrated = migrateSettings({});
+
+    expect(DEFAULT_KEYBINDS.keySearch).toEqual({ key: 'f', ctrl: true, shift: false, alt: false });
+    expect(migrated.keySearch).toEqual(DEFAULT_KEYBINDS.keySearch);
+  });
+
   test('falls back to safe defaults for malformed feature and cache settings', () => {
     const migrated = migrateSettings({
       autoPruneMissingSubfolderCache: 'yes',

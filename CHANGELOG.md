@@ -2,6 +2,52 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [2.0.0] - 2026-06-23
+
+Video Cull 2.0.0 has smarter duplicate review, richer media decisions, safer cache handling, clearer destructive actions, better mounted-drive behavior, and a UI that holds up better on very large libraries and high-resolution screens.
+
+### Added
+- Duplicate review mode for finding likely duplicates across all loaded videos or the current filtered view, with pHash and visual-similarity matching, adjustable thresholds, sample counts, sampling windows, flipped comparison, and optional run-after-scan.
+- Suggested keepers for duplicate groups using resolution, bitrate, duration, FPS, and size, plus manual keeper overrides, protected Keep/Skip videos, ignored match pairs, group dismissal, and right-click duplicate actions.
+- Richer review decisions with ratings, favorites, bookmarks, playback speed, global mute, next-undecided navigation, scoped review summaries, pending/delete totals, and undo-aware review flows.
+- Media insight throughout the app: codec, container, resolution, FPS, metadata date, compatibility badges, metadata-based sort options, and clearer labels for resolution/FPS.
+- Built-in playback fallback behavior for unsupported files, including compatibility checks, external-player handoff, and decode-error overlays when Chromium cannot play the stream.
+- Grid search by filename or path, with `Ctrl+F` as the default shortcut and full keybinding customization.
+- Context menus for grid videos, folder headers, duplicate rows, and duplicate groups, including reveal/copy-path, status changes, thumbnail regeneration, keeper selection, exclusion, and dismissal.
+- Maintenance controls for stale-cache cleanup, missing-subfolder cache pruning, empty-folder cleanup after delete, and thumbnail-count rebuild warnings.
+- Safer cache storage management across centralised, per-drive, and distributed cache modes, including cache-location validation and explicit migrate/start-fresh choices.
+- Custom Windows installer artwork and shortcut choices while keeping current-user installation and install-location selection.
+- App diagnostics and performance instrumentation for scan, render, duplicate, cache, and idle-state troubleshooting.
+
+### Changed
+- Upgraded Electron and refreshed the runtime/development dependency stack.
+- Reworked the sidebar around large-library culling, with denser status/filter controls, clearer folder/session feedback, duplicate-mode controls, and better skipped/inaccessible folder reporting.
+- Reworked the grid for large sessions with faster filtering/sorting, folder grouping, aggregate computation, virtualized rendering, stable search controls, and lower render churn during metadata and thumbnail updates.
+- Reworked review mode so thumbnail preview and playback fit normal, maximized, and high-resolution displays while keeping the action controls stable.
+- Improved scanner traversal throughput, stat batching, progress reporting, cancellation behavior, stale/superseded scan handling, and behavior on slow mounted drives.
+- Improved metadata and thumbnail processing with clearer progress phases, better cancellation, short-video handling, safer reuse of existing thumbnail sets, and smaller renderer update batches.
+- Improved duplicate detection performance with worker-based fingerprinting, batched database access, lower memory use, stronger candidate grouping, and more stable group IDs.
+- Improved cache loading, saving, migration, recovery, pruning, and corruption quarantine behavior for existing libraries.
+- Made potentially destructive or expensive maintenance behavior opt-in instead of surprising: stale-cache cleanup defaults off, empty-folder cleanup defaults off, and thumbnail-count changes warn before causing rebuild work.
+- Updated development and CI workflows around Node 24, Vitest, Playwright, IPC contract checks, installer checks, native cache checks, and release packaging.
+
+### Fixed
+- Existing cache decisions, metadata, thumbnails, bookmarks, ratings, favorites, duplicate fingerprints, recent folders, and settings now survive rescans, relaunches, and upgrades more reliably.
+- Destructive delete flows now validate loaded paths more strictly, clean related cache artifacts, report permanent-delete fallbacks clearly, and only clean truly empty folders when the user enables that option.
+- Cache migration and cache-mode changes now avoid partial/clobber-prone moves and communicate migrate/start-fresh outcomes more clearly.
+- Missing/offline folders and transient stat failures no longer silently prune cache by default.
+- Open/reveal/play external operations and custom `thumb://` / `video://` serving now validate loaded paths more carefully.
+- Built-in playback compatibility now better matches real browser support while FFmpeg-supported files can still be scanned for thumbnails and metadata.
+- Thumbnail cancellation, short-video thumbnail reuse, failed thumbnail regeneration, and thumbnail-count changes behave more predictably.
+- Duplicate reruns, deleted duplicate videos, stale duplicate selections, visual fingerprint settings changes, and hidden duplicate review state now clean up more reliably.
+- Sort state, resolution labels, feature toggles, keybinding capture, focused input behavior, shortcut conflicts, and privacy/shortcut precedence are more predictable.
+- New-folder and pending-scan UI states are clearer, reducing ambiguity when old videos are still visible while a new scan is starting.
+
+### Tooling
+- Added `npm run check:ipc`, `npm run check:installer`, `npm run test:renderer`, `npm run test:duplicates`, `npm run test:cache-native`, and expanded `npm run test:ci`.
+- Added Playwright Electron regression flows for smoke, delete safety, relaunch persistence, and duplicate reruns.
+- Added cache-clutter cleanup tooling, installer validation, release/test GitHub Actions updates, and broader regression coverage for Electron, renderer, cache, scanner, duplicate, processor, and settings flows.
+
 ## [2.0.0-beta.2] - 2026-06-11
 
 This beta focuses on scaling duplicate review, reducing large-library slowdown, tightening media compatibility behavior, and raising the regression-testing baseline before the persistent-library work begins.

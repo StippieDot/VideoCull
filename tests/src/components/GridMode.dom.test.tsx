@@ -116,6 +116,21 @@ describe('GridMode search', () => {
     expect(Array.from(useStore.getState().gridSelectionIds)).toEqual([]);
   });
 
+  test('focuses search with the configured shortcut instead of hardcoded Ctrl+F', () => {
+    useStore.getState().updateSettings({
+      keySearch: { key: 'g', ctrl: true, shift: false, alt: false },
+    });
+    renderGrid();
+
+    const searchbox = screen.getByRole('searchbox', { name: /search videos/i });
+
+    fireEvent.keyDown(window, { key: 'f', ctrlKey: true });
+    expect(document.activeElement).not.toBe(searchbox);
+
+    fireEvent.keyDown(window, { key: 'g', ctrlKey: true });
+    expect(document.activeElement).toBe(searchbox);
+  });
+
   test('offers a clear action when search has no matches', async () => {
     renderGrid();
 

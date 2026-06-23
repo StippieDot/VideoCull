@@ -28,6 +28,8 @@ Grab the latest installer from the [Releases](https://github.com/stippie-dot/Vid
 
 The packaged installer is Windows-first, installs for the current user, and does not require admin rights. On first launch Windows may show a SmartScreen prompt since the app isn't code-signed yet; click "Run anyway" to proceed.
 
+The installer lets you choose the install location and shortcuts. Later updates are handled in-app when a GitHub release is available.
+
 ---
 
 ## Features
@@ -37,6 +39,7 @@ The packaged installer is Windows-first, installs for the current user, and does
 Every video gets a strip of thumbnails pulled from different points in the file. You know what you're looking at without opening anything.
 
 - Adjustable card size (`Ctrl++` / `Ctrl+-`)
+- Search by filename or path (`Ctrl+F` by default, customizable)
 - Group by subfolder with per-folder counts and sizes
 - Filter by status, rating, favorites, compatibility, file size, and duration
 - Sort by name, size, duration, date, rating, resolution, or FPS
@@ -58,6 +61,7 @@ Fullscreen, one at a time, keyboard first.
 - Review summary with pending counts and delete totals
 - Next-undecided navigation for skipping videos you've already handled
 - External player handoff for files the built-in player should not play
+- Preview and playback layouts adapt to normal, maximized, and high-resolution displays
 - Undo any decision before you commit the final delete
 
 ### Duplicate Review
@@ -79,6 +83,7 @@ Find likely duplicates across all loaded videos or just the current filtered vie
 - **Parallel processing**: RAM and CPU-aware auto-detect, or set manually up to 32 processes
 - **Cached**: already-processed videos are skipped on rescan when their thumbnail set is complete
 - **Hardware acceleration**: optional GPU decoding (beta)
+- **Rebuild warning**: changing thumbnails per video warns when existing thumbnail sets may need to be rebuilt
 
 ### Cache
 
@@ -89,6 +94,7 @@ Progress lives in SQLite databases under the configured cache location.
 - Status, ratings, favorites, bookmarks, metadata, and thumbnails survive rescans
 - Cache location changes can migrate existing cache data instead of forcing a fresh start
 - Cache and thumbnail files for deleted videos are cleaned up with the delete action
+- Stale-cache cleanup and empty-folder cleanup are opt-in maintenance actions
 
 ### Known Issues
 
@@ -107,6 +113,7 @@ Generate an HTML report from Settings or the app menu, scoped to all loaded vide
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl + O` | Open directory |
+| `Ctrl + F` | Search loaded videos (customizable) |
 | `F5` | Rescan |
 | `Ctrl + Z` | Undo |
 | `Ctrl + Backspace` | Send marked videos to Recycle Bin |
@@ -151,6 +158,8 @@ Review shortcuts are customizable in Settings.
 | Limit each FFmpeg process to 1 CPU thread | On / Off | On |
 | Intro skip delay | 0 - 60 seconds | 3s |
 | Hardware acceleration | On / Off | Off |
+| Auto-clean stale cache after scan | On / Off | Off |
+| Remove empty folders after deleting videos | On / Off | Off |
 | Auto updates | On / Off | On |
 | Feature toggles | Ratings, favorites, analytics screen | On |
 | Keybindings | Any key or combination | K / D / S / Z / Space |
@@ -189,6 +198,7 @@ npm run dev
 | `npm run test:e2e` | Build the renderer and run the Electron Playwright regression flows |
 | `npm run test:cache-native` | Optional native cache regression lane for clean Node installs; mainly intended for CI because `better-sqlite3` ABI rebuilds conflict with normal Electron-local workflows |
 | `npm run build` | Renderer-only production build |
+| `npm run check:installer` | Validate Windows installer config and bundled installer artwork |
 | `npm run check:ipc` | Validate preload/type IPC contract coverage |
 | `npm run cleanup:cache` | Clean old cache/thumb clutter from earlier builds |
 | `npm run package` | Full build + Windows installer (NSIS) |

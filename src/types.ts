@@ -270,6 +270,7 @@ export interface AppSettings {
   // Global
   keyShowHelp: Keybind;
   keyGlobalMute: Keybind;
+  keySearch: Keybind;
 }
 
 // ── Store State ────────────────────────────────────────────────────

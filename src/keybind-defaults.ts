@@ -48,6 +48,7 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keyBookmark:           kb('b'),
   keyShowHelp:           kb('?', { shift: true }),
   keyGlobalMute:         kb('m'),
+  keySearch:             kb('f', { ctrl: true }),
   keyPreviewSeekBack:    kb('arrowleft'),
   keyPreviewSeekForward: kb('arrowright'),
 };

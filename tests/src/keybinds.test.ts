@@ -110,3 +110,13 @@ describe('fixed shortcut metadata', () => {
     );
   });
 });
+
+describe('shortcut metadata', () => {
+  test('lists search as a configurable global shortcut', () => {
+    expect(ALL_SHORTCUTS).toEqual(
+      expect.arrayContaining([
+        { id: 'keySearch', description: 'Search loaded videos', group: 'Global' },
+      ])
+    );
+  });
+});
