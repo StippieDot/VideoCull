@@ -292,6 +292,7 @@ export interface VideoStore {
   genProgress: ThumbProgress;
 
   // Filters & Sort
+  searchQuery: string;
   statusFilter: StatusFilter;
   sortBy: SortField;
   sortOrder: SortOrder;
@@ -352,6 +353,7 @@ export interface VideoStore {
   updateVideoThumbnailsBatch: (batch: ThumbReadyEvent[]) => void;
   setVideoStatus: (videoId: string, status: VideoStatus) => void;
   undo: () => void;
+  setSearchQuery: (query: string) => void;
   setStatusFilter: (filter: StatusFilter) => void;
   setSortBy: (sortBy: SortField) => void;
   setSortOrder: (sortOrder: SortOrder) => void;

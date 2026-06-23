@@ -10,6 +10,7 @@ function makeStoreState(overrides: Partial<VideoStore> = {}): VideoStore {
     duplicateGroups: [],
     duplicateFilter: false,
     duplicateGroupsMode: false,
+    searchQuery: '',
     statusFilter: 'all',
     minSizeFilter: 0,
     maxSizeFilter: null,

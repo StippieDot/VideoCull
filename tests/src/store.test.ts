@@ -3,7 +3,7 @@ import type { VideoStore } from '../../src/types';
 import { makeDuplicateGroup as makeGroup, makeVideo } from '../helpers/videoFactory';
 
 type FilterState = Pick<VideoStore,
-  'videos' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' |
+  'videos' | 'searchQuery' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' |
   'folderFilterPath' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' |
   'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'
 >;
@@ -11,6 +11,7 @@ type FilterState = Pick<VideoStore,
 function makeFilterState(overrides: Partial<FilterState> = {}): FilterState {
   return {
     videos: [],
+    searchQuery: '',
     statusFilter: 'all',
     minSizeFilter: 0,
     maxSizeFilter: null,

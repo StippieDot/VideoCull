@@ -38,7 +38,7 @@ function getFolder(v: Video): string {
   return parts.length >= 2 ? parts.slice(0, -1).join(sep) : '';
 }
 
-function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
+function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
   const startedAt = import.meta.env.DEV ? performance.now() : 0;
   let filtered = [...state.videos];
   const minSizeFilter = Math.max(0, Math.floor(state.minSizeFilter));
@@ -49,6 +49,14 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'statusFilter' | 'mi
   const maxDurationFilter = state.maxDurationFilter === null
     ? null
     : Math.max(minDurationFilter, Math.floor(state.maxDurationFilter));
+
+  const searchQuery = state.searchQuery.trim().toLowerCase();
+  if (searchQuery) {
+    filtered = filtered.filter((video) => (
+      video.filename.toLowerCase().includes(searchQuery) ||
+      video.path.toLowerCase().includes(searchQuery)
+    ));
+  }
 
   if (state.statusFilter !== 'all') {
     filtered = filtered.filter((v) => v.status === state.statusFilter);
@@ -817,6 +825,7 @@ const useStore = create<VideoStore>((set, get) => ({
   genProgress: { current: 0, total: 0 },
 
   // ── Filters & Sort ──
+  searchQuery: '',
   statusFilter: 'all',
   sortBy: 'name',
   sortOrder: 'asc',
@@ -910,6 +919,7 @@ const useStore = create<VideoStore>((set, get) => ({
         directory: dir,
         directories: [dir],
         settings: newSettings,
+        searchQuery: '',
         folderFilterPath: null,
         reviewMode: false,
         reviewIndex: 0,
@@ -940,6 +950,7 @@ const useStore = create<VideoStore>((set, get) => ({
         filteredVideos: [],
         stats: computeStats([]),
         sidebarAggregates: computeSidebarAggregates([]),
+        searchQuery: '',
         folderFilterPath: null,
         reviewMode: false,
         reviewIndex: 0,
@@ -994,6 +1005,7 @@ const useStore = create<VideoStore>((set, get) => ({
     set({
       directory: nextDirs[0] ?? null,
       directories: nextDirs,
+      searchQuery: '',
       folderFilterPath: null,
       reviewMode: false,
       reviewIndex: 0,
@@ -1237,6 +1249,19 @@ const useStore = create<VideoStore>((set, get) => ({
   },
 
   // ── Filter/Sort ──
+  setSearchQuery: (searchQuery: string) => {
+    const state = { ...get(), searchQuery };
+    const filteredVideos = computeFiltered(state);
+    const visibleIds = new Set(filteredVideos.map((video) => video.id));
+    const gridSelectionIds = new Set(
+      Array.from(state.gridSelectionIds).filter((id) => visibleIds.has(id))
+    );
+    const gridSelectionAnchorId = state.gridSelectionAnchorId && visibleIds.has(state.gridSelectionAnchorId)
+      ? state.gridSelectionAnchorId
+      : null;
+    set({ searchQuery, filteredVideos, gridSelectionIds, gridSelectionAnchorId, reviewIndex: 0 });
+  },
+
   setStatusFilter: (filter: StatusFilter) => {
     const state = { ...get(), statusFilter: filter };
     set({ statusFilter: filter, filteredVideos: computeFiltered(state), reviewIndex: 0 });

@@ -14,7 +14,7 @@ import type { Video } from '../types';
 import useStore from '../store';
 import VideoCard from './VideoCard';
 import { formatSize, isWebSupported } from '../utils';
-import { Check, ChevronDown, RefreshCw, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
+import { Check, ChevronDown, RefreshCw, Search, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import {
   buildCopyPathSuccessDetail,
@@ -27,6 +27,7 @@ const BASE_CARD_WIDTH = 450;
 const BASE_CARD_HEIGHT = 360;
 const GAP = 12;
 const HEADER_HEIGHT = 44;
+const TOOLBAR_HEIGHT = 50;
 
 let persistedGridScroll = { directory: null as string | null, offset: 0 };
 
@@ -344,6 +345,10 @@ function Row({ index, style, ariaAttributes }: RowComponentProps<GridRowRenderSi
 export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: GridModeProps) {
   const filteredVideos = useStore((s) => s.filteredVideos);
   const videos = useStore((s) => s.videos);
+  const searchQuery = useStore((s) => s.searchQuery);
+  const setSearchQuery = useStore((s) => s.setSearchQuery);
+  const reviewMode = useStore((s) => s.reviewMode);
+  const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const setVideoStatusesBatch = useStore((s) => s.setVideoStatusesBatch);
   const pushToast = useStore((s) => s.pushToast);
   const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
@@ -360,6 +365,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const isScanning = useStore((s) => s.isScanning);
   const isGenerating = useStore((s) => s.isGenerating);
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<ListImperativeAPI | null>(null);
   const restoredScrollRef = useRef(false);
   const visibleRowsRef = useRef({ startIndex: 0, stopIndex: 0 });
@@ -378,6 +384,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     folderPath?: string;
   } | null>(null);
   const isSelectionMode = selectedIds.size > 0;
+  const gridActive = !reviewMode && !duplicateGroupsMode;
   const videosById = useMemo(() => new Map(videos.map((video) => [video.id, video])), [videos]);
   const directoriesKey = useMemo(() => directories.join('\0'), [directories]);
 
@@ -471,9 +478,27 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   }, [filteredIdSet, selectedIds, selectionAnchorId, setGridSelectionIds, setGridSelectionAnchorId]);
 
   useEffect(() => {
-    if (!isSelectionMode) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (!gridActive) return;
+      if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
+        if (useStore.getState().isSettingsModalOpen || document.body.hasAttribute('data-capturing-keybind')) return;
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+
+      if (event.key !== 'Escape') return;
+      if (searchQuery || document.activeElement === searchInputRef.current) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (searchQuery) setSearchQuery('');
+        searchInputRef.current?.blur();
+        containerRef.current?.focus();
+        return;
+      }
+
+      if (isSelectionMode) {
         event.preventDefault();
         clearGridSelection();
       }
@@ -481,7 +506,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [clearGridSelection, isSelectionMode]);
+  }, [clearGridSelection, gridActive, isSelectionMode, searchQuery, setSearchQuery]);
 
   const getRowTop = useCallback((rowIndex: number) => {
     let top = 0;
@@ -818,10 +843,36 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   }, [contextMenuVideo, handleCardPlay, handleCopyPath, onRegenerateThumbnails, setVideoStatusesBatch]);
 
   return (
-    <div className="grid-mode" ref={containerRef}>
+    <div className="grid-mode" ref={containerRef} tabIndex={-1}>
+      <div className="grid-toolbar">
+        <span className="grid-result-count">
+          {searchQuery.trim()
+            ? `${filteredVideos.length} of ${videos.length} videos`
+            : `${filteredVideos.length} ${filteredVideos.length === 1 ? 'video' : 'videos'}`}
+        </span>
+        <label className="grid-search-field">
+          <Search size={15} aria-hidden="true" />
+          <input
+            ref={searchInputRef}
+            type="search"
+            aria-label="Search videos"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search filename or path"
+          />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery('')} title="Clear search" aria-label="Clear search">
+              <X size={14} />
+            </button>
+          )}
+        </label>
+      </div>
       {filteredVideos.length === 0 ? (
         <div className="grid-empty">
-          <p>No videos match your current filters.</p>
+          <p>{searchQuery.trim() ? 'No videos match your search.' : 'No videos match your current filters.'}</p>
+          {searchQuery.trim() && (
+            <button type="button" className="btn btn-outline" onClick={() => setSearchQuery('')}>Clear search</button>
+          )}
         </div>
       ) : (
         <List
@@ -833,7 +884,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
           overscanCount={2}
           onRowsRendered={handleRowsRendered}
           onScroll={handleScroll}
-          style={{ height: dimensions.height, width: dimensions.width }}
+          style={{ height: Math.max(0, dimensions.height - TOOLBAR_HEIGHT), width: dimensions.width }}
         />
       )}
 

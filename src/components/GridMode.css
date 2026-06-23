@@ -3,13 +3,88 @@
   overflow: hidden;
   background: transparent; /* Allows main app gradient to show through */
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  outline: none;
+}
+
+.grid-toolbar {
+  flex: 0 0 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  z-index: 10;
+}
+
+.grid-result-count {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.grid-search-field {
+  margin-left: auto;
+  width: min(320px, 50%);
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  color: var(--text-tertiary);
+}
+
+.grid-search-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+  color: var(--text-secondary);
+}
+
+.grid-search-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.grid-search-field input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.grid-search-field button {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.grid-search-field button:hover {
+  color: var(--text-primary);
 }
 
 .grid-empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
   color: var(--text-tertiary);
   font-size: 14px;
 }

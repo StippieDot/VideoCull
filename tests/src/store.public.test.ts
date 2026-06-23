@@ -97,6 +97,52 @@ describe('useStore public behavior', () => {
     expect(state.directories).toEqual(['D:\\Media', 'E:\\Clips']);
   });
 
+  test('searches video filenames and paths case-insensitively', () => {
+    useStore.getState().setVideos([
+      makeVideo('trip', { filename: 'Summer Trip.mp4', path: 'D:\\Media\\Spain\\Summer Trip.mp4' }),
+      makeVideo('meeting', { filename: 'Meeting.mp4', path: 'D:\\Media\\Work\\Meeting.mp4' }),
+    ]);
+
+    useStore.getState().setSearchQuery('  SPAIN  ');
+
+    expect(useStore.getState().searchQuery).toBe('  SPAIN  ');
+    expect(useStore.getState().filteredVideos.map((video) => video.id)).toEqual(['trip']);
+  });
+
+  test('combines grid search with existing filters', () => {
+    useStore.getState().setVideos([
+      makeVideo('pending-trip', { filename: 'Trip pending.mp4', status: 'pending' }),
+      makeVideo('kept-trip', { filename: 'Trip kept.mp4', status: 'keep' }),
+    ]);
+
+    useStore.getState().setSearchQuery('trip');
+    useStore.getState().setStatusFilter('keep');
+
+    expect(useStore.getState().filteredVideos.map((video) => video.id)).toEqual(['kept-trip']);
+  });
+
+  test('search prunes grid selections that are no longer visible', () => {
+    useStore.getState().setVideos([
+      makeVideo('trip', { filename: 'Trip.mp4' }),
+      makeVideo('meeting', { filename: 'Meeting.mp4' }),
+    ]);
+    useStore.getState().setGridSelectionIds(new Set(['trip', 'meeting']));
+    useStore.getState().setGridSelectionAnchorId('meeting');
+
+    useStore.getState().setSearchQuery('trip');
+
+    expect(Array.from(useStore.getState().gridSelectionIds)).toEqual(['trip']);
+    expect(useStore.getState().gridSelectionAnchorId).toBeNull();
+  });
+
+  test('starting a replacement folder session clears grid search', () => {
+    useStore.getState().setSearchQuery('trip');
+
+    useStore.getState().setDirectory('D:\\Other');
+
+    expect(useStore.getState().searchQuery).toBe('');
+  });
+
   test('loading a new video set orders thumbnails and clears stale duplicate annotations', () => {
     const firstVideos = [
       makeVideo('a', { duplicateGroupId: 'old', thumbnails: ['thumb_2.jpg', 'thumb_01.jpg'] }),
