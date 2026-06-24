@@ -936,15 +936,35 @@ function countVideoThumbnails(videos) {
   return videos.reduce((sum, video) => sum + (Array.isArray(video.thumbnails) ? video.thumbnails.length : 0), 0);
 }
 
+function emptyThumbnailWriteStats() {
+  return { thumbnailRowsWritten: 0, thumbnailRowsSkipped: 0 };
+}
+
 function summarizeScanDiagnostics(diagnostics) {
   if (!diagnostics) return undefined;
   return {
     folderGroupCount: diagnostics.folderGroupCount,
     cacheDbTouchedCount: diagnostics.cacheDbPaths.size,
     cacheIndexIo: diagnostics.cacheIndexIo,
-    slowestLoadFolders: JSON.stringify(diagnostics.loadFolders),
-    slowestSaveFolders: JSON.stringify(diagnostics.saveFolders),
+    slowCacheLoadFolderCount: diagnostics.loadFolders.length,
+    slowCacheSaveFolderCount: diagnostics.saveFolders.length,
   };
+}
+
+function logSlowCacheFolderDiagnostics(diagnostics) {
+  if (!diagnostics) return;
+  diagnostics.loadFolders.forEach((folder, index) => {
+    log.info('[scan-directory] slow cache load folder', {
+      rank: index + 1,
+      ...folder,
+    });
+  });
+  diagnostics.saveFolders.forEach((folder, index) => {
+    log.info('[scan-directory] slow cache save folder', {
+      rank: index + 1,
+      ...folder,
+    });
+  });
 }
 
 async function openCacheDbWithRecovery(folderPath, cacheOptions) {
@@ -1029,13 +1049,14 @@ async function saveVideosByParentFolder(videos, cacheOptions, {
     const cachePaths = await prepareCacheFolder(folderPath, cacheOptions, { publish, cacheRoots });
     diagnostics?.cacheDbPaths.add(cachePaths.dbPath);
     const payload = folderVideos.map((video) => videoForDb(video, cachePaths.cacheRootDir));
+    let folderWriteStats = emptyThumbnailWriteStats();
 
     const writePayload = async () => {
       const db = await openCacheDbWithRecovery(folderPath, cacheOptions);
       if (atomic && payload.length <= ATOMIC_SAVE_SYNC_LIMIT) {
-        cache.saveCache(db, payload, { updatedAt });
+        folderWriteStats = cache.saveCache(db, payload, { updatedAt }) ?? emptyThumbnailWriteStats();
       } else {
-        await cache.saveCacheChunked(db, payload, null, { updatedAt });
+        folderWriteStats = await cache.saveCacheChunked(db, payload, null, { updatedAt }) ?? emptyThumbnailWriteStats();
       }
       if (shouldPruneStaleRows) {
         const staleVideos = cache.pruneStaleVideosBefore(db, updatedAt, { details: true });
@@ -1068,6 +1089,8 @@ async function saveVideosByParentFolder(videos, cacheOptions, {
         durationMs: Math.round((performance.now() - folderStartedAt) * 100) / 100,
         videoCount: folderVideos.length,
         thumbnailRowCount: countVideoThumbnails(folderVideos),
+        thumbnailRowsWritten: folderWriteStats.thumbnailRowsWritten,
+        thumbnailRowsSkipped: folderWriteStats.thumbnailRowsSkipped,
       });
     }
     remainingVisitedFolders?.delete(path.resolve(folderPath).toLowerCase());
@@ -1779,6 +1802,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     status: 'ok',
     videoCount: merged.length,
   });
+  logSlowCacheFolderDiagnostics(scanDiagnostics);
   log.info('[scan-directory] complete', {
     dirPath,
     includeSubfolders: Boolean(includeSubfolders),

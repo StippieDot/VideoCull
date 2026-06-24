@@ -32,6 +32,28 @@ function orderedThumbnails(thumbnails) {
   return Array.isArray(thumbnails) ? [...thumbnails].sort(compareThumbnailPaths) : [];
 }
 
+function sameOrderedThumbnailPaths(rows, thumbnails) {
+  if (rows.length !== thumbnails.length) return false;
+  for (let i = 0; i < thumbnails.length; i++) {
+    if (rows[i].file_path !== thumbnails[i]) return false;
+  }
+  return true;
+}
+
+function writeThumbnailRowsIfChanged(selectThumbs, deleteThumbs, insertThumb, videoId, thumbnails) {
+  const ordered = orderedThumbnails(thumbnails);
+  const existing = selectThumbs.all(videoId);
+  if (sameOrderedThumbnailPaths(existing, ordered)) {
+    return { thumbnailRowsWritten: 0, thumbnailRowsSkipped: ordered.length };
+  }
+
+  deleteThumbs.run(videoId);
+  for (let i = 0; i < ordered.length; i++) {
+    insertThumb.run(videoId, i, ordered[i]);
+  }
+  return { thumbnailRowsWritten: ordered.length, thumbnailRowsSkipped: 0 };
+}
+
 function parseBookmarks(rawBookmarks, videoId) {
   if (!rawBookmarks) return [];
   try {
@@ -386,12 +408,8 @@ function hydrateCachedVideos(rows, thumbRows) {
   }
 
   const map = new Map();
-  let withThumbs = 0;
-  let nonPending = 0;
   for (const row of rows) {
     const thumbs = orderedThumbnails(thumbsByVideoId.get(row.id));
-    if (thumbs.length > 0) withThumbs++;
-    if (row.status && row.status !== 'pending') nonPending++;
     map.set(row.id, {
       id: row.id,
       filename: row.filename,
@@ -423,7 +441,6 @@ function hydrateCachedVideos(rows, thumbRows) {
       osThumbnail: row.os_thumbnail_path ?? null,
     });
   }
-  log.info(`[cache] loadCacheMap: ${rows.length} videos, ${withThumbs} with thumbs, ${nonPending} non-pending`);
   return Array.from(map.values());
 }
 
@@ -485,6 +502,7 @@ function createPathConflictResolver(db) {
 function saveCache(db, videos, options = {}) {
   const resolvePathConflict = createPathConflictResolver(db);
   const updatedAt = Number.isFinite(options.updatedAt) ? options.updatedAt : Date.now();
+  const stats = { thumbnailRowsWritten: 0, thumbnailRowsSkipped: 0 };
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
@@ -545,6 +563,7 @@ function saveCache(db, videos, options = {}) {
       duplicate_hash = excluded.duplicate_hash,
       updated_at  = excluded.updated_at
   `);
+  const selectThumbs = db.prepare('SELECT file_path FROM thumbnails WHERE video_id = ? ORDER BY idx');
   const deleteThumbs = db.prepare('DELETE FROM thumbnails WHERE video_id = ?');
   const insertThumb = db.prepare(
     'INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)'
@@ -570,16 +589,15 @@ function saveCache(db, videos, options = {}) {
         updatedAt
       );
       if (Array.isArray(v.thumbnails)) {
-        deleteThumbs.run(v.id);
-        const thumbs = orderedThumbnails(v.thumbnails);
-        for (let i = 0; i < thumbs.length; i++) {
-          insertThumb.run(v.id, i, thumbs[i]);
-        }
+        const thumbStats = writeThumbnailRowsIfChanged(selectThumbs, deleteThumbs, insertThumb, v.id, v.thumbnails);
+        stats.thumbnailRowsWritten += thumbStats.thumbnailRowsWritten;
+        stats.thumbnailRowsSkipped += thumbStats.thumbnailRowsSkipped;
       }
     }
   });
 
   upsertAll(videos);
+  return stats;
 }
 
 function updateVideoMetadata(db, videoId, metadata) {
@@ -683,6 +701,7 @@ function updateVideoMetadataBatch(db, updates) {
 async function saveCacheChunked(db, videos, onProgress, options = {}) {
   const resolvePathConflict = createPathConflictResolver(db);
   const updatedAt = Number.isFinite(options.updatedAt) ? options.updatedAt : Date.now();
+  const stats = { thumbnailRowsWritten: 0, thumbnailRowsSkipped: 0 };
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
@@ -741,6 +760,7 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
       duplicate_hash = excluded.duplicate_hash,
       updated_at  = excluded.updated_at
   `);
+  const selectThumbs = db.prepare('SELECT file_path FROM thumbnails WHERE video_id = ? ORDER BY idx');
   const deleteThumbs = db.prepare('DELETE FROM thumbnails WHERE video_id = ?');
   const insertThumb = db.prepare(
     'INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)'
@@ -768,11 +788,9 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
         updatedAt
       );
       if (Array.isArray(v.thumbnails)) {
-        deleteThumbs.run(v.id);
-        const thumbs = orderedThumbnails(v.thumbnails);
-        for (let i = 0; i < thumbs.length; i++) {
-          insertThumb.run(v.id, i, thumbs[i]);
-        }
+        const thumbStats = writeThumbnailRowsIfChanged(selectThumbs, deleteThumbs, insertThumb, v.id, v.thumbnails);
+        stats.thumbnailRowsWritten += thumbStats.thumbnailRowsWritten;
+        stats.thumbnailRowsSkipped += thumbStats.thumbnailRowsSkipped;
       }
     }
   });
@@ -782,6 +800,7 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
     if (onProgress) onProgress(Math.min(i + CHUNK_SIZE, videos.length), videos.length);
     await new Promise((resolve) => setImmediate(resolve));
   }
+  return stats;
 }
 
 function pruneStaleVideosBefore(db, updatedBefore, options = {}) {

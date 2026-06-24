@@ -301,6 +301,70 @@ test('saveCacheChunked round-trips cached video metadata, bookmarks, and thumbna
   }
 });
 
+test('saveCache reports and skips unchanged thumbnail rows', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    const filePath = path.join(folderPath, 'stable.mp4');
+    const video = buildCachedVideo('stable-1', filePath, {
+      thumbnails: [
+        'thumbs/stable-1/thumb_2.jpg',
+        'thumbs/stable-1/thumb_1.jpg',
+      ],
+    });
+
+    const firstStats = cache.saveCache(db, [video]);
+    const secondStats = cache.saveCache(db, [video]);
+
+    assert.deepEqual(firstStats, { thumbnailRowsWritten: 2, thumbnailRowsSkipped: 0 });
+    assert.deepEqual(secondStats, { thumbnailRowsWritten: 0, thumbnailRowsSkipped: 2 });
+    assert.deepEqual(
+      db.prepare('SELECT idx, file_path FROM thumbnails WHERE video_id = ? ORDER BY idx').all('stable-1'),
+      [
+        { idx: 0, file_path: 'thumbs/stable-1/thumb_1.jpg' },
+        { idx: 1, file_path: 'thumbs/stable-1/thumb_2.jpg' },
+      ]
+    );
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('saveCacheChunked reports and skips unchanged thumbnail rows', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    const filePath = path.join(folderPath, 'chunked-stable.mp4');
+    const video = buildCachedVideo('chunked-stable-1', filePath, {
+      thumbnails: [
+        'thumbs/chunked-stable-1/thumb_1.jpg',
+        'thumbs/chunked-stable-1/thumb_2.jpg',
+      ],
+    });
+
+    const firstStats = await cache.saveCacheChunked(db, [video]);
+    const secondStats = await cache.saveCacheChunked(db, [video]);
+
+    assert.deepEqual(firstStats, { thumbnailRowsWritten: 2, thumbnailRowsSkipped: 0 });
+    assert.deepEqual(secondStats, { thumbnailRowsWritten: 0, thumbnailRowsSkipped: 2 });
+    assert.deepEqual(
+      db.prepare('SELECT idx, file_path FROM thumbnails WHERE video_id = ? ORDER BY idx').all('chunked-stable-1'),
+      [
+        { idx: 0, file_path: 'thumbs/chunked-stable-1/thumb_1.jpg' },
+        { idx: 1, file_path: 'thumbs/chunked-stable-1/thumb_2.jpg' },
+      ]
+    );
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('loadCacheMap can selectively hydrate requested video ids', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;
