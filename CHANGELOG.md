@@ -2,7 +2,7 @@
 
 All notable changes to Video Cull will be documented here.
 
-## [2.0.0] - 2026-06-23
+## [2.0.0] - 2026-06-24
 
 Video Cull 2.0.0 has smarter duplicate review, richer media decisions, safer cache handling, clearer destructive actions, better mounted-drive behavior, and a UI that holds up better on very large libraries and high-resolution screens.
 
@@ -27,7 +27,7 @@ Video Cull 2.0.0 has smarter duplicate review, richer media decisions, safer cac
 - Improved scanner traversal throughput, stat batching, progress reporting, cancellation behavior, stale/superseded scan handling, and behavior on slow mounted drives.
 - Improved metadata and thumbnail processing with clearer progress phases, better cancellation, short-video handling, safer reuse of existing thumbnail sets, and smaller renderer update batches.
 - Improved duplicate detection performance with worker-based fingerprinting, batched database access, lower memory use, stronger candidate grouping, and more stable group IDs.
-- Improved cache loading, saving, migration, recovery, pruning, and corruption quarantine behavior for existing libraries.
+- Improved cache loading, saving, migration, recovery, pruning, and corruption quarantine behavior for existing libraries, including lower thumbnail-cache write churn and conservative concurrent folder-cache loading for very large libraries.
 - Made potentially destructive or expensive maintenance behavior opt-in instead of surprising: stale-cache cleanup defaults off, empty-folder cleanup defaults off, and thumbnail-count changes warn before causing rebuild work.
 - Updated development and CI workflows around Node 24, Vitest, Playwright, IPC contract checks, installer checks, native cache checks, and release packaging.
 
