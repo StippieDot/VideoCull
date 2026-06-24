@@ -920,6 +920,7 @@ function createScanDiagnostics() {
   return {
     folderGroupCount: 0,
     cacheDbPaths: new Set(),
+    cacheLoadConcurrency: 1,
     cacheIndexIo: { reads: 0, writes: 0 },
     loadFolders: [],
     saveFolders: [],
@@ -932,11 +933,17 @@ function recordFolderDiagnostic(list, item) {
   if (list.length > 10) list.length = 10;
 }
 
+function getCacheLoadConcurrency(folderCount) {
+  if (folderCount <= 1) return 1;
+  const cpuCount = os.cpus()?.length || 2;
+  return Math.min(folderCount, Math.max(2, Math.min(6, Math.ceil(cpuCount / 4))));
+}
+
 function countVideoThumbnails(videos) {
   return videos.reduce((sum, video) => sum + (Array.isArray(video.thumbnails) ? video.thumbnails.length : 0), 0);
 }
 
-function emptyThumbnailWriteStats() {
+function emptyCacheWriteStats() {
   return { thumbnailRowsWritten: 0, thumbnailRowsSkipped: 0 };
 }
 
@@ -945,6 +952,7 @@ function summarizeScanDiagnostics(diagnostics) {
   return {
     folderGroupCount: diagnostics.folderGroupCount,
     cacheDbTouchedCount: diagnostics.cacheDbPaths.size,
+    cacheLoadConcurrency: diagnostics.cacheLoadConcurrency,
     cacheIndexIo: diagnostics.cacheIndexIo,
     slowCacheLoadFolderCount: diagnostics.loadFolders.length,
     slowCacheSaveFolderCount: diagnostics.saveFolders.length,
@@ -953,12 +961,6 @@ function summarizeScanDiagnostics(diagnostics) {
 
 function logSlowCacheFolderDiagnostics(diagnostics) {
   if (!diagnostics) return;
-  diagnostics.loadFolders.forEach((folder, index) => {
-    log.info('[scan-directory] slow cache load folder', {
-      rank: index + 1,
-      ...folder,
-    });
-  });
   diagnostics.saveFolders.forEach((folder, index) => {
     log.info('[scan-directory] slow cache save folder', {
       rank: index + 1,
@@ -1049,14 +1051,14 @@ async function saveVideosByParentFolder(videos, cacheOptions, {
     const cachePaths = await prepareCacheFolder(folderPath, cacheOptions, { publish, cacheRoots });
     diagnostics?.cacheDbPaths.add(cachePaths.dbPath);
     const payload = folderVideos.map((video) => videoForDb(video, cachePaths.cacheRootDir));
-    let folderWriteStats = emptyThumbnailWriteStats();
+    let folderWriteStats = emptyCacheWriteStats();
 
     const writePayload = async () => {
       const db = await openCacheDbWithRecovery(folderPath, cacheOptions);
       if (atomic && payload.length <= ATOMIC_SAVE_SYNC_LIMIT) {
-        folderWriteStats = cache.saveCache(db, payload, { updatedAt }) ?? emptyThumbnailWriteStats();
+        folderWriteStats = cache.saveCache(db, payload, { updatedAt }) ?? emptyCacheWriteStats();
       } else {
-        folderWriteStats = await cache.saveCacheChunked(db, payload, null, { updatedAt }) ?? emptyThumbnailWriteStats();
+        folderWriteStats = await cache.saveCacheChunked(db, payload, null, { updatedAt }) ?? emptyCacheWriteStats();
       }
       if (shouldPruneStaleRows) {
         const staleVideos = cache.pruneStaleVideosBefore(db, updatedAt, { details: true });
@@ -1126,9 +1128,12 @@ async function saveVideosByParentFolder(videos, cacheOptions, {
 async function loadRelevantFolderCacheRowsIntoMap(videos, cacheOptions, cachedMap, scanToken, scanCacheRoots, diagnostics = null) {
   const videosByFolder = groupVideosByFolder(videos);
   if (diagnostics) diagnostics.folderGroupCount = Math.max(diagnostics.folderGroupCount, videosByFolder.size);
+  const folderEntries = Array.from(videosByFolder.entries());
+  const cacheLoadConcurrency = getCacheLoadConcurrency(folderEntries.length);
+  if (diagnostics) diagnostics.cacheLoadConcurrency = cacheLoadConcurrency;
   const yieldToEventLoop = createEventLoopYieldController();
 
-  for (const [folderPath, folderVideos] of videosByFolder) {
+  await mapWithConcurrency(folderEntries, cacheLoadConcurrency, async ([folderPath, folderVideos]) => {
     try {
       const folderStartedAt = performance.now();
       assertScanCurrent(scanToken);
@@ -1157,7 +1162,7 @@ async function loadRelevantFolderCacheRowsIntoMap(videos, cacheOptions, cachedMa
       if (err instanceof ScanSupersededError) throw err;
       log.warn(`[scan-directory] Failed to load relevant cache rows for ${folderPath}:`, err);
     }
-  }
+  });
 }
 
 async function pruneMissingDescendantCaches(rootFolder, cacheOptions, includeSubfolders) {
