@@ -14,11 +14,15 @@ When you're done, one command sends everything marked for deletion to the Recycl
 
 | Landing | Grid |
 |---|---|
-| ![Landing page](docs/screenshots/V1.4.0%20-%20Landing%20Page.png) | ![Grid view](docs/screenshots/V1.4.0%20-%20GridView.png) |
+| ![Landing page](docs/screenshots/V2.0.0%20-%20Landing%20Page.png) | ![Grid view](docs/screenshots/V2.0.0%20-%20GridView.png) |
+
+| Duplicate Review | Duplicate Settings |
+|---|---|
+| ![Duplicate review](docs/screenshots/V2.0.0%20-%20DuplicationMode.png) | ![Duplicate settings](docs/screenshots/V2.0.0%20-%20DuplicationSettings.png) |
 
 | Review Mode |
 |---|
-| ![Review mode](docs/screenshots/v1.4.0%20-%20ReviewMode.png) |
+| ![Review mode](docs/screenshots/V2.0.0%20-%20ReviewMode.png) |
 
 ---
 
