@@ -9,7 +9,7 @@ import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenu
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, HardDrive, FileVideo, X, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List
+  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -21,6 +21,7 @@ interface SidebarProps {
   onCloseSession: () => void;
   onFindDuplicates: () => void;
   onOpenDuplicateSettings: () => void;
+  onOpenDocumentation: () => void;
   globalMute: boolean;
   globalMuteEnabled: boolean;
   globalMuteLabel: string;
@@ -693,6 +694,7 @@ export default function Sidebar({
   onCloseSession,
   onFindDuplicates,
   onOpenDuplicateSettings,
+  onOpenDocumentation,
   globalMute,
   globalMuteEnabled,
   globalMuteLabel,
@@ -947,16 +949,26 @@ export default function Sidebar({
           <FileVideo size={22} />
           Video Cull
         </h1>
-        {globalMuteEnabled && (
+        <div className="sidebar-header-actions">
           <button
-            className={`sidebar-mute-btn ${globalMute ? 'active' : ''}`}
-            onClick={onToggleGlobalMute}
-            title={`${globalMute ? 'Unmute' : 'Mute'} in-app playback (${globalMuteLabel})`}
-            aria-label={globalMute ? 'Unmute in-app playback' : 'Mute in-app playback'}
+            className="sidebar-icon-btn"
+            onClick={onOpenDocumentation}
+            title="Open documentation"
+            aria-label="Open documentation"
           >
-            {globalMute ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            <CircleHelp size={16} />
           </button>
-        )}
+          {globalMuteEnabled && (
+            <button
+              className={`sidebar-icon-btn ${globalMute ? 'active' : ''}`}
+              onClick={onToggleGlobalMute}
+              title={`${globalMute ? 'Unmute' : 'Mute'} in-app playback (${globalMuteLabel})`}
+              aria-label={globalMute ? 'Unmute in-app playback' : 'Mute in-app playback'}
+            >
+              {globalMute ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            </button>
+          )}
+        </div>
       </div>
 
       <section className="sidebar-section sidebar-session-section">

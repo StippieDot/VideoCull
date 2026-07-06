@@ -9,6 +9,7 @@ import EmptyState from './components/EmptyState';
 import SettingsModal from './components/SettingsModal';
 import DuplicateGroupsView from './components/DuplicateGroupsView';
 import ShortcutsHelp from './components/ShortcutsHelp';
+import DocumentationModal from './components/DocumentationModal';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
@@ -127,6 +128,7 @@ export default function App() {
   const genProgressPhaseRef = useRef<'thumbnails' | 'metadata' | 'media'>('thumbnails');
   const isPrivateRef = useRef(false);
   const showShortcutsHelpRef = useRef(false);
+  const showDocumentationRef = useRef(false);
   const dragDepthRef = useRef(0);
   const folderReviewPathRef = useRef<string | null>(null);
   const settingsSaveQueueRef = useRef(Promise.resolve());
@@ -134,6 +136,7 @@ export default function App() {
   const autoScannedDirectoriesKeyRef = useRef('');
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const [showDocumentation, setShowDocumentation] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropModalPath, setDropModalPath] = useState<string | null>(null);
@@ -178,6 +181,10 @@ export default function App() {
   useEffect(() => {
     showShortcutsHelpRef.current = showShortcutsHelp;
   }, [showShortcutsHelp]);
+
+  useEffect(() => {
+    showDocumentationRef.current = showDocumentation;
+  }, [showDocumentation]);
 
   useEffect(() => {
     if (previousReviewModeRef.current && !reviewMode) {
@@ -643,6 +650,7 @@ export default function App() {
       const state = useStore.getState();
       switch (action) {
         case 'open-settings': { openSettings('interface'); break; }
+        case 'open-documentation': { setShowDocumentation(true); break; }
         case 'open-directory': {
           const dir = await window.electronAPI.selectDirectory();
           if (dir) handleDirectoryPicked(dir);
@@ -772,7 +780,7 @@ export default function App() {
       ) return;
       if (document.body.hasAttribute('data-capturing-keybind')) return;
       const s = useStore.getState().settings;
-      const modalOpen = useStore.getState().isSettingsModalOpen || showShortcutsHelpRef.current;
+      const modalOpen = useStore.getState().isSettingsModalOpen || showShortcutsHelpRef.current || showDocumentationRef.current;
       if (!modalOpen && s.features.globalMute && matchesKeybind(e, s.keyGlobalMute)) {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -782,6 +790,7 @@ export default function App() {
         setShowShortcutsHelp((v) => !v);
       } else if (e.key === 'Escape') {
         setShowShortcutsHelp(false);
+        setShowDocumentation(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -952,6 +961,7 @@ export default function App() {
     >
       <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
+      {showDocumentation && <DocumentationModal onClose={() => setShowDocumentation(false)} />}
       {reviewMode && globalMuteEnabled && !isPrivate && (
         <button
           className={`app-global-mute ${globalMute ? 'active' : ''}`}
@@ -969,6 +979,7 @@ export default function App() {
             onDirectoryPicked={handleDirectoryPicked}
             onNotify={pushToast}
             onOpenSettings={() => openSettings('interface')}
+            onOpenDocumentation={() => setShowDocumentation(true)}
             onCloseSession={() => void handleCloseSession()}
             onFindDuplicates={() => void handleFindDuplicates()}
             onOpenDuplicateSettings={() => openSettings('duplicates')}
@@ -982,7 +993,7 @@ export default function App() {
 
       <Profiler id="AppMain" onRender={handleMainProfiler}>
         <main className="app-main">
-          {!directory && !isScanning && videoCount === 0 && <EmptyState onNotify={pushToast} />}
+          {!directory && !isScanning && videoCount === 0 && <EmptyState onNotify={pushToast} onOpenDocumentation={() => setShowDocumentation(true)} />}
           {directory && videoCount > 0 && duplicateGroupsMode && (
             <Profiler id="DuplicateGroupsView" onRender={handleMainProfiler}>
               <div

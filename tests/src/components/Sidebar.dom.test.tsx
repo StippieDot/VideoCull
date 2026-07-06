@@ -57,6 +57,7 @@ function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}) {
       onCloseSession={vi.fn()}
       onFindDuplicates={vi.fn()}
       onOpenDuplicateSettings={vi.fn()}
+      onOpenDocumentation={vi.fn()}
       globalMute={false}
       globalMuteEnabled={false}
       globalMuteLabel="M"
@@ -227,6 +228,20 @@ describe('Sidebar recent folder behavior', () => {
 
     expect(useStore.getState().statusFilter).toBe('keep');
     expect(keepButton.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('opens documentation from the sidebar header button', async () => {
+    const onOpenDocumentation = vi.fn();
+    useStore.setState({
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+    });
+
+    renderSidebar({ onOpenDocumentation });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open documentation' }));
+
+    expect(onOpenDocumentation).toHaveBeenCalledTimes(1);
   });
 
   test('disables batch delete while a folder scan is replacing the session', () => {

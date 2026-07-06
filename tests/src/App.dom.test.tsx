@@ -87,6 +87,10 @@ vi.mock('../../src/components/ShortcutsHelp', () => ({
   default: () => <div data-testid="shortcuts-help">Shortcuts Help</div>,
 }));
 
+vi.mock('../../src/components/DocumentationModal', () => ({
+  default: () => <div data-testid="documentation-modal">Documentation Modal</div>,
+}));
+
 vi.mock('../../src/perf-dev', async () => await import('../helpers/perfDevMock'));
 
 import App from '../../src/App';
@@ -277,6 +281,14 @@ describe('App renderer behavior', () => {
     await waitFor(() => {
       expect(screen.getByTestId('sidebar-progress').textContent).toBe('Finding candidates:4/10');
     });
+  });
+
+  test('opens documentation from the Help menu action', async () => {
+    render(<App />);
+
+    expect(screen.queryByTestId('documentation-modal')).toBeNull();
+    await electron.emitMenuAction('open-documentation');
+    expect(screen.getByTestId('documentation-modal')).toBeTruthy();
   });
 
   test('pointer-clicked buttons do not retain focus and steal Enter or Space shortcuts afterward', async () => {

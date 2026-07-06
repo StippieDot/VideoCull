@@ -532,6 +532,16 @@ function setApplicationMenu() {
           click: () => sendToRenderer('menu-action', 'play-external')
         }
       ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Documentation',
+          accelerator: 'F1',
+          click: () => sendToRenderer('menu-action', 'open-documentation')
+        }
+      ]
     }
   ];
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import useStore from '../store';
-import { FolderOpen, Film, Settings, X } from 'lucide-react';
+import { CircleHelp, FolderOpen, Film, Settings, X } from 'lucide-react';
 import type { ToastInput, ToastKind } from '../types';
 import { formatKeybind } from '../keybinds';
 import { formatRelativeTime, formatRecentPath } from '../utils';
@@ -10,13 +10,14 @@ import './EmptyState.css';
 
 interface EmptyStateProps {
   onNotify: (toast: ToastInput | string, kind?: ToastKind) => void;
+  onOpenDocumentation: () => void;
 }
 
 function sameStrings(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-export default function EmptyState({ onNotify }: EmptyStateProps) {
+export default function EmptyState({ onNotify, onOpenDocumentation }: EmptyStateProps) {
   const setDirectory = useStore((s) => s.setDirectory);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const setIncludeSubfolders = useStore((s) => s.setIncludeSubfolders);
@@ -154,9 +155,14 @@ export default function EmptyState({ onNotify }: EmptyStateProps) {
 
   return (
     <div className="empty-state">
-      <button className="settings-icon-btn empty-state-settings" onClick={() => useStore.getState().setIsSettingsModalOpen(true)} title="Preferences (Ctrl+,)">
-        <Settings size={20} />
-      </button>
+      <div className="empty-state-actions">
+        <button className="settings-icon-btn empty-state-settings-btn" onClick={onOpenDocumentation} title="Open documentation" aria-label="Open documentation">
+          <CircleHelp size={20} />
+        </button>
+        <button className="settings-icon-btn empty-state-settings-btn" onClick={() => useStore.getState().setIsSettingsModalOpen(true)} title="Preferences (Ctrl+,)" aria-label="Open preferences">
+          <Settings size={20} />
+        </button>
+      </div>
       <div className="empty-icon">
         <Film size={56} strokeWidth={1.2} />
       </div>

@@ -1039,7 +1039,7 @@ function DuplicateGroupsView() {
           title="Mark the selected videos for deletion review. Files are not deleted until you confirm batch deletion."
         >
           <Trash2 size={14} />
-          Mark selected for deletion{selectedCount > 0 ? ` (${selectedCount})` : ''}
+          Mark selected as Delete{selectedCount > 0 ? ` (${selectedCount})` : ''}
         </button>
       </div>
     </div>

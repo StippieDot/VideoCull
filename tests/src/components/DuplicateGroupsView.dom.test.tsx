@@ -119,8 +119,9 @@ describe('DuplicateGroupsView behavior', () => {
 
     render(<DuplicateGroupsView />);
 
+    expect(screen.queryByText('Use checkboxes for batch actions. Right-click a row or group for more actions.')).toBeNull();
     await userEvent.click(await screen.findByRole('button', { name: 'Select suggested deletions' }));
-    await userEvent.click(screen.getByRole('button', { name: /Mark selected for deletion/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Mark selected as Delete/i }));
 
     await waitFor(() => {
       expect(useStore.getState().videos.find((video) => video.id === 'b')?.status).toBe('delete');
@@ -144,7 +145,7 @@ describe('DuplicateGroupsView behavior', () => {
     render(<DuplicateGroupsView />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Select suggested deletions' }));
-    expect(screen.getByRole('button', { name: /Mark selected for deletion \(1\)/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Mark selected as Delete \(1\)/i })).toBeTruthy();
 
     act(() => {
       useStore.getState().setDuplicatePathFilter('no matching path');
@@ -152,7 +153,7 @@ describe('DuplicateGroupsView behavior', () => {
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Clear selected' })).toBeNull();
-      expect(screen.getByRole('button', { name: 'Mark selected for deletion' })).toHaveProperty('disabled', true);
+      expect(screen.getByRole('button', { name: 'Mark selected as Delete' })).toHaveProperty('disabled', true);
     });
   });
 
