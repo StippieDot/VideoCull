@@ -1,16 +1,18 @@
 # Video Cull
-> Tear through a massive video library in minutes. No cloud. No account. Just you, your files, and a keyboard.
+[![Release](https://img.shields.io/github/v/release/stippie-dot/VideoCull?style=for-the-badge)](https://github.com/stippie-dot/VideoCull/releases)
+[![License](https://img.shields.io/github/license/stippie-dot/VideoCull?style=for-the-badge)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge)](https://github.com/stippie-dot/VideoCull/releases)
+[![Docs](https://img.shields.io/badge/docs-videocull.app-1f2937?style=for-the-badge&logo=readthedocs&logoColor=white)](https://videocull.app)
+> Review, sort, and de-duplicate video folders faster.
 
-You've got a folder full of videos: dashcam clips, drone footage, years of random stuff you never sorted. Opening each one in VLC is not a workflow. Video Cull is.
+Video folders get out of hand fast. A few dashcam clips turn into hundreds. Drone footage piles up. Random captures sit there for years because sorting them is too tedious to start.
 
-Point it at a folder. It scans everything, generates thumbnail strips, and gives you a keyboard-driven interface to decide what stays and what goes. When thumbnails aren't enough, hit play and scrub through it right there. Mark, rate, favorite, move on, repeat.
+Video Cull is built to make that part faster. Open a folder and it scans the videos, generates thumbnail strips, and lets you work through them with the keyboard instead of opening files one by one. If thumbnails aren’t enough, play the video right there, scrub through it, rate it, favorite it, or mark it and move on.
 
-When you're done, one command sends everything marked for deletion to the Recycle Bin when possible. Nothing is permanently gone unless you confirm it.
+It also helps with the mess that builds up around large libraries: you can filter and sort aggressively, work through likely duplicates with suggested keepers, and batch-delete what you don’t want without losing track of the rest.
 
-> [!IMPORTANT]
-> **Official Links:** The official website and documentation for VideoCull are hosted exclusively at **[videocull.app](https://docs.videocull.app/)** and this GitHub repository. 
-> 
-> *Please beware of third-party domains (such as `.com` variants) offering downloads. They are NOT affiliated with this project and may contain modified or unsafe binaries.*
+When you’re done, everything marked for deletion goes to the Recycle Bin when possible. Nothing is permanently removed unless you confirm it.
+
 ---
 
 ## Screenshots
@@ -36,6 +38,10 @@ Grab the latest installer from the [Releases](https://github.com/stippie-dot/Vid
 The packaged installer is Windows-first, installs for the current user, and does not require admin rights. On first launch Windows may show a SmartScreen prompt since the app isn't code-signed yet; click "Run anyway" to proceed.
 
 The installer lets you choose the install location and shortcuts. Later updates are handled in-app when a GitHub release is available.
+> [!IMPORTANT]
+> **Official Links:** The official website and documentation for VideoCull are hosted exclusively at **[videocull.app](https://docs.videocull.app/)** and this GitHub repository. 
+> 
+> *Please beware of third-party domains (such as `.com` variants) offering downloads. They are NOT affiliated with this project and may contain modified or unsafe binaries.*
 
 ---
 
