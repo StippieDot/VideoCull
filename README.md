@@ -1,5 +1,4 @@
 # Video Cull
-
 > Tear through a massive video library in minutes. No cloud. No account. Just you, your files, and a keyboard.
 
 You've got a folder full of videos: dashcam clips, drone footage, years of random stuff you never sorted. Opening each one in VLC is not a workflow. Video Cull is.
@@ -8,6 +7,10 @@ Point it at a folder. It scans everything, generates thumbnail strips, and gives
 
 When you're done, one command sends everything marked for deletion to the Recycle Bin when possible. Nothing is permanently gone unless you confirm it.
 
+> [!IMPORTANT]
+> **Official Links:** The official website and documentation for VideoCull are hosted exclusively at **[videocull.app](https://docs.videocull.app/)** and this GitHub repository. 
+> 
+> *Please beware of third-party domains (such as `.com` variants) offering downloads. They are NOT affiliated with this project and may contain modified or unsafe binaries.*
 ---
 
 ## Screenshots
