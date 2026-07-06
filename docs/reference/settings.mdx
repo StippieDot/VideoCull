@@ -1,0 +1,59 @@
+---
+title: Settings
+description: Configure thumbnails, cache behavior, duplicate review, hardware acceleration, and other core Video Cull options.
+---
+
+Settings let you tune how Video Cull scans, thumbnails, caches, and reviews your library. Most teams only touch these once, but the controls matter when your footage or hardware behaves differently from the defaults.
+
+## Main settings
+
+| Setting | Options | Default |
+| --- | --- | --- |
+| Cache location | Centralised / Per-drive / Distributed | Centralised |
+| Thumbnails per video | 1, 2, 4, 6, 9 | 6 |
+| Default card scale | 0.5x - 2.0x | 1.0x |
+| Default sort | Name / Size / Date / Duration / Rating / Resolution / FPS | Name |
+| Group by folder | On / Off | On |
+| Parallel FFmpeg processes | Auto / 1 / 2 / 3 / 4 / 6 / 8 / 12 / 16 / 24 / 32 | Auto |
+| Limit each FFmpeg process to 1 CPU thread | On / Off | On |
+| Intro skip delay | 0 - 60 seconds | 3s |
+| Hardware acceleration | On / Off | Off |
+| Auto-clean stale cache after scan | On / Off | Off |
+| Remove empty folders after deleting videos | On / Off | Off |
+| Auto updates | On / Off | On |
+
+## Cache behavior
+
+Progress lives in SQLite databases under the configured cache location.
+
+- **Centralised** keeps cache data in one app-controlled location.
+- **Per-drive** keeps separate cache roots per drive.
+- **Distributed** stores `.videocull` next to your files.
+
+Changing cache mode can migrate existing cache data instead of forcing a fresh start.
+
+## Thumbnail generation
+
+Thumbnail generation settings matter most when clips start with fades, when storage is slow, or when CPU load needs to be limited.
+
+- Increase thumbnails per video when one strip is not giving enough visual context.
+- Raise intro skip delay when the first frames are often black.
+- Lower parallel FFmpeg processes when the machine becomes unresponsive.
+- Enable hardware acceleration only if your GPU driver behaves well with FFmpeg on your system.
+
+## Duplicate review settings
+
+Duplicate review has its own tab with controls for:
+
+- Comparison method
+- Similarity threshold
+- Sample count
+- Scope
+- Keeper priority
+- Ignored matches
+- Sampling windows
+- Retry behavior
+
+<Tip>
+  If you are diagnosing strange thumbnail or playback behavior, change one setting at a time and rescan so you can see which knob actually fixed the problem.
+</Tip>

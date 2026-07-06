@@ -1,0 +1,41 @@
+---
+title: Building from source
+description: Run Video Cull locally, execute the test suite, and package the Windows installer from source.
+---
+
+Building from source is useful when you want to test changes locally or work on the app itself.
+
+Requires Node.js 24 LTS. FFmpeg and FFprobe are bundled with the app dependencies.
+
+```bash
+git clone https://github.com/stippie-dot/VideoCull.git
+cd VideoCull
+npm ci
+npm run dev
+```
+
+## Common commands
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Vite plus Electron with hot reload |
+| `npm test` | Run the Vitest suite once |
+| `npm run test:renderer` | Run the renderer integration tests |
+| `npm run test:watch` | Run Vitest in watch mode |
+| `npm run coverage` | Generate coverage reports |
+| `npm run test:ci` | IPC contract check, test TypeScript compile, and full coverage run |
+| `npm run test:e2e` | Build the renderer and run the Electron Playwright flows |
+| `npm run test:cache-native` | Optional native cache regression lane |
+| `npm run build` | Renderer-only production build |
+| `npm run check:installer` | Validate Windows installer config and artwork |
+| `npm run check:ipc` | Validate preload and type IPC contract coverage |
+| `npm run cleanup:cache` | Clean old cache and thumbnail clutter |
+| `npm run package` | Full build plus Windows installer |
+| `npm run rebuild` | Rebuild native modules against Electron |
+
+## Notes
+
+- `npm run test:ci` is the normal local verification path.
+- `npm run test:cache-native` is mainly intended for CI and clean Node-only installs.
+- Development Electron sessions use a separate `userData` folder so local settings and cache do not mix with the packaged app.
+- E2E runs use their own temporary `userData` directory and do not touch your normal app data.

@@ -1,0 +1,44 @@
+---
+title: Duplicate review
+description: Find likely duplicate videos and work through suggested keepers instead of reviewing every clip from scratch.
+---
+
+Duplicate review helps you find likely duplicate files across all loaded videos or just the current filtered view. Instead of starting from scratch, you work through grouped matches with a suggested keeper.
+
+![Duplicate review](/screenshots/V2.0.0%20-%20DuplicationMode.png)
+
+## Matching methods
+
+Video Cull currently supports two duplicate comparison methods:
+
+- `pHash`
+- Visual similarity
+
+You can adjust the similarity threshold and the number of samples used during matching.
+
+## Keeper suggestions
+
+Suggested keepers are ranked using file characteristics such as:
+
+- Resolution
+- Bitrate
+- Duration
+- FPS
+- File size
+
+Protection rules can also stop files already marked Keep or Skip from being replaced automatically.
+
+## Override and cleanup controls
+
+- Manually choose a different keeper when the suggestion is wrong.
+- Mark a pair as not a match so it stays ignored on later runs.
+- Exclude items or dismiss groups from the duplicate workflow.
+- Use right-click actions for duplicate rows and groups.
+
+## Running duplicate review
+
+You can run duplicate detection after a scan or keep it as a separate action. Duplicate-specific settings control the method, threshold, sampling windows, scope, keeper priority, ignored matches, and retry behavior.
+
+<Tip>
+  Use the current filtered view as the scope when you want to narrow duplicate detection to a single folder, project, or subset first.
+</Tip>

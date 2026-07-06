@@ -1,0 +1,37 @@
+---
+title: Supported formats
+description: Understand which video formats Video Cull can inspect and which ones should open in your external player instead.
+---
+
+Video Cull uses FFmpeg and FFprobe to generate thumbnails and metadata, so it can inspect many common video formats even when in-app playback is not available.
+
+## Built-in player
+
+The built-in player is intended for compatible web-playable media such as:
+
+- `.mp4`
+- `.webm`
+- `.mov`
+- `.mkv`
+- `.m4v`
+- `.ogv`
+
+Playback still depends on the underlying codecs supported by Chromium.
+
+## External player fallback
+
+Legacy or unsupported formats such as the following should be opened in your default system player instead:
+
+- `.avi`
+- `.wmv`
+- `.asf`
+- `.flv`
+- `.ts`
+- `.mts`
+- `.mpeg`
+
+Those files can still be scanned, thumbnailed, filtered, rated, and marked for deletion inside Video Cull.
+
+<Note>
+  If a file should work in-app but does not, open it in your external player first to check whether the media itself is damaged or the issue is player compatibility.
+</Note>

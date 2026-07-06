@@ -9,6 +9,14 @@
   },
   "logo": "icon.png",
   "favicon": "icon.png",
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/stippie-dot/VideoCull"
+      }
+    ]
+  },
   "navigation": {
     "groups": [
       {
@@ -18,6 +26,23 @@
           "getting-started/introduction",
           "getting-started/installation",
           "getting-started/quickstart"
+        ]
+      },
+      {
+        "group": "Features",
+        "pages": [
+          "features/grid-view",
+          "features/review-mode",
+          "features/duplicate-review"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/settings",
+          "reference/keyboard-shortcuts",
+          "reference/supported-formats",
+          "reference/building-from-source"
         ]
       },
       {
