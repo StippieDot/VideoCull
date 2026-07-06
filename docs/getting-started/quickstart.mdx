@@ -1,0 +1,55 @@
+---
+title: Get started with Video Cull
+description: Open a folder, generate thumbnails, review clips, and safely send unwanted videos to the Recycle Bin.
+---
+
+Once Video Cull is installed, you can go from a folder full of unsorted clips to a clean keep or delete pass in a few minutes.
+
+<Warning>
+  Nothing is removed until you explicitly trigger the delete action. Until then, your review decisions stay reversible.
+</Warning>
+
+<Steps>
+  <Step title="Open a folder">
+    Press `Ctrl+O` to open the directory picker, or drag and drop a folder onto the app window. Video Cull accepts folders only.
+  </Step>
+  <Step title="Wait for scanning and thumbnail generation">
+    Video Cull scans the folder to find video files, then starts generating thumbnail strips in the background with the bundled FFmpeg. You do not need to wait for all thumbnails to finish. You can start browsing immediately while the rest complete.
+  </Step>
+  <Step title="Browse the grid">
+    Every video appears as a card with thumbnail frames sampled from across the file. Use search, filters, grouping, and sorting to narrow the list.
+
+    - Press `Ctrl++` to make cards larger.
+    - Press `Ctrl+-` to make cards smaller.
+    - Filter by status, file size, duration, rating, or favorites.
+    - Sort by name, size, duration, date, rating, resolution, or FPS.
+  </Step>
+  <Step title="Enter review mode">
+    When thumbnail strips are not enough to make a call, switch to review mode. This opens a fullscreen, one-at-a-time view with the full thumbnail strip, video metadata, and an in-app player you can scrub through.
+
+    Press `Enter` to play the video in-app, or `Ctrl+Enter` to open it in your default system player.
+  </Step>
+  <Step title="Mark videos">
+    In review mode, use the keyboard to act on each video:
+
+    | Key | Action |
+    | --- | --- |
+    | `K` | Mark as Keep |
+    | `D` | Mark for deletion |
+    | `S` | Skip |
+    | `Z` | Undo the last decision |
+
+    After you mark a video, Video Cull automatically advances to the next one. Use `Left` and `Right` to move between videos when playback is paused, or to scrub 5 seconds while a video is playing.
+
+    Press `B` while a video is playing to drop a bookmark at the current position.
+  </Step>
+  <Step title="Commit the delete batch">
+    Press `Ctrl+Backspace` from anywhere in the app to send files marked for deletion to the Recycle Bin when possible.
+  </Step>
+</Steps>
+
+## What to try next
+
+- Use duplicate review to find likely duplicate files across the whole session or the current filtered view.
+- Change thumbnails per video or intro skip delay in Settings if the default frames are not useful for your footage.
+- Export an HTML report if you want a shareable summary of the current keep or delete state.

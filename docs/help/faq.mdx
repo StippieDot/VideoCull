@@ -1,0 +1,72 @@
+---
+title: Frequently asked questions
+description: Answers to common questions about formats, cache, offline use, updates, and recovery.
+---
+
+<AccordionGroup>
+  <Accordion title="Which video formats does Video Cull support?">
+    Video Cull can generate thumbnails and metadata for many common formats through FFmpeg.
+
+    The built-in player is intended for web-playable formats such as `.mp4`, `.webm`, `.mov`, `.mkv`, `.m4v`, and `.ogv` when the codecs are supported.
+
+    Formats that Chromium does not play well in-app, such as `.avi`, `.wmv`, `.asf`, `.flv`, `.ts`, `.mts`, and `.mpeg`, can still be reviewed and opened in your external player.
+  </Accordion>
+
+  <Accordion title="Do I need to install FFmpeg separately?">
+    No. FFmpeg and FFprobe are bundled with Video Cull.
+  </Accordion>
+
+  <Accordion title="Where does Video Cull store thumbnails and decisions?">
+    Video Cull stores progress in SQLite databases plus thumbnail files under the configured cache location.
+
+    The app supports three cache location modes:
+
+    - Centralised
+    - Per-drive
+    - Distributed (`.videocull` next to your files)
+
+    Status, ratings, favorites, bookmarks, metadata, and thumbnails survive rescans.
+  </Accordion>
+
+  <Accordion title="Will rescanning regenerate every thumbnail?">
+    Not usually. Video Cull skips videos whose thumbnail set is already complete in cache.
+
+    If you change thumbnail settings and need a full rebuild, clear the thumbnail cache first and then rescan.
+  </Accordion>
+
+  <Accordion title="Can I undo a Keep or Delete decision?">
+    Yes. You can undo decisions before you commit the final delete action.
+
+    After files have been sent to the Recycle Bin, recovery happens from the Recycle Bin itself.
+  </Accordion>
+
+  <Accordion title="Are deleted files permanently removed?">
+    No. Video Cull sends marked files to the Recycle Bin when possible. They are not gone forever unless you empty the Recycle Bin or your system cannot use it for that location.
+
+    If you send files there by mistake, you can restore them from the Windows Recycle Bin and then rescan in Video Cull.
+  </Accordion>
+
+  <Accordion title="Does Video Cull work offline?">
+    Yes. Video Cull runs locally and does not require an account or cloud sync.
+  </Accordion>
+
+  <Accordion title="Will upgrades preserve my decisions and bookmarks?">
+    Yes. Cache migrations are intended to preserve status decisions, bookmarks, and other local progress across app updates.
+
+    If something looks missing after an update, rescan the folder first so any pending migration can complete.
+  </Accordion>
+
+  <Accordion title="Why does Windows SmartScreen warn me about the installer?">
+    The installer is not code-signed yet, so Windows may flag it as an unrecognized app. Use the official [GitHub Releases](https://github.com/stippie-dot/VideoCull/releases) page and click **More info** then **Run anyway**.
+  </Accordion>
+
+  <Accordion title="Can I use Video Cull on macOS or Linux?">
+    Current packaged releases are Windows-first. The app is built with Electron, but there are no official macOS or Linux installers at the moment.
+  </Accordion>
+
+  <Accordion title="What does intro skip delay do?">
+    Intro skip delay controls how far into the file the first thumbnail frame is sampled. The default is `3s`, which helps avoid black fades or blank lead-ins.
+
+    You can set it anywhere from 0 to 60 seconds in Settings.
+  </Accordion>
+</AccordionGroup>

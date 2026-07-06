@@ -1,0 +1,38 @@
+---
+title: Install Video Cull on Windows
+description: Download and install Video Cull on Windows. No admin rights required. FFmpeg and FFprobe are bundled.
+---
+
+Video Cull ships as a Windows installer for the current user. You do not need administrator rights, and you do not need to install FFmpeg or FFprobe separately. The installer packages everything the app needs for thumbnail generation and video analysis.
+
+<Steps>
+  <Step title="Download the latest installer">
+    Open the [GitHub Releases](https://github.com/stippie-dot/VideoCull/releases) page and download the newest Windows installer from the latest release.
+  </Step>
+  <Step title="Run the installer">
+    Double-click the downloaded `.exe` file and choose your install location and shortcut options.
+  </Step>
+  <Step title="Handle the SmartScreen prompt">
+    Windows may show a SmartScreen warning because the app is not code-signed yet. Click **More info**, then **Run anyway** to proceed.
+  </Step>
+  <Step title="Launch Video Cull">
+    Start the app from the Start Menu or the desktop shortcut created by the installer.
+  </Step>
+</Steps>
+
+## System requirements
+
+- Installs per user, not system-wide.
+- Windows is the primary supported platform.
+- End users do not need Node.js.
+- FFmpeg and FFprobe are bundled with the app.
+
+## What gets installed
+
+The installer creates Start Menu and Desktop shortcuts named **Video Cull**.
+
+Later updates are handled in-app when a GitHub release is available.
+
+<Note>
+  Cache data is stored separately from the installed app, so reinstalling does not automatically wipe your review progress.
+</Note>

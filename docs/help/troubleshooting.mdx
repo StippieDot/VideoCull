@@ -1,0 +1,83 @@
+---
+title: Troubleshooting
+description: Fix thumbnail generation, playback, cache, and deletion issues in Video Cull.
+---
+
+Most issues are either stale cache or media compatibility problems. Start with the cheap fix: clear thumbnail cache, then rescan.
+
+<AccordionGroup>
+  <Accordion title="Thumbnails are not generating or are stuck">
+    <Steps>
+      <Step title="Check that the folder actually contains videos">
+        Video Cull ignores non-video files.
+      </Step>
+      <Step title="Clear thumbnail cache and rescan">
+        Use the app action for clearing thumbnail cache, then press `F5` to rescan.
+      </Step>
+      <Step title="Disable hardware acceleration">
+        Some GPU driver setups behave badly with FFmpeg hardware decoding.
+      </Step>
+      <Step title="Reduce parallel work">
+        Lower **Parallel FFmpeg processes** and, if needed, enable **Limit each FFmpeg process to 1 CPU thread**.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Video durations are blank or show as 0">
+    Blank or zero durations usually mean the cache was written before duration data was extracted, or that a previous scan was interrupted.
+
+    <Steps>
+      <Step title="Clear thumbnail cache">
+        Clear the thumbnail cache for the current folder.
+      </Step>
+      <Step title="Rescan the folder">
+        Press `F5` to rescan so FFprobe can repopulate the missing duration data.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Windows SmartScreen warns on launch">
+    This is expected. Video Cull is not code-signed yet, so Windows may flag it as an unrecognized app the first time you run it.
+
+    <Steps>
+      <Step title="Click More info">
+        Use the **More info** link on the SmartScreen prompt.
+      </Step>
+      <Step title="Click Run anyway">
+        Continue only if you downloaded the installer from the official [GitHub Releases](https://github.com/stippie-dot/VideoCull/releases) page.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="A video does not play in the built-in player">
+    The built-in player depends on Chromium codec support. Open the file in your external player when the format or codec is not supported in-app.
+
+    If a format you expect to work still fails, check whether the file opens correctly in your system player first.
+  </Accordion>
+
+  <Accordion title="I accidentally sent videos to the Recycle Bin">
+    Restore them from the Windows Recycle Bin, then rescan in Video Cull so the files appear in the grid again.
+  </Accordion>
+
+  <Accordion title="Thumbnail generation uses too much CPU">
+    <Steps>
+      <Step title="Reduce parallel work">
+        Lower **Parallel FFmpeg processes** to keep the machine responsive.
+      </Step>
+      <Step title="Enable one-thread-per-process mode">
+        Turn on **Limit each FFmpeg process to 1 CPU thread**.
+      </Step>
+      <Step title="Disable hardware acceleration if needed">
+        Some GPU drivers behave poorly with FFmpeg hardware acceleration.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Recent directories include paths that no longer exist">
+    Restarting the app should clean stale entries automatically. You can also clear recent directories manually from the UI.
+  </Accordion>
+
+  <Accordion title="Bookmarks or decisions look missing after an update">
+    Rescan the folder first so any cache migration can complete. If the data is still missing after that, file a report on [GitHub](https://github.com/stippie-dot/VideoCull/issues).
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,65 @@
+---
+title: What is Video Cull?
+description: Video Cull is an offline desktop app for reviewing large local video libraries with thumbnail strips and keyboard shortcuts.
+---
+
+Video Cull is a Windows-first desktop app for anyone who has accumulated more video files than they know what to do with. Point it at a folder, and it scans the files, generates a strip of thumbnails for each video, and gives you a keyboard-driven workflow to decide what stays and what goes.
+
+Nothing is uploaded. Nothing needs an account. Nothing is permanently removed until you confirm the delete step.
+
+The core workflow is straightforward: open a folder, let thumbnails generate in the background, browse the grid to get a quick visual read on each clip, enter review mode for a closer look, make a decision, and move on. When you are ready, one command sends everything marked for deletion to the Recycle Bin when possible.
+
+Video Cull runs entirely offline. There is no account, no cloud sync, and no data sent anywhere. It installs per user on Windows and does not require administrator rights.
+
+## How it works
+
+<Steps>
+  <Step title="Open a folder">
+    Drag a folder onto the app window or press `Ctrl+O` to open the directory picker. Video Cull scans the folder and finds the video files inside it.
+  </Step>
+  <Step title="Generate thumbnails in the background">
+    FFmpeg and FFprobe are bundled with the app, so Video Cull can start extracting frames immediately. You can begin reviewing before every thumbnail finishes. Thumbnails appear as they complete and are stored in local cache.
+  </Step>
+  <Step title="Browse the grid">
+    Each video appears as a card with a thumbnail strip, so you can identify the content at a glance without opening every file.
+  </Step>
+  <Step title="Review and decide">
+    Stay in the grid or switch to review mode to go through videos one at a time. Use the keyboard to mark each file as Keep, Delete, or Skip.
+  </Step>
+  <Step title="Commit the delete batch">
+    Press `Ctrl+Backspace` to send everything marked for deletion to the Recycle Bin. Until you do, every decision is reversible.
+  </Step>
+</Steps>
+
+## Key features
+
+**Thumbnail strips** let you see frames sampled from different points in the file before opening anything. You can configure how many frames are generated per video and how far into the file the first frame is taken.
+
+**Keyboard-driven decisions** keep review fast. In review mode, `K` keeps a video, `D` marks it for deletion, `S` skips it, and `Z` undoes the last decision. Shortcuts are customizable in Settings.
+
+**Recycle Bin safety** means deleted files go to the Windows Recycle Bin when possible, not straight to permanent deletion.
+
+**Bookmarks** let you drop timestamped markers while a video is playing and return to them later.
+
+**Duplicate review** helps you find likely duplicate files with pHash or visual similarity matching and work through suggested keepers instead of starting from scratch.
+
+<Note>
+  Video Cull runs locally. Your files and review decisions stay on your machine.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Install Video Cull" icon="download" href="/getting-started/installation">
+    Download the Windows installer, handle SmartScreen once, and launch the app.
+  </Card>
+  <Card title="Quickstart" icon="bolt" href="/getting-started/quickstart">
+    Open your first folder, generate thumbnails, and make your first keep or delete decisions.
+  </Card>
+  <Card title="Frequently asked questions" icon="circle-question" href="/help/faq">
+    Find answers about formats, cache, offline use, and installer warnings.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/help/troubleshooting">
+    Work through thumbnail, playback, cache, and performance issues.
+  </Card>
+</CardGroup>
