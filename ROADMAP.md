@@ -656,72 +656,223 @@ A dedicated **About** tab at the end of the Settings modal.
 
 ---
 
-## Phase 5 — In-App Documentation
+## Phase 5 — Documentation and In-App Guidance
 
-As the feature set grows, users need a discoverable reference. Accessible from the
-Electron menu bar (`Help → Documentation`) and a `?` button in the app toolbar.
+As the feature set grows, users need both a discoverable reference and small bits of
+guidance at the exact points where the workflow becomes unclear. This phase adds a local,
+version-matched documentation surface and uses it to make the existing app easier to learn
+without changing the underlying product model.
 
 ### 5.1 Documentation Delivery
 
 **Decision:** In-app modal (no separate Electron window, no extra Chromium process). The
 modal renders documentation content directly in the main app window. A prominent link at
-the top points users to the hosted docs on GitHub for the most up-to-date version.
+the top points users to the GitHub docs for the most up-to-date version.
 
 **Implementation notes:**
-- `Help → Documentation` in the Electron menu bar and a `?` icon in the toolbar open the
+- `Help → Documentation` in the Electron menu bar and a `?` icon in the app chrome open the
   docs modal over the current view.
 - Modal header: "Documentation — for the latest version, visit [GitHub ↗]" with a
   `shell.openExternal(githubDocsUrl)` link.
-- Content is bundled with the app (Markdown compiled to HTML at build time) so it works
-  offline and matches the shipped version.
+- Content is bundled with the app so it works offline and matches the shipped version.
 - The keyboard shortcut reference page renders the user's actual current keybinds from
   the store, not hardcoded defaults.
 - Modal is dismissible with Escape or a close button.
 
 ### 5.2 Documentation Structure
 
+**Decision:** Task-first pages, not a feature dump. The docs should explain how to use the
+existing workflows the app already has today.
+
 ```
 Documentation
 ├── Getting Started
 │   ├── What is Video Cull?
-│   ├── Minimal vs. Extended mode
-│   └── Opening your first folder
+│   ├── Opening folders and building a session
+│   └── The main workflow: scan → review → delete
 ├── Grid View
-│   ├── Navigating the grid
-│   ├── Card actions (keep, delete, batch select)
-│   ├── Sorting and filtering
-│   └── Grouping by folder
+│   ├── Filtering, sorting, and grouping
+│   ├── Card actions and context menus
+│   └── Batch selection
 ├── Review Mode
 │   ├── Keyboard shortcuts
-│   ├── Playback controls
-│   └── Bookmarks
-├── Extended Features
-│   ├── Ratings and Favorites
-│   ├── Duplicate comparison
-│   └── Analytics
-├── Settings Reference
-│   ├── All settings explained
-│   ├── Keyboard shortcut customisation
-│   └── Cache storage modes
+│   ├── Playback, bookmarks, and external player fallback
+│   └── Scope, progress, and decision flow
+├── Duplicate Review
+│   ├── Visual vs. pHash
+│   ├── Similarity, sample count, and recommended starting points
+│   ├── Suggested keeper, right-click actions, and batch actions
+│   └── Ignored matches and reruns
+├── Cache and Processing
+│   ├── Cache storage modes
+│   ├── Thumbnail generation settings
+│   └── Which settings apply now vs. next run
+├── Delete and Safety
+│   ├── Marking vs. deleting
+│   ├── Recycle Bin behavior
+│   └── Empty-folder cleanup
 └── FAQ
-    ├── Why are my durations missing after reload?
     ├── Which video formats are supported?
-    └── How do I move my cache to a new drive?
+    ├── Why are some videos opened in the external player?
+    └── How do I move cache to a new drive?
 ```
 
-### 5.3 Keyboard Shortcut Reference Page
+### 5.3 In-App Guidance Pass
 
-A dedicated page in the docs that renders the user's **current** keybind configuration
-(read from the store at open time) rather than hardcoded defaults. This means the docs
-always reflect what the user has actually configured.
+**Decision:** Do not rely on docs alone. Add short, local guidance in the UI where users
+currently get stuck, but keep it lightweight: one-line hints, better labels, clearer empty
+states, and stronger action wording.
+
+**Implementation notes:**
+- Duplicate results view gets a one-line hint explaining the interaction model:
+  checkboxes for batch actions, right-click for per-video actions.
+- Duplicate row checkbox wording changes from generic selection wording to batch-action
+  wording.
+- Duplicate toolbar action text becomes more explicit, e.g. "Mark selected as Delete"
+  instead of vague bulk-action wording.
+- Duplicate settings include a compact "recommended starting points" note for
+  `visual` vs. `pHash`, including the current practical sweet spot around `90–95%`.
+- Review mode gets clearer scope framing so it is obvious whether the user is reviewing the
+  whole session, the current filter, or a single folder.
+- Empty states and no-results states across grid, duplicate review, and settings-driven
+  actions should explain the next step instead of just reporting nothingness.
 
 ### 5.4 Authoring
 
-- Docs written as Markdown files in a `docs/` directory in the repo.
-- A build script (invoked as part of `vite build`) compiles them to a single HTML file
-  with a sidebar nav and inline search.
-- No external doc framework needed — a small custom build script is sufficient given the
-  limited page count.
+**Decision:** Keep authoring simple. No external docs framework and no second app.
+
+**Implementation notes:**
+- Docs content lives in the repo and ships with the renderer build.
+- Start with a small renderer-side content model rather than a full Markdown pipeline.
+- If page count grows enough to justify it later, a Markdown build step can be added then.
+
+---
+
+## Phase 6 — Whole-App Usability Pass
+
+Documentation explains the app; this phase makes the app itself easier to understand in
+daily use. No major feature expansion — just clarity, consistency, and workflow polish
+across the screens that already exist.
+
+### 6.1 Sidebar and Action Hierarchy
+
+**Decision:** Rework the visible order and wording of the main controls so the primary
+workflow reads more clearly top-to-bottom.
+
+**Implementation notes:**
+- Recheck the hierarchy of: folder/session opening, scan state, review entry, duplicate
+  entry, and delete actions.
+- Tighten button copy so it describes the user-facing outcome instead of the internal
+  mechanism.
+- Make mode transitions clearer, especially entering and leaving duplicate groups mode.
+
+### 6.2 Grid / Review / Duplicate Workflow Consistency
+
+**Decision:** The same status concepts should feel the same everywhere. A keep/delete/skip
+decision made in one part of the app should be obvious when seen in another.
+
+**Implementation notes:**
+- Align wording and visual treatment of `Keep`, `Delete`, `Skipped`, and `Pending` across
+  grid, review mode, and duplicate review.
+- Make it clearer that duplicate actions are library status changes, not immediate disk
+  deletion.
+- Recheck review entry/exit behavior from duplicate mode so the current scope is always
+  obvious.
+
+### 6.3 Duplicate Review Clarity
+
+**Decision:** Keep the current duplicate-review model, but make it easier to understand at
+first glance.
+
+**Implementation notes:**
+- Strengthen the distinction between suggested keeper, selected keeper, and ordinary rows.
+- Make batch selection look unmistakably like batch selection.
+- Revisit wording for `Select suggested deletions`, `Not a match`, `Dismiss group`, and
+  selected-keeper actions.
+- Add clearer disabled-state explanations when actions require a selected pair or a non-empty
+  batch.
+
+### 6.4 Settings Usability Pass
+
+**Decision:** Keep the current Settings scope, but reorganise and clarify the copy so users
+do not need to infer what a technical option does.
+
+**Implementation notes:**
+- Revisit tab and subsection labels for scanability.
+- Add short "safe default / when to change this" help text where current labels are too
+  technical.
+- Reshape the duplicate settings flow into: enable → matching → scope → keeper rules →
+  ignored matches → advanced.
+- Make expensive or risky actions stand out more clearly: cache migration, thumbnail rebuild,
+  distributed cache mode.
+
+### 6.5 Empty, Loading, and Long-Run Feedback
+
+**Decision:** Standardise the language used when the app is empty, busy, waiting, or blocked.
+
+**Implementation notes:**
+- Standardise empty-state wording across grid, duplicate mode, and settings-triggered flows.
+- Standardise long-run progress language for scanning, metadata, thumbnail generation, and
+  duplicate detection.
+- Review disabled-button titles and toasts so they consistently explain what is happening,
+  what is deferred, and what touches disk.
+
+---
+
+## Phase 7 — Duplicate Detection Improvements
+
+This phase is reserved for actual duplicate-quality work: better defaults, better repeatable
+evaluation, and better behavior on difficult real-world libraries. Do not mix this into the
+Phase 5/6 clarity work.
+
+### 7.1 Benchmark Harness
+
+**Decision:** Measure first, tune second. Duplicate work should be driven by a repeatable
+benchmark corpus instead of anecdotal threshold tweaking.
+
+**Implementation notes:**
+- Add a local benchmark runner that can evaluate duplicate settings against a manifest-driven
+  corpus outside the repo.
+- Report false positives, false negatives, group counts, and per-mode results.
+- Use the same harness to compare `visual` and `pHash` runs on the same library slice.
+
+### 7.2 Test Coverage Expansion
+
+**Decision:** Strengthen the existing duplicate tests rather than bolting on a separate,
+fragile test path.
+
+**Implementation notes:**
+- Expand duplicate tests for cross-format copies, different encodes, duration-tolerance
+  edge cases, weak-link group cleanup, and settings interactions.
+- Keep the current low-level style: deterministic fixtures, fake rows where practical,
+  and explicit group expectations.
+
+### 7.3 Better Defaults and Presets
+
+**Decision:** Revisit duplicate defaults only after the benchmark harness exists.
+
+**Implementation notes:**
+- Re-evaluate whether `visual` should remain the default comparison mode.
+- Re-evaluate the default sample count of `3` and the default similarity threshold of `95`.
+- If enough evidence supports it, add simple presets such as `Strict`, `Balanced`, and
+  `Broad` instead of forcing users to hand-tune every knob.
+
+### 7.4 Cross-Format and Near-Duplicate Improvement
+
+**Decision:** Focus on the cases users actually struggle with: copies in different formats,
+different encodes, and near-duplicates that are close enough to matter but noisy enough to
+trip false positives.
+
+**Implementation notes:**
+- Improve candidate filtering and confirmation logic for cross-format copies.
+- Reduce false positives at lower thresholds without making the strict range weaker.
+- Keep daisy-chain cleanup conservative so weak links do not pull unrelated videos into the
+  same group.
+
+### 7.5 Future Scope Boundary
+
+**Decision:** Clip detection stays out of scope for this phase unless the earlier duplicate
+quality work lands cleanly and the benchmark harness shows a clear path for it.
 
 ---
 
@@ -757,7 +908,9 @@ main                   ← stable, always launchable, tagged at each release
             └─ p2-culling-enhancements
                  └─ p3-cache-architecture
                       └─ p4-extended-mode
-                           └─ p5-documentation
+                           └─ p5-documentation-guidance
+                                └─ p6-usability-pass
+                                     └─ p7-duplicate-improvements
 ```
 
 Never work directly on main. Never bump the version mid-branch.
@@ -781,7 +934,9 @@ Avoid committing half-migrated states where two systems coexist but neither full
 | P2 — Culling enhancements | `1.6.0` | Duration filter, progress bar, batch select, HTML export, etc. |
 | P3 — Cache architecture | `1.7.0` | Per-drive mode, multi-directory, migration dialog |
 | P4 — Feature additions | `2.0.0` | Ratings, analytics, codec, library tab, feature toggles |
-| P5 — Documentation | `2.1.0` | Additive, ships with or after P4 |
+| P5 — Documentation and in-app guidance | `2.1.0` | Additive, ships with or after P4 |
+| P6 — Whole-app usability pass | `2.2.0` | Clarity and workflow polish, no major feature expansion |
+| P7 — Duplicate detection improvements | `2.3.0` | Benchmarking, defaults, and duplicate-quality work |
 
 Version bump happens in one commit, at the moment of merging the phase branch into main.
 Tag every release: `git tag v1.4.0 && git push origin v1.4.0`.
@@ -828,7 +983,9 @@ Update the status column as work completes. Merge date recorded when phase lands
 | P2 — Culling enhancements | ✅ Merged to main | `1.6.0` | 2026-04-16 |
 | P3 — Cache architecture | ✅ Merged to main | `1.7.0` | 2026-04-25 |
 | P4 — Feature additions | ⬜ Not started | `2.0.0` | — |
-| P5 — Documentation | ⬜ Not started | `2.1.0` | — |
+| P5 — Documentation and in-app guidance | ⬜ Not started | `2.1.0` | — |
+| P6 — Whole-app usability pass | ⬜ Not started | `2.2.0` | — |
+| P7 — Duplicate detection improvements | ⬜ Not started | `2.3.0` | — |
 
 Status key: ⬜ Not started · 🔄 In progress · ✅ Merged to main
 
@@ -862,5 +1019,17 @@ P4  Global mute toggle (Phase 4.7)
 P4  Library management tab (Phase 4.8)
 P4  About tab in Settings (Phase 4.9)
 
-P5  Documentation via shell.openExternal (Phase 5)
+P5  Documentation modal + task-first docs structure (Phase 5.1, 5.2)
+P5  In-app guidance pass for duplicate review, review mode, and empty states (Phase 5.3)
+
+P6  Sidebar and top-level action hierarchy pass (Phase 6.1)
+P6  Grid / review / duplicate workflow consistency pass (Phase 6.2)
+P6  Duplicate review clarity pass (Phase 6.3)
+P6  Settings usability pass (Phase 6.4)
+P6  Empty, loading, and long-run feedback pass (Phase 6.5)
+
+P7  Duplicate benchmark harness (Phase 7.1)
+P7  Duplicate test coverage expansion (Phase 7.2)
+P7  Better defaults and presets, if benchmark-backed (Phase 7.3)
+P7  Cross-format and near-duplicate improvement (Phase 7.4)
 ```

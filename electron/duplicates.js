@@ -15,6 +15,7 @@ const {
   frameDarkRatio,
   average,
   chooseSuggestedKeeper,
+  durationsWithinTolerance,
   pHashSimilarity,
   rawGraySimilarity,
 } = require('./duplicate-utils');
@@ -193,7 +194,27 @@ function groupBy(items, getKey) {
   return map;
 }
 
-async function findExactGroups(videos, dbByFolder, run, sendProgress) {
+function splitExactCandidatesByDuration(videos, settings) {
+  if (videos.length < 2) return [videos];
+  if (!settings) return [videos];
+  if (videos.some((video) => Number(video.durationSecs ?? 0) <= 0)) return [videos];
+  const sorted = [...videos].sort((a, b) => Number(a.durationSecs) - Number(b.durationSecs));
+  const groups = [];
+  let current = [sorted[0]];
+  for (let index = 1; index < sorted.length; index++) {
+    const video = sorted[index];
+    if (durationsWithinTolerance(current[current.length - 1], video, settings)) {
+      current.push(video);
+      continue;
+    }
+    groups.push(current);
+    current = [video];
+  }
+  groups.push(current);
+  return groups;
+}
+
+async function findExactGroups(videos, dbByFolder, settings, run, sendProgress) {
   duplicateLog('Starting exact duplicate pass', { videos: videos.length });
   progress(sendProgress, 'Checking exact matches', { current: 0, total: videos.length });
   const signatureById = new Map();
@@ -217,38 +238,46 @@ async function findExactGroups(videos, dbByFolder, run, sendProgress) {
       continue;
     }
 
-    const quickRows = [];
-    for (const video of sameSize) {
+    for (const durationGroup of splitExactCandidatesByDuration(sameSize, settings)) {
       assertNotCancelled(run);
-      const db = dbByFolder.get(path.dirname(video.path));
-      const cached = signatureById.get(video.id);
-      const quick = cached?.file_signature_quick || await quickSignature(video);
-      if (cached?.file_signature_quick) quickCacheHits++;
-      if (db && !cached?.file_signature_quick) {
-        assertNotCancelled(run);
-        cache.updateVideoSignatures(db, video.id, { quick });
+      if (durationGroup.length < 2) {
+        processed += durationGroup.length;
+        continue;
       }
-      quickRows.push({ video, quick, cachedFull: cached?.file_signature_full || null });
-      processed++;
-      if (processed % 20 === 0) progress(sendProgress, 'Checking exact matches', { current: processed, total: videos.length });
-    }
 
-    for (const quickGroup of groupBy(quickRows, (row) => row.quick).values()) {
-      if (quickGroup.length < 2) continue;
-      const fullRows = [];
-      for (const row of quickGroup) {
+      const quickRows = [];
+      for (const video of durationGroup) {
         assertNotCancelled(run);
-        const full = row.cachedFull || await fullFileHash(row.video);
-        if (row.cachedFull) fullCacheHits++;
-        const db = dbByFolder.get(path.dirname(row.video.path));
-        if (db && !row.cachedFull) {
+        const db = dbByFolder.get(path.dirname(video.path));
+        const cached = signatureById.get(video.id);
+        const quick = cached?.file_signature_quick || await quickSignature(video);
+        if (cached?.file_signature_quick) quickCacheHits++;
+        if (db && !cached?.file_signature_quick) {
           assertNotCancelled(run);
-          cache.updateVideoSignatures(db, row.video.id, { quick: row.quick, full });
+          cache.updateVideoSignatures(db, video.id, { quick });
         }
-        fullRows.push({ video: row.video, full });
+        quickRows.push({ video, quick, cachedFull: cached?.file_signature_full || null });
+        processed++;
+        if (processed % 20 === 0) progress(sendProgress, 'Checking exact matches', { current: processed, total: videos.length });
       }
-      for (const fullGroup of groupBy(fullRows, (row) => row.full).values()) {
-        if (fullGroup.length >= 2) exactGroups.push(fullGroup.map((row) => row.video.id));
+
+      for (const quickGroup of groupBy(quickRows, (row) => row.quick).values()) {
+        if (quickGroup.length < 2) continue;
+        const fullRows = [];
+        for (const row of quickGroup) {
+          assertNotCancelled(run);
+          const full = row.cachedFull || await fullFileHash(row.video);
+          if (row.cachedFull) fullCacheHits++;
+          const db = dbByFolder.get(path.dirname(row.video.path));
+          if (db && !row.cachedFull) {
+            assertNotCancelled(run);
+            cache.updateVideoSignatures(db, row.video.id, { quick: row.quick, full });
+          }
+          fullRows.push({ video: row.video, full });
+        }
+        for (const fullGroup of groupBy(fullRows, (row) => row.full).values()) {
+          if (fullGroup.length >= 2) exactGroups.push(fullGroup.map((row) => row.video.id));
+        }
       }
     }
   }
@@ -1109,7 +1138,7 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
   }
   duplicateLog('Cache databases ready', { folders: dbByFolder.size });
 
-  const exactGroups = await findExactGroups(safeVideos, dbByFolder, run, sendProgress);
+  const exactGroups = await findExactGroups(safeVideos, dbByFolder, settings, run, sendProgress);
   const representativeIndex = buildExactRepresentativeIndex(exactGroups, safeVideos, settings);
   const representativeVideos = representativeIndex.representativeVideos;
   duplicateLog('Representative reduction prepared', {

@@ -215,6 +215,55 @@ test('duplicate group IDs are stable when unrelated groups sort before them', ()
   assert.equal(expandedId, baseId);
 });
 
+test('exact duplicate pass skips hashing same-size videos outside duration tolerance', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-duplicates-'));
+  const folder = path.join(tempRoot, 'videos');
+  await fs.mkdir(folder, { recursive: true });
+  await Promise.all([
+    fs.writeFile(path.join(folder, 'a.mp4'), Buffer.alloc(4096, 1)),
+    fs.writeFile(path.join(folder, 'b.mp4'), Buffer.alloc(4096, 2)),
+  ]);
+
+  const videos = [
+    {
+      id: 'a',
+      filename: 'a.mp4',
+      path: path.join(folder, 'a.mp4'),
+      sizeBytes: 4096,
+      durationSecs: 10,
+    },
+    {
+      id: 'b',
+      filename: 'b.mp4',
+      path: path.join(folder, 'b.mp4'),
+      sizeBytes: 4096,
+      durationSecs: 100,
+    },
+  ];
+
+  const settings = normalizeDuplicateSettings({ durationTolerancePercent: 20 });
+  let readAttempts = 0;
+  let writeAttempts = 0;
+  vi.spyOn(fs, 'readFile').mockImplementation(async (...args) => {
+    readAttempts++;
+    return await vi.importActual('fs/promises').then((mod) => mod.readFile(...args));
+  });
+  vi.spyOn(cache, 'loadSignatureRows').mockReturnValue([]);
+  vi.spyOn(cache, 'updateVideoSignatures').mockImplementation(() => {
+    writeAttempts++;
+  });
+
+  try {
+    const exactGroups = await __test__.findExactGroups(videos, new Map([[folder, {}]]), settings, { cancelled: false }, () => {});
+    assert.deepEqual(exactGroups, []);
+    assert.equal(readAttempts, 0);
+    assert.equal(writeAttempts, 0);
+  } finally {
+    vi.restoreAllMocks();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('exact duplicate pass stops before cache writes after cancellation', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-duplicates-'));
   const folder = path.join(tempRoot, 'videos');
@@ -255,7 +304,7 @@ test('exact duplicate pass stops before cache writes after cancellation', async 
 
   try {
     await assert.rejects(
-      __test__.findExactGroups(videos, new Map([[folder, {}]]), run, () => {}),
+      __test__.findExactGroups(videos, new Map([[folder, {}]]), normalizeDuplicateSettings({}), run, () => {}),
       (err) => err instanceof DuplicateCancelledError,
     );
     assert.equal(writeAttempts, 0);
