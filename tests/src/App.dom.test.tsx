@@ -75,9 +75,17 @@ vi.mock('../../src/components/EmptyState', () => ({
   default: () => <div data-testid="empty-state">Empty State</div>,
 }));
 
-vi.mock('../../src/components/SettingsModal', () => ({
-  default: () => null,
-}));
+vi.mock('../../src/components/SettingsModal', async () => {
+  const ReactModule = await import('react');
+  const storeModule = await import('../../src/store');
+  return {
+    default: (props: { initialTab?: string }) => {
+      const isOpen = storeModule.default((state) => state.isSettingsModalOpen);
+      if (!isOpen) return null;
+      return ReactModule.createElement('div', { 'data-testid': 'settings-modal' }, props.initialTab ?? 'interface');
+    },
+  };
+});
 
 vi.mock('../../src/components/DuplicateGroupsView', () => ({
   default: () => <div data-testid="duplicate-groups">Duplicate Groups</div>,
@@ -88,7 +96,20 @@ vi.mock('../../src/components/ShortcutsHelp', () => ({
 }));
 
 vi.mock('../../src/components/DocumentationModal', () => ({
-  default: () => <div data-testid="documentation-modal">Documentation Modal</div>,
+  default: (props: {
+    onOpenSettings?: (tab: string) => void;
+    onOpenShortcutsHelp?: () => void;
+  }) => (
+    <div data-testid="documentation-modal">
+      Documentation Modal
+      <button type="button" data-testid="docs-open-duplicates" onClick={() => props.onOpenSettings?.('duplicates')}>
+        Open duplicate settings
+      </button>
+      <button type="button" data-testid="docs-open-shortcuts" onClick={() => props.onOpenShortcutsHelp?.()}>
+        Open shortcuts
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('../../src/perf-dev', async () => await import('../helpers/perfDevMock'));
@@ -289,6 +310,22 @@ describe('App renderer behavior', () => {
     expect(screen.queryByTestId('documentation-modal')).toBeNull();
     await electron.emitMenuAction('open-documentation');
     expect(screen.getByTestId('documentation-modal')).toBeTruthy();
+  });
+
+  test('routes documentation actions into shortcuts help and the duplicate settings tab', async () => {
+    render(<App />);
+
+    await electron.emitMenuAction('open-documentation');
+    await userEvent.click(screen.getByTestId('docs-open-shortcuts'));
+
+    expect(screen.queryByTestId('documentation-modal')).toBeNull();
+    expect(screen.getByTestId('shortcuts-help')).toBeTruthy();
+
+    await electron.emitMenuAction('open-documentation');
+    await userEvent.click(screen.getByTestId('docs-open-duplicates'));
+
+    expect(screen.queryByTestId('documentation-modal')).toBeNull();
+    expect(screen.getByTestId('settings-modal').textContent).toBe('duplicates');
   });
 
   test('pointer-clicked buttons do not retain focus and steal Enter or Space shortcuts afterward', async () => {

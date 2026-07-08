@@ -208,6 +208,16 @@ export default function App() {
     useStore.getState().setIsSettingsModalOpen(true);
   }, []);
 
+  const openDocumentationSettings = useCallback((tab: 'interface' | 'features' | 'duplicates' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about') => {
+    setShowDocumentation(false);
+    openSettings(tab);
+  }, [openSettings]);
+
+  const openDocumentationShortcuts = useCallback(() => {
+    setShowDocumentation(false);
+    setShowShortcutsHelp(true);
+  }, []);
+
   const toggleGlobalMute = useCallback(() => {
     const state = useStore.getState();
     if (!state.settings.features.globalMute) return;
@@ -961,7 +971,13 @@ export default function App() {
     >
       <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
-      {showDocumentation && <DocumentationModal onClose={() => setShowDocumentation(false)} />}
+      {showDocumentation && (
+        <DocumentationModal
+          onClose={() => setShowDocumentation(false)}
+          onOpenSettings={openDocumentationSettings}
+          onOpenShortcutsHelp={openDocumentationShortcuts}
+        />
+      )}
       {reviewMode && globalMuteEnabled && !isPrivate && (
         <button
           className={`app-global-mute ${globalMute ? 'active' : ''}`}
