@@ -3,57 +3,142 @@ title: Settings
 description: Configure thumbnails, cache behavior, duplicate review, hardware acceleration, and other core Video Cull options.
 ---
 
-Settings let you tune how Video Cull scans, thumbnails, caches, and reviews your library. Most teams only touch these once, but the controls matter when your footage or hardware behaves differently from the defaults.
+Settings are split across the same tabs you see in the app. Most libraries work well with the defaults. Change settings when you have a reason, not because the app offers a knob.
 
-## Main settings
+## Suggested approach
 
-| Setting | Options | Default |
-| --- | --- | --- |
-| Cache location | Centralised / Per-drive / Distributed | Centralised |
-| Thumbnails per video | 1, 2, 4, 6, 9 | 6 |
-| Default card scale | 0.5x - 2.0x | 1.0x |
-| Default sort | Name / Size / Date / Duration / Rating / Resolution / FPS | Name |
-| Group by folder | On / Off | On |
-| Parallel FFmpeg processes | Auto / 1 / 2 / 3 / 4 / 6 / 8 / 12 / 16 / 24 / 32 | Auto |
-| Limit each FFmpeg process to 1 CPU thread | On / Off | On |
-| Intro skip delay | 0 - 60 seconds | 3s |
-| Hardware acceleration | On / Off | Off |
-| Auto-clean stale cache after scan | On / Off | Off |
-| Remove empty folders after deleting videos | On / Off | Off |
-| Auto updates | On / Off | On |
-
-## Cache behavior
-
-Progress lives in SQLite databases under the configured cache location.
-
-- **Centralised** keeps cache data in one app-controlled location.
-- **Per-drive** keeps separate cache roots per drive.
-- **Distributed** stores `.videocull` next to your files.
-
-Changing cache mode can migrate existing cache data instead of forcing a fresh start.
-
-## Thumbnail generation
-
-Thumbnail generation settings matter most when clips start with fades, when storage is slow, or when CPU load needs to be limited.
-
-- Increase thumbnails per video when one strip is not giving enough visual context.
-- Raise intro skip delay when the first frames are often black.
-- Lower parallel FFmpeg processes when the machine becomes unresponsive.
-- Enable hardware acceleration only if your GPU driver behaves well with FFmpeg on your system.
-
-## Duplicate review settings
-
-Duplicate review has its own tab with controls for:
-
-- Comparison method
-- Similarity threshold
-- Sample count
-- Scope
-- Keeper priority
-- Ignored matches
-- Sampling windows
-- Retry behavior
+- Leave most defaults alone for your first pass through a library.
+- Use the grid to narrow the queue before changing review behavior.
+- Touch duplicate settings only when the match quality is clearly too noisy or too strict.
+- Treat cache and processing settings as library-scale controls, not per-session tweaks.
 
 <Tip>
-  If you are diagnosing strange thumbnail or playback behavior, change one setting at a time and rescan so you can see which knob actually fixed the problem.
+  Change one thing at a time, then rescan or rerun the affected workflow. That makes it obvious which setting actually helped.
 </Tip>
+
+## Interface
+
+These settings change how the main view starts and how you move through a session.
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
+| Default card scale | Sets the starting card size in grid view. | Leave it at `1.0x` unless your monitor or footage needs more or less detail. |
+| Default sorting | Controls the first sort field and order for new sessions. | `Name` is the safest default. Use `Date` for chronology, `Size` for storage cleanup, or `Duration` for spotting clips that are too short or too long. |
+| Group by folder | Starts the grid grouped by folder instead of one flat list. | Keep it on when folder context matters. Turn it off when you want one global queue. |
+| Export report | Exports an HTML report for all videos or the current filtered set. | Use it at the end of a pass, not as part of normal review. |
+
+## Features
+
+This tab is just feature toggles.
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
+| 5-star rating | Shows rating controls on video cards and in review mode. | Turn it on only if you actually rate clips. |
+| Favorites | Shows the heart toggle and favorites filter. | Turn it on when you need a shortlist across a large session. |
+
+## Duplicates
+
+Duplicate detection is best treated as a suggestion engine, not an auto-delete system.
+
+### Matching
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
+| Enable duplicate detection | Turns on duplicate finding and stores duplicate cache data. | Leave it on if duplicates are a normal part of your workflow. |
+| Run after each scan | Starts duplicate detection after scanning. | Leave this off unless duplicates are the main job. |
+| Similarity | Sets the minimum score needed to group videos as duplicates. | Start around `90-95%`. Raise it when results are noisy. Lower it when real duplicates are being missed. |
+| Sample count | Controls how many sampled frames are compared. | Keep the default unless false positives justify the extra time. |
+| Comparison method | Switches between `pHash` and `Visual similarity`. | Start with visual similarity for practical review work. Try `pHash` when visual results are too broad. |
+| Default scope | Chooses between all loaded videos or the current filtered view. | Use the filtered view when you want tighter, more deliberate duplicate passes. |
+| Protect marked keep videos | Stops already-kept videos from becoming delete suggestions. | Leave it on. |
+| Protect skipped videos | Leaves skipped videos out of delete suggestions. | Leave it on unless skipped clips should still compete as duplicates. |
+
+### Keeper suggestions
+
+Suggested keeper priority decides which file is preferred inside a duplicate group.
+
+- Resolution
+- Video bitrate
+- Duration
+- FPS
+- File size
+
+Higher items decide first. Reset the order unless you have a strong reason to prefer a different kind of source file.
+
+### Ignored matches
+
+Pairs marked **Not a match** stay hidden in future duplicate runs.
+
+- Leave ignored matches alone if the rule was correct.
+- Clear them only after you change matching behavior enough that old ignores are no longer trustworthy.
+
+### Advanced duplicate settings
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
+| Sampling window | Chooses which part of each video gets sampled. | Leave it on evenly spaced. Move inward only when intros, outros, or watermarks are skewing results. |
+| Duration tolerance | Limits how much two durations may differ and still be compared. | Raise it only when alternate encodes differ slightly in runtime. |
+| Max sampling duration | Caps how much of a long video is sampled. `0` means full length. | Leave it at the default unless very long videos make runs too expensive. |
+| Checkpoint interval | Controls how often long runs save progress. | Change it only for very large duplicate passes. |
+| Require every sample to meet similarity | Makes matching stricter. | Turn it on only when average-based grouping is too forgiving. |
+| Ignore black pixels | Helps with fades, black frames, and letterboxing. | Use it when dark frames create false mismatches. |
+| Ignore white pixels | Helps with bright flashes and white frames. | Use it only when bright frames are obviously skewing results. |
+| Compare flipped videos | Also checks horizontally mirrored copies. | Turn it on only when mirrored duplicates are a real possibility. |
+| Retry failed fingerprints | Retries videos that failed before. | Turn it on when a previous run hit processing failures. |
+
+## Cache
+
+Cache settings decide where progress lives and how aggressively old data is cleaned up.
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
+| Cache storage | Chooses `Centralised`, `Per-drive`, or `Distributed`. | Use `Centralised` unless you need the cache to travel with a drive or folder. |
+| Central cache location | Picks the app-controlled cache folder. | Leave it at the default unless the current drive is a bad fit. |
+| Per-drive cache location | Picks a cache folder for the currently opened drive. | Use this only when you deliberately want separate per-drive roots. |
+| Auto-clean stale cache after scans | Removes stale cache rows, thumbnail folders, and child-folder cache entries that no longer exist on disk. | Leave it off unless you want ongoing housekeeping. |
+| Remove empty source folders after delete | Removes parent folders that become empty after deleting videos. | Leave it off unless folder cleanup is part of the job. |
+
+`Distributed` mode creates a hidden `.videocull` folder inside each loaded folder. It is useful for portable libraries, but noisier than centralized cache.
+
+## Processing
+
+Processing settings affect future scans, thumbnail runs, and metadata work. They do not retroactively rebuild current thumbnails until you rescan or regenerate them.
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
+| Thumbnails per video | Chooses `1`, `2`, `4`, `6`, or `9` frames per video. | `6` is a good default. Raise it only when the strip is not giving enough context. |
+| Skip intro blackframes (delay) | Delays the first thumbnail to avoid fade-ins or blank starts. | Keep the default `3s` unless your clips start cleanly or need a longer skip. |
+| Parallel FFmpeg processes | Caps how many FFmpeg jobs run at once, or uses auto mode. | Leave it on `Auto` unless the machine becomes unresponsive. |
+| Limit each FFmpeg process to 1 CPU thread | Uses more small FFmpeg processes instead of fewer multi-threaded ones. | Leave it on. The app marks it as recommended for a reason. |
+| Enable hardware acceleration (beta) | Tries to route decoding through the GPU. | Leave it off unless CPU decode is the bottleneck and your footage behaves well with it. |
+
+## Keybindings
+
+Keybindings are for review-mode and preview behavior, not for system-level app actions.
+
+- Review mode, Preview, and Global shortcuts are grouped separately.
+- Click a keybind field to record a new shortcut.
+- `Esc` cancels recording.
+- **Reset defaults** restores the built-in review bindings.
+
+System shortcuts like `Ctrl+O` and `F5` are not rebound here. If two keybinds conflict, fix the conflict before saving.
+
+## Updates
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
+| Check for updates | Manually checks for a new release. | Use it when you want to pull a release now instead of waiting. |
+| Automatically check for updates on startup | Checks at launch and downloads in the background. | Leave it on unless you want fully manual update control. |
+
+The app always notifies you before anything installs. When an update is ready, the install step is still explicit.
+
+## About
+
+The About tab is just project and support links:
+
+- GitHub repository
+- Releases / changelog
+- GitHub Sponsors
+- PayPal
+
+Use it when you need the current version, release history, or project links from inside the app.
