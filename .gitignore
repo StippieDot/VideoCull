@@ -37,8 +37,11 @@ build/*
 release/
 testspace/
 
-# Claude Code local config
+# Agentic Coding local config
 .claude/
+.agents/
+.docs/*
 .dual-graph/
 .codegraph/
 .superpowers/
+docs/superpowers/
