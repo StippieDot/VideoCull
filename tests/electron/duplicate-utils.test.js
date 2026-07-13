@@ -124,6 +124,39 @@ test('keeper ordering prefers higher quality by default', () => {
   assert.equal(chooseSuggestedKeeper([low, high], normalizeDuplicateSettings({}))?.id, 'high');
 });
 
+test('keeper ordering uses bitrate when displayed resolution tiers match', () => {
+  const morePixels = {
+    id: 'more-pixels',
+    path: 'P:\\more-pixels.mp4',
+    width: 1920,
+    height: 1080,
+    videoBitrate: 3586000,
+  };
+  const higherBitrate = {
+    id: 'higher-bitrate',
+    path: 'P:\\higher-bitrate.mp4',
+    width: 1920,
+    height: 800,
+    videoBitrate: 6008000,
+  };
+  const lowerTier = {
+    id: 'lower-tier',
+    path: 'P:\\lower-tier.mp4',
+    width: 1280,
+    height: 720,
+    videoBitrate: 12000000,
+  };
+
+  assert.equal(chooseSuggestedKeeper([morePixels, higherBitrate, lowerTier], normalizeDuplicateSettings({}))?.id, 'higher-bitrate');
+});
+
+test('keeper ordering does not assign a resolution tier to incomplete metadata', () => {
+  const incomplete = { id: 'incomplete', path: 'P:\\incomplete.mp4', width: 1920, height: null, videoBitrate: 6008000 };
+  const complete = { id: 'complete', path: 'P:\\complete.mp4', width: 1280, height: 720, videoBitrate: 3586000 };
+
+  assert.equal(chooseSuggestedKeeper([incomplete, complete], normalizeDuplicateSettings({}))?.id, 'complete');
+});
+
 test('keeper ordering follows user priority order', () => {
   const largeLowerBitrate = {
     id: 'large',

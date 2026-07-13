@@ -29,7 +29,7 @@ const FEATURE_TOGGLES = [
 }>;
 
 const KEEPER_RULE_LABELS: Record<string, { title: string; description: string }> = {
-  resolution: { title: 'Resolution', description: 'Prefer the highest pixel count.' },
+  resolution: { title: 'Resolution', description: 'Prefer the highest displayed resolution.' },
   videoBitrate: { title: 'Video bitrate', description: 'Prefer the cleaner encode.' },
   duration: { title: 'Duration', description: 'Prefer the longest version.' },
   fps: { title: 'FPS', description: 'Prefer smoother playback.' },

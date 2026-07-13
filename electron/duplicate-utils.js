@@ -247,14 +247,26 @@ function finiteNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function resolutionPixels(video) {
-  return finiteNumber(video.width) * finiteNumber(video.height);
+function resolutionDisplayTier(video) {
+  const width = finiteNumber(video.width);
+  const height = finiteNumber(video.height);
+  if (width <= 0 || height <= 0) return 0;
+  const longestEdge = Math.max(width, height);
+  const shortestEdge = Math.min(width, height);
+
+  if (longestEdge >= 7680) return 8000;
+  if (longestEdge >= 5120) return 5000;
+  if (longestEdge >= 3840) return 4000;
+  if (longestEdge >= 2560) return 1440;
+  if (longestEdge >= 1920) return 1080;
+  if (longestEdge >= 1280) return 720;
+  return shortestEdge;
 }
 
 function compareKeeperCandidates(a, b, order) {
   for (const rule of order) {
     let diff = 0;
-    if (rule === 'resolution') diff = resolutionPixels(a) - resolutionPixels(b);
+    if (rule === 'resolution') diff = resolutionDisplayTier(a) - resolutionDisplayTier(b);
     else if (rule === 'videoBitrate') diff = finiteNumber(a.videoBitrate ?? a.totalBitrate) - finiteNumber(b.videoBitrate ?? b.totalBitrate);
     else if (rule === 'duration') diff = finiteNumber(a.durationSecs) - finiteNumber(b.durationSecs);
     else if (rule === 'fps') diff = finiteNumber(a.fps) - finiteNumber(b.fps);

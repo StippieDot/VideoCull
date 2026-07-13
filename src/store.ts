@@ -345,13 +345,10 @@ function finiteNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function resolutionPixels(video: Video): number {
-  return finiteNumber(video.width) * finiteNumber(video.height);
-}
-
 function resolutionDisplayTier(video: Video): number {
   const width = finiteNumber(video.width);
   const height = finiteNumber(video.height);
+  if (width <= 0 || height <= 0) return 0;
   const longestEdge = Math.max(width, height);
   const shortestEdge = Math.min(width, height);
 
@@ -380,7 +377,7 @@ function resolutionSortValue(video: Video) {
 function compareKeeperCandidates(a: Video, b: Video, order: string[]): number {
   for (const rule of order) {
     let diff = 0;
-    if (rule === 'resolution') diff = resolutionPixels(a) - resolutionPixels(b);
+    if (rule === 'resolution') diff = resolutionDisplayTier(a) - resolutionDisplayTier(b);
     else if (rule === 'videoBitrate') diff = finiteNumber(a.videoBitrate ?? a.totalBitrate) - finiteNumber(b.videoBitrate ?? b.totalBitrate);
     else if (rule === 'duration') diff = finiteNumber(a.durationSecs) - finiteNumber(b.durationSecs);
     else if (rule === 'fps') diff = finiteNumber(a.fps) - finiteNumber(b.fps);

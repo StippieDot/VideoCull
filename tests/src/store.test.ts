@@ -184,6 +184,37 @@ describe('keeper suggestions', () => {
     expect(groups[0]?.suggestedKeeperId).toBe('b');
   });
 
+  test('uses bitrate when displayed resolution tiers match', () => {
+    const videos = [
+      makeVideo('more-pixels', { path: 'C:\\more-pixels.mp4', width: 1920, height: 1080, videoBitrate: 3586000 }),
+      makeVideo('higher-bitrate', { path: 'C:\\higher-bitrate.mp4', width: 1920, height: 800, videoBitrate: 6008000 }),
+      makeVideo('lower-tier', { path: 'C:\\lower-tier.mp4', width: 1280, height: 720, videoBitrate: 12000000 }),
+    ];
+
+    const groups = __test__.applyKeeperOrderToGroups(
+      [makeGroup({ videoIds: ['more-pixels', 'higher-bitrate', 'lower-tier'] })],
+      videos,
+      ['resolution', 'videoBitrate']
+    );
+
+    expect(groups[0]?.suggestedKeeperId).toBe('higher-bitrate');
+  });
+
+  test('does not assign a resolution tier to incomplete metadata', () => {
+    const videos = [
+      makeVideo('incomplete', { path: 'C:\\incomplete.mp4', width: 1920, height: null, videoBitrate: 6008000 }),
+      makeVideo('complete', { path: 'C:\\complete.mp4', width: 1280, height: 720, videoBitrate: 3586000 }),
+    ];
+
+    const groups = __test__.applyKeeperOrderToGroups(
+      [makeGroup({ videoIds: ['incomplete', 'complete'] })],
+      videos,
+      ['resolution', 'videoBitrate']
+    );
+
+    expect(groups[0]?.suggestedKeeperId).toBe('complete');
+  });
+
   test('keeps a valid manual keeper override instead of replacing it with the automatic ranking', () => {
     const videos = [
       makeVideo('a', { path: 'C:\\z.mp4', width: 1280, height: 720, videoBitrate: 2000, durationSecs: 30, fps: 30, sizeBytes: 100 }),
