@@ -717,27 +717,7 @@ Documentation
     └── How do I move cache to a new drive?
 ```
 
-### 5.3 In-App Guidance Pass
-
-**Decision:** Do not rely on docs alone. Add short, local guidance in the UI where users
-currently get stuck, but keep it lightweight: one-line hints, better labels, clearer empty
-states, and stronger action wording.
-
-**Implementation notes:**
-- Duplicate results view gets a one-line hint explaining the interaction model:
-  checkboxes for batch actions, right-click for per-video actions.
-- Duplicate row checkbox wording changes from generic selection wording to batch-action
-  wording.
-- Duplicate toolbar action text becomes more explicit, e.g. "Mark selected as Delete"
-  instead of vague bulk-action wording.
-- Duplicate settings include a compact "recommended starting points" note for
-  `visual` vs. `pHash`, including the current practical sweet spot around `90–95%`.
-- Review mode gets clearer scope framing so it is obvious whether the user is reviewing the
-  whole session, the current filter, or a single folder.
-- Empty states and no-results states across grid, duplicate review, and settings-driven
-  actions should explain the next step instead of just reporting nothingness.
-
-### 5.4 Authoring
+### 5.3 Authoring
 
 **Decision:** Keep authoring simple. No external docs framework and no second app.
 
@@ -748,13 +728,98 @@ states, and stronger action wording.
 
 ---
 
-## Phase 6 — Whole-App Usability Pass
+## Phase 6 — Duplicate Detection Improvements
+
+This phase is reserved for actual duplicate-quality work: better defaults, better repeatable
+evaluation, and better behavior on difficult real-world libraries. Do not mix this into the
+Phase 5/7 clarity work.
+
+### 6.1 Benchmark Harness
+
+**Decision:** Measure first, tune second. Duplicate work should be driven by a repeatable
+benchmark corpus instead of anecdotal threshold tweaking.
+
+**Implementation notes:**
+- Add a local benchmark runner that can evaluate duplicate settings against a manifest-driven
+  corpus outside the repo.
+- Report false positives, false negatives, group counts, and per-mode results.
+- Use the same harness to compare `visual`, `pHash`, and partial-clip runs on the same
+  library slice.
+
+### 6.2 Test Coverage Expansion
+
+**Decision:** Strengthen the existing duplicate tests rather than bolting on a separate,
+fragile test path.
+
+**Implementation notes:**
+- Expand duplicate tests for cross-format copies, different encodes, duration-tolerance
+  edge cases, weak-link group cleanup, partial clips, and settings interactions.
+- Keep the current low-level style: deterministic fixtures, fake rows where practical,
+  and explicit group expectations.
+
+### 6.3 Better Defaults and Presets
+
+**Decision:** Revisit duplicate defaults only after the benchmark harness exists.
+
+**Implementation notes:**
+- Re-evaluate whether `visual` should remain the default comparison mode.
+- Re-evaluate the default sample count of `3` and the default similarity threshold of `95`.
+- If enough evidence supports it, add simple presets such as `Strict`, `Balanced`, and
+  `Broad` instead of forcing users to hand-tune every knob.
+
+### 6.4 Cross-Format and Near-Duplicate Improvement
+
+**Decision:** Focus on the cases users actually struggle with: copies in different formats,
+different encodes, and near-duplicates that are close enough to matter but noisy enough to
+trip false positives.
+
+**Implementation notes:**
+- Improve candidate filtering and confirmation logic for cross-format copies.
+- Reduce false positives at lower thresholds without making the strict range weaker.
+- Keep daisy-chain cleanup conservative so weak links do not pull unrelated videos into the
+  same group.
+
+### 6.5 Partial Clip Detection
+
+**Decision:** Add VDF-style partial clip detection for cases where a shorter video is a
+trimmed and/or cropped segment of a longer video, such as Twitter downloads cut from a full
+scene. The first version uses bundled FFmpeg PCM audio alignment plus crop-aware visual
+confirmation, not a Chromaprint dependency.
+
+**Implementation notes:**
+- Add a `partialClipDetection` duplicate setting. Keep it separate from normal duplicate
+  matching because it is more expensive than same-timestamp comparison.
+- After the existing duplicate pass, compare remaining unmatched videos where the shorter
+  duration is roughly `10%` to `95%` of the longer duration.
+- Extract low-rate mono PCM audio with the existing bundled FFmpeg, build compact audio
+  features, and slide the shorter feature sequence over the longer one to find the best
+  offset.
+- Only continue when audio similarity clears the configured threshold. For the known
+  Twitter/full-video test case, this should find the clip at about `230.77s` into the
+  full video.
+- Confirm visually at aligned timestamps: shorter video at `t`, longer video at
+  `offset + t`. Compare normal full-frame resize and a center-crop variant that accounts
+  for changed aspect ratio.
+- Add `partial` as a duplicate match type and reuse the existing duplicate group UI. The
+  group reason should include the approximate offset and audio/visual similarity.
+- Keeper suggestion should prefer the longer/full video unless the user manually overrides it.
+- Keep the audio-alignment helper isolated so a future Chromaprint/fpcalc implementation can
+  replace PCM alignment without changing the duplicate grouping code.
+
+### 6.6 Future Scope Boundary
+
+**Decision:** Do not port VDF wholesale. Upgrade to Chromaprint/fpcalc only if the PCM
+alignment version misses real clip matches in the benchmark corpus or user test folders.
+
+---
+
+## Phase 7 — Whole-App Usability Pass
 
 Documentation explains the app; this phase makes the app itself easier to understand in
 daily use. No major feature expansion — just clarity, consistency, and workflow polish
 across the screens that already exist.
 
-### 6.1 Sidebar and Action Hierarchy
+### 7.1 Sidebar and Action Hierarchy
 
 **Decision:** Rework the visible order and wording of the main controls so the primary
 workflow reads more clearly top-to-bottom.
@@ -766,7 +831,7 @@ workflow reads more clearly top-to-bottom.
   mechanism.
 - Make mode transitions clearer, especially entering and leaving duplicate groups mode.
 
-### 6.2 Grid / Review / Duplicate Workflow Consistency
+### 7.2 Grid / Review / Duplicate Workflow Consistency
 
 **Decision:** The same status concepts should feel the same everywhere. A keep/delete/skip
 decision made in one part of the app should be obvious when seen in another.
@@ -779,7 +844,7 @@ decision made in one part of the app should be obvious when seen in another.
 - Recheck review entry/exit behavior from duplicate mode so the current scope is always
   obvious.
 
-### 6.3 Duplicate Review Clarity
+### 7.3 Duplicate Review Clarity
 
 **Decision:** Keep the current duplicate-review model, but make it easier to understand at
 first glance.
@@ -792,7 +857,7 @@ first glance.
 - Add clearer disabled-state explanations when actions require a selected pair or a non-empty
   batch.
 
-### 6.4 Settings Usability Pass
+### 7.4 Settings Usability Pass
 
 **Decision:** Keep the current Settings scope, but reorganise and clarify the copy so users
 do not need to infer what a technical option does.
@@ -806,7 +871,7 @@ do not need to infer what a technical option does.
 - Make expensive or risky actions stand out more clearly: cache migration, thumbnail rebuild,
   distributed cache mode.
 
-### 6.5 Empty, Loading, and Long-Run Feedback
+### 7.5 Empty, Loading, and Long-Run Feedback
 
 **Decision:** Standardise the language used when the app is empty, busy, waiting, or blocked.
 
@@ -816,63 +881,6 @@ do not need to infer what a technical option does.
   duplicate detection.
 - Review disabled-button titles and toasts so they consistently explain what is happening,
   what is deferred, and what touches disk.
-
----
-
-## Phase 7 — Duplicate Detection Improvements
-
-This phase is reserved for actual duplicate-quality work: better defaults, better repeatable
-evaluation, and better behavior on difficult real-world libraries. Do not mix this into the
-Phase 5/6 clarity work.
-
-### 7.1 Benchmark Harness
-
-**Decision:** Measure first, tune second. Duplicate work should be driven by a repeatable
-benchmark corpus instead of anecdotal threshold tweaking.
-
-**Implementation notes:**
-- Add a local benchmark runner that can evaluate duplicate settings against a manifest-driven
-  corpus outside the repo.
-- Report false positives, false negatives, group counts, and per-mode results.
-- Use the same harness to compare `visual` and `pHash` runs on the same library slice.
-
-### 7.2 Test Coverage Expansion
-
-**Decision:** Strengthen the existing duplicate tests rather than bolting on a separate,
-fragile test path.
-
-**Implementation notes:**
-- Expand duplicate tests for cross-format copies, different encodes, duration-tolerance
-  edge cases, weak-link group cleanup, and settings interactions.
-- Keep the current low-level style: deterministic fixtures, fake rows where practical,
-  and explicit group expectations.
-
-### 7.3 Better Defaults and Presets
-
-**Decision:** Revisit duplicate defaults only after the benchmark harness exists.
-
-**Implementation notes:**
-- Re-evaluate whether `visual` should remain the default comparison mode.
-- Re-evaluate the default sample count of `3` and the default similarity threshold of `95`.
-- If enough evidence supports it, add simple presets such as `Strict`, `Balanced`, and
-  `Broad` instead of forcing users to hand-tune every knob.
-
-### 7.4 Cross-Format and Near-Duplicate Improvement
-
-**Decision:** Focus on the cases users actually struggle with: copies in different formats,
-different encodes, and near-duplicates that are close enough to matter but noisy enough to
-trip false positives.
-
-**Implementation notes:**
-- Improve candidate filtering and confirmation logic for cross-format copies.
-- Reduce false positives at lower thresholds without making the strict range weaker.
-- Keep daisy-chain cleanup conservative so weak links do not pull unrelated videos into the
-  same group.
-
-### 7.5 Future Scope Boundary
-
-**Decision:** Clip detection stays out of scope for this phase unless the earlier duplicate
-quality work lands cleanly and the benchmark harness shows a clear path for it.
 
 ---
 
@@ -909,8 +917,8 @@ main                   ← stable, always launchable, tagged at each release
                  └─ p3-cache-architecture
                       └─ p4-extended-mode
                            └─ p5-documentation-guidance
-                                └─ p6-usability-pass
-                                     └─ p7-duplicate-improvements
+                                └─ p6-duplicate-improvements
+                                     └─ p7-usability-pass
 ```
 
 Never work directly on main. Never bump the version mid-branch.
@@ -935,8 +943,8 @@ Avoid committing half-migrated states where two systems coexist but neither full
 | P3 — Cache architecture | `1.7.0` | Per-drive mode, multi-directory, migration dialog |
 | P4 — Feature additions | `2.0.0` | Ratings, analytics, codec, library tab, feature toggles |
 | P5 — Documentation and in-app guidance | `2.1.0` | Additive, ships with or after P4 |
-| P6 — Whole-app usability pass | `2.2.0` | Clarity and workflow polish, no major feature expansion |
-| P7 — Duplicate detection improvements | `2.3.0` | Benchmarking, defaults, and duplicate-quality work |
+| P6 — Duplicate detection improvements | `2.2.0` | Benchmarking, defaults, partial clips, and duplicate-quality work |
+| P7 — Whole-app usability pass | `2.3.0` | Clarity and workflow polish, no major feature expansion |
 
 Version bump happens in one commit, at the moment of merging the phase branch into main.
 Tag every release: `git tag v1.4.0 && git push origin v1.4.0`.
@@ -984,8 +992,8 @@ Update the status column as work completes. Merge date recorded when phase lands
 | P3 — Cache architecture | ✅ Merged to main | `1.7.0` | 2026-04-25 |
 | P4 — Feature additions | ⬜ Not started | `2.0.0` | — |
 | P5 — Documentation and in-app guidance | ⬜ Not started | `2.1.0` | — |
-| P6 — Whole-app usability pass | ⬜ Not started | `2.2.0` | — |
-| P7 — Duplicate detection improvements | ⬜ Not started | `2.3.0` | — |
+| P6 — Duplicate detection improvements | ⬜ Not started | `2.2.0` | — |
+| P7 — Whole-app usability pass | ⬜ Not started | `2.3.0` | — |
 
 Status key: ⬜ Not started · 🔄 In progress · ✅ Merged to main
 
@@ -1020,16 +1028,17 @@ P4  Library management tab (Phase 4.8)
 P4  About tab in Settings (Phase 4.9)
 
 P5  Documentation modal + task-first docs structure (Phase 5.1, 5.2)
-P5  In-app guidance pass for duplicate review, review mode, and empty states (Phase 5.3)
+P5  Documentation authoring model (Phase 5.3)
 
-P6  Sidebar and top-level action hierarchy pass (Phase 6.1)
-P6  Grid / review / duplicate workflow consistency pass (Phase 6.2)
-P6  Duplicate review clarity pass (Phase 6.3)
-P6  Settings usability pass (Phase 6.4)
-P6  Empty, loading, and long-run feedback pass (Phase 6.5)
+P6  Duplicate benchmark harness (Phase 6.1)
+P6  Duplicate test coverage expansion (Phase 6.2)
+P6  Better defaults and presets, if benchmark-backed (Phase 6.3)
+P6  Cross-format and near-duplicate improvement (Phase 6.4)
+P6  Partial clip detection with audio alignment + crop-aware visual confirmation (Phase 6.5)
 
-P7  Duplicate benchmark harness (Phase 7.1)
-P7  Duplicate test coverage expansion (Phase 7.2)
-P7  Better defaults and presets, if benchmark-backed (Phase 7.3)
-P7  Cross-format and near-duplicate improvement (Phase 7.4)
+P7  Sidebar and top-level action hierarchy pass (Phase 7.1)
+P7  Grid / review / duplicate workflow consistency pass (Phase 7.2)
+P7  Duplicate review clarity pass (Phase 7.3)
+P7  Settings usability pass (Phase 7.4)
+P7  Empty, loading, and long-run feedback pass (Phase 7.5)
 ```
