@@ -5,7 +5,6 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { vi } from 'vitest';
 import DocumentationModal from '../../../src/components/DocumentationModal';
-import useStore from '../../../src/store';
 
 function installElectronApiMock() {
   const electronAPI = {
@@ -15,17 +14,9 @@ function installElectronApiMock() {
   return electronAPI;
 }
 
-function getStoreApi() {
-  return useStore as typeof useStore & {
-    getInitialState: () => ReturnType<typeof useStore.getState>;
-  };
-}
-
 describe('DocumentationModal behavior', () => {
   beforeEach(() => {
     installElectronApiMock();
-    const store = getStoreApi();
-    store.setState(store.getInitialState(), true);
   });
 
   afterEach(() => {
@@ -43,10 +34,10 @@ describe('DocumentationModal behavior', () => {
 
     expect(screen.getByRole('heading', { name: 'Documentation' })).toBeTruthy();
     expect(screen.getByRole('searchbox', { name: /search documentation/i })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Quick Start' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Get started with Video Cull' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: /i want to\.\.\./i })).toBeTruthy();
     expect(screen.getByText(/Open a folder, review decisions, then run delete only when the delete list looks final\./i)).toBeTruthy();
-    expect(screen.getByText(/Understand duplicate matches before I rerun them/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Suggested workflow' })).toBeTruthy();
   });
 
   test('filters pages from search and resets article scroll when the page changes', async () => {
@@ -67,27 +58,22 @@ describe('DocumentationModal behavior', () => {
     await userEvent.type(screen.getByRole('searchbox', { name: /search documentation/i }), 'duplicate');
 
     const docsNav = screen.getByRole('navigation', { name: /documentation pages/i });
-    expect(within(docsNav).getByRole('button', { name: /Duplicate Review/i })).toBeTruthy();
-    expect(within(docsNav).queryByRole('button', { name: /Delete and Safety/i })).toBeNull();
+    expect(within(docsNav).getByRole('button', { name: /Duplicate review/i })).toBeTruthy();
+    await userEvent.click(within(docsNav).getByRole('button', { name: /Duplicate review/i }));
+    expect(screen.getByRole('heading', { name: 'Duplicate review' })).toBeTruthy();
 
     await userEvent.clear(screen.getByRole('searchbox', { name: /search documentation/i }));
-    await userEvent.click(within(docsNav).getByRole('button', { name: /Review Mode/i }));
+    await userEvent.click(within(docsNav).getByRole('button', { name: /Review mode/i }));
 
     expect(scrollTo).toHaveBeenCalled();
     expect(screen.getByRole('navigation', { name: /on this page/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Current shortcuts' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Core controls' })).toBeTruthy();
   });
 
-  test('renders live shortcut values and page-specific in-app actions', async () => {
-    useStore.setState((state) => ({
-      settings: {
-        ...state.settings,
-        keyKeep: { key: 'q', ctrl: false, shift: false, alt: false },
-      },
-    }));
-
+  test('renders page-specific in-app actions and internal mdx cards', async () => {
     const onOpenSettings = vi.fn();
     const onOpenShortcutsHelp = vi.fn();
+
     render(
       <DocumentationModal
         onClose={() => {}}
@@ -97,17 +83,24 @@ describe('DocumentationModal behavior', () => {
     );
 
     const docsNav = screen.getByRole('navigation', { name: /documentation pages/i });
-    await userEvent.click(within(docsNav).getByRole('button', { name: /Review Mode/i }));
-
-    expect(screen.getByText(/Keep: Q/i)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /open latest docs on github/i })).toBeNull();
+    await userEvent.click(within(docsNav).getByRole('button', { name: /Review mode/i }));
 
     await userEvent.click(screen.getByRole('button', { name: /show keyboard shortcuts/i }));
     expect(onOpenShortcutsHelp).toHaveBeenCalledTimes(1);
 
-    await userEvent.click(within(docsNav).getByRole('button', { name: /Duplicate Review/i }));
+    await userEvent.click(within(docsNav).getByRole('button', { name: /Duplicate review/i }));
     await userEvent.click(screen.getByRole('button', { name: /open duplicate settings/i }));
     expect(onOpenSettings).toHaveBeenCalledWith('duplicates');
+
+    await userEvent.click(within(docsNav).getByRole('button', { name: /Get started with Video Cull/i }));
+    const mdxContent = document.querySelector('.documentation-mdx');
+    expect(mdxContent).toBeTruthy();
+    await userEvent.click(within(mdxContent as HTMLElement).getByRole('button', { name: /Grid view/i }));
+    expect(screen.getByRole('heading', { name: 'Grid view' })).toBeTruthy();
+
+    await userEvent.click(within(docsNav).getByRole('button', { name: /Get started with Video Cull/i }));
+    await userEvent.click(within(mdxContent as HTMLElement).getByRole('link', { name: /Keyboard shortcuts/i }));
+    expect(onOpenShortcutsHelp).toHaveBeenCalledTimes(2);
   });
 
   test('traps focus inside the modal and restores the previous focus when it closes', async () => {
@@ -134,17 +127,17 @@ describe('DocumentationModal behavior', () => {
     await userEvent.click(openButton);
 
     const search = screen.getByRole('searchbox', { name: /search documentation/i });
-    const githubLink = screen.getByRole('button', { name: /open project docs on github/i });
+    const footerLink = screen.getByRole('button', { name: /open this page on the docs site/i });
 
     expect(document.activeElement).toBe(search);
 
-    githubLink.focus();
-    fireEvent.keyDown(githubLink, { key: 'Tab' });
+    footerLink.focus();
+    fireEvent.keyDown(footerLink, { key: 'Tab' });
     expect(document.activeElement).toBe(search);
 
     search.focus();
     fireEvent.keyDown(search, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(githubLink);
+    expect(document.activeElement).toBe(footerLink);
 
     await userEvent.click(screen.getByRole('button', { name: 'Close documentation' }));
     expect(document.activeElement).toBe(openButton);
@@ -160,7 +153,7 @@ describe('DocumentationModal behavior', () => {
       />
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /open project docs on github/i }));
+    await userEvent.click(screen.getByRole('button', { name: /open this page on the docs site/i }));
     expect(electronAPI.openExternalUrl).toHaveBeenCalledTimes(1);
   });
 });

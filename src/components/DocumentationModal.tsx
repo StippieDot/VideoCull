@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { ExternalLink, Search, X } from 'lucide-react';
-import useStore from '../store';
-import { formatKeybind } from '../keybinds';
 import {
   DOCUMENTATION_ACTIONS,
-  DOCUMENTATION_GITHUB_URL,
+  DOCUMENTATION_PAGE_ID_BY_HREF,
   DOCUMENTATION_PAGES,
+  resolveDocumentationHref,
   type DocumentationActionId,
-  type DocumentationPage,
-  type DocumentationSection,
+  type DocumentationNode,
 } from '../docs/documentation';
 import './DocumentationModal.css';
 
@@ -28,11 +26,6 @@ type DocumentationModalProps = {
   onOpenShortcutsHelp: () => void;
 };
 
-type TocItem = {
-  id: string;
-  title: string;
-};
-
 const SETTINGS_ACTIONS: Partial<Record<DocumentationActionId, DocumentationSettingsTab>> = {
   'open-settings-interface': 'interface',
   'open-settings-duplicates': 'duplicates',
@@ -42,31 +35,55 @@ const SETTINGS_ACTIONS: Partial<Record<DocumentationActionId, DocumentationSetti
   'open-settings-about': 'about',
 };
 
+const SHORTCUTS_DOC_HREF = '/reference/keyboard-shortcuts';
+
 function normalizeSearch(value: string) {
   return value.trim().toLowerCase();
 }
 
-function sectionText(section: DocumentationSection) {
-  return [
-    section.title,
-    section.whatThisIs,
-    section.defaultRecommendation,
-    section.changeItWhen,
-    ...(section.bullets ?? []),
-  ].join(' ').toLowerCase();
-}
-
-function pageText(page: DocumentationPage) {
-  return [
-    page.title,
-    page.summary,
-    ...(page.tasks?.flatMap((task) => [task.title, task.detail]) ?? []),
-    ...page.sections.map(sectionText),
-  ].join(' ').toLowerCase();
-}
-
 function sectionAnchorId(pageId: string, sectionId: string) {
   return `${pageId}-${sectionId}`;
+}
+
+function inlineTokenKey(index: number, value: string) {
+  return `${index}-${value}`;
+}
+
+function renderInlineMarkdown(
+  value: string,
+  onOpenHref: (href: string) => void,
+): ReactNode[] {
+  const tokens = value.split(/(\[[^\]]+\]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*)/g).filter(Boolean);
+
+  return tokens.map((token, index) => {
+    const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (linkMatch) {
+      const [, label, href] = linkMatch;
+      const resolvedHref = resolveDocumentationHref(href);
+      return (
+        <a
+          key={inlineTokenKey(index, token)}
+          href={resolvedHref}
+          onClick={(event) => {
+            event.preventDefault();
+            onOpenHref(href);
+          }}
+        >
+          {label}
+        </a>
+      );
+    }
+
+    if (token.startsWith('`') && token.endsWith('`')) {
+      return <code key={inlineTokenKey(index, token)}>{token.slice(1, -1)}</code>;
+    }
+
+    if (token.startsWith('**') && token.endsWith('**')) {
+      return <strong key={inlineTokenKey(index, token)}>{token.slice(2, -2)}</strong>;
+    }
+
+    return <Fragment key={inlineTokenKey(index, token)}>{token}</Fragment>;
+  });
 }
 
 export default function DocumentationModal({
@@ -74,27 +91,18 @@ export default function DocumentationModal({
   onOpenSettings,
   onOpenShortcutsHelp,
 }: DocumentationModalProps) {
-  const settings = useStore((s) => s.settings);
   const [activePageId, setActivePageId] = useState(DOCUMENTATION_PAGES[0]?.id ?? '');
   const [query, setQuery] = useState('');
+  const [pendingSectionId, setPendingSectionId] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  const reviewShortcutRows = useMemo(() => ([
-    ['Keep', formatKeybind(settings.keyKeep)],
-    ['Delete', formatKeybind(settings.keyDelete)],
-    ['Skip', formatKeybind(settings.keySkip)],
-    ['Undo', formatKeybind(settings.keyUndo)],
-    ['Play / Pause', formatKeybind(settings.keyPlay)],
-    ['Show help', formatKeybind(settings.keyShowHelp)],
-  ]), [settings]);
-
   const normalizedQuery = normalizeSearch(query);
   const visiblePages = useMemo(() => {
     if (normalizedQuery === '') return DOCUMENTATION_PAGES;
-    return DOCUMENTATION_PAGES.filter((page) => pageText(page).includes(normalizedQuery));
+    return DOCUMENTATION_PAGES.filter((page) => page.searchableText.includes(normalizedQuery));
   }, [normalizedQuery]);
 
   useEffect(() => {
@@ -106,20 +114,7 @@ export default function DocumentationModal({
     ?? DOCUMENTATION_PAGES.find((page) => page.id === activePageId)
     ?? DOCUMENTATION_PAGES[0];
 
-  const visibleSections = useMemo(() => {
-    if (!activePage) return [];
-    if (normalizedQuery === '') return activePage.sections;
-    const matchingSections = activePage.sections.filter((section) => sectionText(section).includes(normalizedQuery));
-    return matchingSections.length > 0 ? matchingSections : activePage.sections;
-  }, [activePage, normalizedQuery]);
-
-  const tocItems = useMemo<TocItem[]>(() => {
-    const items = visibleSections.map((section) => ({ id: section.id, title: section.title }));
-    if (activePage?.id === 'review-mode') {
-      items.push({ id: 'current-shortcuts', title: 'Current shortcuts' });
-    }
-    return items;
-  }, [activePage?.id, visibleSections]);
+  const tocItems = useMemo(() => activePage?.headings ?? [], [activePage]);
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -137,8 +132,22 @@ export default function DocumentationModal({
     }
   }, [activePageId, normalizedQuery]);
 
+  const jumpToSection = (sectionId: string) => {
+    const node = document.getElementById(sectionAnchorId(activePage.id, sectionId));
+    node?.scrollIntoView({ block: 'start' });
+  };
+
+  useEffect(() => {
+    if (!pendingSectionId) return;
+    const frame = window.requestAnimationFrame(() => {
+      jumpToSection(pendingSectionId);
+      setPendingSectionId(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activePageId, pendingSectionId]);
+
   const openExternal = () => {
-    void window.electronAPI?.openExternalUrl(DOCUMENTATION_GITHUB_URL).catch((err) => {
+    void window.electronAPI?.openExternalUrl(resolveDocumentationHref(activePage.href)).catch((err) => {
       console.warn('[documentation] Failed to open external URL:', err);
     });
   };
@@ -150,6 +159,29 @@ export default function DocumentationModal({
     }
     const targetTab = SETTINGS_ACTIONS[actionId];
     if (targetTab) onOpenSettings(targetTab);
+  };
+
+  const selectTaskPage = (pageId: string, sectionId?: string) => {
+    setActivePageId(pageId);
+    setQuery('');
+    if (sectionId) setPendingSectionId(sectionId);
+  };
+
+  const openHref = (href: string) => {
+    if (href === SHORTCUTS_DOC_HREF) {
+      onOpenShortcutsHelp();
+      return;
+    }
+
+    const pageId = DOCUMENTATION_PAGE_ID_BY_HREF[href];
+    if (pageId) {
+      selectTaskPage(pageId);
+      return;
+    }
+
+    void window.electronAPI?.openExternalUrl(resolveDocumentationHref(href)).catch((err) => {
+      console.warn('[documentation] Failed to open documentation href:', err);
+    });
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -177,15 +209,148 @@ export default function DocumentationModal({
     }
   };
 
-  const jumpToSection = (sectionId: string) => {
-    const node = document.getElementById(sectionAnchorId(activePage.id, sectionId));
-    node?.scrollIntoView({ block: 'start' });
-  };
+  const renderNodes = (nodes: DocumentationNode[], keyPrefix: string): ReactNode[] => nodes.map((node, index) => {
+    const key = `${keyPrefix}-${node.type}-${index}`;
 
-  const selectTaskPage = (pageId: string) => {
-    setActivePageId(pageId);
-    setQuery('');
-  };
+    switch (node.type) {
+      case 'heading': {
+        const headingId = sectionAnchorId(activePage.id, node.id);
+        if (node.level === 2) {
+          return <h4 key={key} id={headingId} className="documentation-mdx-h2">{node.text}</h4>;
+        }
+        return <h5 key={key} id={headingId} className="documentation-mdx-h3">{node.text}</h5>;
+      }
+
+      case 'paragraph':
+        return (
+          <p key={key} className="documentation-mdx-paragraph">
+            {renderInlineMarkdown(node.text, openHref)}
+          </p>
+        );
+
+      case 'list': {
+        const ListTag = node.ordered ? 'ol' : 'ul';
+        return (
+          <ListTag key={key} className={`documentation-mdx-list${node.ordered ? ' ordered' : ''}`}>
+            {node.items.map((item, itemIndex) => (
+              <li key={`${key}-item-${itemIndex}`}>{renderInlineMarkdown(item, openHref)}</li>
+            ))}
+          </ListTag>
+        );
+      }
+
+      case 'table':
+        return (
+          <div key={key} className="documentation-mdx-table-wrap">
+            <table className="documentation-mdx-table">
+              <thead>
+                <tr>
+                  {node.headers.map((header, headerIndex) => (
+                    <th key={`${key}-header-${headerIndex}`}>{renderInlineMarkdown(header, openHref)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {node.rows.map((row, rowIndex) => (
+                  <tr key={`${key}-row-${rowIndex}`}>
+                    {row.map((cell, cellIndex) => (
+                      <td key={`${key}-cell-${rowIndex}-${cellIndex}`}>
+                        {renderInlineMarkdown(cell, openHref)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+
+      case 'image':
+        return (
+          <figure key={key} className="documentation-mdx-figure">
+            <img src={node.src} alt={node.alt} className="documentation-mdx-image" />
+          </figure>
+        );
+
+      case 'callout':
+        return (
+          <div key={key} className={`documentation-callout ${node.variant}`}>
+            {renderNodes(node.nodes, key)}
+          </div>
+        );
+
+      case 'steps':
+        return (
+          <div key={key} className="documentation-steps-block">
+            {node.items.map((item, itemIndex) => (
+              <section key={`${key}-step-${itemIndex}`} className="documentation-step-card">
+                <div className="documentation-step-index">{itemIndex + 1}</div>
+                <div className="documentation-step-content">
+                  <h5>{item.title}</h5>
+                  {renderNodes(item.nodes, `${key}-step-${itemIndex}`)}
+                </div>
+              </section>
+            ))}
+          </div>
+        );
+
+      case 'accordions':
+        return (
+          <div key={key} className="documentation-accordion-group">
+            {node.items.map((item, itemIndex) => (
+              <details key={`${key}-accordion-${itemIndex}`} className="documentation-accordion">
+                <summary>{item.title}</summary>
+                <div className="documentation-accordion-body">
+                  {renderNodes(item.nodes, `${key}-accordion-${itemIndex}`)}
+                </div>
+              </details>
+            ))}
+          </div>
+        );
+
+      case 'cards':
+        return (
+          <div key={key} className="documentation-card-grid">
+            {node.cards.map((card, cardIndex) => {
+              const pageId = DOCUMENTATION_PAGE_ID_BY_HREF[card.href];
+              const cardKey = `${key}-card-${cardIndex}`;
+
+              if (pageId) {
+                return (
+                  <button
+                    key={cardKey}
+                    type="button"
+                    className="documentation-mdx-card"
+                    onClick={() => selectTaskPage(pageId)}
+                  >
+                    <strong>{card.title}</strong>
+                    <span>{card.body}</span>
+                  </button>
+                );
+              }
+
+              return (
+                <a
+                  key={cardKey}
+                  className="documentation-mdx-card"
+                  href={resolveDocumentationHref(card.href)}
+                  onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                    event.preventDefault();
+                    openHref(card.href);
+                  }}
+                >
+                  <strong>{card.title}</strong>
+                  <span>{card.body}</span>
+                </a>
+              );
+            })}
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  });
 
   return (
     <div className="documentation-overlay" onClick={onClose}>
@@ -279,7 +444,7 @@ export default function DocumentationModal({
                       key={task.id}
                       type="button"
                       className="documentation-task-card"
-                      onClick={() => selectTaskPage(task.pageId)}
+                      onClick={() => selectTaskPage(task.pageId, task.sectionId)}
                     >
                       <strong>{task.title}</strong>
                       <span>{task.detail}</span>
@@ -295,7 +460,7 @@ export default function DocumentationModal({
                   <button
                     key={item.id}
                     type="button"
-                    className="documentation-toc-btn"
+                    className={`documentation-toc-btn${item.level === 3 ? ' secondary' : ''}`}
                     onClick={() => jumpToSection(item.id)}
                   >
                     {item.title}
@@ -304,56 +469,15 @@ export default function DocumentationModal({
               </nav>
             )}
 
-            {visibleSections.map((section) => (
-              <section
-                key={section.id}
-                id={sectionAnchorId(activePage.id, section.id)}
-                className="documentation-section"
-              >
-                <h4>{section.title}</h4>
-                <div className="documentation-section-block">
-                  <span className="documentation-section-label">What this is</span>
-                  <p>{section.whatThisIs}</p>
-                </div>
-                <div className="documentation-section-block">
-                  <span className="documentation-section-label">Default recommendation</span>
-                  <p>{section.defaultRecommendation}</p>
-                </div>
-                <div className="documentation-section-block">
-                  <span className="documentation-section-label">Change it when...</span>
-                  <p>{section.changeItWhen}</p>
-                </div>
-                {section.bullets && section.bullets.length > 0 && (
-                  <ul className="documentation-bullets">
-                    {section.bullets.map((bullet) => (
-                      <li key={bullet}>{bullet}</li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            ))}
-
-            {activePage.id === 'review-mode' && (
-              <section
-                id={sectionAnchorId(activePage.id, 'current-shortcuts')}
-                className="documentation-section"
-              >
-                <h4>Current shortcuts</h4>
-                <div className="documentation-shortcut-grid">
-                  {reviewShortcutRows.map(([label, value]) => (
-                    <div key={label} className="documentation-shortcut-row">
-                      <span>{label}: {value}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
+            <div className="documentation-mdx">
+              {renderNodes(activePage.nodes, activePage.id)}
+            </div>
           </article>
         </div>
 
         <div className="documentation-footer">
           <button type="button" className="documentation-link-btn" onClick={openExternal}>
-            Open project docs on GitHub
+            Open this page on the docs site
             <ExternalLink size={14} />
           </button>
         </div>

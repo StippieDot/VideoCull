@@ -11,14 +11,13 @@
 }
 
 .documentation-modal {
-  --doc-font-meta: 11px;
-  --doc-font-body: 13px;
-  --doc-font-title: 15px;
-  --doc-font-page: 19px;
-  --doc-font-ui: 12px;
-  --doc-font-ui-meta: 10px;
+  --doc-font-meta: 10px;
+  --doc-font-body: 12px;
+  --doc-font-title: 14px;
+  --doc-font-page: 18px;
+  --doc-font-ui: 11px;
 
-  width: min(1040px, 100%);
+  width: min(1120px, 100%);
   max-height: 88vh;
   display: flex;
   flex-direction: column;
@@ -56,7 +55,7 @@
 
 .documentation-summary {
   margin: 0;
-  max-width: 620px;
+  max-width: 680px;
   color: var(--text-secondary);
   line-height: 1.45;
   font-size: var(--doc-font-body);
@@ -75,7 +74,8 @@
 .documentation-link-btn,
 .documentation-nav-btn,
 .documentation-task-card,
-.documentation-toc-btn {
+.documentation-toc-btn,
+.documentation-mdx-card {
   border: none;
   background: transparent;
 }
@@ -171,7 +171,7 @@
 
 .documentation-body {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-columns: 198px minmax(0, 1fr);
   min-height: 0;
   flex: 1;
 }
@@ -182,12 +182,12 @@
   gap: 4px;
   padding: 16px 10px;
   border-right: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.08);
   overflow-y: auto;
 }
 
 .documentation-nav-btn {
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-radius: 6px;
   color: var(--text-secondary);
   text-align: left;
@@ -199,13 +199,17 @@
 
 .documentation-nav-btn span {
   font-size: var(--doc-font-ui);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .documentation-nav-btn small {
   color: var(--text-tertiary);
   line-height: 1.35;
-  font-size: var(--doc-font-ui-meta);
+  font-size: var(--doc-font-meta);
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .documentation-nav-btn:hover {
@@ -226,6 +230,9 @@
   padding: 20px 24px 24px;
   overflow-y: auto;
   color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .documentation-page-header {
@@ -233,8 +240,7 @@
 }
 
 .documentation-page-header h3,
-.documentation-task-section h4,
-.documentation-section h4 {
+.documentation-task-section h4 {
   color: var(--text-primary);
 }
 
@@ -249,6 +255,14 @@
   margin: 0;
   color: var(--text-secondary);
   line-height: 1.5;
+  font-size: var(--doc-font-body);
+}
+
+.documentation-page-header,
+.documentation-task-section,
+.documentation-toc,
+.documentation-mdx {
+  width: min(760px, 100%);
 }
 
 .documentation-task-section {
@@ -257,45 +271,51 @@
 
 .documentation-task-section h4 {
   margin: 0 0 10px;
-  font-size: var(--doc-font-body);
+  font-size: var(--doc-font-ui);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.documentation-task-grid {
+.documentation-task-grid,
+.documentation-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.documentation-task-card {
+.documentation-task-card,
+.documentation-mdx-card {
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(255, 255, 255, 0.02);
   color: var(--text-primary);
   text-align: left;
   display: flex;
   flex-direction: column;
   gap: 6px;
   transition: all 0.15s;
+  text-decoration: none;
 }
 
-.documentation-task-card strong {
-  font-size: 14px;
+.documentation-task-card strong,
+.documentation-mdx-card strong {
+  font-size: var(--doc-font-body);
   font-weight: 600;
   line-height: 1.3;
 }
 
-.documentation-task-card span {
+.documentation-task-card span,
+.documentation-mdx-card span {
   color: var(--text-secondary);
   line-height: 1.45;
   font-size: var(--doc-font-ui);
 }
 
-.documentation-task-card:hover {
-  background: rgba(255, 255, 255, 0.045);
+.documentation-task-card:hover,
+.documentation-mdx-card:hover {
+  background: rgba(255, 255, 255, 0.038);
   border-color: var(--border-hover);
 }
 
@@ -303,18 +323,22 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 22px;
 }
 
 .documentation-toc-btn {
-  padding: 6px 10px;
+  padding: 5px 9px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.02);
   color: var(--text-secondary);
-  font-size: var(--doc-font-ui-meta);
+  font-size: var(--doc-font-meta);
   font-weight: 600;
   transition: all 0.15s;
+}
+
+.documentation-toc-btn.secondary {
+  color: var(--text-tertiary);
 }
 
 .documentation-toc-btn:hover {
@@ -323,70 +347,223 @@
   border-color: var(--border-hover);
 }
 
-.documentation-section + .documentation-section {
-  margin-top: 14px;
-}
-
-.documentation-section {
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.documentation-section h4 {
-  margin: 0 0 12px;
-  font-size: var(--doc-font-title);
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.documentation-section-block + .documentation-section-block {
-  margin-top: 10px;
-}
-
-.documentation-section-label {
-  display: inline-block;
-  margin-bottom: 4px;
-  color: var(--text-tertiary);
-  font-size: var(--doc-font-meta);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.documentation-section p,
-.documentation-bullets,
-.documentation-shortcut-row span {
-  margin: 0;
+.documentation-mdx {
+  font-size: var(--doc-font-body);
   line-height: 1.55;
 }
 
-.documentation-section-block p {
+.documentation-mdx > :first-child {
+  margin-top: 0;
+}
+
+.documentation-mdx > :last-child {
+  margin-bottom: 0;
+}
+
+.documentation-mdx-h2,
+.documentation-mdx-h3 {
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.documentation-mdx-h2 {
+  margin: 26px 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.documentation-mdx-h3 {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.documentation-mdx > .documentation-mdx-h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.documentation-mdx-paragraph {
+  margin: 0 0 10px;
+}
+
+.documentation-mdx a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.documentation-mdx a:hover {
+  text-decoration: underline;
+}
+
+.documentation-mdx code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  font-size: 0.95em;
+}
+
+.documentation-mdx-list {
+  margin: 0 0 12px;
+  padding-left: 18px;
+}
+
+.documentation-mdx-list li + li {
+  margin-top: 6px;
+}
+
+.documentation-mdx-table-wrap {
+  margin: 0 0 14px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.documentation-mdx-table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: var(--doc-font-ui);
 }
 
-.documentation-bullets {
-  margin-top: 10px;
-  padding-left: 18px;
-  color: var(--text-secondary);
+.documentation-mdx-table th,
+.documentation-mdx-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
 }
 
-.documentation-bullets li + li {
-  margin-top: 5px;
+.documentation-mdx-table tr:last-child td {
+  border-bottom: 0;
 }
 
-.documentation-shortcut-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
+.documentation-mdx-table th + th,
+.documentation-mdx-table td + td {
+  border-left: 1px solid var(--border);
 }
 
-.documentation-shortcut-row {
-  padding: 9px 10px;
+.documentation-mdx-table th {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.documentation-mdx-figure {
+  margin: 0 0 16px;
+}
+
+.documentation-mdx-image {
+  display: block;
+  width: 100%;
+  max-width: 860px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.025);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.documentation-callout {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.documentation-callout.warning {
+  border-left-color: #d98c3f;
+}
+
+.documentation-callout.tip,
+.documentation-callout.check {
+  border-left-color: #55a56a;
+}
+
+.documentation-callout.note,
+.documentation-callout.info {
+  border-left-color: var(--accent);
+}
+
+.documentation-callout .documentation-mdx-paragraph:last-child,
+.documentation-accordion-body .documentation-mdx-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+.documentation-steps-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.documentation-step-card {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.documentation-step-index {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--doc-font-ui);
+  font-weight: 700;
+}
+
+.documentation-step-content h5 {
+  margin: 1px 0 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.documentation-step-content > :last-child {
+  margin-bottom: 0;
+}
+
+.documentation-accordion-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.documentation-accordion {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.documentation-accordion summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  color: var(--text-primary);
+  font-size: var(--doc-font-body);
+  font-weight: 600;
+}
+
+.documentation-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+.documentation-accordion-body {
+  padding: 0 14px 12px;
 }
 
 .documentation-footer {
@@ -414,7 +591,7 @@
 
 @media (max-width: 960px) {
   .documentation-task-grid,
-  .documentation-shortcut-grid {
+  .documentation-card-grid {
     grid-template-columns: 1fr;
   }
 }
