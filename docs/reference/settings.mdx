@@ -3,7 +3,35 @@ title: Settings
 description: Configure thumbnails, cache behavior, duplicate review, hardware acceleration, and other core Video Cull options.
 ---
 
+<!-- in-app-meta
+{
+  "summary": "Use these settings when you need to balance portability, speed, and background work.",
+  "actions": ["open-settings-cache", "open-settings-processing"]
+}
+-->
+
 Settings are split across the same tabs you see in the app. Most libraries work well with the defaults. Change settings when you have a reason, not because the app offers a knob.
+
+## Cache storage modes
+
+Centralised mode keeps cache in one place, per-drive keeps it with the drive identity, and distributed writes a `.videocull` folder beside the media.
+
+Use centralised cache unless you have a portability reason to move it. Use per-drive when removable drives need their own cache roots. Use distributed only when portability beside the media matters more than keeping folders clean.
+
+## Processing cost
+
+Thumbnail count, concurrency, and related processing settings decide how much work each scan or rebuild does.
+
+Stay near the defaults unless you already know the library needs denser thumbnails or more aggressive throughput.
+
+- More thumbnails improve browsing but take longer to build.
+- Higher concurrency can speed up work but costs CPU and I/O headroom.
+
+## When settings apply
+
+Some settings change the renderer immediately, while settings that affect stored files or generated outputs usually apply on the next scan, duplicate run, or rebuild.
+
+Assume cache layout, duplicate tuning, and thumbnail-generation changes are forward-looking unless the UI explicitly tells you they take effect now.
 
 ## Suggested approach
 

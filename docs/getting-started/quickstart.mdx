@@ -3,11 +3,73 @@ title: Get started with Video Cull
 description: Open a folder, generate thumbnails, review clips, and safely send unwanted videos to the Recycle Bin.
 ---
 
+<!-- in-app-meta
+{
+  "summary": "Get from an empty session to safe deletes without guessing what to do next.",
+  "actions": ["open-settings-interface"],
+  "tasks": [
+    {
+      "id": "task-open-folder",
+      "title": "Load a folder and start culling",
+      "detail": "Open a folder, review decisions, then run delete only when the delete list looks final.",
+      "pageId": "quick-start",
+      "sectionId": "main-workflow"
+    },
+    {
+      "id": "task-filter-grid",
+      "title": "Narrow the list before review",
+      "detail": "Use grid filters to get to one folder, status bucket, or search result before you enter review mode.",
+      "pageId": "grid-view",
+      "sectionId": "filter-first"
+    },
+    {
+      "id": "task-duplicates",
+      "title": "Understand duplicate matches before I rerun them",
+      "detail": "Use duplicate review to confirm the suggestion, then tune similarity or samples only when the results are noisy.",
+      "pageId": "duplicate-review",
+      "sectionId": "comparison-modes"
+    },
+    {
+      "id": "task-processing",
+      "title": "Check cache and processing cost",
+      "detail": "Review where cache lives and how many thumbnails you generate before changing large libraries.",
+      "pageId": "settings",
+      "sectionId": "processing-cost"
+    },
+    {
+      "id": "task-delete-safety",
+      "title": "Review delete safety before cleanup",
+      "detail": "Confirm what Delete means, what goes to the Recycle Bin, and when a delete may become permanent.",
+      "pageId": "quick-start",
+      "sectionId": "delete-safety"
+    }
+  ]
+}
+-->
+
 Once Video Cull is installed, you can go from a folder full of unsorted clips to a clean keep or delete pass in a few minutes.
 
 <Warning>
   Nothing is removed until you explicitly trigger the delete action. Until then, your review decisions stay reversible.
 </Warning>
+
+## Main workflow
+
+Video Cull is fastest when you load a folder, reduce obvious noise in the grid, use review mode only for the clips that still need a closer look, and treat duplicate review as a side pass instead of the main path.
+
+Keep the first pass simple. Load a folder, filter only when that removes noise, review the remaining queue, and delete only after the queue looks final.
+
+## Build a session
+
+A session is the current set of loaded folders plus the active filters, duplicate results, review scope, sort order, and saved progress for those folders.
+
+Start with one folder when you are learning the flow. Add more folders only when they belong to the same review job and you want one combined queue.
+
+## Delete safety
+
+Marking a video as Delete only changes session state. No file leaves disk until you explicitly run the delete action for the current delete set.
+
+Stop and verify the selection if the app warns about permanent deletion or if the delete size looks larger than expected.
 
 ## Suggested workflow
 

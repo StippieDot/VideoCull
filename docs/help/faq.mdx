@@ -3,6 +3,31 @@ title: Frequently asked questions
 description: Answers to common questions about formats, cache, offline use, updates, and recovery.
 ---
 
+<!-- in-app-meta
+{
+  "summary": "Answers to the short questions that come up during normal sessions.",
+  "actions": ["open-settings-about"]
+}
+-->
+
+## Supported formats
+
+Metadata scanning is usually broader than embedded playback because FFprobe support and the in-app player stack are not identical.
+
+Assume a file can often be scanned and thumbnailed even when it does not play perfectly inside the renderer.
+
+## External player fallback
+
+Some files have codecs or containers that the app can inspect but not play reliably enough in the embedded player.
+
+Treat the external player as a fallback, not as a failed review state. It lets you keep the same session and decision flow.
+
+## Move cache to a new drive
+
+Cache movement is done from cache settings, where the app can migrate existing cache roots or let the next scan start fresh.
+
+Choose migration when the existing cache is still valuable and the source drive is available during the move. Start fresh when the old cache is disposable or outdated.
+
 <AccordionGroup>
   <Accordion title="Which video formats does Video Cull support?">
     Video Cull can generate thumbnails and metadata for many common formats through FFmpeg.

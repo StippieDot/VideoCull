@@ -3,9 +3,43 @@ title: Duplicate review
 description: Find likely duplicate videos and work through suggested keepers instead of reviewing every clip from scratch.
 ---
 
+<!-- in-app-meta
+{
+  "summary": "Treat duplicate detection as a suggestion engine, not an automatic delete tool.",
+  "actions": ["open-settings-duplicates"]
+}
+-->
+
 Duplicate review helps you find likely duplicate files across all loaded videos or just the current filtered view. Instead of starting from scratch, you work through grouped matches with a suggested keeper.
 
 ![Duplicate review](/screenshots/V2.0.0%20-%20DuplicationMode.png)
+
+## Comparison modes
+
+Visual similarity uses sampled frames to catch near-duplicates humans would still judge as the same clip. pHash is stricter and more image-signature driven.
+
+Start with visual similarity for most libraries because it is the practical default for real culling work. Switch to pHash when visual results are too broad.
+
+## Thresholds and sample count
+
+Similarity and sample count control how wide the net is and how much evidence the matcher uses before grouping files.
+
+Start around 90 to 95 percent similarity with the default sample count. Raise the threshold when false positives dominate. Lower it when different encodes of the same clip are being missed.
+
+- More candidates usually means more manual review.
+- Stricter matching usually means fewer noisy groups.
+
+## Keeper suggestions and actions
+
+The suggested keeper is a starting point inside the group. Batch actions are for several rows at once, while right-click actions are for targeted overrides.
+
+Accept the suggested keeper when it already matches your judgment, then batch-mark the rest. Override it when filenames, folders, or encodes make a different file the better long-term source.
+
+## Reruns and ignored matches
+
+Ignored matches stay out of later duplicate runs until you clear that history in duplicate settings.
+
+Ignore obviously wrong matches instead of forcing a decision through them, then rerun duplicate detection after adjusting settings when the results are broadly weak.
 
 ## Matching methods
 
