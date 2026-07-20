@@ -101,7 +101,7 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'sta
   const getSortCmp = (a: Video, b: Video): number => {
     switch (state.sortBy) {
       case 'name':
-        return a.filename.localeCompare(b.filename);
+        return a.filename.localeCompare(b.filename, undefined, { numeric: true, sensitivity: 'base' });
       case 'size':
         return a.sizeBytes - b.sizeBytes;
       case 'duration':

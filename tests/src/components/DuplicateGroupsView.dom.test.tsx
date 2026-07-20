@@ -14,16 +14,21 @@ vi.mock('react-window', () => ({
     rowCount,
     rowComponent: RowComponent,
     listRef,
+    onScroll,
   }: {
     rowCount: number;
     rowComponent: ComponentType<{ index: number; style: Record<string, unknown>; ariaAttributes: Record<string, unknown> }>;
     listRef?: { current: unknown };
+    onScroll?: (event: React.UIEvent<HTMLDivElement>) => void;
   }) => {
-    if (listRef) {
-      listRef.current = { element: { scrollTop: 0 } };
-    }
     return (
-      <div data-testid="virtual-list">
+      <div
+        data-testid="virtual-list"
+        ref={(element) => {
+          if (listRef) listRef.current = element ? { element } : null;
+        }}
+        onScroll={onScroll}
+      >
         {Array.from({ length: rowCount }, (_, index) => (
           <RowComponent
             key={index}
@@ -335,5 +340,30 @@ describe('DuplicateGroupsView behavior', () => {
 
     expect(smallSizeChip?.classList.contains('best')).toBe(true);
     expect(largeSizeChip?.classList.contains('best')).toBe(false);
+  });
+
+  test('does not overwrite the saved duplicate scroll position while returning from review', async () => {
+    const groupId = 'group-1';
+    const keeper = makeVideo('a', { duplicateGroupId: groupId });
+    const duplicate = makeVideo('b', { duplicateGroupId: groupId });
+    useStore.setState({
+      videos: [keeper, duplicate],
+      duplicateGroups: [makeDuplicateGroup({
+        id: groupId,
+        videoIds: ['a', 'b'],
+        suggestedKeeperId: 'a',
+      })],
+      duplicateScrollTop: 420,
+      reviewMode: true,
+    });
+
+    render(<DuplicateGroupsView />);
+    const list = await screen.findByTestId('virtual-list');
+
+    act(() => useStore.getState().setReviewMode(false));
+    list.scrollTop = 0;
+    fireEvent.scroll(list);
+
+    expect(useStore.getState().duplicateScrollTop).toBe(420);
   });
 });

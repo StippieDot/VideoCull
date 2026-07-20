@@ -32,6 +32,22 @@ function makeFilterState(overrides: Partial<FilterState> = {}): FilterState {
 }
 
 describe('store filtering and grouping behavior', () => {
+  test('sorts numbered filenames in natural numeric order', () => {
+    const videos = [
+      makeVideo('ten', { filename: 'file 10.mp4' }),
+      makeVideo('two', { filename: 'file 2.mp4' }),
+      makeVideo('one', { filename: 'file 1.mp4' }),
+    ];
+
+    const filtered = __test__.computeFiltered(makeFilterState({ videos }));
+
+    expect(filtered.map((video) => video.filename)).toEqual([
+      'file 1.mp4',
+      'file 2.mp4',
+      'file 10.mp4',
+    ]);
+  });
+
   test('keeps only videos that satisfy the active review filters', () => {
     const videos = [
       makeVideo('a', { sizeBytes: 500, durationSecs: 30, rating: 4, favorite: true, duplicateGroupId: 'g1' }),

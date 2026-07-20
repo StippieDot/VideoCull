@@ -128,6 +128,7 @@ const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
 
 function isFocusableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement) || target === document.body) return false;
+  if (target.closest('.media-minimal-skin')) return false;
   return Boolean(target.closest('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'));
 }
 
@@ -528,7 +529,8 @@ export default function ReviewMode() {
 
   const statusClass =
     video.status === 'keep' ? 'review-keep' :
-    video.status === 'delete' ? 'review-delete' : '';
+    video.status === 'delete' ? 'review-delete' :
+    video.status === 'skipped' ? 'review-skip' : '';
 
   const contextMenuItems = buildReviewVideoMenu({
     onOpenExternal: () => {

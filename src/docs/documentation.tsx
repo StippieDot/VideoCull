@@ -2,8 +2,11 @@ import duplicateReviewSource from '../../docs/features/duplicate-review.mdx?raw'
 import gridViewSource from '../../docs/features/grid-view.mdx?raw';
 import quickStartSource from '../../docs/getting-started/quickstart.mdx?raw';
 import faqSource from '../../docs/help/faq.mdx?raw';
+import troubleshootingSource from '../../docs/help/troubleshooting.mdx?raw';
 import reviewModeSource from '../../docs/features/review-mode.mdx?raw';
+import keyboardShortcutsSource from '../../docs/reference/keyboard-shortcuts.mdx?raw';
 import settingsSource from '../../docs/reference/settings.mdx?raw';
+import supportedFormatsSource from '../../docs/reference/supported-formats.mdx?raw';
 
 const DOC_IMAGES = import.meta.glob('../../docs/screenshots/*', {
   eager: true,
@@ -35,9 +38,12 @@ export type DocumentationHeading = {
   title: string;
 };
 
+export type DocumentationGroup = 'Get started' | 'Workflows' | 'Reference' | 'Help';
+
 export type DocumentationNode =
   | { type: 'heading'; level: 2 | 3; id: string; text: string }
   | { type: 'paragraph'; text: string }
+  | { type: 'code'; language: string; content: string }
   | { type: 'list'; ordered: boolean; items: string[] }
   | { type: 'table'; headers: string[]; rows: string[][] }
   | { type: 'image'; alt: string; src: string }
@@ -48,6 +54,8 @@ export type DocumentationNode =
 
 export type DocumentationPage = {
   id: string;
+  group: DocumentationGroup;
+  navigationTitle: string;
   title: string;
   summary: string;
   href: string;
@@ -64,8 +72,10 @@ type InAppMeta = {
   tasks?: DocumentationTask[];
 };
 
-type DocumentationSource = {
+export type DocumentationSource = {
   id: string;
+  group: DocumentationGroup;
+  navigationTitle?: string;
   href: string;
   raw: string;
 };
@@ -74,12 +84,15 @@ const IN_APP_META_RE = /<!--\s*in-app-meta\s*([\s\S]*?)-->/;
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 const DOCUMENTATION_SOURCES: DocumentationSource[] = [
-  { id: 'quick-start', href: '/getting-started/quickstart', raw: quickStartSource },
-  { id: 'grid-view', href: '/features/grid-view', raw: gridViewSource },
-  { id: 'review-mode', href: '/features/review-mode', raw: reviewModeSource },
-  { id: 'duplicate-review', href: '/features/duplicate-review', raw: duplicateReviewSource },
-  { id: 'settings', href: '/reference/settings', raw: settingsSource },
-  { id: 'faq', href: '/help/faq', raw: faqSource },
+  { id: 'quick-start', group: 'Get started', navigationTitle: 'Quick start', href: '/getting-started/quickstart', raw: quickStartSource },
+  { id: 'grid-view', group: 'Workflows', href: '/features/grid-view', raw: gridViewSource },
+  { id: 'review-mode', group: 'Workflows', href: '/features/review-mode', raw: reviewModeSource },
+  { id: 'duplicate-review', group: 'Workflows', href: '/features/duplicate-review', raw: duplicateReviewSource },
+  { id: 'settings', group: 'Reference', href: '/reference/settings', raw: settingsSource },
+  { id: 'keyboard-shortcuts', group: 'Reference', href: '/reference/keyboard-shortcuts', raw: keyboardShortcutsSource },
+  { id: 'supported-formats', group: 'Reference', href: '/reference/supported-formats', raw: supportedFormatsSource },
+  { id: 'troubleshooting', group: 'Help', href: '/help/troubleshooting', raw: troubleshootingSource },
+  { id: 'faq', group: 'Help', href: '/help/faq', raw: faqSource },
 ];
 
 export const DOCUMENTATION_ACTIONS: Record<DocumentationActionId, { label: string; description: string }> = {
@@ -195,6 +208,23 @@ function parseBlocks(source: string): DocumentationNode[] {
 
     if (trimmed === '') {
       flush();
+      continue;
+    }
+
+    const codeFenceMatch = trimmed.match(/^```([\w-]*)$/);
+    if (codeFenceMatch) {
+      flush();
+      const codeLines: string[] = [];
+      index += 1;
+      while (index < lines.length && lines[index]?.trim() !== '```') {
+        codeLines.push(lines[index] ?? '');
+        index += 1;
+      }
+      nodes.push({
+        type: 'code',
+        language: codeFenceMatch[1] ?? '',
+        content: codeLines.join('\n'),
+      });
       continue;
     }
 
@@ -396,6 +426,8 @@ function collectSearchText(nodes: DocumentationNode[]): string[] {
         return [node.text];
       case 'paragraph':
         return [node.text];
+      case 'code':
+        return [node.content];
       case 'list':
         return node.items;
       case 'table':
@@ -416,13 +448,16 @@ function collectSearchText(nodes: DocumentationNode[]): string[] {
   });
 }
 
-function parseDocumentationPage(source: DocumentationSource): DocumentationPage {
+export function parseDocumentationPage(source: DocumentationSource): DocumentationPage {
   const frontmatter = parseFrontmatter(source.raw);
   const meta = parseInAppMeta(source.raw);
   const nodes = parseBlocks(stripFrontmatterAndMeta(source.raw));
   const headings = collectHeadings(nodes);
+  const title = frontmatter.title ?? source.id;
+  const navigationTitle = source.navigationTitle ?? title;
   const searchableText = [
-    frontmatter.title ?? source.id,
+    title,
+    navigationTitle,
     meta.summary ?? frontmatter.description ?? '',
     ...(meta.tasks?.flatMap((task) => [task.title, task.detail]) ?? []),
     ...collectSearchText(nodes),
@@ -430,8 +465,10 @@ function parseDocumentationPage(source: DocumentationSource): DocumentationPage 
 
   return {
     id: source.id,
+    group: source.group,
     href: source.href,
-    title: frontmatter.title ?? source.id,
+    navigationTitle,
+    title,
     summary: meta.summary ?? frontmatter.description ?? '',
     actions: meta.actions,
     tasks: meta.tasks,

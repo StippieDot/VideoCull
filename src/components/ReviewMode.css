@@ -25,12 +25,15 @@
   padding-bottom: 0;
 }
 
-/* Status flash - solid gradients for focus */
+/* Status hue for previously decided videos */
 .review-keep {
-  background: radial-gradient(circle at 50% 0%, rgba(0, 250, 154, 0.08) 0%, var(--bg-app) 60%);
+  background: radial-gradient(circle at 50% 0%, var(--color-keep-dim) 0%, var(--bg-app) 65%);
 }
 .review-delete {
-  background: radial-gradient(circle at 50% 0%, rgba(255, 71, 87, 0.08) 0%, var(--bg-app) 60%);
+  background: radial-gradient(circle at 50% 0%, var(--color-delete-dim) 0%, var(--bg-app) 65%);
+}
+.review-skip {
+  background: radial-gradient(circle at 50% 0%, var(--color-skip-dim) 0%, var(--bg-app) 65%);
 }
 
 /* ── Close ── */
