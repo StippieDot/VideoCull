@@ -3,12 +3,12 @@ title: Grid view
 description: Browse your video library at a glance with thumbnail strips, filters, sorting, badges, and batch actions.
 ---
 
-<!-- in-app-meta
+{/* in-app-meta
 {
   "summary": "Use the grid to shrink a noisy library into a reviewable queue.",
   "actions": ["open-settings-interface"]
 }
--->
+*/}
 
 Grid view is where most large-library triage happens. Every video appears as a card with thumbnail frames sampled from different points in the file, so you can understand what a clip contains without opening it first.
 
@@ -32,6 +32,10 @@ Batch selection is the fast path for marking many rows after filtering has alrea
 
 Select after filtering, apply one batch action, then keep moving. Drop back to per-card actions when the remaining set has mixed outcomes or when you need playback before deciding.
 
+- Mark selections as Keep, Delete, Skip, or Reset.
+- Clear selection without changing statuses.
+- Regenerate thumbnails for selected items.
+
 ## What you can do
 
 - Change card size with `Ctrl++` and `Ctrl+-`.
@@ -41,14 +45,11 @@ Select after filtering, apply one batch action, then keep moving. Drop back to p
 - Sort by name, size, duration, date, rating, resolution, or FPS.
 - See badges for codec, resolution, FPS, favorite state, rating, and playback compatibility.
 
-## Batch actions
+## Card and folder actions
 
-Use the grid when you already know what a clip is from the thumbnails alone.
+Use the grid when you already know what a clip is from the thumbnails alone. Open a card's context menu for targeted actions such as changing its status, regenerating thumbnails, revealing the file, or copying its path.
 
-- Mark selections as Keep, Delete, Skip, or Reset.
-- Clear selection without changing statuses.
-- Regenerate thumbnails for selected items.
-- Open review mode for a single folder from its sidebar action.
+Folder headers show local counts and sizes. Use a folder header's Review action when you want a one-folder review queue without changing the rest of the session.
 
 ## Folder and session controls
 

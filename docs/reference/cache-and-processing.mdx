@@ -1,0 +1,71 @@
+---
+title: Cache and processing
+description: Choose where Video Cull stores local progress and understand which processing settings affect future work.
+---
+
+{/* in-app-meta
+{
+  "summary": "Balance cache portability, folder cleanliness, thumbnail detail, and processing cost.",
+  "actions": ["open-settings-cache", "open-settings-processing"]
+}
+*/}
+
+Video Cull stores SQLite databases and generated thumbnails locally. The cache preserves decisions, ratings, favorites, bookmarks, metadata, duplicate fingerprints, and thumbnail paths across rescans and restarts.
+
+## Choose a cache mode
+
+| Mode | Where it lives | Use it when |
+| --- | --- | --- |
+| Centralised | One app-controlled cache root | You want the lowest-friction default on one computer |
+| Per-drive | A cache root on each drive | Removable drives should carry their cache identity |
+| Distributed | A hidden `.videocull` folder inside each loaded folder | Cache must stay beside the media and folder clutter is acceptable |
+
+Centralised is the safest default. Distributed mode is deliberately marked as a power-user option because it writes cache folders into the media tree.
+
+## Change cache location
+
+Saving a changed cache mode or root starts the cache migration flow. You can migrate existing data, start fresh, or cancel.
+
+- **Migrate existing cache** keeps current progress when the source cache is available.
+- **Start fresh** leaves the new location empty; the next scan rebuilds metadata and thumbnails.
+- **Cancel** leaves both settings and cache layout unchanged.
+
+Do not disconnect a source or destination drive during migration. If a partial migration is reported, read the error before rescanning or deleting the old cache manually.
+
+## Know when settings apply
+
+| Change | Takes effect |
+| --- | --- |
+| Card scale, sorting, grouping, and visible features | Immediately after saving |
+| Cache location | On the next scan after migration completes |
+| Thumbnail count and intro delay | During future generation or regeneration |
+| FFmpeg concurrency, thread limit, and hardware acceleration | When the next processing work starts |
+| Duplicate matching settings | On the next duplicate run |
+| Keeper protection and keeper order | Immediately in the current duplicate view |
+
+Changing a generation setting does not silently rebuild existing thumbnails. Rescan or regenerate thumbnails when you want current cached output replaced.
+
+## Tune thumbnail generation
+
+More frames provide more visual context but cost extra CPU time, disk reads, and cache space. Six frames is a useful general default; use fewer for speed or more when clips change significantly over time.
+
+Intro skip delay moves the first sample away from fades and blank lead-ins. Increase it only when early frames are consistently useless.
+
+## Control processing cost
+
+- Leave **Parallel FFmpeg processes** on Auto unless the machine becomes unresponsive or storage is saturated.
+- Keep **Limit each FFmpeg process to 1 CPU thread** enabled for predictable parallel work.
+- Treat **Hardware acceleration** as experimental. Disable it first when GPU decoding crashes or behaves poorly with older formats.
+- Lower concurrency for slow external, network, or cloud-mounted drives.
+
+You can browse and review while thumbnails continue in the background. Metadata-dependent actions, including duplicate detection, may wait until the required metadata is ready.
+
+## Clear or rebuild cache
+
+Clear thumbnail cache when generated images are stale, incomplete, or based on settings you no longer want. Rescan afterward to rebuild them.
+
+Starting fresh removes cached convenience and progress from that cache location; it does not delete source videos. Preserve or migrate the old cache first when its decisions and bookmarks still matter.
+
+<Tip>
+  Change one processing setting at a time and test it on a representative folder before rebuilding a large library.
+</Tip>

@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { vi } from 'vitest';
 import DocumentationModal from '../../../src/components/DocumentationModal';
+import useStore from '../../../src/store';
 
 function installElectronApiMock() {
   const electronAPI = {
@@ -17,6 +18,10 @@ function installElectronApiMock() {
 describe('DocumentationModal behavior', () => {
   beforeEach(() => {
     installElectronApiMock();
+    const store = useStore as typeof useStore & {
+      getInitialState: () => ReturnType<typeof useStore.getState>;
+    };
+    store.setState(store.getInitialState(), true);
   });
 
   afterEach(() => {
@@ -144,7 +149,7 @@ describe('DocumentationModal behavior', () => {
     expect(sections[0]?.open).toBe(true);
     expect(sections.slice(1).every((section) => !section.open)).toBe(true);
     expect(within(sections[0]!.querySelector('summary')!).getByRole('heading', {
-      name: 'Cache storage modes',
+      name: 'Before changing defaults',
     })).toBeTruthy();
   });
 
@@ -246,6 +251,8 @@ describe('DocumentationModal behavior', () => {
 
     const docsNav = screen.getByRole('navigation', { name: /documentation pages/i });
     expect(within(docsNav).getByRole('button', { name: /^Keyboard shortcuts/i })).toBeTruthy();
+    expect(within(docsNav).getByRole('button', { name: /Cache and processing/i })).toBeTruthy();
+    expect(within(docsNav).getByRole('button', { name: /Delete and safety/i })).toBeTruthy();
     expect(within(docsNav).getByRole('button', { name: /Troubleshooting/i })).toBeTruthy();
 
     await userEvent.click(within(docsNav).getByRole('button', { name: /Supported formats/i }));
@@ -254,6 +261,29 @@ describe('DocumentationModal behavior', () => {
     await userEvent.click(within(docsNav).getByRole('button', { name: /^Troubleshooting/i }));
     await userEvent.click(screen.getByText('Thumbnails are not generating or are stuck'));
     expect(screen.getByRole('heading', { name: 'Clear thumbnail cache and rescan' })).toBeTruthy();
+  });
+
+  test('renders the current customized shortcuts in the MDX-defined shortcut tables', async () => {
+    useStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        keyKeep: { key: 'q', ctrl: true, shift: false, alt: true },
+      },
+    }));
+
+    render(
+      <DocumentationModal
+        onClose={() => {}}
+        onOpenSettings={() => {}}
+        onOpenShortcutsHelp={() => {}}
+      />
+    );
+
+    const docsNav = screen.getByRole('navigation', { name: /documentation pages/i });
+    await userEvent.click(within(docsNav).getByRole('button', { name: /^Keyboard shortcuts/i }));
+
+    expect(screen.getByText('Ctrl+Alt+Q')).toBeTruthy();
+    expect(screen.getByText('Mark as Keep')).toBeTruthy();
   });
 
   test('traps focus inside the modal and restores the previous focus when it closes', async () => {

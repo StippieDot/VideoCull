@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { ExternalLink, Search, X } from 'lucide-react';
+import { ALL_SHORTCUTS, FIXED_SHORTCUTS, formatKeybind, type Keybind } from '../keybinds';
+import useStore from '../store';
 import {
   DOCUMENTATION_ACTIONS,
   DOCUMENTATION_PAGE_ID_BY_HREF,
@@ -141,6 +143,7 @@ export default function DocumentationModal({
   onOpenSettings,
   onOpenShortcutsHelp,
 }: DocumentationModalProps) {
+  const settings = useStore((state) => state.settings);
   const [activePageId, setActivePageId] = useState(DOCUMENTATION_PAGES[0]?.id ?? '');
   const [query, setQuery] = useState('');
   const [pendingSectionId, setPendingSectionId] = useState<string | null>(null);
@@ -320,6 +323,37 @@ export default function DocumentationModal({
             </table>
           </div>
         );
+
+      case 'shortcut-table': {
+        const configurable = ALL_SHORTCUTS.filter((shortcut) => shortcut.group === node.group);
+        const fixed = FIXED_SHORTCUTS.filter((shortcut) => shortcut.group === node.group);
+        return (
+          <div key={key} className="documentation-mdx-table-wrap">
+            <table className="documentation-mdx-table">
+              <thead>
+                <tr><th>Shortcut</th><th>Action</th></tr>
+              </thead>
+              <tbody>
+                {configurable.map((shortcut) => (
+                  <tr key={shortcut.id}>
+                    <td><code>{formatKeybind(settings[shortcut.id] as Keybind)}</code></td>
+                    <td>
+                      {shortcut.description}
+                      {shortcut.context === 'playing' ? ' (playing)' : shortcut.context === 'not-playing' ? ' (not playing)' : ''}
+                    </td>
+                  </tr>
+                ))}
+                {fixed.map((shortcut) => (
+                  <tr key={`${node.group}-${shortcut.description}`}>
+                    <td><code>{shortcut.keys.join(' / ')}</code></td>
+                    <td>{shortcut.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
 
       case 'image':
         return (

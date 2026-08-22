@@ -1,10 +1,12 @@
 import duplicateReviewSource from '../../docs/features/duplicate-review.mdx?raw';
+import deleteSafetySource from '../../docs/features/delete-and-safety.mdx?raw';
 import gridViewSource from '../../docs/features/grid-view.mdx?raw';
 import quickStartSource from '../../docs/getting-started/quickstart.mdx?raw';
 import faqSource from '../../docs/help/faq.mdx?raw';
 import troubleshootingSource from '../../docs/help/troubleshooting.mdx?raw';
 import reviewModeSource from '../../docs/features/review-mode.mdx?raw';
 import keyboardShortcutsSource from '../../docs/reference/keyboard-shortcuts.mdx?raw';
+import cacheProcessingSource from '../../docs/reference/cache-and-processing.mdx?raw';
 import settingsSource from '../../docs/reference/settings.mdx?raw';
 import supportedFormatsSource from '../../docs/reference/supported-formats.mdx?raw';
 
@@ -46,6 +48,7 @@ export type DocumentationNode =
   | { type: 'code'; language: string; content: string }
   | { type: 'list'; ordered: boolean; items: string[] }
   | { type: 'table'; headers: string[]; rows: string[][] }
+  | { type: 'shortcut-table'; group: 'Review mode' | 'Preview' | 'Global' }
   | { type: 'image'; alt: string; src: string }
   | { type: 'callout'; variant: 'warning' | 'tip' | 'note' | 'info' | 'check'; nodes: DocumentationNode[] }
   | { type: 'steps'; items: Array<{ title: string; nodes: DocumentationNode[] }> }
@@ -80,7 +83,7 @@ export type DocumentationSource = {
   raw: string;
 };
 
-const IN_APP_META_RE = /<!--\s*in-app-meta\s*([\s\S]*?)-->/;
+const IN_APP_META_RE = /(?:<!--\s*in-app-meta\s*([\s\S]*?)-->|\{\/\*\s*in-app-meta\s*([\s\S]*?)\*\/\})/;
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 const DOCUMENTATION_SOURCES: DocumentationSource[] = [
@@ -88,7 +91,9 @@ const DOCUMENTATION_SOURCES: DocumentationSource[] = [
   { id: 'grid-view', group: 'Workflows', href: '/features/grid-view', raw: gridViewSource },
   { id: 'review-mode', group: 'Workflows', href: '/features/review-mode', raw: reviewModeSource },
   { id: 'duplicate-review', group: 'Workflows', href: '/features/duplicate-review', raw: duplicateReviewSource },
+  { id: 'delete-safety', group: 'Workflows', href: '/features/delete-and-safety', raw: deleteSafetySource },
   { id: 'settings', group: 'Reference', href: '/reference/settings', raw: settingsSource },
+  { id: 'cache-processing', group: 'Reference', href: '/reference/cache-and-processing', raw: cacheProcessingSource },
   { id: 'keyboard-shortcuts', group: 'Reference', href: '/reference/keyboard-shortcuts', raw: keyboardShortcutsSource },
   { id: 'supported-formats', group: 'Reference', href: '/reference/supported-formats', raw: supportedFormatsSource },
   { id: 'troubleshooting', group: 'Help', href: '/help/troubleshooting', raw: troubleshootingSource },
@@ -155,7 +160,7 @@ function parseFrontmatter(raw: string) {
 function parseInAppMeta(raw: string): InAppMeta {
   const match = raw.match(IN_APP_META_RE);
   if (!match) return {};
-  return JSON.parse(match[1].trim()) as InAppMeta;
+  return JSON.parse((match[1] ?? match[2]).trim()) as InAppMeta;
 }
 
 function stripFrontmatterAndMeta(raw: string) {
@@ -208,6 +213,27 @@ function parseBlocks(source: string): DocumentationNode[] {
 
     if (trimmed === '') {
       flush();
+      continue;
+    }
+
+    const shortcutTableMatch = trimmed.match(/^(?:<!--\s*in-app-shortcuts:(Review mode|Preview|Global)\s*-->|\{\/\*\s*in-app-shortcuts:(Review mode|Preview|Global)\s*\*\/\})$/);
+    if (shortcutTableMatch) {
+      flush();
+      const shortcutGroup = shortcutTableMatch[1] ?? shortcutTableMatch[2];
+      index += 1;
+      while (
+        index < lines.length
+        && !/^(?:<!--\s*\/in-app-shortcuts\s*-->|\{\/\*\s*\/in-app-shortcuts\s*\*\/\})$/.test(lines[index]?.trim() ?? '')
+      ) {
+        index += 1;
+      }
+      if (index >= lines.length) {
+        throw new Error(`Missing closing in-app shortcut marker for ${shortcutGroup}`);
+      }
+      nodes.push({
+        type: 'shortcut-table',
+        group: shortcutGroup as 'Review mode' | 'Preview' | 'Global',
+      });
       continue;
     }
 
@@ -402,6 +428,11 @@ function parseBlocks(source: string): DocumentationNode[] {
       continue;
     }
 
+    const unsupportedComponent = trimmed.match(/^<([A-Z][A-Za-z0-9]*)\b/);
+    if (unsupportedComponent) {
+      throw new Error(`Unsupported in-app MDX component: ${unsupportedComponent[1]}`);
+    }
+
     paragraph.push(trimmed);
   }
 
@@ -432,6 +463,8 @@ function collectSearchText(nodes: DocumentationNode[]): string[] {
         return node.items;
       case 'table':
         return [node.headers.join(' '), ...node.rows.map((row) => row.join(' '))];
+      case 'shortcut-table':
+        return [`${node.group} keyboard shortcuts`];
       case 'image':
         return [node.alt];
       case 'callout':
