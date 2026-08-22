@@ -33,13 +33,15 @@
         "pages": [
           "features/grid-view",
           "features/review-mode",
-          "features/duplicate-review"
+          "features/duplicate-review",
+          "features/delete-and-safety"
         ]
       },
       {
         "group": "Reference",
         "pages": [
           "reference/settings",
+          "reference/cache-and-processing",
           "reference/keyboard-shortcuts",
           "reference/supported-formats",
           "reference/building-from-source"

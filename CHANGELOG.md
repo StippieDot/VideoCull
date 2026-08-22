@@ -2,6 +2,26 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [2.1.0] - 2026-08-22
+
+### Added
+- Added an offline, searchable in-app documentation modal opened from the Help menu, app chrome, or `F1`.
+- Added a Mintlify documentation site covering the main grid, review, duplicate, cache, processing, settings, formats, troubleshooting, FAQ, installation, and development workflows.
+- Added dedicated guides for delete safety and cache/processing decisions.
+- Added live in-app shortcut tables that reflect the user's configured keybindings while the website continues to show defaults.
+
+### Changed
+- Made the selected Mintlify MDX pages the shared source for both web and in-app documentation, with an explicit in-app allowlist for user-facing pages.
+- Redesigned the documentation modal around compact grouped navigation, collapsible sections, responsive fixed-height sizing, a smaller search field, and direct links to relevant settings.
+- Expanded and consolidated the user guides to remove repeated sections and make guidance more task-first.
+- Improved duplicate matching so exact matching respects duration and keeper selection prefers bitrate within the same resolution tier.
+
+### Fixed
+- Natural filename sorting now orders numbered files as people expect, such as `file 2` before `file 10`.
+- Review shortcuts continue working after interacting with the video player using the mouse.
+- Closing duplicate video playback no longer intermittently resets the list to the top.
+- Previously decided videos again show their Keep, Delete, or Skip color when reopened in review mode.
+
 ## [2.0.0] - 2026-06-24
 
 Video Cull 2.0.0 has smarter duplicate review, richer media decisions, safer cache handling, clearer destructive actions, better mounted-drive behavior, and a UI that holds up better on very large libraries and high-resolution screens.

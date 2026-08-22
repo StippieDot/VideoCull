@@ -72,7 +72,17 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
   { keys: ['Ctrl+,'],          description: 'Open settings',         group: 'Global' },
   { keys: ['Ctrl+O'],          description: 'Open folder',           group: 'Global' },
   { keys: ['F5'],              description: 'Rescan directory',      group: 'Global' },
+  { keys: ['Ctrl+Shift+R'],    description: 'Clear cache and reload', group: 'Global' },
+  { keys: ['Ctrl+Shift+E'],    description: 'Export report',         group: 'Global' },
+  { keys: ['Ctrl+Z'],          description: 'Undo last action',      group: 'Global' },
   { keys: ['Ctrl+Backspace'],  description: 'Delete marked videos',  group: 'Global' },
+  { keys: ['Ctrl++', 'Ctrl+='], description: 'Zoom in',              group: 'Global' },
+  { keys: ['Ctrl+-'],          description: 'Zoom out',              group: 'Global' },
+  { keys: ['Ctrl+E'],          description: 'Reveal in Explorer',    group: 'Global' },
+  { keys: ['Ctrl+P'],          description: 'Play externally',      group: 'Global' },
+  { keys: ['F1'],              description: 'Open documentation',    group: 'Global' },
+  { keys: ['F11'],             description: 'Toggle fullscreen',     group: 'Global' },
+  { keys: ['Shift+Esc'],       description: 'Toggle privacy screen', group: 'Global' },
 ];
 
 // ── Creation helper ────────────────────────────────────────────────

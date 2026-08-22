@@ -3,30 +3,14 @@ title: Frequently asked questions
 description: Answers to common questions about formats, cache, offline use, updates, and recovery.
 ---
 
-<!-- in-app-meta
+{/* in-app-meta
 {
   "summary": "Answers to the short questions that come up during normal sessions.",
   "actions": ["open-settings-about"]
 }
--->
+*/}
 
-## Supported formats
-
-Metadata scanning is usually broader than embedded playback because FFprobe support and the in-app player stack are not identical.
-
-Assume a file can often be scanned and thumbnailed even when it does not play perfectly inside the renderer.
-
-## External player fallback
-
-Some files have codecs or containers that the app can inspect but not play reliably enough in the embedded player.
-
-Treat the external player as a fallback, not as a failed review state. It lets you keep the same session and decision flow.
-
-## Move cache to a new drive
-
-Cache movement is done from cache settings, where the app can migrate existing cache roots or let the next scan start fresh.
-
-Choose migration when the existing cache is still valuable and the source drive is available during the move. Start fresh when the old cache is disposable or outdated.
+These answers cover the short questions that come up during normal culling. For a complete workflow, use the dedicated cache, delete-safety, or feature page instead.
 
 <AccordionGroup>
   <Accordion title="Which video formats does Video Cull support?">
@@ -53,6 +37,12 @@ Choose migration when the existing cache is still valuable and the source drive 
     Status, ratings, favorites, bookmarks, metadata, and thumbnails survive rescans.
   </Accordion>
 
+  <Accordion title="How do I move cache to a new drive?">
+    Change the location in cache settings. Video Cull lets you migrate the existing cache, start fresh at the new location, or cancel without changing anything.
+
+    Choose migration when the existing thumbnails and decisions are still valuable and the source drive will remain available during the move. See [Cache and processing](/reference/cache-and-processing) for the storage modes and migration behavior.
+  </Accordion>
+
   <Accordion title="Will rescanning regenerate every thumbnail?">
     Not usually. Video Cull skips videos whose thumbnail set is already complete in cache.
 
@@ -73,6 +63,8 @@ Choose migration when the existing cache is still valuable and the source drive 
     No. Video Cull sends marked files to the Recycle Bin when possible. They are not gone forever unless you empty the Recycle Bin or your system cannot use it for that location.
 
     If you send files there by mistake, you can restore them from the Windows Recycle Bin and then rescan in Video Cull.
+
+    See [Delete and safety](/features/delete-and-safety) before committing a large batch or using a location without Recycle Bin support.
   </Accordion>
 
   <Accordion title="Does Video Cull work offline?">

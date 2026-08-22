@@ -17,7 +17,9 @@ vi.mock('@videojs/react', () => ({
 }));
 
 vi.mock('@videojs/react/video', () => ({
-  MinimalVideoSkin: ({ children }: { children: ReactNode }) => children,
+  MinimalVideoSkin: ({ children }: { children: ReactNode }) => (
+    <div className="media-minimal-skin" tabIndex={0}>{children}</div>
+  ),
   Video: () => null,
 }));
 
@@ -193,5 +195,48 @@ describe('ReviewMode behavior', () => {
 
     expect(root?.classList.contains('review-playing')).toBe(true);
     expect(root?.classList.contains('review-preview')).toBe(false);
+  });
+
+  test('keeps review shortcuts active after the video player receives focus', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    const beta = makeVideo('beta', { path: 'D:\\Media\\beta.mp4' });
+    useStore.setState({
+      videos: [alpha, beta],
+      filteredVideos: [alpha, beta],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha', 'beta'],
+    });
+
+    const { container } = render(<ReviewMode />);
+    await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
+
+    const player = container.querySelector<HTMLElement>('.media-minimal-skin')!;
+    player.focus();
+    fireEvent.keyDown(player, { key: 'k' });
+
+    await waitFor(() => {
+      expect(useStore.getState().videos.find((video) => video.id === 'alpha')?.status).toBe('keep');
+      expect(screen.getByText('beta.mp4')).toBeTruthy();
+    });
+  });
+
+  test.each([
+    ['keep', 'review-keep'],
+    ['delete', 'review-delete'],
+    ['skipped', 'review-skip'],
+  ] as const)('shows the %s decision hue when reopening a decided video', (status, expectedClass) => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4', status });
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha'],
+    });
+
+    const { container } = render(<ReviewMode />);
+
+    expect(container.querySelector('.review-mode')?.classList.contains(expectedClass)).toBe(true);
   });
 });

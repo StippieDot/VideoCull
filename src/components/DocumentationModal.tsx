@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { ExternalLink, Search, X } from 'lucide-react';
+import { ALL_SHORTCUTS, FIXED_SHORTCUTS, formatKeybind, type Keybind } from '../keybinds';
+import useStore from '../store';
 import {
   DOCUMENTATION_ACTIONS,
   DOCUMENTATION_PAGE_ID_BY_HREF,
@@ -26,6 +28,16 @@ type DocumentationModalProps = {
   onOpenShortcutsHelp: () => void;
 };
 
+type DocumentationSection = {
+  heading: Extract<DocumentationNode, { type: 'heading' }>;
+  nodes: DocumentationNode[];
+};
+
+type GroupedPageNodes = {
+  introduction: DocumentationNode[];
+  sections: DocumentationSection[];
+};
+
 const SETTINGS_ACTIONS: Partial<Record<DocumentationActionId, DocumentationSettingsTab>> = {
   'open-settings-interface': 'interface',
   'open-settings-duplicates': 'duplicates',
@@ -34,8 +46,6 @@ const SETTINGS_ACTIONS: Partial<Record<DocumentationActionId, DocumentationSetti
   'open-settings-processing': 'processing',
   'open-settings-about': 'about',
 };
-
-const SHORTCUTS_DOC_HREF = '/reference/keyboard-shortcuts';
 
 function normalizeSearch(value: string) {
   return value.trim().toLowerCase();
@@ -47,6 +57,48 @@ function sectionAnchorId(pageId: string, sectionId: string) {
 
 function inlineTokenKey(index: number, value: string) {
   return `${index}-${value}`;
+}
+
+function groupPageNodes(nodes: DocumentationNode[]): GroupedPageNodes {
+  return nodes.reduce<GroupedPageNodes>((grouped, node) => {
+    if (node.type === 'heading' && node.level === 2) {
+      return {
+        ...grouped,
+        sections: [...grouped.sections, { heading: node, nodes: [] }],
+      };
+    }
+
+    const currentSection = grouped.sections[grouped.sections.length - 1];
+    if (!currentSection) {
+      return { ...grouped, introduction: [...grouped.introduction, node] };
+    }
+
+    return {
+      ...grouped,
+      sections: [
+        ...grouped.sections.slice(0, -1),
+        { ...currentSection, nodes: [...currentSection.nodes, node] },
+      ],
+    };
+  }, { introduction: [], sections: [] });
+}
+
+function getFocusableElements(modal: HTMLElement | null) {
+  if (!modal) return [];
+  const elements = modal.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [href], [tabindex]:not([tabindex="-1"])'
+  );
+
+  return Array.from(elements).filter((element) => {
+    let ancestor = element.parentElement;
+    while (ancestor && ancestor !== modal) {
+      if (ancestor.tagName === 'DETAILS' && !(ancestor as HTMLDetailsElement).open) {
+        if (element.tagName !== 'SUMMARY' || element.parentElement !== ancestor) return false;
+      }
+      ancestor = ancestor.parentElement;
+    }
+    return true;
+  });
 }
 
 function renderInlineMarkdown(
@@ -91,6 +143,7 @@ export default function DocumentationModal({
   onOpenSettings,
   onOpenShortcutsHelp,
 }: DocumentationModalProps) {
+  const settings = useStore((state) => state.settings);
   const [activePageId, setActivePageId] = useState(DOCUMENTATION_PAGES[0]?.id ?? '');
   const [query, setQuery] = useState('');
   const [pendingSectionId, setPendingSectionId] = useState<string | null>(null);
@@ -114,7 +167,10 @@ export default function DocumentationModal({
     ?? DOCUMENTATION_PAGES.find((page) => page.id === activePageId)
     ?? DOCUMENTATION_PAGES[0];
 
-  const tocItems = useMemo(() => activePage?.headings ?? [], [activePage]);
+  const groupedPageNodes = useMemo(
+    () => groupPageNodes(activePage?.nodes ?? []),
+    [activePage],
+  );
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -134,6 +190,9 @@ export default function DocumentationModal({
 
   const jumpToSection = (sectionId: string) => {
     const node = document.getElementById(sectionAnchorId(activePage.id, sectionId));
+    if (node?.tagName === 'DETAILS') {
+      (node as HTMLDetailsElement).open = true;
+    }
     node?.scrollIntoView({ block: 'start' });
   };
 
@@ -168,11 +227,6 @@ export default function DocumentationModal({
   };
 
   const openHref = (href: string) => {
-    if (href === SHORTCUTS_DOC_HREF) {
-      onOpenShortcutsHelp();
-      return;
-    }
-
     const pageId = DOCUMENTATION_PAGE_ID_BY_HREF[href];
     if (pageId) {
       selectTaskPage(pageId);
@@ -191,10 +245,8 @@ export default function DocumentationModal({
       return;
     }
     if (event.key !== 'Tab') return;
-    const focusable = modalRef.current?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
-    );
-    if (!focusable || focusable.length === 0) return;
+    const focusable = getFocusableElements(modalRef.current);
+    if (focusable.length === 0) return;
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
     const preferredFirst = searchRef.current ?? first;
@@ -226,6 +278,13 @@ export default function DocumentationModal({
           <p key={key} className="documentation-mdx-paragraph">
             {renderInlineMarkdown(node.text, openHref)}
           </p>
+        );
+
+      case 'code':
+        return (
+          <pre key={key} className="documentation-mdx-code">
+            <code data-language={node.language}>{node.content}</code>
+          </pre>
         );
 
       case 'list': {
@@ -264,6 +323,37 @@ export default function DocumentationModal({
             </table>
           </div>
         );
+
+      case 'shortcut-table': {
+        const configurable = ALL_SHORTCUTS.filter((shortcut) => shortcut.group === node.group);
+        const fixed = FIXED_SHORTCUTS.filter((shortcut) => shortcut.group === node.group);
+        return (
+          <div key={key} className="documentation-mdx-table-wrap">
+            <table className="documentation-mdx-table">
+              <thead>
+                <tr><th>Shortcut</th><th>Action</th></tr>
+              </thead>
+              <tbody>
+                {configurable.map((shortcut) => (
+                  <tr key={shortcut.id}>
+                    <td><code>{formatKeybind(settings[shortcut.id] as Keybind)}</code></td>
+                    <td>
+                      {shortcut.description}
+                      {shortcut.context === 'playing' ? ' (playing)' : shortcut.context === 'not-playing' ? ' (not playing)' : ''}
+                    </td>
+                  </tr>
+                ))}
+                {fixed.map((shortcut) => (
+                  <tr key={`${node.group}-${shortcut.description}`}>
+                    <td><code>{shortcut.keys.join(' / ')}</code></td>
+                    <td>{shortcut.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
 
       case 'image':
         return (
@@ -365,34 +455,8 @@ export default function DocumentationModal({
       >
         <div className="documentation-header">
           <div className="documentation-header-copy">
-            <h2 id="documentation-modal-title">Documentation</h2>
-            <p className="documentation-summary">{activePage.summary}</p>
+            <h2 id="documentation-modal-title">Help</h2>
           </div>
-          <div className="documentation-header-actions">
-            {(activePage.actions ?? []).map((actionId) => (
-              <button
-                key={actionId}
-                type="button"
-                className="documentation-action-btn"
-                onClick={() => openAction(actionId)}
-                title={DOCUMENTATION_ACTIONS[actionId].description}
-              >
-                {DOCUMENTATION_ACTIONS[actionId].label}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="documentation-close-btn"
-              onClick={onClose}
-              aria-label="Close documentation"
-              title="Close documentation"
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </div>
-
-        <div className="documentation-toolbar">
           <label className="documentation-search">
             <Search size={15} />
             <input
@@ -408,24 +472,58 @@ export default function DocumentationModal({
             <span>Page</span>
             <select value={activePage.id} onChange={(event) => setActivePageId(event.target.value)}>
               {visiblePages.map((page) => (
-                <option key={page.id} value={page.id}>{page.title}</option>
+                <option key={page.id} value={page.id}>{page.navigationTitle}</option>
               ))}
             </select>
           </label>
+          <div className="documentation-header-actions">
+            {(activePage.actions ?? []).map((actionId) => (
+              <button
+                key={actionId}
+                type="button"
+                className="documentation-action-btn"
+                onClick={() => openAction(actionId)}
+                title={DOCUMENTATION_ACTIONS[actionId].description}
+              >
+                {DOCUMENTATION_ACTIONS[actionId].label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="documentation-action-btn documentation-link-btn"
+              onClick={openExternal}
+            >
+              Open web docs
+              <ExternalLink size={14} />
+            </button>
+            <button
+              type="button"
+              className="documentation-close-btn"
+              onClick={onClose}
+              aria-label="Close documentation"
+              title="Close documentation"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="documentation-body">
           <nav className="documentation-nav" aria-label="Documentation pages">
-            {visiblePages.map((page) => (
-              <button
-                key={page.id}
-                type="button"
-                className={`documentation-nav-btn${page.id === activePage.id ? ' active' : ''}`}
-                onClick={() => setActivePageId(page.id)}
-              >
-                <span>{page.title}</span>
-                <small>{page.summary}</small>
-              </button>
+            {visiblePages.map((page, index) => (
+              <Fragment key={page.id}>
+                {(index === 0 || visiblePages[index - 1]?.group !== page.group) && (
+                  <div className="documentation-nav-group-label">{page.group}</div>
+                )}
+                <button
+                  type="button"
+                  className={`documentation-nav-btn${page.id === activePage.id ? ' active' : ''}`}
+                  aria-current={page.id === activePage.id ? 'page' : undefined}
+                  onClick={() => setActivePageId(page.id)}
+                >
+                  {page.navigationTitle}
+                </button>
+              </Fragment>
             ))}
           </nav>
 
@@ -435,52 +533,42 @@ export default function DocumentationModal({
               <p>{activePage.summary}</p>
             </header>
 
-            {activePage.tasks && activePage.tasks.length > 0 && (
-              <section className="documentation-task-section">
-                <h4>I want to...</h4>
-                <div className="documentation-task-grid">
-                  {activePage.tasks.map((task) => (
-                    <button
-                      key={task.id}
-                      type="button"
-                      className="documentation-task-card"
-                      onClick={() => selectTaskPage(task.pageId, task.sectionId)}
-                    >
-                      <strong>{task.title}</strong>
-                      <span>{task.detail}</span>
-                    </button>
+            {groupedPageNodes.sections.length >= 2 && (
+              <label className="documentation-section-picker">
+                <span>Jump to section</span>
+                <select
+                  key={activePage.id}
+                  defaultValue={groupedPageNodes.sections[0]?.heading.id}
+                  onChange={(event) => jumpToSection(event.target.value)}
+                >
+                  {groupedPageNodes.sections.map((section) => (
+                    <option key={section.heading.id} value={section.heading.id}>
+                      {section.heading.text}
+                    </option>
                   ))}
-                </div>
-              </section>
+                </select>
+              </label>
             )}
 
-            {tocItems.length > 0 && (
-              <nav className="documentation-toc" aria-label="On this page">
-                {tocItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`documentation-toc-btn${item.level === 3 ? ' secondary' : ''}`}
-                    onClick={() => jumpToSection(item.id)}
-                  >
-                    {item.title}
-                  </button>
-                ))}
-              </nav>
-            )}
-
-            <div className="documentation-mdx">
-              {renderNodes(activePage.nodes, activePage.id)}
+            <div key={activePage.id} className="documentation-mdx">
+              {renderNodes(groupedPageNodes.introduction, `${activePage.id}-introduction`)}
+              {groupedPageNodes.sections.map((section, index) => (
+                <details
+                  key={section.heading.id}
+                  id={sectionAnchorId(activePage.id, section.heading.id)}
+                  className="documentation-section"
+                  open={index === 0}
+                >
+                  <summary>
+                    <h4 className="documentation-mdx-h2">{section.heading.text}</h4>
+                  </summary>
+                  {renderNodes(section.nodes, `${activePage.id}-${section.heading.id}`)}
+                </details>
+              ))}
             </div>
           </article>
         </div>
 
-        <div className="documentation-footer">
-          <button type="button" className="documentation-link-btn" onClick={openExternal}>
-            Open this page on the docs site
-            <ExternalLink size={14} />
-          </button>
-        </div>
       </div>
     </div>
   );

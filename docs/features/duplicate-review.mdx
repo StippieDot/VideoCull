@@ -3,24 +3,24 @@ title: Duplicate review
 description: Find likely duplicate videos and work through suggested keepers instead of reviewing every clip from scratch.
 ---
 
-<!-- in-app-meta
+{/* in-app-meta
 {
   "summary": "Treat duplicate detection as a suggestion engine, not an automatic delete tool.",
   "actions": ["open-settings-duplicates"]
 }
--->
+*/}
 
 Duplicate review helps you find likely duplicate files across all loaded videos or just the current filtered view. Instead of starting from scratch, you work through grouped matches with a suggested keeper.
 
 ![Duplicate review](/screenshots/V2.0.0%20-%20DuplicationMode.png)
 
-## Comparison modes
+## Choose a comparison mode
 
 Visual similarity uses sampled frames to catch near-duplicates humans would still judge as the same clip. pHash is stricter and more image-signature driven.
 
 Start with visual similarity for most libraries because it is the practical default for real culling work. Switch to pHash when visual results are too broad.
 
-## Thresholds and sample count
+## Tune weak results
 
 Similarity and sample count control how wide the net is and how much evidence the matcher uses before grouping files.
 
@@ -28,51 +28,33 @@ Start around 90 to 95 percent similarity with the default sample count. Raise th
 
 - More candidates usually means more manual review.
 - Stricter matching usually means fewer noisy groups.
+- Use the current filtered view as the scope when you want to test settings on a smaller folder or project first.
 
-## Keeper suggestions and actions
+## Review the suggested keeper
 
 The suggested keeper is a starting point inside the group. Batch actions are for several rows at once, while right-click actions are for targeted overrides.
 
-Accept the suggested keeper when it already matches your judgment, then batch-mark the rest. Override it when filenames, folders, or encodes make a different file the better long-term source.
+Accept the suggested keeper when it already matches your judgment, then batch-mark the rest. Override it when filenames, folders, or encodes make a different file the better long-term source. Protection rules can stop files already marked Keep or Skip from being replaced automatically.
 
-## Reruns and ignored matches
+Keeper ranking can consider resolution, bitrate, duration, FPS, and file size. Their priority order decides which characteristic wins first; it does not prove that the suggested file is the right creative choice.
+
+## Override, ignore, and rerun
 
 Ignored matches stay out of later duplicate runs until you clear that history in duplicate settings.
 
 Ignore obviously wrong matches instead of forcing a decision through them, then rerun duplicate detection after adjusting settings when the results are broadly weak.
-
-## Matching methods
-
-Video Cull currently supports two duplicate comparison methods:
-
-- `pHash`
-- Visual similarity
-
-You can adjust the similarity threshold and the number of samples used during matching.
-
-## Keeper suggestions
-
-Suggested keepers are ranked using file characteristics such as:
-
-- Resolution
-- Bitrate
-- Duration
-- FPS
-- File size
-
-Protection rules can also stop files already marked Keep or Skip from being replaced automatically.
-
-## Override and cleanup controls
 
 - Manually choose a different keeper when the suggestion is wrong.
 - Mark a pair as not a match so it stays ignored on later runs.
 - Exclude items or dismiss groups from the duplicate workflow.
 - Use right-click actions for duplicate rows and groups.
 
-## Running duplicate review
+## Run duplicate review deliberately
 
 You can run duplicate detection after a scan or keep it as a separate action. Duplicate-specific settings control the method, threshold, sampling windows, scope, keeper priority, ignored matches, and retry behavior.
 
+Keep automatic runs off when duplicates are only an occasional task. Run again after changing match settings, clearing ignored matches, or changing the session scope.
+
 <Tip>
-  Use the current filtered view as the scope when you want to narrow duplicate detection to a single folder, project, or subset first.
+  A duplicate group is a review aid. Nothing is deleted until you mark files Delete and explicitly run the normal delete action.
 </Tip>

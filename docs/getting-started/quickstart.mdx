@@ -3,7 +3,7 @@ title: Get started with Video Cull
 description: Open a folder, generate thumbnails, review clips, and safely send unwanted videos to the Recycle Bin.
 ---
 
-<!-- in-app-meta
+{/* in-app-meta
 {
   "summary": "Get from an empty session to safe deletes without guessing what to do next.",
   "actions": ["open-settings-interface"],
@@ -27,25 +27,25 @@ description: Open a folder, generate thumbnails, review clips, and safely send u
       "title": "Understand duplicate matches before I rerun them",
       "detail": "Use duplicate review to confirm the suggestion, then tune similarity or samples only when the results are noisy.",
       "pageId": "duplicate-review",
-      "sectionId": "comparison-modes"
+      "sectionId": "choose-a-comparison-mode"
     },
     {
       "id": "task-processing",
       "title": "Check cache and processing cost",
       "detail": "Review where cache lives and how many thumbnails you generate before changing large libraries.",
-      "pageId": "settings",
-      "sectionId": "processing-cost"
+      "pageId": "cache-processing",
+      "sectionId": "choose-a-cache-mode"
     },
     {
       "id": "task-delete-safety",
       "title": "Review delete safety before cleanup",
       "detail": "Confirm what Delete means, what goes to the Recycle Bin, and when a delete may become permanent.",
-      "pageId": "quick-start",
-      "sectionId": "delete-safety"
+      "pageId": "delete-safety",
+      "sectionId": "marking-is-not-deleting"
     }
   ]
 }
--->
+*/}
 
 Once Video Cull is installed, you can go from a folder full of unsorted clips to a clean keep or delete pass in a few minutes.
 
@@ -70,6 +70,8 @@ Start with one folder when you are learning the flow. Add more folders only when
 Marking a video as Delete only changes session state. No file leaves disk until you explicitly run the delete action for the current delete set.
 
 Stop and verify the selection if the app warns about permanent deletion or if the delete size looks larger than expected.
+
+The full [Delete and safety](/features/delete-and-safety) guide explains batch scope, Recycle Bin fallback, cache cleanup, and recovery.
 
 ## Suggested workflow
 
@@ -140,6 +142,12 @@ This matters because Video Cull is fastest when you avoid clip-by-clip review on
   </Card>
   <Card title="Duplicate review" icon="copy" href="/features/duplicate-review">
     Work through likely duplicate files with suggested keepers and override controls.
+  </Card>
+  <Card title="Delete and safety" icon="trash-2" href="/features/delete-and-safety">
+    Understand exactly when files leave disk and what recovery options remain.
+  </Card>
+  <Card title="Cache and processing" icon="database" href="/reference/cache-and-processing">
+    Choose where progress lives and when processing changes take effect.
   </Card>
   <Card title="Keyboard shortcuts" icon="command" href="/reference/keyboard-shortcuts">
     See the current shortcut set for the grid, review mode, and general actions.

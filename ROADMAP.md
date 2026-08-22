@@ -663,6 +663,8 @@ guidance at the exact points where the workflow becomes unclear. This phase adds
 version-matched documentation surface and uses it to make the existing app easier to learn
 without changing the underlying product model.
 
+**Status:** Implemented in `2.1.0`.
+
 ### 5.1 Documentation Delivery
 
 **Decision:** In-app modal (no separate Electron window, no extra Chromium process). The
@@ -719,12 +721,18 @@ Documentation
 
 ### 5.3 Authoring
 
-**Decision:** Keep authoring simple. No external docs framework and no second app.
+**Decision:** The selected Mintlify MDX pages are the canonical source for both the website
+and the in-app guide. The modal uses an explicit allowlist so installation, building from
+source, and other website-only pages do not enter the app.
 
 **Implementation notes:**
-- Docs content lives in the repo and ships with the renderer build.
-- Start with a small renderer-side content model rather than a full Markdown pipeline.
-- If page count grows enough to justify it later, a Markdown build step can be added then.
+- Docs content lives in `docs/`, is imported at build time, and ships with the renderer.
+- The in-app adapter supports the MDX structures used by the selected subset and fails
+  clearly when an unsupported component is added.
+- MDX comment markers in the shortcut page replace the static website tables with the
+  user's live configured bindings inside the app.
+- Tests lock the allowlist, task targets, supported rendering, unsupported-component
+  behavior, internal modal navigation, and live keybinding output.
 
 ---
 
@@ -990,8 +998,8 @@ Update the status column as work completes. Merge date recorded when phase lands
 | P1 — Quick wins | ✅ Merged to main | `1.5.0` | 2026-04-13 |
 | P2 — Culling enhancements | ✅ Merged to main | `1.6.0` | 2026-04-16 |
 | P3 — Cache architecture | ✅ Merged to main | `1.7.0` | 2026-04-25 |
-| P4 — Feature additions | ⬜ Not started | `2.0.0` | — |
-| P5 — Documentation and in-app guidance | ⬜ Not started | `2.1.0` | — |
+| P4 — Feature additions | ✅ Merged to main | `2.0.0` | 2026-06-24 |
+| P5 — Documentation and in-app guidance | ✅ Merged to main | `2.1.0` | 2026-08-22 |
 | P6 — Duplicate detection improvements | ⬜ Not started | `2.2.0` | — |
 | P7 — Whole-app usability pass | ⬜ Not started | `2.3.0` | — |
 

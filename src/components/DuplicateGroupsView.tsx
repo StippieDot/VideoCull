@@ -468,6 +468,8 @@ function DuplicateGroupsView() {
   const [contextMenu, setContextMenu] = useState<DuplicateContextMenuState | null>(null);
   const listShellRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<ListImperativeAPI | null>(null);
+  const previousReviewModeRef = useRef(reviewMode);
+  const restoringScrollRef = useRef(false);
   const lastRowsRef = useRef<DuplicateVirtualRow[] | null>(null);
   const rowContentVersionRef = useRef(0);
   const lastSelectedIdsRef = useRef(selectedIds);
@@ -885,15 +887,18 @@ function DuplicateGroupsView() {
   }), [galleryLayout.cardWidth, selectedIds, viewMode, virtualRows]);
 
   useLayoutEffect(() => {
+    const wasReviewMode = previousReviewModeRef.current;
+    previousReviewModeRef.current = reviewMode;
+    if (reviewMode) restoringScrollRef.current = false;
+    else if (wasReviewMode) restoringScrollRef.current = true;
+
     const element = listRef.current?.element;
     if (!element) return;
     if (Math.abs(element.scrollTop - duplicateScrollTop) > 1) {
       element.scrollTop = duplicateScrollTop;
     }
-  }, [dimensions.height, dimensions.width, duplicateScrollTop, reviewMode, viewMode, virtualRows.length]);
+    if (!restoringScrollRef.current) return;
 
-  useEffect(() => {
-    if (reviewMode) return;
     let frameOne = 0;
     let frameTwo = 0;
     const restore = () => {
@@ -905,16 +910,19 @@ function DuplicateGroupsView() {
     };
     frameOne = window.requestAnimationFrame(() => {
       restore();
-      frameTwo = window.requestAnimationFrame(restore);
+      frameTwo = window.requestAnimationFrame(() => {
+        restore();
+        restoringScrollRef.current = false;
+      });
     });
     return () => {
       window.cancelAnimationFrame(frameOne);
       window.cancelAnimationFrame(frameTwo);
     };
-  }, [duplicateScrollTop, reviewMode, viewMode]);
+  }, [dimensions.height, dimensions.width, duplicateScrollTop, reviewMode, viewMode, virtualRows.length]);
 
   const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
-    if (reviewMode) return;
+    if (reviewMode || restoringScrollRef.current) return;
     setDuplicateScrollTop(event.currentTarget.scrollTop);
   }, [reviewMode, setDuplicateScrollTop]);
 
