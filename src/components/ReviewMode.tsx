@@ -486,8 +486,10 @@ export default function ReviewMode() {
       if (matchesKeybind(e, s.keyPlay))      { e.preventDefault(); handlePlay(); return; }
     };
 
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    // Run before the embedded player so configured Review shortcuts (notably K)
+    // cannot be consumed by the player's own keyboard bindings first.
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, [markKeep, markDelete, skip, resetStatus, handleUndo, close, goBack, advance, handlePlay, isPlaying, video, addBookmarkNow, jumpToNextUndecided]);
 
   if (!video) {

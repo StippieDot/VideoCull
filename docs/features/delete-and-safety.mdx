@@ -26,6 +26,8 @@ Video Cull separates review decisions from file deletion. Keep, Delete, Skip, an
 
 Use Reset to return any decided video to Pending. Undo reverses recent status changes while the current session remains open.
 
+To reset several videos without adding a separate reset-review action, filter the grid to the intended pool, `Shift`-click a card to start batch selection, select the required range or individual cards, and choose **Reset**. This returns only those selected statuses to Pending and preserves ratings, favorites, and bookmarks.
+
 ## Review the batch first
 
 Before confirming deletion:
@@ -34,6 +36,8 @@ Before confirming deletion:
 2. Compare the confirmation count and total size with what you expect.
 3. Export an HTML report when you need a record of the decisions or want to review them outside the app.
 4. Cancel the confirmation if anything looks wrong. Cancelling does not change statuses or files.
+
+The sidebar delete count is global to the loaded session, not the current filter. A filtered grid is useful for reviewing the Delete set, but hiding a marked video does not remove it from the batch.
 
 The report export can include all loaded videos or only the current filtered result. Exporting never changes files or decisions.
 

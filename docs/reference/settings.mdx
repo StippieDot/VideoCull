@@ -23,6 +23,20 @@ Settings are split across the same tabs you see in the app. Most libraries work 
   Change one thing at a time, then rescan or rerun the affected workflow. That makes it obvious which setting actually helped.
 </Tip>
 
+## Save or discard changes
+
+Settings are edited in a local draft until you choose **Save Preferences**. Closing with the `X` discards unsaved edits.
+
+After saving:
+
+- Interface visibility, card layout, feature toggles, keybindings, mute state, keeper ranking, and protection rules update immediately.
+- Cache, scan, thumbnail, metadata, and duplicate-matching changes apply when their next relevant scan or processing run starts.
+- Increasing the thumbnail count can prompt you to confirm that existing cached strips need rebuilding.
+- Changing cache storage starts a migration choice before the preference is committed.
+- Changing automatic update checks may require an app restart before startup behavior changes.
+
+Video Cull blocks saving while configurable shortcut conflicts remain. The conflicting keybind fields identify what must be changed.
+
 ## Interface
 
 These settings change how the main view starts and how you move through a session.
@@ -33,11 +47,11 @@ These settings change how the main view starts and how you move through a sessio
 | Default sorting | Controls the first sort field and order for new sessions. | `Name` is the safest default. Use `Date` for chronology, `Size` for storage cleanup, or `Duration` for spotting clips that are too short or too long. |
 | Group by folder | Starts the grid grouped by folder instead of one flat list. | Keep it on when folder context matters. Turn it off when you want one global queue. |
 | Keep playback controls visible in Review | Prevents the timeline and playback controls from auto-hiding while a video is playing in Review mode. | Leave it off for a cleaner playback view. Turn it on when you want the scrubber to remain available without moving the mouse. |
-| Export report | Exports an HTML report for all videos or the current filtered set. | Use it at the end of a pass, not as part of normal review. |
+| Export report | Exports an HTML report for all loaded videos or the current filtered set, grouped by folder and review status. | Use it at the end of a pass or before a destructive cleanup. Export never changes statuses or files. |
 
 ## Features
 
-This tab is just feature toggles.
+This tab contains optional metadata controls. Core status, playback, compatibility, codec badges, global mute, and next-undecided behavior remain part of the normal app workflow.
 
 | Setting | What it does | Suggested default use |
 | --- | --- | --- |
@@ -59,7 +73,7 @@ Duplicate detection is best treated as a suggestion engine, not an auto-delete s
 | Comparison method | Switches between `pHash` and `Visual similarity`. | Start with visual similarity for practical review work. Try `pHash` when visual results are too broad. |
 | Default scope | Chooses between all loaded videos or the current filtered view. | Use the filtered view when you want tighter, more deliberate duplicate passes. |
 | Protect marked keep videos | Stops already-kept videos from becoming delete suggestions. | Leave it on. |
-| Protect skipped videos | Leaves skipped videos out of delete suggestions. | Leave it on unless skipped clips should still compete as duplicates. |
+| Protect skipped videos | Leaves skipped videos out of automatic delete suggestions. | Leave it off when Skip means undecided and should still compete. Turn it on when skipped clips must never be suggested for deletion. |
 
 ### Keeper suggestions
 
@@ -88,7 +102,7 @@ Pairs marked **Not a match** stay hidden in future duplicate runs.
 | Duration tolerance | Limits how much two durations may differ and still be compared. | Raise it only when alternate encodes differ slightly in runtime. |
 | Max sampling duration | Caps how much of a long video is sampled. `0` means full length. | Leave it at the default unless very long videos make runs too expensive. |
 | Checkpoint interval | Controls how often long runs save progress. | Change it only for very large duplicate passes. |
-| Require every sample to meet similarity | Makes matching stricter. | Turn it on only when average-based grouping is too forgiving. |
+| Require every sample to meet similarity | Makes every sampled frame pass instead of only the average. | Leave the default on for stricter groups. Turn it off only when alternate encodes are being missed because one sample differs. |
 | Ignore black pixels | Helps with fades, black frames, and letterboxing. | Use it when dark frames create false mismatches. |
 | Ignore white pixels | Helps with bright flashes and white frames. | Use it only when bright frames are obviously skewing results. |
 | Compare flipped videos | Also checks horizontally mirrored copies. | Turn it on only when mirrored duplicates are a real possibility. |
@@ -131,7 +145,7 @@ Keybindings are for review-mode and preview behavior, not for system-level app a
 - `Esc` cancels recording.
 - **Reset defaults** restores the built-in review bindings.
 
-System shortcuts like `Ctrl+O` and `F5` are not rebound here. If two keybinds conflict, fix the conflict before saving.
+System shortcuts like `Ctrl+O`, `F5`, `Ctrl+Backspace`, and `Shift+Esc` are fixed and are not rebound here. If two configurable keybinds conflict, fix the conflict before saving.
 
 ## Updates
 

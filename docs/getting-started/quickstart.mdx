@@ -20,14 +20,14 @@ description: Open a folder, generate thumbnails, review clips, and safely send u
       "title": "Narrow the list before review",
       "detail": "Use grid filters to get to one folder, status bucket, or search result before you enter review mode.",
       "pageId": "grid-view",
-      "sectionId": "filter-first"
+      "sectionId": "search-and-filter"
     },
     {
       "id": "task-duplicates",
       "title": "Understand duplicate matches before I rerun them",
       "detail": "Use duplicate review to confirm the suggestion, then tune similarity or samples only when the results are noisy.",
       "pageId": "duplicate-review",
-      "sectionId": "choose-a-comparison-mode"
+      "sectionId": "run-detection"
     },
     {
       "id": "task-processing",
@@ -61,13 +61,13 @@ Keep the first pass simple. Load a folder, filter only when that removes noise, 
 
 ## Build a session
 
-A session is the current set of loaded folders plus the active filters, duplicate results, review scope, sort order, and saved progress for those folders.
+A session is the current set of loaded folders plus the active filters, duplicate results, review scope, and sort order. Review decisions and other persistent metadata are restored from cache when those folders are loaded again.
 
-Start with one folder when you are learning the flow. Add more folders only when they belong to the same review job and you want one combined queue.
+Start with one folder when you are learning the flow. Add more folders only when they belong to the same review job and you want one combined queue. See [Sessions and folders](/features/sessions-and-folders) for add-versus-replace behavior, recursive scans, recent folders, rescans, privacy, and reports.
 
 ## Delete safety
 
-Marking a video as Delete only changes session state. No file leaves disk until you explicitly run the delete action for the current delete set.
+Marking a video as Delete only changes cached status. No file leaves disk until you explicitly run the delete action. That action includes every loaded video marked Delete, even if current filters hide it.
 
 Stop and verify the selection if the app warns about permanent deletion or if the delete size looks larger than expected.
 
@@ -99,6 +99,8 @@ This matters because Video Cull is fastest when you avoid clip-by-clip review on
     - Press `Ctrl+-` to make cards smaller.
     - Filter by status, file size, duration, rating, or favorites.
     - Sort by name, size, duration, date, rating, resolution, or FPS.
+
+    When a filter or folder isolates several videos with the same outcome, `Shift`-click a card to start batch selection. Apply Keep, Delete, Skip, Reset, or thumbnail regeneration from the batch bar.
   </Step>
   <Step title="Enter review mode">
     When thumbnail strips are not enough to make a call, switch to review mode. This opens a fullscreen, one-at-a-time view with the full thumbnail strip, video metadata, and an in-app player you can scrub through.
@@ -134,6 +136,9 @@ This matters because Video Cull is fastest when you avoid clip-by-clip review on
 - Export an HTML report if you want a shareable summary of the current keep or delete state.
 
 <CardGroup cols={2}>
+  <Card title="Sessions and folders" icon="folders" href="/features/sessions-and-folders">
+    Load, combine, rescan, reopen, hide, and report on folder sessions.
+  </Card>
   <Card title="Grid view" icon="grid-2x2" href="/features/grid-view">
     Learn what filters, badges, and batch actions are available in the main browsing view.
   </Card>

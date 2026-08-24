@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
+  DOCUMENTATION_SITE_URL,
   DOCUMENTATION_PAGES,
   parseDocumentationPage,
+  resolveDocumentationHref,
   type DocumentationSource,
 } from '../../../src/docs/documentation';
 
@@ -9,6 +11,7 @@ describe('documentation source adapter', () => {
   test('bundles the grouped in-app documentation pages in navigation order', () => {
     expect(DOCUMENTATION_PAGES.map(({ id, group }) => ({ id, group }))).toEqual([
       { id: 'quick-start', group: 'Get started' },
+      { id: 'sessions-folders', group: 'Get started' },
       { id: 'grid-view', group: 'Workflows' },
       { id: 'review-mode', group: 'Workflows' },
       { id: 'duplicate-review', group: 'Workflows' },
@@ -47,13 +50,32 @@ describe('documentation source adapter', () => {
     const duplicateReview = DOCUMENTATION_PAGES.find((page) => page.id === 'duplicate-review');
 
     expect(duplicateReview?.summary).toContain('suggestion engine');
-    expect(duplicateReview?.headings.map((heading) => heading.id)).toContain('tune-weak-results');
+    expect(duplicateReview?.headings.map((heading) => heading.id)).toContain('tune-matching');
     expect(duplicateReview?.nodes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: 'image' }),
         expect.objectContaining({ type: 'callout' }),
       ])
     );
+  });
+
+  test('includes session management and the documented grid batch workflow', () => {
+    const sessions = DOCUMENTATION_PAGES.find((page) => page.id === 'sessions-folders');
+    const grid = DOCUMENTATION_PAGES.find((page) => page.id === 'grid-view');
+
+    expect(sessions?.headings.map((heading) => heading.id)).toEqual(
+      expect.arrayContaining(['load-the-first-folder', 'add-or-replace-folders', 'export-a-report'])
+    );
+    expect(grid?.headings.map((heading) => heading.id)).toEqual(
+      expect.arrayContaining(['select-a-batch', 'understand-batch-actions'])
+    );
+    expect(grid?.searchableText).toContain('shift');
+    expect(grid?.nodes.some((node) => node.type === 'steps')).toBe(true);
+  });
+
+  test('opens bundled page links on the official documentation domain', () => {
+    expect(DOCUMENTATION_SITE_URL).toBe('https://docs.videocull.app');
+    expect(resolveDocumentationHref('/features/grid-view')).toBe('https://docs.videocull.app/features/grid-view');
   });
 
   test('keeps task links inside the selected in-app documentation subset', () => {

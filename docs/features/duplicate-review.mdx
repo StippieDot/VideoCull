@@ -1,60 +1,100 @@
 ---
 title: Duplicate review
-description: Find likely duplicate videos and work through suggested keepers instead of reviewing every clip from scratch.
+description: Detect likely duplicate videos, inspect grouped evidence, choose keepers, ignore false matches, and safely mark copies for deletion.
 ---
 
 {/* in-app-meta
 {
-  "summary": "Treat duplicate detection as a suggestion engine, not an automatic delete tool.",
+  "summary": "Treat duplicate detection as a suggestion engine, then verify every keeper and delete mark.",
   "actions": ["open-settings-duplicates"]
 }
 */}
 
-Duplicate review helps you find likely duplicate files across all loaded videos or just the current filtered view. Instead of starting from scratch, you work through grouped matches with a suggested keeper.
+Duplicate Review finds exact or visually similar files across all loaded videos or the current filtered view. It groups the results, suggests one keeper per group, and gives you tools to mark likely copies. It never deletes files automatically.
 
 ![Duplicate review](/screenshots/V2.0.0%20-%20DuplicationMode.png)
 
-## Choose a comparison mode
+## Run detection
 
-Visual similarity uses sampled frames to catch near-duplicates humans would still judge as the same clip. pHash is stricter and more image-signature driven.
+Duplicate detection needs at least two videos in its configured scope and waits for required metadata work to finish. Start it from the sidebar, or enable **Run after each scan** when duplicate review is the normal purpose of every session.
 
-Start with visual similarity for most libraries because it is the practical default for real culling work. Switch to pHash when visual results are too broad.
+Choose **All loaded videos** to compare across every session root. Choose **Current filtered view** to limit work to the active grid filters, such as one folder, date range, rating, or status.
 
-## Tune weak results
+Exact-file checks are part of the run. The selected comparison method controls the sampled visual matching used for non-identical files:
 
-Similarity and sample count control how wide the net is and how much evidence the matcher uses before grouping files.
+| Method | Best use | Tradeoff |
+| --- | --- | --- |
+| Visual similarity | Alternate encodes, resized copies, and near-identical footage | Broader matching can produce more false positives. |
+| pHash | Stricter image-signature comparison | Can miss transformations that visual similarity still recognizes. |
 
-Start around 90 to 95 percent similarity with the default sample count. Raise the threshold when false positives dominate. Lower it when different encodes of the same clip are being missed.
+The methods can find different results. Run them separately when coverage matters more than processing time.
 
-- More candidates usually means more manual review.
-- Stricter matching usually means fewer noisy groups.
-- Use the current filtered view as the scope when you want to test settings on a smaller folder or project first.
+## Tune matching
 
-## Review the suggested keeper
+Similarity is the minimum score required to create a match. Raise it when unrelated videos appear together; lower it when known alternate encodes are missed. Visual results below roughly 95 percent deserve especially careful review.
 
-The suggested keeper is a starting point inside the group. Batch actions are for several rows at once, while right-click actions are for targeted overrides.
+Sample count controls how many points in each video contribute evidence. More samples take longer but reduce the chance that one common frame, intro, or title card creates a false match.
 
-Accept the suggested keeper when it already matches your judgment, then batch-mark the rest. Override it when filenames, folders, or encodes make a different file the better long-term source. Protection rules can stop files already marked Keep or Skip from being replaced automatically.
+Advanced controls handle harder libraries:
 
-Keeper ranking can consider resolution, bitrate, duration, FPS, and file size. Their priority order decides which characteristic wins first; it does not prove that the suggested file is the right creative choice.
+- Sampling windows can avoid repeated intros and outros, including a custom percentage range.
+- Duration tolerance limits how different runtimes may be before comparison.
+- Requiring every sample is stricter than allowing the average to pass.
+- Black- or white-pixel ignoring can reduce the effect of fades, letterboxing, and flashes.
+- Flipped comparison checks horizontally mirrored copies.
+- Maximum sampling duration limits work on long files; `0` uses the full duration.
+- Checkpoint intervals save progress during long runs, and retry can revisit failed fingerprints.
 
-## Override, ignore, and rerun
+Change one matching control at a time, then run detection again. Existing groups are results from the previous run; changing a setting does not silently rebuild them.
 
-Ignored matches stay out of later duplicate runs until you clear that history in duplicate settings.
+## Read and filter results
 
-Ignore obviously wrong matches instead of forcing a decision through them, then rerun duplicate detection after adjusting settings when the results are broadly weak.
+Switch between compact rows and thumbnail gallery cards from the duplicate sidebar. Both show group boundaries, exact or potential-match badges, similarity, status, selected keeper, and useful quality metadata.
 
-- Manually choose a different keeper when the suggestion is wrong.
-- Mark a pair as not a match so it stays ignored on later runs.
-- Exclude items or dismiss groups from the duplicate workflow.
-- Use right-click actions for duplicate rows and groups.
+Duplicate-list filters are independent from the main grid filters. Search duplicate paths or filenames, set a minimum similarity, and sort groups by similarity, group size, or total size. **Reset duplicate filters** returns to all groups sorted by highest similarity.
 
-## Run duplicate review deliberately
+Play any result to open Review at that video with only its duplicate group as the navigation scope. Returning restores the duplicate-list scroll position.
 
-You can run duplicate detection after a scan or keep it as a separate action. Duplicate-specific settings control the method, threshold, sampling windows, scope, keeper priority, ignored matches, and retry behavior.
+## Understand keeper suggestions
 
-Keep automatic runs off when duplicates are only an occasional task. Run again after changing match settings, clearing ignored matches, or changing the session scope.
+The selected keeper is a recommendation, not an approval. The automatic ranking compares the configured priority order: resolution, video bitrate, duration, FPS, and file size by default. The first unequal rule wins.
 
-<Tip>
-  A duplicate group is a review aid. Nothing is deleted until you mark files Delete and explicitly run the normal delete action.
-</Tip>
+**Protect marked keep videos** removes already-kept files from automatic delete suggestions. **Protect skipped videos** does the same for Skipped files when enabled. Protection affects selection suggestions; it does not make the underlying match more accurate.
+
+Right-click a video and choose **Set as selected keeper** when human context outweighs the automatic ranking. Clear the manual override from the group menu to use automatic ranking again.
+
+## Select and mark copies
+
+<Steps>
+  <Step title="Inspect each group">
+    Compare thumbnails, similarity, paths, duration, resolution, bitrate, FPS, and size. Play uncertain files before accepting a suggestion.
+  </Step>
+  <Step title="Select suggested deletions">
+    Choose **Select suggested deletions** to select non-keeper videos from the currently visible groups. Review the selected count and individual checks before continuing.
+  </Step>
+  <Step title="Correct the selection">
+    Toggle individual rows or cards, change the selected keeper, or clear the selection. Right-click a group to select suggestions for only that group.
+  </Step>
+  <Step title="Mark selected as Delete">
+    This changes statuses to Delete and leaves files on disk. Return to the grid, filter by Delete, and run the normal confirmed delete action only after the batch is correct.
+  </Step>
+</Steps>
+
+Status protection and keeper suggestions do not lock a file. Targeted context-menu actions can mark a video Keep, Delete, or Pending when you intentionally need an override.
+
+## Ignore false matches
+
+Use **Not a match** after selecting exactly two videos from the same group. The pair is saved in ignored-match settings and excluded from later duplicate runs. In a two-video group, the current group disappears immediately; in a larger group, rerun detection to rebuild the remaining relationships.
+
+Right-click actions provide broader corrections:
+
+- **Exclude from group** ignores one video against every other video in that group.
+- **Dismiss group** ignores every pair in the group and hides it from future runs.
+- The toast **Undo** action restores the ignored pairs and current group while the toast remains available.
+- **Clear ignored matches** in Settings allows all saved pairs to be considered again on the next run.
+
+Use ignored matches for definite false positives. If many groups are wrong in the same way, tune the matcher and rerun instead of dismissing them one by one.
+
+<Warning>
+  Duplicate status marks feed the same global delete batch as grid and Review decisions. The final delete action includes all loaded videos marked Delete, even if current filters hide them.
+</Warning>

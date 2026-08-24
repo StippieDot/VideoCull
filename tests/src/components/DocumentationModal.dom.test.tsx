@@ -129,7 +129,7 @@ describe('DocumentationModal behavior', () => {
     await userEvent.click(within(docsNav).getByRole('button', { name: /^Review mode/i }));
 
     expect(scrollTo).toHaveBeenCalled();
-    expect(document.querySelector('#review-mode-core-controls summary')?.textContent).toBe('Core controls');
+    expect(document.querySelector('#review-mode-use-keyboard-controls summary')?.textContent).toBe('Use keyboard controls');
   });
 
   test('renders the first Settings section open and later sections closed', async () => {
@@ -260,7 +260,7 @@ describe('DocumentationModal behavior', () => {
 
     await userEvent.click(within(docsNav).getByRole('button', { name: /^Troubleshooting/i }));
     await userEvent.click(screen.getByText('Thumbnails are not generating or are stuck'));
-    expect(screen.getByRole('heading', { name: 'Clear thumbnail cache and rescan' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Regenerate affected thumbnails' })).toBeTruthy();
   });
 
   test('renders the current customized shortcuts in the MDX-defined shortcut tables', async () => {

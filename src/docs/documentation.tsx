@@ -1,6 +1,7 @@
 import duplicateReviewSource from '../../docs/features/duplicate-review.mdx?raw';
 import deleteSafetySource from '../../docs/features/delete-and-safety.mdx?raw';
 import gridViewSource from '../../docs/features/grid-view.mdx?raw';
+import sessionsFoldersSource from '../../docs/features/sessions-and-folders.mdx?raw';
 import quickStartSource from '../../docs/getting-started/quickstart.mdx?raw';
 import faqSource from '../../docs/help/faq.mdx?raw';
 import troubleshootingSource from '../../docs/help/troubleshooting.mdx?raw';
@@ -15,7 +16,7 @@ const DOC_IMAGES = import.meta.glob('../../docs/screenshots/*', {
   import: 'default',
 }) as Record<string, string>;
 
-export const DOCUMENTATION_SITE_URL = 'https://videocull.mintlify.site';
+export const DOCUMENTATION_SITE_URL = 'https://docs.videocull.app';
 
 export type DocumentationActionId =
   | 'show-shortcuts'
@@ -88,6 +89,7 @@ const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 const DOCUMENTATION_SOURCES: DocumentationSource[] = [
   { id: 'quick-start', group: 'Get started', navigationTitle: 'Quick start', href: '/getting-started/quickstart', raw: quickStartSource },
+  { id: 'sessions-folders', group: 'Get started', href: '/features/sessions-and-folders', raw: sessionsFoldersSource },
   { id: 'grid-view', group: 'Workflows', href: '/features/grid-view', raw: gridViewSource },
   { id: 'review-mode', group: 'Workflows', href: '/features/review-mode', raw: reviewModeSource },
   { id: 'duplicate-review', group: 'Workflows', href: '/features/duplicate-review', raw: duplicateReviewSource },

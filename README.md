@@ -54,10 +54,10 @@ Every video gets a strip of thumbnails pulled from different points in the file.
 - Adjustable card size (`Ctrl++` / `Ctrl+-`)
 - Search by filename or path (`Ctrl+F` by default, customizable)
 - Group by subfolder with per-folder counts and sizes
-- Filter by status, rating, favorites, compatibility, file size, and duration
+- Filter by exact status, minimum rating, favorites, compatibility, duplicates, file size, and duration
 - Sort by name, size, duration, date, rating, resolution, or FPS
 - Codec, resolution, FPS, favorite, rating, and compatibility badges
-- Batch selection with Keep, Delete, Skip, Reset, Clear, and Regenerate Thumbnails actions
+- `Shift`-click batch selection with range selection, Keep, Delete, Skip, Reset, Clear, and Regenerate Thumbnails actions
 - Right-click quick actions for videos and folders, including reveal/copy-path, status changes, and thumbnail regeneration
 - Per-folder Review button to scope review mode to one folder
 - Drag and drop folder opening, multi-directory sessions
@@ -73,6 +73,7 @@ Fullscreen, one at a time, keyboard first.
 - Ratings and favorites directly on the current video
 - Review summary with pending counts and delete totals
 - Next-undecided navigation for skipping videos you've already handled
+- Direct card opening that starts on the chosen video while preserving the filtered navigation scope
 - External player handoff for files the built-in player should not play
 - Preview and playback layouts adapt to normal, maximized, and high-resolution displays
 - Undo any decision before you commit the final delete
@@ -130,7 +131,7 @@ Generate an HTML report from Settings or the app menu, scoped to all loaded vide
 | `F5` | Rescan |
 | `Ctrl + Z` | Undo |
 | `Ctrl + Backspace` | Send marked videos to Recycle Bin |
-| `Ctrl + Shift + R` | Clear thumbnail cache |
+| `Ctrl + Shift + R` | Clear cache for loaded folders and reload (confirmed; cached progress is lost) |
 | `Ctrl + E` | Reveal in Explorer |
 | `Ctrl + +` / `Ctrl + -` | Zoom cards |
 | `F11` | Toggle fullscreen |
@@ -167,6 +168,7 @@ Review shortcuts are customizable in Settings.
 | Default card scale | 0.5x - 2.0x | 1.0x |
 | Default sort | Name / Size / Date / Duration / Rating / Resolution / FPS | Name |
 | Group by folder | On / Off | On |
+| Keep Review playback controls visible | On / Off | Off |
 | Parallel FFmpeg processes | Auto (RAM + CPU aware) / 1 / 2 / 3 / 4 / 6 / 8 / 12 / 16 / 24 / 32 | Auto |
 | Limit each FFmpeg process to 1 CPU thread | On / Off | On |
 | Intro skip delay | 0 - 60 seconds | 3s |
@@ -174,7 +176,7 @@ Review shortcuts are customizable in Settings.
 | Auto-clean stale cache after scan | On / Off | Off |
 | Remove empty folders after deleting videos | On / Off | Off |
 | Auto updates | On / Off | On |
-| Feature toggles | Ratings, favorites, analytics screen | On |
+| Feature toggles | Ratings, favorites | On |
 | Keybindings | Any key or combination | K / D / S / Z / Space |
 
 Duplicate detection also has its own settings tab with options for comparison method, similarity threshold, sample count, scope, keeper priority, ignored matches, sampling windows, and retry behavior.
