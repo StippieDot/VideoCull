@@ -144,6 +144,10 @@ describe('SettingsModal integration behavior', () => {
   test('saves the persistent Review playback-controls preference', async () => {
     render(<SettingsModal initialTab="interface" />);
 
+    expect(screen.getByRole('heading', { name: /grid defaults/i })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /review mode/i })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /^export$/i })).toBeTruthy();
+
     const controlsToggle = screen.getByRole('checkbox', { name: /keep playback controls visible in review/i });
     expect((controlsToggle as HTMLInputElement).checked).toBe(false);
 
