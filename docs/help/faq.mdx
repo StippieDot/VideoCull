@@ -46,7 +46,7 @@ These answers cover the short questions that come up during normal culling. For 
   <Accordion title="Will rescanning regenerate every thumbnail?">
     Not usually. Video Cull skips videos whose thumbnail set is already complete in cache.
 
-    If you change thumbnail settings and need a full rebuild, clear the thumbnail cache first and then rescan.
+    If you change thumbnail settings and need a rebuild, batch-select the affected videos in the grid and choose **Thumbs**. This regenerates their thumbnails without discarding decisions, ratings, favorites, or bookmarks.
   </Accordion>
 
   <Accordion title="Can I review more than one folder in the same session?">
@@ -57,6 +57,22 @@ These answers cover the short questions that come up during normal culling. For 
     Yes. You can undo decisions before you commit the final delete action.
 
     After files have been sent to the Recycle Bin, recovery happens from the Recycle Bin itself.
+  </Accordion>
+
+  <Accordion title="Does Review show only Pending videos?">
+    No. Review keeps the full scope that was active when it opened, including videos already marked Keep, Delete, or Skipped. This makes previous and next navigation useful for checking earlier decisions.
+
+    Press `Tab` to jump to the next Pending video. The progress display shows both decided and remaining Pending counts.
+  </Accordion>
+
+  <Accordion title="How do I reset several videos to Pending?">
+    Filter the grid to the intended pool, then `Shift`-click a card to start batch selection. Add individual cards or `Shift`-click another card for a range, and choose **Reset** in the batch bar.
+
+    Reset changes only review status. Ratings, favorites, and bookmarks remain attached to the videos.
+  </Accordion>
+
+  <Accordion title="What happens when I click a video card?">
+    Clicking the card body opens Review on that exact video and keeps the current filtered grid as the previous/next navigation scope. Clicking the play overlay does the same with autoplay. `Ctrl`-click the play overlay to open the external player instead.
   </Accordion>
 
   <Accordion title="Are deleted files permanently removed?">

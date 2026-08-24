@@ -1,66 +1,90 @@
 ---
 title: Review mode
-description: Step through videos one at a time with playback, bookmarks, metadata, and keyboard-first keep or delete decisions.
+description: Step through a defined video scope with playback, navigation, bookmarks, metadata, and keyboard-first decisions.
 ---
 
 {/* in-app-meta
 {
-  "summary": "Use review mode when keyboard-first decisions are faster than browsing the grid.",
+  "summary": "Use Review when one-at-a-time keyboard decisions are faster than browsing cards.",
   "actions": ["show-shortcuts", "open-settings-keybindings"]
 }
 */}
 
-Review mode is the one-at-a-time workflow for clips that need a closer look. It combines a full thumbnail strip, video metadata, and an in-app player with keyboard-first controls.
+Review mode is the focused, one-video-at-a-time workflow. It combines the full thumbnail strip, file metadata, ratings, favorites, bookmarks, context actions, and an in-app player without losing the queue you came from.
 
 ![Review mode](/screenshots/V2.0.0%20-%20ReviewMode.png)
 
-## When review mode helps
+## Choose the review scope
 
-Review mode turns the current scope into a one-by-one decision queue with playback, navigation, and undo built into the same flow.
+Review freezes its scope when it opens, so later status changes do not make videos disappear from the current queue.
 
-Enter review mode after the grid has already narrowed the library to the queue you actually want to judge clip by clip.
+| Entry point | Review scope | Starting video |
+| --- | --- | --- |
+| Sidebar **Review** | The current filtered grid | First video in the filtered sort order |
+| Click a grid card | The current filtered grid | The card you clicked |
+| Click a card's play overlay | The current filtered grid | The card you clicked, with one-shot autoplay |
+| Folder-header **Review** | Videos in that folder | First video in the folder scope |
+| Play from Duplicate Review | Videos in that duplicate group | The duplicate row or card you played |
 
-## Decision controls
+This is what direct opening means: clicking a specific card opens that video instead of restarting Review at the beginning, while previous and next navigation still use the surrounding filtered pool.
 
-Keep and Delete are final review outcomes. Skip means intentionally undecided. Reset returns a clip to Pending. Undo reverses the most recent change without losing your place.
+## Make and reverse decisions
 
-Use Keep or Delete for clear decisions, Skip when you need a second pass, and Undo instead of hunting backward after a fast mistake.
+| Decision | Meaning | Automatic next step |
+| --- | --- | --- |
+| Keep | This video should remain. | Advances to the next item in scope. |
+| Delete | Include this video in the later delete batch. | Advances to the next item in scope. |
+| Skip | Deliberately defer the decision. | Advances to the next item in scope. |
+| Reset | Return the current video to Pending. | Stays on the current item. |
+| Undo | Restore the most recent status change or batch status change. | Restores the previous Review position when applicable. |
 
-## Scope and playback
+Keep, Delete, Skip, and Reset only change cached review status. Ratings, favorites, and bookmarks are independent, so Reset does not clear them. No file is moved by a Review decision.
 
-Review progress is calculated from the active scope, which can be the full session, the current filter, one folder, or one duplicate group.
+## Navigate decided and pending videos
 
-Check the scope label before you start. Use built-in playback for the normal path and open the external player only when the embedded player is not reliable enough for that clip.
+Previous and next navigation moves through every video in the frozen scope, including videos already marked Keep, Delete, or Skipped. This lets you inspect or revise an earlier decision without changing the queue.
 
-## Core controls
+The progress display separates total position from decision progress: it shows the current item, decided count, remaining Pending count, and a progress bar. Press `Tab` to jump to the next Pending video and wrap through the scope. If none remain, Video Cull reports that every other item already has a decision.
 
-- Press `K` to keep the current video.
-- Press `D` to mark it for deletion.
-- Press `S` to skip it.
-- Press `Z` to undo the last decision.
-- Press `Enter` to play in-app or `Ctrl+Enter` to open the file in your external player.
+When you advance beyond the last item, Review shows a summary of Keep, Delete, Skipped, and Pending counts plus the total size marked Delete. Return to the grid to inspect or commit the delete batch.
 
-After a decision, Video Cull can move straight to the next clip so you can stay in flow.
+## Use keyboard controls
 
-The in-app [Keyboard shortcuts](/reference/keyboard-shortcuts) page shows your configured bindings, so use that reference if you have changed the defaults listed here.
+- `K` keeps the current video.
+- `D` marks it Delete.
+- `S` skips it.
+- `R` resets it to Pending.
+- `Z` undoes the last decision.
+- `Space` or `Enter` starts or pauses built-in playback.
+- `Ctrl+Enter` opens the file in the default external player.
+- `Esc` stops playback first; press it again from preview state to leave Review.
 
-## Playback and navigation
+Configured Review shortcuts remain active when the embedded player has focus. Video Cull handles a configured app shortcut before the player's own binding, so the default `K` marks Keep instead of pausing playback.
 
-- Scrub through the video inside the app.
-- Change playback speed with `[` and `]`.
-- Use `Left` and `Right` to navigate, or scrub 5 seconds while a video is playing.
-- Jump to the next undecided video instead of revisiting clips you already handled.
+The in-app [Keyboard shortcuts](/reference/keyboard-shortcuts) page renders your current bindings. Use it instead of memorizing the defaults after remapping keys.
 
-Playback controls auto-hide by default. Enable **Keep playback controls visible in Review** under **Settings > Interface** when you want the timeline and controls to remain on screen.
+## Play and scrub
 
-## Metadata and bookmarks
+While the video is not playing, `Left` and `Right` navigate to the previous or next item. While it is playing, the same keys seek backward or forward by five seconds.
 
-Review mode also keeps the current video's context close at hand:
+Use `[` and `]` to move through playback speeds from `0.5x` to `2x`. The selected speed carries into the next playback session. Use the player timeline for direct scrubbing and fullscreen control.
 
-- Ratings and favorites can be changed directly from the review screen.
-- Bookmarks can be dropped while the video is playing and revisited later.
-- Layout adapts to normal, maximized, and high-resolution displays.
+Playback controls auto-hide by default. Enable **Keep playback controls visible in Review** under **Settings > Interface** to keep the timeline and player controls on screen.
+
+Global mute applies to in-app playback and can be toggled with `M`. External playback uses the external player's settings.
+
+## Add metadata and bookmarks
+
+Ratings and favorites can be changed directly in Review when those features are enabled. Both are saved independently from review status and can later be used as grid filters or report metadata.
+
+While playing, press `B` or use the bookmark button to save the current timestamp. Bookmark chips seek back to saved positions; remove a chip when it is no longer useful. The bookmark count remains visible in preview state.
+
+Right-click the Review content to open the current video externally, reveal it in Explorer, or copy its path.
+
+## Handle unsupported playback
+
+Videos that fail the compatibility check open externally instead of forcing the embedded player. If Chromium can decode the video but not its audio stream, Review shows an audio-codec warning with an external-player option.
 
 <Note>
-  If the built-in player should not handle a file, use the external player handoff instead of forcing playback in-app.
+  Thumbnailing, metadata, ratings, statuses, and deletion marking still work for files that cannot play in the built-in player.
 </Note>

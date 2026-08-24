@@ -24,6 +24,7 @@
         "pages": [
           "getting-started/index",
           "getting-started/introduction",
+          "features/sessions-and-folders",
           "getting-started/installation",
           "getting-started/quickstart"
         ]

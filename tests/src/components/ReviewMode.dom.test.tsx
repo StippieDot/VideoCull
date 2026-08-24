@@ -9,6 +9,8 @@ import useStore from '../../../src/store';
 import { resetPerfDevMock } from '../../helpers/perfDevMock';
 import { makeVideo } from '../../helpers/videoFactory';
 
+const videoSkinTogglePlayback = vi.hoisted(() => vi.fn());
+
 vi.mock('@videojs/react', () => ({
   createPlayer: () => ({
     Provider: ({ children }: { children: ReactNode }) => children,
@@ -18,7 +20,18 @@ vi.mock('@videojs/react', () => ({
 
 vi.mock('@videojs/react/video', () => ({
   MinimalVideoSkin: ({ children }: { children: ReactNode }) => (
-    <div className="media-minimal-skin" tabIndex={0}>{children}</div>
+    <div
+      className="media-minimal-skin"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key.toLowerCase() === 'k' && !event.defaultPrevented) {
+          event.preventDefault();
+          videoSkinTogglePlayback();
+        }
+      }}
+    >
+      {children}
+    </div>
   ),
   Video: () => null,
 }));
@@ -47,6 +60,7 @@ function getStoreApi() {
 
 describe('ReviewMode behavior', () => {
   beforeEach(() => {
+    videoSkinTogglePlayback.mockReset();
     installElectronApiMock();
     resetPerfDevMock();
     const store = getStoreApi();
@@ -243,6 +257,7 @@ describe('ReviewMode behavior', () => {
       expect(useStore.getState().videos.find((video) => video.id === 'alpha')?.status).toBe('keep');
       expect(screen.getByText('beta.mp4')).toBeTruthy();
     });
+    expect(videoSkinTogglePlayback).not.toHaveBeenCalled();
   });
 
   test.each([

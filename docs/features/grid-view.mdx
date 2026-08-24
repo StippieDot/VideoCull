@@ -1,65 +1,105 @@
 ---
 title: Grid view
-description: Browse your video library at a glance with thumbnail strips, filters, sorting, badges, and batch actions.
+description: Browse, filter, sort, group, select, and batch-edit videos from thumbnail cards.
 ---
 
 {/* in-app-meta
 {
-  "summary": "Use the grid to shrink a noisy library into a reviewable queue.",
+  "summary": "Use the grid to shrink a noisy library into a precise review or batch-action queue.",
   "actions": ["open-settings-interface"]
 }
 */}
 
-Grid view is where most large-library triage happens. Every video appears as a card with thumbnail frames sampled from different points in the file, so you can understand what a clip contains without opening it first.
+Grid view is the main workspace for large-library triage. Each card combines sampled frames, file metadata, review status, and quick actions, so many clips can be judged without opening them.
 
 ![Grid view](/screenshots/V2.0.0%20-%20GridView.png)
 
-## Filter first
+## Search and filter
 
-Grid view is where you reduce a large folder into something specific enough to review or batch-edit with confidence.
+Search matches both the filename and full path. Press `Ctrl+F` to focus the search field, then press `Esc` to clear the query and return focus to the grid.
 
-Use search, status, folder, size, duration, duplicate, rating, favorite, and incompatible filters to get the list down before you enter review mode.
+All active filters combine. For example, **Pending**, **Favorites**, **2+ stars**, and a duration range shows only videos satisfying every condition. The counter at the top of Filters shows the visible count against the full loaded count. Use **Clear all** to remove every grid filter at once.
+
+| Filter | Behavior |
+| --- | --- |
+| Status | Shows All, Pending, Keep, Delete, or Skipped videos. Status matching is exact. |
+| Folder | Restricts the grid to one parent folder. Folder-header actions can set this filter. |
+| Favorites | Shows only videos with the favorite heart enabled. |
+| Rating | Cumulative: selecting 3 stars means 3 stars or higher. Clear the stars to include unrated videos again. |
+| Incompatible | Shows videos that should use an external player. This appears when incompatible files exist. |
+| Duplicates | Shows videos assigned to a duplicate group by the most recent duplicate run. |
+| File size | Uses an inclusive minimum and maximum based on the loaded library. |
+| Duration | Uses an inclusive minimum and maximum. Videos without valid duration metadata do not match an active duration range. |
+
+Filtering changes the current grid, Review button scope, filtered report scope, and filtered duplicate-detection scope. It never changes statuses by itself.
 
 ## Sort and group
 
-Sorting changes which clips rise to the top. Grouping changes whether you see one mixed queue or folder buckets with their own local order.
+Sort videos by name, size, duration, date, rating, resolution, or FPS, in either direction. Name sorting is numeric-aware, so names such as `clip2` and `clip10` stay in a natural order.
 
-Stay ungrouped when you want one global queue. Turn on folder grouping when keeping folder context matters more than absolute ranking.
+With **Group by folder** enabled, folders are ordered separately by folder name or total folder size. The selected video sort still controls the order inside each folder. Folder headers show total and currently visible counts and sizes, which makes an active filter visible at folder level.
 
-## Batch actions
+Use the floating down-arrow when several folder groups are visible to jump to the next folder. Turn grouping off when you need one global sorted queue across every loaded root.
 
-Batch selection is the fast path for marking many rows after filtering has already isolated the right set.
+## Read and open cards
 
-Select after filtering, apply one batch action, then keep moving. Drop back to per-card actions when the remaining set has mixed outcomes or when you need playback before deciding.
+Cards show the filename, file size, duration, thumbnail strip, and Keep/Delete controls. Depending on enabled features and available metadata, they also show rating, favorite, resolution, codec, FPS, duplicate, status, and compatibility information.
 
-- Mark selections as Keep, Delete, Skip, or Reset.
-- Clear selection without changing statuses.
-- Regenerate thumbnails for selected items.
+- Click **Keep** or **Delete** again to toggle that status back to Pending.
+- Click the card body to open that exact video in Review without autoplay. The current filtered list becomes the navigation scope, and Review starts at the card you clicked.
+- Click the play overlay to open that exact video in Review and start playback.
+- Hold `Ctrl` while clicking play to use the external player. Files marked incompatible use the external player automatically.
 
-## What you can do
+Returning from Review restores the grid scroll position, so opening one card does not lose your place.
 
-- Change card size with `Ctrl++` and `Ctrl+-`.
-- Search by filename or path.
-- Group by subfolder and see per-folder counts and sizes.
-- Filter by status, rating, favorites, compatibility, file size, and duration.
-- Sort by name, size, duration, date, rating, resolution, or FPS.
-- See badges for codec, resolution, FPS, favorite state, rating, and playback compatibility.
+## Select a batch
 
-## Card and folder actions
+Batch selection is useful when a filter, folder, or visible range already identifies videos that should receive the same action.
 
-Use the grid when you already know what a clip is from the thumbnails alone. Open a card's context menu for targeted actions such as changing its status, regenerating thumbnails, revealing the file, or copying its path.
+<Steps>
+  <Step title="Start selection mode">
+    Hold `Shift` and click a card. The card becomes selected, selection controls appear on the visible cards, and the batch bar opens at the bottom.
+  </Step>
+  <Step title="Add individual videos">
+    While selection mode is active, click cards or their selection boxes to toggle them. A normal card click selects instead of opening Review until the selection is cleared.
+  </Step>
+  <Step title="Select a range">
+    Hold `Shift` and click another card to add the full visible range between the selection anchor and that card. The range follows the current filtered and sorted order, including across folder groups.
+  </Step>
+  <Step title="Apply one action">
+    Choose Keep, Delete, Skip, Reset, or Thumbs from the batch bar. Status and thumbnail actions clear the selection after they finish.
+  </Step>
+</Steps>
 
-Folder headers show local counts and sizes. Use a folder header's Review action when you want a one-folder review queue without changing the rest of the session.
+Changing filters removes selected videos that are no longer visible. Press `Esc` or choose **Clear** to leave selection mode without changing any status.
 
-## Folder and session controls
+## Understand batch actions
 
-Grid view also handles broader session management:
+| Action | Result |
+| --- | --- |
+| Keep | Marks every selected video Keep. No files move. |
+| Delete | Marks every selected video for the later delete batch. No files move yet. |
+| Skip | Marks every selected video Skipped for a later decision. |
+| Reset | Returns every selected video to Pending. Ratings, favorites, and bookmarks remain unchanged. |
+| Thumbs | Clears and regenerates thumbnails only for the selected videos. It is unavailable during scanning or other thumbnail generation. |
+| Clear | Clears selection only. It does not alter videos. |
 
-- Drag and drop folders into the app.
-- Work with more than one directory in the same session.
-- Reopen recent directories with timestamps.
-- Hide the interface with the privacy screen using `Shift+Esc`.
+Batch status changes are undoable as one operation. The final sidebar Delete action is different: it acts on every loaded video marked Delete, including videos hidden by current filters. See [Delete and safety](/features/delete-and-safety) before committing a large batch.
+
+## Use context menus
+
+Right-click a video for targeted playback, external opening, reveal-in-Explorer, status reset, thumbnail regeneration, or path copying.
+
+When folder grouping is enabled, right-click a folder header to:
+
+- Review only that folder.
+- Filter the grid to that folder.
+- Reveal or copy the folder path.
+- Mark the folder's videos Keep, Delete, or Pending.
+- Regenerate thumbnails for the folder.
+
+The visible Review button in a folder header creates the same one-folder review scope without changing filters.
 
 <Tip>
-  Start in grid view, then switch to review mode only when the thumbnail strip is not enough to make a decision.
+  Filter first, select second, and verify the selected count before applying a batch action. This is faster and safer than selecting from an unfiltered library.
 </Tip>

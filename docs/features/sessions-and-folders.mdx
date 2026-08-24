@@ -1,0 +1,63 @@
+---
+title: Sessions and folders
+description: Load one or more folders, control recursive scanning, reopen recent locations, rescan safely, and export a session report.
+---
+
+{/* in-app-meta
+{
+  "summary": "Understand what belongs to a session and how folders, rescans, privacy, and reports interact.",
+  "actions": ["open-settings-interface"]
+}
+*/}
+
+A session is the set of folders currently loaded into Video Cull. The grid, filters, review scope, duplicate results, and delete batch all operate on that loaded set. Review decisions and metadata are saved in the cache, so closing a session does not erase your work.
+
+## Load the first folder
+
+Open a folder with `Ctrl+O`, the folder picker, a recent-folder entry, or drag and drop. Video Cull scans supported video files, restores cached information, refreshes missing metadata, and generates any thumbnails that are not already complete.
+
+Use **Include subfolders** when footage is nested below the selected root. Turning it off limits scanning to videos directly inside each loaded root. Changing the toggle triggers a rescan of the loaded roots with the new behavior.
+
+## Add or replace folders
+
+When a session already contains a folder, opening a different folder asks whether to add it or replace the session.
+
+- **Add to session** combines the folder with the currently loaded roots and creates one shared grid and review queue.
+- **Replace session** closes the current loaded set and scans only the new folder.
+- Adding a folder that is already covered does not duplicate its videos.
+
+Use a multi-folder session when the folders belong to one culling job. Use separate sessions when each folder needs independent filters, duplicate runs, or delete checks.
+
+## Use recent folders
+
+The recent-folders list records when each location was last opened. Click an entry to replace or reopen the session. Right-click an entry to open it, add it to the current session, reveal it in Explorer, or copy its path.
+
+Unavailable locations are marked instead of opened. Remove one stale entry with its remove button, or clear the recent list without deleting any media or cache data.
+
+## Rescan or close a session
+
+Press `F5` to rescan all loaded roots. A rescan refreshes the current file list, restores saved statuses and metadata, and queues missing processing work. It does not reset Keep, Delete, Skip, ratings, favorites, or bookmarks that still belong to matching cached files.
+
+Close the session when you want to return to the landing screen. Closing unloads the current roots from the interface; it does not delete videos or their cache.
+
+## Follow background work
+
+Scanning discovers files first. Metadata and thumbnails can continue afterward, and the grid updates as results arrive. You can browse and make decisions while thumbnails generate, but duplicate detection waits when required metadata is still being refreshed.
+
+Warnings identify folders that could not be scanned and processing jobs that did not complete. Rescan after fixing access, drive, or codec problems.
+
+## Use privacy and global mute
+
+Press `Shift+Esc` to cover the interface with the privacy screen. This only hides the current window; it does not pause scanning or change the session.
+
+Press `M` to toggle global mute for in-app playback. The mute state is saved and applies to Review playback. Opening a file in an external player uses that player's own audio setting.
+
+## Export a report
+
+Export creates an HTML snapshot of either all loaded videos or the current filtered result. The report groups videos by folder and separates Keep, Delete, Pending, and Skipped decisions.
+
+Use **all loaded videos** for a complete session record. Use **current filtered view** after narrowing the grid to a project, status, rating, or other subset. Exporting never changes statuses or files.
+
+<Note>
+  Video Cull processes folders locally. A session is not uploaded, synced, or shared automatically.
+</Note>

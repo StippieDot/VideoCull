@@ -60,11 +60,17 @@ Intro skip delay moves the first sample away from fades and blank lead-ins. Incr
 
 You can browse and review while thumbnails continue in the background. Metadata-dependent actions, including duplicate detection, may wait until the required metadata is ready.
 
-## Clear or rebuild cache
+## Regenerate thumbnails or clear cache
 
-Clear thumbnail cache when generated images are stale, incomplete, or based on settings you no longer want. Rescan afterward to rebuild them.
+Use grid batch **Thumbs** when generated images are stale, incomplete, or based on settings you no longer want. This clears and regenerates thumbnails only for the selected videos while preserving statuses, ratings, favorites, bookmarks, and other cached metadata.
 
-Starting fresh removes cached convenience and progress from that cache location; it does not delete source videos. Preserve or migrate the old cache first when its decisions and bookmarks still matter.
+Use **Clear cache and reload** (`Ctrl+Shift+R`) only when the current cache itself should be discarded. After confirmation, it clears the cache for all loaded folders, reloads the session, and loses manual review decisions and other progress stored only in that cache. Source videos are not deleted.
+
+Choosing **Start fresh** during a cache-location change has the same important distinction: it removes cached convenience and progress from the new active cache, not source media. Migrate or preserve the old cache when its decisions and bookmarks still matter.
+
+<Warning>
+  Thumbnail regeneration is targeted maintenance. Full cache clearing is a progress reset. Do not use them interchangeably.
+</Warning>
 
 <Tip>
   Change one processing setting at a time and test it on a representative folder before rebuilding a large library.
