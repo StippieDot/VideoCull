@@ -774,3 +774,15 @@
   font-size: 13px;
   font-weight: 600;
 }
+
+/* Keep playback controls visible when the Review preference is enabled. */
+.review-mode.review-playing.review-controls-persistent .media-minimal-skin--video .media-controls:not([data-visible]) {
+  pointer-events: auto;
+  opacity: 1;
+  filter: none;
+  translate: none;
+}
+
+.review-mode.review-playing.review-controls-persistent .media-minimal-skin--video:has(.media-controls:not([data-visible])) {
+  cursor: auto;
+}

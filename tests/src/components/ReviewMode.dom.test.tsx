@@ -195,6 +195,30 @@ describe('ReviewMode behavior', () => {
 
     expect(root?.classList.contains('review-playing')).toBe(true);
     expect(root?.classList.contains('review-preview')).toBe(false);
+    expect(root?.classList.contains('review-controls-persistent')).toBe(false);
+  });
+
+  test('keeps Review playback controls visible when the preference is enabled', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    const current = useStore.getState();
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha'],
+      settings: {
+        ...current.settings,
+        keepReviewControlsVisible: true,
+      },
+    });
+
+    const { container } = render(<ReviewMode />);
+    const root = container.querySelector('.review-mode');
+
+    expect(root?.classList.contains('review-controls-persistent')).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    expect(root?.classList.contains('review-controls-persistent')).toBe(true);
   });
 
   test('keeps review shortcuts active after the video player receives focus', async () => {

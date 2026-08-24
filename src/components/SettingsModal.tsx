@@ -390,53 +390,76 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
 
             {activeTab === 'interface' && (
               <div className="settings-form">
-                <div className="form-group">
-                  <label>Default Card Scale</label>
-                  <div className="flex-row">
-                    <input type="range" min="0.5" max="2.0" step="0.1" value={localSettings.defaultCardScale} onChange={(e) => handleChange('defaultCardScale', Number(e.target.value))} />
-                    <span>{localSettings.defaultCardScale.toFixed(1)}x</span>
+                <section className="settings-subsection">
+                  <h3 className="settings-subsection-title">Grid defaults</h3>
+
+                  <div className="form-group">
+                    <label>Default Card Scale</label>
+                    <div className="flex-row">
+                      <input type="range" min="0.5" max="2.0" step="0.1" value={localSettings.defaultCardScale} onChange={(e) => handleChange('defaultCardScale', Number(e.target.value))} />
+                      <span>{localSettings.defaultCardScale.toFixed(1)}x</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="form-group">
-                  <label>Default Sorting</label>
-                  <div className="flex-row">
-                    <select value={localSettings.defaultSortBy} onChange={(e) => handleChange('defaultSortBy', e.target.value)}>
-                      <option value="name">Name</option>
-                      <option value="size">Size</option>
-                      <option value="date">Date</option>
-                      <option value="duration">Duration</option>
-                      {localSettings.features.ratings && <option value="rating">Rating</option>}
-                      {localSettings.features.codecBadges && <option value="resolution">Resolution</option>}
-                      {localSettings.features.codecBadges && <option value="fps">FPS</option>}
-                    </select>
-                    <select value={localSettings.defaultSortOrder} onChange={(e) => handleChange('defaultSortOrder', e.target.value)}>
-                      <option value="asc">Ascending</option>
-                      <option value="desc">Descending</option>
-                    </select>
+                  <div className="form-group">
+                    <label>Default Sorting</label>
+                    <div className="flex-row">
+                      <select value={localSettings.defaultSortBy} onChange={(e) => handleChange('defaultSortBy', e.target.value)}>
+                        <option value="name">Name</option>
+                        <option value="size">Size</option>
+                        <option value="date">Date</option>
+                        <option value="duration">Duration</option>
+                        {localSettings.features.ratings && <option value="rating">Rating</option>}
+                        {localSettings.features.codecBadges && <option value="resolution">Resolution</option>}
+                        {localSettings.features.codecBadges && <option value="fps">FPS</option>}
+                      </select>
+                      <select value={localSettings.defaultSortOrder} onChange={(e) => handleChange('defaultSortOrder', e.target.value)}>
+                        <option value="asc">Ascending</option>
+                        <option value="desc">Descending</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
 
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input type="checkbox" checked={localSettings.defaultGroupByFolder} onChange={(e) => handleChange('defaultGroupByFolder', e.target.checked)} />
-                    Group videos by folder natively
-                  </label>
-                </div>
+                  <div className="form-group checkbox-group">
+                    <label>
+                      <input type="checkbox" checked={localSettings.defaultGroupByFolder} onChange={(e) => handleChange('defaultGroupByFolder', e.target.checked)} />
+                      Group videos by folder natively
+                    </label>
+                  </div>
+                </section>
 
-                <div className="form-group settings-section-divider">
-                  <label>Export Report</label>
-                  <button
-                    className="btn-check-updates"
-                    onClick={handleExportReport}
-                    disabled={!directory || videos.length === 0 || isScanning}
-                  >
-                    <FileDown size={14} />
-                    Export Report...
-                  </button>
-                  <span className="help-text">Choose filtered or all videos when exporting.</span>
-                  {exportMessage && <span className="help-text">{exportMessage}</span>}
-                </div>
+                <section className="settings-subsection settings-section-divider">
+                  <h3 className="settings-subsection-title">Review mode</h3>
+
+                  <div className="form-group checkbox-group">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={localSettings.keepReviewControlsVisible}
+                        onChange={(e) => handleChange('keepReviewControlsVisible', e.target.checked)}
+                      />
+                      Keep playback controls visible in Review
+                    </label>
+                    <span className="help-text">Prevents the timeline and playback controls from auto-hiding while a video is playing.</span>
+                  </div>
+                </section>
+
+                <section className="settings-subsection settings-section-divider">
+                  <h3 className="settings-subsection-title">Export</h3>
+
+                  <div className="form-group">
+                    <button
+                      className="btn-check-updates"
+                      onClick={handleExportReport}
+                      disabled={!directory || videos.length === 0 || isScanning}
+                    >
+                      <FileDown size={14} />
+                      Export Report...
+                    </button>
+                    <span className="help-text">Choose filtered or all videos when exporting.</span>
+                    {exportMessage && <span className="help-text">{exportMessage}</span>}
+                  </div>
+                </section>
               </div>
             )}
 

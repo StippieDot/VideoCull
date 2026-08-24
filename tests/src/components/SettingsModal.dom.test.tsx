@@ -141,6 +141,25 @@ describe('SettingsModal integration behavior', () => {
     expect(await screen.findByText('Export failed.')).toBeTruthy();
   });
 
+  test('saves the persistent Review playback-controls preference', async () => {
+    render(<SettingsModal initialTab="interface" />);
+
+    expect(screen.getByRole('heading', { name: /grid defaults/i })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /review mode/i })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /^export$/i })).toBeTruthy();
+
+    const controlsToggle = screen.getByRole('checkbox', { name: /keep playback controls visible in review/i });
+    expect((controlsToggle as HTMLInputElement).checked).toBe(false);
+
+    await userEvent.click(controlsToggle);
+    await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
+
+    await waitFor(() => {
+      expect(electronAPI.saveConfig).toHaveBeenCalled();
+    });
+    expect(useStore.getState().settings.keepReviewControlsVisible).toBe(true);
+  });
+
   test('starts a manual update check from the updates tab', async () => {
     render(<SettingsModal initialTab="updates" />);
 

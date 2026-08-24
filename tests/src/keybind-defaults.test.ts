@@ -50,6 +50,7 @@ describe('migrateSettings', () => {
       autoUpdates: null,
       globalMute: 'no',
       hardwareAccel: undefined,
+      keepReviewControlsVisible: 'yes',
     });
 
     expect(migrated.features).toEqual({
@@ -65,6 +66,12 @@ describe('migrateSettings', () => {
     expect(migrated.autoUpdates).toBe(true);
     expect(migrated.globalMute).toBe(false);
     expect(migrated.hardwareAccel).toBe(false);
+    expect(migrated.keepReviewControlsVisible).toBe(false);
+  });
+
+  test('preserves an explicit persistent review-controls preference', () => {
+    expect(migrateSettings({ keepReviewControlsVisible: true }).keepReviewControlsVisible).toBe(true);
+    expect(migrateSettings({ keepReviewControlsVisible: false }).keepReviewControlsVisible).toBe(false);
   });
 
   test('preserves explicit empty-folder cleanup preference', () => {

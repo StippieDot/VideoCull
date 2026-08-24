@@ -130,6 +130,11 @@
   text-transform: uppercase;
 }
 
+.settings-subsection.settings-section-divider {
+  border-top: 1px solid var(--border-color);
+  padding-top: 18px;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
