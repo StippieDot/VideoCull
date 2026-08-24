@@ -183,6 +183,10 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     result.defaultGroupByFolder = true;
   }
 
+  if (typeof result.keepReviewControlsVisible !== 'boolean') {
+    result.keepReviewControlsVisible = false;
+  }
+
   if (!['centralised', 'per-drive', 'distributed'].includes(result.cacheLocation as string)) {
     result.cacheLocation = 'centralised';
   }

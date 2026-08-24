@@ -424,6 +424,18 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                   </label>
                 </div>
 
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={localSettings.keepReviewControlsVisible}
+                      onChange={(e) => handleChange('keepReviewControlsVisible', e.target.checked)}
+                    />
+                    Keep playback controls visible in Review
+                  </label>
+                  <span className="help-text">Prevents the timeline and playback controls from auto-hiding while a video is playing.</span>
+                </div>
+
                 <div className="form-group settings-section-divider">
                   <label>Export Report</label>
                   <button

@@ -235,6 +235,7 @@ export interface AppSettings {
   defaultSortBy: SortField;
   defaultSortOrder: SortOrder;
   defaultGroupByFolder: boolean;
+  keepReviewControlsVisible: boolean;
   maxConcurrent: number | 'auto';
   cpuThreadsLimited: boolean;
   skipIntroDelaySecs: number;

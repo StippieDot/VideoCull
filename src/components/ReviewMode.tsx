@@ -144,6 +144,7 @@ export default function ReviewMode() {
   const undo = useStore((s) => s.undo);
   const undoStack = useStore((s) => s.undoStack);
   const globalMute = useStore((s) => s.settings.globalMute);
+  const keepReviewControlsVisible = useStore((s) => s.settings.keepReviewControlsVisible);
   const keyReset = useStore((s) => s.settings.keyReset);
   const keyUndo = useStore((s) => s.settings.keyUndo);
   const keyDelete = useStore((s) => s.settings.keyDelete);
@@ -546,7 +547,7 @@ export default function ReviewMode() {
 
   return (
     <div
-      className={`review-mode ${isPlaying ? 'review-playing' : 'review-preview'} ${statusClass}`}
+      className={`review-mode ${isPlaying ? 'review-playing' : 'review-preview'} ${statusClass} ${isPlaying && keepReviewControlsVisible ? 'review-controls-persistent' : ''}`}
       style={{ '--review-media-width': `${reviewMediaWidth}px` } as CSSProperties}
     >
       <button className="review-close" onClick={close} title="Close (Esc)">
