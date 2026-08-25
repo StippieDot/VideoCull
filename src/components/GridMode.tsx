@@ -88,6 +88,11 @@ interface CachedGridRows extends GridRowsResult {
   groupByFolder: boolean;
 }
 
+interface GridScrollAnchor {
+  videoId: string;
+  viewportOffset: number;
+}
+
 let gridRowRuntime: GridRowData | null = null;
 
 function getFolderLabel(video: Video, rootDirs: string[]): string {
@@ -347,6 +352,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const videos = useStore((s) => s.videos);
   const searchQuery = useStore((s) => s.searchQuery);
   const setSearchQuery = useStore((s) => s.setSearchQuery);
+  const statusFilter = useStore((s) => s.statusFilter);
   const keySearch = useStore((s) => s.settings.keySearch);
   const reviewMode = useStore((s) => s.reviewMode);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
@@ -370,6 +376,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const listRef = useRef<ListImperativeAPI | null>(null);
   const restoredScrollRef = useRef(false);
   const visibleRowsRef = useRef({ startIndex: 0, stopIndex: 0 });
+  const pendingScrollAnchorRef = useRef<GridScrollAnchor | null>(null);
   const lastRowsRef = useRef<RowItem[] | null>(null);
   const lastVideosRef = useRef<Video[] | null>(null);
   const rowStructureCacheRef = useRef<CachedGridRows | null>(null);
@@ -397,8 +404,8 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   useEffect(() => {
     if (persistedGridScroll.directory !== directory) {
       persistedGridScroll = { directory, offset: 0 };
+      restoredScrollRef.current = false;
     }
-    restoredScrollRef.current = false;
   }, [directory]);
 
   const cardWidth = Math.round(BASE_CARD_WIDTH * cardScale);
@@ -481,6 +488,13 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!gridActive) return;
+      const targetIsEditable = (
+        event.target instanceof HTMLInputElement
+        || event.target instanceof HTMLSelectElement
+        || event.target instanceof HTMLTextAreaElement
+        || (event.target instanceof HTMLElement && event.target.isContentEditable)
+      );
+      if (targetIsEditable && event.key !== 'Escape') return;
       if (matchesKeybind(event, keySearch)) {
         if (useStore.getState().isSettingsModalOpen || document.body.hasAttribute('data-capturing-keybind')) return;
         event.preventDefault();
@@ -530,6 +544,26 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     element.scrollTop = initialScrollOffset;
     restoredScrollRef.current = true;
   }, [dimensions.height, initialScrollOffset, rows.length]);
+
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    if (!anchor) return;
+
+    const anchorRowIndex = rows.findIndex(
+      (row) => row.type === 'cards' && row.videoIds.includes(anchor.videoId)
+    );
+    if (anchorRowIndex < 0) {
+      pendingScrollAnchorRef.current = null;
+      return;
+    }
+
+    const element = listRef.current?.element;
+    if (!element) return;
+
+    element.scrollTop = Math.max(0, getRowTop(anchorRowIndex) - anchor.viewportOffset);
+    persistedGridScroll = { directory, offset: element.scrollTop };
+    pendingScrollAnchorRef.current = null;
+  }, [directory, getRowTop, rows]);
 
   const getItemSize = useCallback(
     (index: number) => (rows[index].type === 'header' ? HEADER_HEIGHT : cardHeight + GAP),
@@ -673,9 +707,42 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     });
   }, []);
 
+  const captureBatchScrollAnchor = useCallback((idsLeavingView: Set<string>) => {
+    pendingScrollAnchorRef.current = null;
+    const element = listRef.current?.element;
+    if (!element) return;
+
+    const startIndex = Math.max(0, visibleRowsRef.current.startIndex);
+    const stopIndex = Math.min(rows.length - 1, visibleRowsRef.current.stopIndex);
+    const captureFromRange = (from: number, to: number, step: 1 | -1) => {
+      for (let rowIndex = from; step > 0 ? rowIndex <= to : rowIndex >= to; rowIndex += step) {
+        const row = rows[rowIndex];
+        if (row?.type !== 'cards') continue;
+        const videoId = row.videoIds.find((id) => !idsLeavingView.has(id));
+        if (!videoId) continue;
+
+        pendingScrollAnchorRef.current = {
+          videoId,
+          viewportOffset: getRowTop(rowIndex) - element.scrollTop,
+        };
+        return true;
+      }
+      return false;
+    };
+
+    if (captureFromRange(startIndex, stopIndex, 1)) return;
+    if (captureFromRange(stopIndex + 1, rows.length - 1, 1)) return;
+    captureFromRange(startIndex - 1, 0, -1);
+  }, [getRowTop, rows]);
+
   const handleBatchStatus = useCallback((status: 'keep' | 'delete' | 'skipped' | 'pending') => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
+    if (statusFilter !== 'all' && statusFilter !== status) {
+      captureBatchScrollAnchor(new Set(ids));
+    } else {
+      pendingScrollAnchorRef.current = null;
+    }
     setVideoStatusesBatch(ids, status);
     clearGridSelection();
     const statusLabel = status === 'skipped'
@@ -689,7 +756,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       kind: 'success',
       dedupeKey: `batch-status:${status}:${ids.join('|')}`,
     });
-  }, [clearGridSelection, pushToast, selectedIds, setVideoStatusesBatch]);
+  }, [captureBatchScrollAnchor, clearGridSelection, pushToast, selectedIds, setVideoStatusesBatch, statusFilter]);
 
   const handleBatchRegenerateThumbnails = useCallback(async () => {
     const ids = new Set(selectedIds);
