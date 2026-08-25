@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { calcThumbGrid } from '../utils';
 import './ThumbnailStrip.css';
 
@@ -16,6 +16,7 @@ export default function ThumbnailStrip({ thumbnails, osThumbnail, compact = fals
           <img
             className="thumb-img thumb-img-os thumb-img-loaded"
             src={osThumbnail}
+            decoding="async"
             draggable={false}
             alt="OS Preview"
             style={{ gridColumn: 'span 3', gridRow: 'span 2', objectFit: 'cover' }}
@@ -50,12 +51,21 @@ export default function ThumbnailStrip({ thumbnails, osThumbnail, compact = fals
 
 function FadingThumbImage({ src, alt }: { src: string; alt: string }) {
   const [loaded, setLoaded] = useState(false);
+  const imageRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const image = imageRef.current;
+    if (image?.complete && image.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, [src]);
 
   return (
     <img
+      ref={imageRef}
       className={`thumb-img ${loaded ? 'thumb-img-loaded' : ''}`}
       src={src}
-      loading="lazy"
+      decoding="async"
       alt={alt}
       draggable={false}
       onLoad={() => setLoaded(true)}

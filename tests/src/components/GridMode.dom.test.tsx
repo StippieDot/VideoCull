@@ -8,17 +8,28 @@ import GridMode from '../../../src/components/GridMode';
 import useStore from '../../../src/store';
 import { makeVideo } from '../../helpers/videoFactory';
 
+const virtualListState = vi.hoisted(() => ({
+  element: { scrollTop: 0 },
+  visibleRows: { startIndex: 0, stopIndex: 0 },
+}));
+
 vi.mock('react-window', () => ({
   List: ({
     rowCount,
     rowComponent: RowComponent,
     listRef,
+    onRowsRendered,
   }: {
     rowCount: number;
     rowComponent: ComponentType<{ index: number; style: Record<string, unknown>; ariaAttributes: Record<string, unknown> }>;
     listRef?: { current: unknown };
+    onRowsRendered?: (
+      visibleRows: { startIndex: number; stopIndex: number },
+      allRows: { startIndex: number; stopIndex: number }
+    ) => void;
   }) => {
-    if (listRef) listRef.current = { element: { scrollTop: 0 } };
+    if (listRef) listRef.current = { element: virtualListState.element };
+    onRowsRendered?.(virtualListState.visibleRows, virtualListState.visibleRows);
     return (
       <div data-testid="virtual-list">
         {Array.from({ length: rowCount }, (_, index) => (
@@ -64,10 +75,13 @@ function renderGrid() {
 
 describe('GridMode search', () => {
   beforeEach(() => {
+    virtualListState.element.scrollTop = 0;
+    virtualListState.visibleRows = { startIndex: 0, stopIndex: 0 };
     Object.assign(globalThis, { ResizeObserver: ResizeObserverStub });
     Object.assign(window, {
       electronAPI: {
         saveConfig: vi.fn().mockResolvedValue(true),
+        saveCacheAtomic: vi.fn().mockResolvedValue(true),
         openVideo: vi.fn().mockResolvedValue(true),
         openInExplorer: vi.fn().mockResolvedValue(true),
       },
@@ -131,6 +145,30 @@ describe('GridMode search', () => {
     expect(document.activeElement).toBe(searchbox);
   });
 
+  test('keeps native text selection and clipboard shortcuts inside the search field', () => {
+    useStore.getState().updateSettings({
+      keySearch: { key: 'c', ctrl: true, shift: false, alt: false },
+    });
+    useStore.getState().setSearchQuery('trip meeting');
+    renderGrid();
+
+    const searchbox = screen.getByRole('searchbox', { name: /search videos/i }) as HTMLInputElement;
+    searchbox.focus();
+    searchbox.setSelectionRange(0, 4);
+    const copyEvent = new KeyboardEvent('keydown', {
+      key: 'c',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+
+    searchbox.dispatchEvent(copyEvent);
+
+    expect(copyEvent.defaultPrevented).toBe(false);
+    expect(searchbox.selectionStart).toBe(0);
+    expect(searchbox.selectionEnd).toBe(4);
+  });
+
   test('offers a clear action when search has no matches', async () => {
     renderGrid();
 
@@ -151,5 +189,51 @@ describe('GridMode search', () => {
 
     expect(document.activeElement).not.toBe(searchbox);
     expect(useStore.getState().searchQuery).toBe('trip');
+  });
+
+  test('preserves the next surviving video offset when the visible pending batch disappears', async () => {
+    useStore.getState().setVideos([
+      makeVideo('a', { filename: 'a.mp4' }),
+      makeVideo('b', { filename: 'b.mp4' }),
+      makeVideo('c', { filename: 'c.mp4' }),
+      makeVideo('d', { filename: 'd.mp4' }),
+      makeVideo('e', { filename: 'e.mp4' }),
+      makeVideo('f', { filename: 'f.mp4' }),
+    ]);
+    useStore.getState().setStatusFilter('pending');
+    useStore.getState().setGroupByFolder(false);
+    useStore.getState().setGridSelectionIds(new Set(['d', 'e']));
+    virtualListState.visibleRows = { startIndex: 3, stopIndex: 4 };
+    renderGrid();
+    await waitFor(() => expect(screen.getByText('f.mp4')).toBeTruthy());
+    virtualListState.element.scrollTop = 1000;
+
+    await userEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+
+    await waitFor(() => expect(virtualListState.element.scrollTop).toBe(256));
+    expect(screen.getByText('f.mp4')).toBeTruthy();
+  });
+
+  test('preserves a surviving visible video offset when grouped pending rows rebuild', async () => {
+    useStore.getState().setVideos([
+      makeVideo('a0', { filename: 'a0.mp4', path: 'D:\\Media\\Folder A\\a0.mp4' }),
+      makeVideo('a1', { filename: 'a1.mp4', path: 'D:\\Media\\Folder A\\a1.mp4' }),
+      makeVideo('a2', { filename: 'a2.mp4', path: 'D:\\Media\\Folder A\\a2.mp4' }),
+      makeVideo('a3', { filename: 'a3.mp4', path: 'D:\\Media\\Folder A\\a3.mp4' }),
+      makeVideo('b0', { filename: 'b0.mp4', path: 'D:\\Media\\Folder B\\b0.mp4' }),
+      makeVideo('b1', { filename: 'b1.mp4', path: 'D:\\Media\\Folder B\\b1.mp4' }),
+    ]);
+    useStore.getState().setStatusFilter('pending');
+    useStore.getState().setGroupByFolder(true);
+    useStore.getState().setGridSelectionIds(new Set(['a1', 'a2']));
+    virtualListState.visibleRows = { startIndex: 6, stopIndex: 7 };
+    renderGrid();
+    await waitFor(() => expect(screen.getByText('b0.mp4')).toBeTruthy());
+    virtualListState.element.scrollTop = 1500;
+
+    await userEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+
+    await waitFor(() => expect(virtualListState.element.scrollTop).toBe(756));
+    expect(screen.getByText('b0.mp4')).toBeTruthy();
   });
 });

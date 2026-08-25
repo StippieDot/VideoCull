@@ -38,6 +38,7 @@ release/
 testspace/
 
 # Agentic Coding local config
+AGENTS.md
 .claude/
 .agents/
 .docs/*
