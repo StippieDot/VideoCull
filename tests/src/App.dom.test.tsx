@@ -169,6 +169,9 @@ function createElectronApiMock() {
     findDuplicates: vi.fn().mockResolvedValue({ status: 'ok', groups: [], videos: [], stats: { groupCount: 0, duplicateVideoCount: 0, exactGroupCount: 0, similarityGroupCount: 0 } }),
     chooseReportScope: vi.fn().mockResolvedValue('all'),
     exportReport: vi.fn().mockResolvedValue('saved'),
+    installUpdate: vi.fn().mockResolvedValue(true),
+    scheduleUpdateOnExit: vi.fn().mockResolvedValue(true),
+    deferUpdate: vi.fn().mockResolvedValue(true),
     onUpdateStatus: vi.fn((callback: Subscription<UpdateInfo>) => {
       handlers.updateStatus = callback;
       return vi.fn();
@@ -249,18 +252,44 @@ describe('App renderer behavior', () => {
     vi.restoreAllMocks();
   });
 
-  test('shows and dismisses the update-ready banner from Electron update events', async () => {
+  test('asks again later without scheduling installation when the app closes', async () => {
     render(<App />);
 
     electron.emitUpdateStatus({ status: 'ready', version: '2.1.0' });
 
     expect(await screen.findByText('Video Cull v2.1.0 is ready to install.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Update now' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Install on exit' })).toBeTruthy();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Later' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ask me later' }));
 
     await waitFor(() => {
+      expect(electron.api.deferUpdate).toHaveBeenCalledTimes(1);
+      expect(electron.api.scheduleUpdateOnExit).not.toHaveBeenCalled();
       expect(screen.queryByText('Video Cull v2.1.0 is ready to install.')).toBeNull();
     });
+  });
+
+  test('schedules a downloaded update only after choosing install on exit', async () => {
+    render(<App />);
+
+    electron.emitUpdateStatus({ status: 'ready', version: '2.1.0' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Install on exit' }));
+
+    await waitFor(() => {
+      expect(electron.api.scheduleUpdateOnExit).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('Video Cull v2.1.0 is ready to install.')).toBeNull();
+    });
+    expect(await screen.findByText('Update scheduled')).toBeTruthy();
+  });
+
+  test('installs a downloaded update immediately after choosing update now', async () => {
+    render(<App />);
+
+    electron.emitUpdateStatus({ status: 'ready', version: '2.1.0' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Update now' }));
+
+    expect(electron.api.installUpdate).toHaveBeenCalledTimes(1);
   });
 
   test('applies metadata-ready and thumb-ready batches to the rendered video state', async () => {

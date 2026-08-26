@@ -22,6 +22,8 @@ type ElectronApiMock = {
   exportReport: ReturnType<typeof vi.fn>;
   checkForUpdates: ReturnType<typeof vi.fn>;
   installUpdate: ReturnType<typeof vi.fn>;
+  scheduleUpdateOnExit: ReturnType<typeof vi.fn>;
+  deferUpdate: ReturnType<typeof vi.fn>;
   emitUpdateStatus: (info: UpdateInfo) => void;
 };
 
@@ -47,6 +49,8 @@ function installElectronApiMock(): ElectronApiMock {
     exportReport: vi.fn().mockResolvedValue('cancelled'),
     checkForUpdates: vi.fn().mockResolvedValue({ ok: true, status: 'idle' }),
     installUpdate: vi.fn().mockResolvedValue(true),
+    scheduleUpdateOnExit: vi.fn().mockResolvedValue(true),
+    deferUpdate: vi.fn().mockResolvedValue(true),
     emitUpdateStatus(info: UpdateInfo) {
       act(() => {
         updateStatusHandler?.(info);
@@ -192,17 +196,29 @@ describe('SettingsModal integration behavior', () => {
     });
   });
 
-  test('offers install when an update is ready and triggers the restart action', async () => {
+  test('offers explicit installation timing when an update is ready', async () => {
     render(<SettingsModal initialTab="updates" />);
 
     electronAPI.emitUpdateStatus({ status: 'ready', version: '2.2.0' });
 
-    const installButton = await screen.findByRole('button', { name: /restart to install v2.2.0/i });
+    const installButton = await screen.findByRole('button', { name: /update now to v2.2.0/i });
+    expect(screen.getByRole('button', { name: /install on exit/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /ask me later/i })).toBeTruthy();
     await userEvent.click(installButton);
 
     await waitFor(() => {
       expect(electronAPI.installUpdate).toHaveBeenCalledTimes(1);
     });
+  });
+
+  test('shows when installation has been scheduled for app exit', async () => {
+    render(<SettingsModal initialTab="updates" />);
+
+    electronAPI.emitUpdateStatus({ status: 'scheduled', version: '2.2.0' });
+
+    expect(await screen.findByText('v2.2.0 will install when Video Cull exits')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /update now to v2.2.0/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /ask me later/i })).toBeTruthy();
   });
 
   test('shows only rating and favorites as optional feature toggles', async () => {

@@ -381,7 +381,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
             <button className={`tab-btn ${activeTab === 'keybindings' ? 'active' : ''}`} onClick={() => setActiveTab('keybindings')}>Keybindings</button>
             <button className={`tab-btn ${activeTab === 'updates' ? 'active' : ''}`} onClick={() => setActiveTab('updates')}>
               Updates
-              {updateInfo.status === 'ready' && <span className="update-dot" />}
+              {(updateInfo.status === 'ready' || updateInfo.status === 'scheduled' || updateInfo.status === 'deferred') && <span className="update-dot" />}
             </button>
             <button className={`tab-btn ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>About</button>
           </div>
@@ -957,10 +957,12 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 available: `Update available: v${updateInfo.version}`,
                 downloading: `Downloading… ${updateInfo.percent ?? 0}%`,
                 ready: `v${updateInfo.version} ready to install`,
+                scheduled: `v${updateInfo.version} will install when Video Cull exits`,
+                deferred: `v${updateInfo.version} postponed until the next launch`,
                 'up-to-date': "You're up to date",
                 error: `Error: ${updateInfo.message ?? 'unknown'}`,
               };
-              const isReady = updateInfo.status === 'ready';
+              const hasDownloadedUpdate = updateInfo.status === 'ready' || updateInfo.status === 'scheduled' || updateInfo.status === 'deferred';
               const isBusy = updateInfo.status === 'checking' || updateInfo.status === 'downloading' || updateInfo.status === 'available';
               return (
                 <div className="settings-form">
@@ -982,7 +984,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                   </div>
 
                   <div className="form-group update-actions">
-                    {!isReady && (
+                    {!hasDownloadedUpdate && (
                       <button
                         className="btn-check-updates"
                         onClick={() => window.electronAPI?.checkForUpdates()}
@@ -992,13 +994,31 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                         {updateInfo.status === 'checking' ? 'Checking…' : 'Check for updates'}
                       </button>
                     )}
-                    {isReady && (
-                      <button
-                        className="btn-install-update"
-                        onClick={() => window.electronAPI?.installUpdate()}
-                      >
-                        Restart to Install v{updateInfo.version}
-                      </button>
+                    {hasDownloadedUpdate && (
+                      <>
+                        <button
+                          className="btn-install-update"
+                          onClick={() => void window.electronAPI?.installUpdate()}
+                        >
+                          Update now to v{updateInfo.version}
+                        </button>
+                        {updateInfo.status !== 'scheduled' && (
+                          <button
+                            className="btn-check-updates"
+                            onClick={() => void window.electronAPI?.scheduleUpdateOnExit()}
+                          >
+                            Install on exit
+                          </button>
+                        )}
+                        {updateInfo.status !== 'deferred' && (
+                          <button
+                            className="btn-check-updates"
+                            onClick={() => void window.electronAPI?.deferUpdate()}
+                          >
+                            Ask me later
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -1011,7 +1031,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     />
                       Automatically check for updates on startup
                   </label>
-                    <span className="help-text">When enabled, updates download silently in the background. You are always notified before anything installs. Restart the app after changing this setting.</span>
+                    <span className="help-text">When enabled, updates download silently in the background. Nothing installs until you choose Update now or Install on exit. Ask me later prompts you again after the next launch. Restart the app after changing this setting.</span>
                   </div>
                 </div>
               );

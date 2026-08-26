@@ -264,6 +264,44 @@ export default function App() {
     });
   }, [pushToast, queueSettingsSave]);
 
+  const handleScheduleUpdateOnExit = useCallback(async () => {
+    try {
+      const scheduled = await window.electronAPI?.scheduleUpdateOnExit();
+      if (!scheduled) throw new Error('No downloaded update is ready');
+      setUpdateBannerDismissed(true);
+      pushToast({
+        title: 'Update scheduled',
+        detail: `Video Cull v${updateInfo.version ?? 'the latest version'} will install when the app closes.`,
+        kind: 'info',
+        dedupeKey: 'update-scheduled',
+      });
+    } catch (err) {
+      console.warn('[app] Failed to schedule update:', err);
+      pushToast({
+        title: 'Could not schedule update',
+        detail: 'Try updating now or check for updates again.',
+        kind: 'error',
+        dedupeKey: 'update-schedule-failed',
+      });
+    }
+  }, [pushToast, updateInfo.version]);
+
+  const handleAskForUpdateLater = useCallback(async () => {
+    try {
+      const deferred = await window.electronAPI?.deferUpdate();
+      if (!deferred) throw new Error('No downloaded update is ready');
+      setUpdateBannerDismissed(true);
+    } catch (err) {
+      console.warn('[app] Failed to defer update:', err);
+      pushToast({
+        title: 'Could not defer update',
+        detail: 'The update choice could not be saved for this session.',
+        kind: 'error',
+        dedupeKey: 'update-defer-failed',
+      });
+    }
+  }, [pushToast]);
+
   const handleExportReport = useCallback(async () => {
     if (!window.electronAPI) return;
     const state = useStore.getState();
@@ -1135,11 +1173,14 @@ export default function App() {
         <div className="update-banner">
           <span>Video Cull v{updateInfo.version} is ready to install.</span>
           <div className="update-banner-actions">
-            <button className="update-banner-btn primary" onClick={() => window.electronAPI?.installUpdate()}>
-              Restart Now
+            <button className="update-banner-btn primary" onClick={() => void window.electronAPI?.installUpdate()}>
+              Update now
             </button>
-            <button className="update-banner-btn" onClick={() => setUpdateBannerDismissed(true)}>
-              Later
+            <button className="update-banner-btn" onClick={() => void handleScheduleUpdateOnExit()}>
+              Install on exit
+            </button>
+            <button className="update-banner-btn" onClick={() => void handleAskForUpdateLater()}>
+              Ask me later
             </button>
           </div>
         </div>

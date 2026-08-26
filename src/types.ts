@@ -426,7 +426,7 @@ export interface VideoStore {
 }
 
 // ── Auto-update ────────────────────────────────────────────────────
-export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'up-to-date' | 'error';
+export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'scheduled' | 'deferred' | 'up-to-date' | 'error';
 
 export interface UpdateInfo {
   status: UpdateStatus;
@@ -580,6 +580,8 @@ export interface ElectronAPI {
   getAppVersion: () => Promise<string>;
   checkForUpdates: () => Promise<{ ok: boolean; status: string; error?: string }>;
   installUpdate: () => Promise<boolean>;
+  scheduleUpdateOnExit: () => Promise<boolean>;
+  deferUpdate: () => Promise<boolean>;
   onUpdateStatus: (callback: (data: UpdateInfo) => void) => () => void;
   reportRendererError: (payload: {
     kind: string;
