@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import useStore from '../store';
-import { CircleHelp, FolderOpen, Film, Moon, Settings, Sun, X } from 'lucide-react';
+import { CircleHelp, FolderOpen, Moon, Settings, Sun, X } from 'lucide-react';
 import type { ToastInput, ToastKind } from '../types';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { formatRelativeTime, formatRecentPath } from '../utils';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
+import videoCullIcon from '../assets/videocull-icon.png';
 import './EmptyState.css';
 
 interface EmptyStateProps {
@@ -174,7 +175,7 @@ export default function EmptyState({ onNotify, onOpenDocumentation, onToggleThem
         </button>
       </div>
       <div className="empty-icon">
-        <Film size={56} strokeWidth={1.2} />
+        <img src={videoCullIcon} alt="" aria-hidden="true" />
       </div>
       <h2 className="empty-title">Video Cull</h2>
       <p className="empty-desc">

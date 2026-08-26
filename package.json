@@ -72,6 +72,12 @@
       "node_modules/fluent-ffmpeg/**/*",
       "node_modules/better-sqlite3/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "build/videocull.ico",
+        "to": "videocull.ico"
+      }
+    ],
     "asarUnpack": [
       "**/*.{exe,dll,dylib,so,node}",
       "node_modules/@ffmpeg-installer/**/*",
@@ -80,7 +86,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "build/icon.png",
+      "icon": "build/videocull.ico",
       "artifactName": "Video.Cull.Setup.${version}.${ext}"
     },
     "publish": {
@@ -96,6 +102,8 @@
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
       "shortcutName": "Video Cull",
+      "installerIcon": "build/videocull.ico",
+      "uninstallerIcon": "build/videocull.ico",
       "include": "build/installer.nsh",
       "installerHeader": "build/installerHeader.bmp",
       "installerSidebar": "build/installerSidebar.bmp",

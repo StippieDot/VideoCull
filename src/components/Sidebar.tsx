@@ -8,9 +8,10 @@ import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { formatDeleteConfirmation, formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
+import videoCullLogo from '../assets/videocull-logo.png';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
-  ArrowUpDown, HardDrive, FileVideo, X, Maximize2, Settings, ChevronDown,
+  ArrowUpDown, HardDrive, X, Maximize2, Settings, ChevronDown,
   Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun
 } from 'lucide-react';
 import './Sidebar.css';
@@ -953,7 +954,7 @@ export default function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-header">
         <h1 className="sidebar-logo">
-          <FileVideo size={22} />
+          <img className="sidebar-logo-icon" src={videoCullLogo} alt="" aria-hidden="true" />
           Video Cull
         </h1>
         <div className="sidebar-header-actions">

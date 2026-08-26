@@ -33,8 +33,10 @@
   color: var(--text-primary);
   letter-spacing: -0.02em;
 }
-.sidebar-logo svg {
-  color: var(--accent);
+.sidebar-logo-icon {
+  width: 24px;
+  height: auto;
+  flex: 0 0 auto;
 }
 
 .sidebar-header-actions {

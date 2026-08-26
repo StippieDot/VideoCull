@@ -5,8 +5,12 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const nsis = packageJson.build?.nsis;
+const win = packageJson.build?.win;
+const appIcon = 'build/videocull.ico';
 
 assert.ok(nsis, 'package.json must define build.nsis');
+assert.ok(win, 'package.json must define build.win');
+assert.equal(win.icon, appIcon, 'Windows executable must use the Video Cull icon');
 assert.equal(nsis.oneClick, false, 'installer must remain assisted');
 assert.equal(nsis.perMachine, false, 'installer must keep current-user/all-users selection');
 assert.equal(nsis.allowToChangeInstallationDirectory, true, 'installer location must remain editable');
@@ -14,6 +18,13 @@ assert.equal(nsis.createDesktopShortcut, true, 'Desktop shortcut must default on
 assert.equal(nsis.createStartMenuShortcut, true, 'Start Menu shortcut must default on');
 assert.equal(nsis.runAfterFinish, true, 'launch-on-finish must default on');
 assert.equal(nsis.include, 'build/installer.nsh', 'custom NSIS include must be configured');
+assert.equal(nsis.installerIcon, appIcon, 'installer must use the Video Cull icon');
+assert.equal(nsis.uninstallerIcon, appIcon, 'uninstaller must use the Video Cull icon');
+assert.ok(fs.existsSync(path.join(root, appIcon)), 'Video Cull icon file must exist');
+assert.ok(
+  packageJson.build?.extraResources?.some((resource) => resource.from === appIcon && resource.to === 'videocull.ico'),
+  'packaged resources must include the Video Cull icon for the native window',
+);
 assert.equal(nsis.installerHeader, 'build/installerHeader.bmp', 'custom installer header must be configured');
 
 function assertBitmap(relativePath, expectedWidth, expectedHeight) {

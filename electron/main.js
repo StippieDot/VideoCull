@@ -265,11 +265,15 @@ function applyNativeTheme(value) {
 
 function createWindow(initialTheme = 'dark') {
   const theme = applyNativeTheme(initialTheme);
+  const appIconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'videocull.ico')
+    : path.join(__dirname, '..', 'build', 'videocull.ico');
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 900,
     minHeight: 600,
+    icon: appIconPath,
     backgroundColor: getThemeBackgroundColor(theme),
     show: false,
     webPreferences: {
