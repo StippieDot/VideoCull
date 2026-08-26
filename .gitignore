@@ -31,7 +31,7 @@ test-results/
 
 # Build output (keep installer assets)
 build/*
-!build/icon.png
+!build/videocull.ico
 !build/installerSidebar.bmp
 !build/installerHeader.bmp
 !build/installer.nsh
