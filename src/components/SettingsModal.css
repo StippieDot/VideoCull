@@ -706,6 +706,7 @@ input[type="range"] {
 
 .update-actions {
   flex-direction: row !important;
+  flex-wrap: wrap;
   gap: 8px;
 }
 

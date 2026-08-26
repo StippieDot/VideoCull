@@ -15,6 +15,10 @@ const {
   normalizeColorTheme,
 } = require('./theme-utils');
 const {
+  configureUpdatePolicy,
+  shouldInstallUpdateOnQuit,
+} = require('./update-policy');
+const {
   cacheRelevantSettingsChanged,
   canServeThumbPath,
   canServeVideoPath,
@@ -63,6 +67,9 @@ const activeBatchIntervals = new Set();
 let menuBarHiddenForVideoFullscreen = false;
 let scanGeneration = 0;
 let updateReadyToInstall = false;
+let downloadedUpdateVersion = null;
+let updateInstallOnQuitScheduled = false;
+let updateInstallInProgress = false;
 let activeDuplicateRun = null;
 let lastEventLoopUtilization = typeof nodePerformance.eventLoopUtilization === 'function'
   ? nodePerformance.eventLoopUtilization()
@@ -588,7 +595,19 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (shouldInstallUpdateOnQuit({
+    scheduled: updateInstallOnQuitScheduled,
+    ready: updateReadyToInstall,
+    installInProgress: updateInstallInProgress,
+  })) {
+    event.preventDefault();
+    updateInstallOnQuitScheduled = false;
+    updateInstallInProgress = true;
+    getAutoUpdater().quitAndInstall(true, false);
+    return;
+  }
+
   isQuitting = true;
   cancelProcessing();
   if (activeDuplicateRun) {
@@ -2720,6 +2739,9 @@ ipcMain.handle('check-for-updates', async () => {
   try {
     const autoUpdater = getAutoUpdater();
     updateReadyToInstall = false;
+    downloadedUpdateVersion = null;
+    updateInstallOnQuitScheduled = false;
+    updateInstallInProgress = false;
     await autoUpdater.checkForUpdates();
     return { ok: true, status: 'checking' };
   } catch (err) {
@@ -2735,7 +2757,29 @@ ipcMain.handle('install-update', () => {
     return false;
   }
   const autoUpdater = getAutoUpdater();
+  updateInstallOnQuitScheduled = false;
+  updateInstallInProgress = true;
   autoUpdater.quitAndInstall(false, true);
+  return true;
+});
+
+ipcMain.handle('schedule-update-on-exit', () => {
+  if (!updateReadyToInstall) {
+    log.warn('[auto-updater] schedule-update-on-exit rejected because no downloaded update is ready');
+    return false;
+  }
+  updateInstallOnQuitScheduled = true;
+  sendToRenderer('update-status', { status: 'scheduled', version: downloadedUpdateVersion ?? undefined });
+  return true;
+});
+
+ipcMain.handle('defer-update', () => {
+  if (!updateReadyToInstall) {
+    log.warn('[auto-updater] defer-update rejected because no downloaded update is ready');
+    return false;
+  }
+  updateInstallOnQuitScheduled = false;
+  sendToRenderer('update-status', { status: 'deferred', version: downloadedUpdateVersion ?? undefined });
   return true;
 });
 
@@ -2743,21 +2787,29 @@ ipcMain.handle('install-update', () => {
 function setupAutoUpdater() {
   const autoUpdater = getAutoUpdater();
   autoUpdater.logger = log;
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  configureUpdatePolicy(autoUpdater);
 
   autoUpdater.on('checking-for-update', () => {
     updateReadyToInstall = false;
+    downloadedUpdateVersion = null;
+    updateInstallOnQuitScheduled = false;
+    updateInstallInProgress = false;
     sendToRenderer('update-status', { status: 'checking' });
   });
 
   autoUpdater.on('update-available', (info) => {
     updateReadyToInstall = false;
+    downloadedUpdateVersion = null;
+    updateInstallOnQuitScheduled = false;
+    updateInstallInProgress = false;
     sendToRenderer('update-status', { status: 'available', version: info.version });
   });
 
   autoUpdater.on('update-not-available', () => {
     updateReadyToInstall = false;
+    downloadedUpdateVersion = null;
+    updateInstallOnQuitScheduled = false;
+    updateInstallInProgress = false;
     sendToRenderer('update-status', { status: 'up-to-date' });
   });
 
@@ -2770,11 +2822,17 @@ function setupAutoUpdater() {
 
   autoUpdater.on('update-downloaded', (info) => {
     updateReadyToInstall = true;
+    downloadedUpdateVersion = info.version;
+    updateInstallOnQuitScheduled = false;
+    updateInstallInProgress = false;
     sendToRenderer('update-status', { status: 'ready', version: info.version });
   });
 
   autoUpdater.on('error', (err) => {
     updateReadyToInstall = false;
+    downloadedUpdateVersion = null;
+    updateInstallOnQuitScheduled = false;
+    updateInstallInProgress = false;
     log.error('[auto-updater] error:', err);
     sendToRenderer('update-status', { status: 'error', message: err.message });
   });
