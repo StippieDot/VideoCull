@@ -224,7 +224,10 @@ export interface UndoEntry {
 // ── Settings ───────────────────────────────────────────────────────
 import type { Keybind } from './keybinds';
 
+export type ColorTheme = 'dark' | 'light';
+
 export interface AppSettings {
+  theme: ColorTheme;
   cacheLocation: CacheLocationMode;
   centralCachePath: string | null;
   perDriveCachePaths: Record<string, string>;
@@ -271,6 +274,7 @@ export interface AppSettings {
   // Global
   keyShowHelp: Keybind;
   keyGlobalMute: Keybind;
+  keyToggleTheme: Keybind;
   keySearch: Keybind;
 }
 
@@ -530,6 +534,7 @@ export interface IdleDiagnosticsSnapshot {
 
 // ── Electron API (exposed via preload) ─────────────────────────────
 export interface ElectronAPI {
+  initialTheme: ColorTheme;
   selectDirectory: () => Promise<string | null>;
   getPathForFile: (file: File) => string;
   validateDroppedPath: (droppedPath: string) => Promise<{ valid: boolean; isDirectory: boolean }>;

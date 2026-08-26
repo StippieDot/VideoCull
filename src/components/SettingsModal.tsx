@@ -164,7 +164,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
 
   const countKeybindConflicts = (settings: AppSettings) => {
     const binds = Object.fromEntries(
-      ALL_SHORTCUTS.map((s) => [s.id, settings[s.id] as Keybind])
+      ALL_SHORTCUTS.map((s) => [s.id, (settings[s.id] ?? DEFAULT_KEYBINDS[s.id]) as Keybind])
     ) as Record<KeybindSettingKey, Keybind>;
     return ALL_SHORTCUTS.filter((shortcut) => (
       Boolean(findConflict(shortcut.id, binds[shortcut.id], binds))
@@ -326,7 +326,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   };
 
   const currentBinds = Object.fromEntries(
-    ALL_SHORTCUTS.map((s) => [s.id, localSettings[s.id] as Keybind])
+    ALL_SHORTCUTS.map((s) => [s.id, (localSettings[s.id] ?? DEFAULT_KEYBINDS[s.id]) as Keybind])
   ) as Record<KeybindSettingKey, Keybind>;
   const keybindConflictCount = countKeybindConflicts(localSettings);
 
@@ -391,6 +391,23 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
             {activeTab === 'interface' && (
               <div className="settings-form">
                 <section className="settings-subsection">
+                  <h3 className="settings-subsection-title">Appearance</h3>
+
+                  <div className="form-group">
+                    <label htmlFor="color-theme">Theme</label>
+                    <select
+                      id="color-theme"
+                      value={localSettings.theme}
+                      onChange={(e) => handleChange('theme', e.target.value)}
+                    >
+                      <option value="dark">Dark</option>
+                      <option value="light">Light</option>
+                    </select>
+                    <span className="help-text">Choose the app appearance. Changes apply after saving preferences.</span>
+                  </div>
+                </section>
+
+                <section className="settings-subsection settings-section-divider">
                   <h3 className="settings-subsection-title">Grid defaults</h3>
 
                   <div className="form-group">
@@ -898,7 +915,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     <div key={group} className="keybind-group">
                       <h4 className="keybind-group-title">{group}</h4>
                       {shortcuts.map((shortcut) => {
-                        const bind = localSettings[shortcut.id] as Keybind;
+                        const bind = (localSettings[shortcut.id] ?? DEFAULT_KEYBINDS[shortcut.id]) as Keybind;
                         const conflict = findConflict(shortcut.id, bind, currentBinds);
                         return (
                           <div key={shortcut.id} className="form-group row keybind-row">

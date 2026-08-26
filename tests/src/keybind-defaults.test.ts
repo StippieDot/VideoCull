@@ -32,6 +32,20 @@ describe('migrateSettings', () => {
     expect(migrated.keySearch).toEqual(DEFAULT_KEYBINDS.keySearch);
   });
 
+  test('adds a configurable theme shortcut for existing settings', () => {
+    const migrated = migrateSettings({});
+
+    expect(DEFAULT_KEYBINDS.keyToggleTheme).toEqual({ key: 'l', ctrl: true, shift: true, alt: false });
+    expect(migrated.keyToggleTheme).toEqual(DEFAULT_KEYBINDS.keyToggleTheme);
+  });
+
+  test('preserves supported themes and falls back to dark for invalid values', () => {
+    expect(migrateSettings({ theme: 'light' }).theme).toBe('light');
+    expect(migrateSettings({ theme: 'dark' }).theme).toBe('dark');
+    expect(migrateSettings({ theme: 'system' }).theme).toBe('dark');
+    expect(migrateSettings({}).theme).toBe('dark');
+  });
+
   test('falls back to safe defaults for malformed feature and cache settings', () => {
     const migrated = migrateSettings({
       autoPruneMissingSubfolderCache: 'yes',

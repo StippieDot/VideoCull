@@ -55,7 +55,7 @@
   overflow: hidden;
   flex: 1;
   min-height: 0;
-  background: #0a0a12;
+  background: var(--media-bg);
 }
 
 .card-status-badge {
@@ -111,11 +111,11 @@
 
 .badge-keep {
   background: var(--color-keep);
-  color: #fff;
+  color: var(--text-on-keep);
 }
 .badge-delete {
   background: var(--color-delete);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 .badge-skipped {
   background: var(--color-skip);

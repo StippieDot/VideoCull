@@ -1,6 +1,11 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+const initialThemeArgument = process.argv.find((value) => value.startsWith('--video-cull-theme='));
+const initialTheme = initialThemeArgument?.slice('--video-cull-theme='.length) === 'light' ? 'light' : 'dark';
+
 contextBridge.exposeInMainWorld('electronAPI', {
+  initialTheme: initialTheme,
+
   // Directory
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
   getPathForFile: (file) => webUtils.getPathForFile(file),

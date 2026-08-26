@@ -10,6 +10,7 @@ import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrate
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
 import { detectVideoCompatibility } from './utils';
+import { getPreloadedColorTheme } from './theme';
 
 function thumbnailIndex(filePath: string): number | null {
   const basename = filePath.split(/[\\/]/).pop() ?? filePath;
@@ -866,6 +867,7 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── Settings ──
   isSettingsModalOpen: false,
   settings: {
+    theme: getPreloadedColorTheme(),
     cacheLocation: 'centralised',
     centralCachePath: null,
     perDriveCachePaths: {},

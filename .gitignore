@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 coverage
+test-results/
 *.local
 
 # Editor directories and files

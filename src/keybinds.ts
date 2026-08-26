@@ -26,7 +26,7 @@ export type KeybindSettingKey =
   | 'keyNextUndecided'
   | 'keySeekBack' | 'keySeekForward' | 'keySpeedDown' | 'keySpeedUp'
   | 'keyBookmark' | 'keyShowHelp'
-  | 'keyGlobalMute' | 'keySearch'
+  | 'keyGlobalMute' | 'keyToggleTheme' | 'keySearch'
   | 'keyPreviewSeekBack' | 'keyPreviewSeekForward';
 
 export const ALL_SHORTCUTS: ShortcutDef[] = [
@@ -56,6 +56,7 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   // Global
   { id: 'keyShowHelp',           description: 'Show keyboard shortcuts',   group: 'Global' },
   { id: 'keyGlobalMute',         description: 'Toggle global mute',        group: 'Global' },
+  { id: 'keyToggleTheme',        description: 'Toggle color theme',        group: 'Global' },
   { id: 'keySearch',             description: 'Search loaded videos',      group: 'Global' },
 ];
 

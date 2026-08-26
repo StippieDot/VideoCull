@@ -1,15 +1,17 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import type { DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '../types';
+import type { ColorTheme, DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
 import useStore from '../store';
 import { beginDevInteraction } from '../perf-dev';
+import { formatKeybind } from '../keybinds';
+import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { formatDeleteConfirmation, formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, HardDrive, FileVideo, X, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp
+  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -26,6 +28,8 @@ interface SidebarProps {
   globalMuteEnabled: boolean;
   globalMuteLabel: string;
   onToggleGlobalMute: () => void;
+  theme: ColorTheme;
+  onToggleTheme: () => void;
 }
 
 function sameStrings(a: string[], b: string[]): boolean {
@@ -699,8 +703,11 @@ export default function Sidebar({
   globalMuteEnabled,
   globalMuteLabel,
   onToggleGlobalMute,
+  theme,
+  onToggleTheme,
 }: SidebarProps) {
   const directory = useStore((s) => s.directory);
+  const themeKeybind = useStore((s) => s.settings.keyToggleTheme);
   const directories = useStore((s) => s.directories);
   const setDirectory = useStore((s) => s.setDirectory);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
@@ -950,6 +957,14 @@ export default function Sidebar({
           Video Cull
         </h1>
         <div className="sidebar-header-actions">
+          <button
+            className="sidebar-icon-btn"
+            onClick={onToggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode (${formatKeybind(themeKeybind ?? DEFAULT_KEYBINDS.keyToggleTheme)})`}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          >
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
           <button
             className="sidebar-icon-btn"
             onClick={onOpenDocumentation}
@@ -1232,18 +1247,18 @@ export default function Sidebar({
               <div className="slider-row">
                 <span className="view-slider-label">Card size</span>
                 <div
-                  className="view-range-shell"
-                    style={{ '--view-range-value': `${((cardScale - 0.6) / (2 - 0.6)) * 100}%` } as CSSProperties}
+                  className="range-slider view-range-shell"
+                  style={getRangeTrackStyle(0.6, 2, 0.6, cardScale)}
                 >
-                <input
-                  type="range"
-                  className="sidebar-slider"
-                  min={0.6}
-                  max={2}
-                  step={0.1}
-                  value={cardScale}
-                  onChange={(e) => setCardScale(Number(e.target.value))}
-                />
+                  <input
+                    type="range"
+                    className="range-input"
+                    min={0.6}
+                    max={2}
+                    step={0.1}
+                    value={cardScale}
+                    onChange={(e) => setCardScale(Number(e.target.value))}
+                  />
                 </div>
                 <span className="slider-value">{Math.round(cardScale * 100)}%</span>
               </div>

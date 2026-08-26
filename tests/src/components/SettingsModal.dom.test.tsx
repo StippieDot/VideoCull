@@ -160,6 +160,28 @@ describe('SettingsModal integration behavior', () => {
     expect(useStore.getState().settings.keepReviewControlsVisible).toBe(true);
   });
 
+  test('shows Appearance first and saves the selected color theme', async () => {
+    render(<SettingsModal initialTab="interface" />);
+
+    const headings = screen.getAllByRole('heading', { level: 3 });
+    expect(headings[0]?.textContent).toBe('Appearance');
+
+    const themeSelect = screen.getByRole('combobox', { name: /theme/i });
+    expect((themeSelect as HTMLSelectElement).value).toBe('dark');
+    expect(screen.getByRole('option', { name: 'Dark' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Light' })).toBeTruthy();
+
+    await userEvent.selectOptions(themeSelect, 'light');
+    expect(useStore.getState().settings.theme).toBe('dark');
+
+    await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
+
+    await waitFor(() => {
+      expect(electronAPI.saveConfig).toHaveBeenCalled();
+    });
+    expect(useStore.getState().settings.theme).toBe('light');
+  });
+
   test('starts a manual update check from the updates tab', async () => {
     render(<SettingsModal initialTab="updates" />);
 

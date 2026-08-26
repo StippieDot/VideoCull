@@ -2,6 +2,7 @@
 import useStore from './store';
 import { Profiler } from 'react';
 import { formatKeybind, matchesKeybind } from './keybinds';
+import { DEFAULT_KEYBINDS } from './keybind-defaults';
 import Sidebar from './components/Sidebar';
 import GridMode from './components/GridMode';
 import ReviewMode from './components/ReviewMode';
@@ -15,6 +16,7 @@ import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, UpdateInfo
 import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
+import { applyDocumentTheme } from './theme';
 import './App.css';
 
 const CURRENT_METADATA_VERSION = 2;
@@ -97,6 +99,7 @@ export default function App() {
   const reviewMode = useStore((s) => s.reviewMode);
   const isScanning = useStore((s) => s.isScanning);
   const globalMute = useStore((s) => s.settings.globalMute);
+  const theme = useStore((s) => s.settings.theme);
   const globalMuteEnabled = useStore((s) => s.settings.features.globalMute);
   const globalMuteKeybind = useStore((s) => s.settings.keyGlobalMute);
   const duplicateSettings = useStore((s) => s.settings.duplicates);
@@ -179,6 +182,10 @@ export default function App() {
   }, [isPrivate]);
 
   useEffect(() => {
+    applyDocumentTheme(theme);
+  }, [theme]);
+
+  useEffect(() => {
     showShortcutsHelpRef.current = showShortcutsHelp;
   }, [showShortcutsHelp]);
 
@@ -218,28 +225,44 @@ export default function App() {
     setShowShortcutsHelp(true);
   }, []);
 
+  const queueSettingsSave = useCallback((settingName: string) => {
+    if (!window.electronAPI) return;
+    settingsSaveQueueRef.current = settingsSaveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        await window.electronAPI?.saveConfig(useStore.getState().settings);
+      })
+      .catch((err) => {
+        console.warn(`[app] Failed to save ${settingName} setting:`, err);
+      });
+  }, []);
+
   const toggleGlobalMute = useCallback(() => {
     const state = useStore.getState();
     if (!state.settings.features.globalMute) return;
     const nextGlobalMute = !state.settings.globalMute;
     state.updateSettings({ globalMute: nextGlobalMute });
-    if (window.electronAPI) {
-      settingsSaveQueueRef.current = settingsSaveQueueRef.current
-        .catch(() => undefined)
-        .then(async () => {
-          await window.electronAPI?.saveConfig(useStore.getState().settings);
-        })
-        .catch((err) => {
-          console.warn('[app] Failed to save global mute setting:', err);
-        });
-    }
+    queueSettingsSave('global mute');
     pushToast({
       title: nextGlobalMute ? 'Muted' : 'Audio on',
       detail: nextGlobalMute ? 'In-app video playback is muted.' : 'In-app video playback can use audio.',
       kind: 'info',
       dedupeKey: 'global-mute-toggle',
     });
-  }, [pushToast]);
+  }, [pushToast, queueSettingsSave]);
+
+  const toggleTheme = useCallback(() => {
+    const state = useStore.getState();
+    const nextTheme = state.settings.theme === 'dark' ? 'light' : 'dark';
+    state.updateSettings({ theme: nextTheme });
+    queueSettingsSave('theme');
+    pushToast({
+      title: nextTheme === 'light' ? 'Light mode' : 'Dark mode',
+      detail: `Video Cull now uses the ${nextTheme} theme.`,
+      kind: 'info',
+      dedupeKey: 'theme-toggle',
+    });
+  }, [pushToast, queueSettingsSave]);
 
   const handleExportReport = useCallback(async () => {
     if (!window.electronAPI) return;
@@ -791,7 +814,11 @@ export default function App() {
       if (document.body.hasAttribute('data-capturing-keybind')) return;
       const s = useStore.getState().settings;
       const modalOpen = useStore.getState().isSettingsModalOpen || showShortcutsHelpRef.current || showDocumentationRef.current;
-      if (!modalOpen && s.features.globalMute && matchesKeybind(e, s.keyGlobalMute)) {
+      if (!modalOpen && matchesKeybind(e, s.keyToggleTheme ?? DEFAULT_KEYBINDS.keyToggleTheme)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        toggleTheme();
+      } else if (!modalOpen && s.features.globalMute && matchesKeybind(e, s.keyGlobalMute)) {
         e.preventDefault();
         e.stopImmediatePropagation();
         toggleGlobalMute();
@@ -818,7 +845,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', blurPointerActivatedButton, true);
     };
-  }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, handleExportReport]);
+  }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, toggleTheme, handleExportReport]);
 
   useEffect(() => {
     window.electronAPI?.setExportReportAvailable(Boolean(directory && videoCount > 0 && !isScanning));
@@ -1003,13 +1030,21 @@ export default function App() {
             globalMuteEnabled={globalMuteEnabled && !isPrivate}
             globalMuteLabel={formatKeybind(globalMuteKeybind)}
             onToggleGlobalMute={toggleGlobalMute}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
         </Profiler>
       )}
 
       <Profiler id="AppMain" onRender={handleMainProfiler}>
         <main className="app-main">
-          {!directory && !isScanning && videoCount === 0 && <EmptyState onNotify={pushToast} onOpenDocumentation={() => setShowDocumentation(true)} />}
+          {!directory && !isScanning && videoCount === 0 && (
+            <EmptyState
+              onNotify={pushToast}
+              onOpenDocumentation={() => setShowDocumentation(true)}
+              onToggleTheme={toggleTheme}
+            />
+          )}
           {directory && videoCount > 0 && duplicateGroupsMode && (
             <Profiler id="DuplicateGroupsView" onRender={handleMainProfiler}>
               <div

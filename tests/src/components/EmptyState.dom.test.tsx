@@ -47,7 +47,7 @@ describe('EmptyState recent folder behavior', () => {
     });
     electronAPI.validateDroppedPath.mockResolvedValue({ valid: false, isDirectory: false });
 
-    render(<EmptyState onNotify={notify} onOpenDocumentation={vi.fn()} />);
+    render(<EmptyState onNotify={notify} onOpenDocumentation={vi.fn()} onToggleTheme={vi.fn()} />);
 
     const [recentOpenButton] = screen.getAllByRole('button', { name: /Videos \/ Trip/i });
     await userEvent.click(recentOpenButton);
@@ -82,7 +82,7 @@ describe('EmptyState recent folder behavior', () => {
       },
     });
 
-    render(<EmptyState onNotify={notify} onOpenDocumentation={vi.fn()} />);
+    render(<EmptyState onNotify={notify} onOpenDocumentation={vi.fn()} onToggleTheme={vi.fn()} />);
 
     await userEvent.click(screen.getByRole('button', { name: /clear all/i }));
 
@@ -100,7 +100,7 @@ describe('EmptyState recent folder behavior', () => {
   });
 
   test('explains the next step in the initial empty state', () => {
-    render(<EmptyState onNotify={vi.fn()} onOpenDocumentation={vi.fn()} />);
+    render(<EmptyState onNotify={vi.fn()} onOpenDocumentation={vi.fn()} onToggleTheme={vi.fn()} />);
 
     expect(screen.getByText(/Select a folder to start reviewing your video collection\./i)).toBeTruthy();
     expect(screen.getByText(/Quickly sort, keep, or delete videos using thumbnails\./i)).toBeTruthy();
@@ -108,7 +108,7 @@ describe('EmptyState recent folder behavior', () => {
 
   test('opens documentation from the empty-state corner button', async () => {
     const onOpenDocumentation = vi.fn();
-    render(<EmptyState onNotify={vi.fn()} onOpenDocumentation={onOpenDocumentation} />);
+    render(<EmptyState onNotify={vi.fn()} onOpenDocumentation={onOpenDocumentation} onToggleTheme={vi.fn()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Open documentation' }));
 

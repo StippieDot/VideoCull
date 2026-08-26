@@ -19,7 +19,7 @@
   height: 96px;
   border-radius: 30px;
   background: linear-gradient(135deg, rgba(139, 122, 240, 0.2), rgba(179, 93, 242, 0.05));
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
   color: var(--accent);
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1), 0 12px 32px rgba(139, 122, 240, 0.2);
   margin-bottom: 12px;
@@ -40,7 +40,7 @@
 .empty-title {
   font-size: 32px;
   font-weight: 800;
-  background: linear-gradient(180deg, #ffffff 0%, rgba(255, 255, 255, 0.6) 100%);
+  background: linear-gradient(180deg, var(--text-primary) 0%, var(--text-secondary) 100%);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -62,7 +62,7 @@
   font-weight: 600;
   border-radius: 50px;
   background: var(--accent-gradient);
-  color: white;
+  color: var(--text-on-accent);
   border: none;
   box-shadow: var(--accent-glow), inset 0 1px 1px rgba(255, 255, 255, 0.3);
   display: flex;

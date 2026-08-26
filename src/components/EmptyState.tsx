@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import useStore from '../store';
-import { CircleHelp, FolderOpen, Film, Settings, X } from 'lucide-react';
+import { CircleHelp, FolderOpen, Film, Moon, Settings, Sun, X } from 'lucide-react';
 import type { ToastInput, ToastKind } from '../types';
 import { formatKeybind } from '../keybinds';
+import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { formatRelativeTime, formatRecentPath } from '../utils';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
@@ -11,13 +12,14 @@ import './EmptyState.css';
 interface EmptyStateProps {
   onNotify: (toast: ToastInput | string, kind?: ToastKind) => void;
   onOpenDocumentation: () => void;
+  onToggleTheme: () => void;
 }
 
 function sameStrings(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-export default function EmptyState({ onNotify, onOpenDocumentation }: EmptyStateProps) {
+export default function EmptyState({ onNotify, onOpenDocumentation, onToggleTheme }: EmptyStateProps) {
   const setDirectory = useStore((s) => s.setDirectory);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const setIncludeSubfolders = useStore((s) => s.setIncludeSubfolders);
@@ -156,6 +158,14 @@ export default function EmptyState({ onNotify, onOpenDocumentation }: EmptyState
   return (
     <div className="empty-state">
       <div className="empty-state-actions">
+        <button
+          className="settings-icon-btn empty-state-settings-btn"
+          onClick={onToggleTheme}
+          title={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode (${formatKeybind(settings.keyToggleTheme ?? DEFAULT_KEYBINDS.keyToggleTheme)})`}
+          aria-label={`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} mode`}
+        >
+          {settings.theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
         <button className="settings-icon-btn empty-state-settings-btn" onClick={onOpenDocumentation} title="Open documentation" aria-label="Open documentation">
           <CircleHelp size={20} />
         </button>

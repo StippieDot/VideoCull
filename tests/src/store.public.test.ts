@@ -362,6 +362,7 @@ describe('useStore public behavior', () => {
 
   test('loading persisted legacy settings prunes stale recents, migrates invalid fields, and saves the cleaned config', async () => {
     electronAPI.getConfig.mockResolvedValue({
+      theme: 'light',
       keyKeep: 'K',
       appMode: 'legacy',
       cacheLocation: 'unknown',
@@ -386,6 +387,7 @@ describe('useStore public behavior', () => {
     await useStore.getState().loadSettings();
 
     const { settings } = useStore.getState();
+    expect(settings.theme).toBe('light');
     expect(settings.keyKeep).toEqual({ key: 'k', ctrl: false, shift: false, alt: false });
     expect(settings.cacheLocation).toBe('centralised');
     expect(settings.autoPruneMissingSubfolderCache).toBe(false);

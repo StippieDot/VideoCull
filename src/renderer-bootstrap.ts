@@ -1,4 +1,7 @@
 import { installDevPerfGlobal, startLongTaskObserver } from './perf-dev';
+import { applyDocumentTheme, getPreloadedColorTheme } from './theme';
+
+applyDocumentTheme(getPreloadedColorTheme());
 
 function disableReactDevUserTiming() {
   if (!import.meta.env.DEV) return;

@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--bg-overlay);
   z-index: 9999;
   display: flex;
   align-items: center;
@@ -20,7 +20,7 @@
   border-radius: 12px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
   animation: modal-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -61,7 +61,7 @@
 
 .settings-close-btn:hover {
   background: var(--bg-hover-danger);
-  color: #fff;
+  color: var(--color-delete);
 }
 
 .settings-body {
@@ -73,7 +73,7 @@
 .settings-sidebar {
   width: 180px;
   border-right: 1px solid var(--border-color);
-  background: rgba(0,0,0,0.1);
+  background: var(--bg-subtle);
   padding: 16px 10px;
   display: flex;
   flex-direction: column;
@@ -100,7 +100,7 @@
 
 .tab-btn.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 .settings-content {
@@ -229,14 +229,14 @@ input[type="range"] {
   padding: 14px 16px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--bg-subtle);
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .duplicates-enable-row:hover,
 .duplicates-enable-row.active {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--bg-subtle-hover);
 }
 
 .duplicates-enable-row.active {
@@ -294,7 +294,7 @@ input[type="range"] {
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-subtle);
 }
 
 .duplicates-control-grid .form-group select {
@@ -330,13 +330,13 @@ input[type="range"] {
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-subtle);
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .duplicates-toggle-row:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.16);
+  background: var(--bg-subtle-hover);
+  border-color: var(--border-strong);
 }
 
 .duplicates-toggle-row label {
@@ -354,7 +354,7 @@ input[type="range"] {
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-subtle);
 }
 
 .duplicates-keeper-heading {
@@ -385,7 +385,7 @@ input[type="range"] {
   padding: 7px 8px;
   border: 1px solid var(--border-color);
   border-radius: 7px;
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--bg-subtle-hover);
 }
 
 .duplicates-keeper-rank {
@@ -447,7 +447,7 @@ input[type="range"] {
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-color));
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--bg-subtle);
 }
 
 .duplicates-maintenance-row {
@@ -458,7 +458,7 @@ input[type="range"] {
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-subtle);
 }
 
 .duplicates-maintenance-row > div {
@@ -516,12 +516,12 @@ input[type="range"] {
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--bg-subtle);
   cursor: pointer;
 }
 
 .feature-toggle-row:hover {
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--bg-subtle-hover);
 }
 
 .feature-toggle-row input {
@@ -576,7 +576,7 @@ input[type="range"] {
 
 .btn-save {
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-accent);
   box-shadow: 0 4px 12px rgba(168, 85, 247, 0.25);
 }
 
@@ -599,7 +599,7 @@ input[type="range"] {
   gap: 5px;
   padding: 5px 10px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text-secondary);
   font-size: 11px;
@@ -610,9 +610,9 @@ input[type="range"] {
 }
 
 .btn-reset-keybinds:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--bg-control);
   color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: var(--border-strong);
 }
 
 .keybind-group {
@@ -627,7 +627,7 @@ input[type="range"] {
   color: var(--text-secondary);
   margin: 0 0 10px 0;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border);
 }
 
 .keybind-row {
@@ -646,8 +646,8 @@ input[type="range"] {
   font-size: 10px;
   font-weight: 500;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-control);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 1px 5px;
   white-space: nowrap;
@@ -677,22 +677,22 @@ input[type="range"] {
 }
 
 .update-status-label.update-status-ready {
-  color: #4ade80;
+  color: var(--color-keep);
   font-weight: 500;
 }
 
 .update-status-label.update-status-error {
-  color: #f87171;
+  color: var(--color-delete);
 }
 
 .update-status-label.update-status-up-to-date {
-  color: #4ade80;
+  color: var(--color-keep);
 }
 
 .update-progress-bar {
   margin-top: 8px;
   height: 4px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-control);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -714,8 +714,8 @@ input[type="range"] {
   align-items: center;
   gap: 6px;
   padding: 7px 14px;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--bg-control);
+  border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text-primary);
   font-size: 13px;
@@ -724,7 +724,7 @@ input[type="range"] {
 }
 
 .btn-check-updates:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--bg-subtle-hover);
 }
 
 .btn-check-updates:disabled {
@@ -737,7 +737,7 @@ input[type="range"] {
   background: var(--accent);
   border: none;
   border-radius: 6px;
-  color: #fff;
+  color: var(--text-on-accent);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -765,7 +765,7 @@ input[type="range"] {
   justify-content: center;
   border-radius: 8px;
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-accent);
   font-size: 14px;
   font-weight: 800;
 }
@@ -787,9 +787,9 @@ input[type="range"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-control);
   color: var(--text-primary);
   font-size: 13px;
   cursor: pointer;
@@ -817,8 +817,8 @@ input[type="range"] {
 
 .about-link-btn:hover,
 .about-support-btn:hover {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--bg-subtle-hover);
+  border-color: var(--border-strong);
 }
 
 .btn-install-update:hover {
