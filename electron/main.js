@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
@@ -9,6 +9,11 @@ const cache = require('./cache');
 const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
+const {
+  THEME_ARGUMENT_PREFIX,
+  getThemeBackgroundColor,
+  normalizeColorTheme,
+} = require('./theme-utils');
 const {
   cacheRelevantSettingsChanged,
   canServeThumbPath,
@@ -249,19 +254,30 @@ function setVideoFullscreenMenuState(fullscreen) {
 }
 
 // â”€â”€ Window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function createWindow() {
+function applyNativeTheme(value) {
+  const theme = normalizeColorTheme(value);
+  nativeTheme.themeSource = theme;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(getThemeBackgroundColor(theme));
+  }
+  return theme;
+}
+
+function createWindow(initialTheme = 'dark') {
+  const theme = applyNativeTheme(initialTheme);
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#0a0a0f',
+    backgroundColor: getThemeBackgroundColor(theme),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false,
+      additionalArguments: [`${THEME_ARGUMENT_PREFIX}${theme}`],
     },
   });
 
@@ -301,7 +317,7 @@ const customProtocolSchemes = [
 ];
 protocol.registerSchemesAsPrivileged(customProtocolSchemes);
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   defaultCentralCacheRoot = path.join(app.getPath('userData'), 'video-cache');
 
   protocol.handle('thumb', async (request) => {
@@ -419,7 +435,8 @@ app.whenReady().then(() => {
     }
   });
 
-  createWindow();
+  const initialConfig = await readJsonFile(CONFIG_FILE, {});
+  createWindow(initialConfig.theme);
   setApplicationMenu();
   pruneDistributedIndex().catch((err) => log.warn('[cache] Failed to prune distributed index:', err));
   if (updatesEnabled) setupAutoUpdater();
@@ -2657,8 +2674,11 @@ ipcMain.handle('get-config', async () => {
 
 ipcMain.handle('save-config', async (_event, config) => {
   try {
+    const theme = normalizeColorTheme(config?.theme);
+    const normalizedConfig = { ...config, theme };
     const configPath = path.join(app.getPath('userData'), CONFIG_FILE);
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
+    await fs.writeFile(configPath, JSON.stringify(normalizedConfig, null, 2), 'utf8');
+    applyNativeTheme(theme);
     return true;
   } catch (e) {
     log.error('[save-config] Error saving config:', e);

@@ -29,7 +29,7 @@ Settings are edited in a local draft until you choose **Save Preferences**. Clos
 
 After saving:
 
-- Interface visibility, card layout, feature toggles, keybindings, mute state, keeper ranking, and protection rules update immediately.
+- Theme, interface visibility, card layout, feature toggles, keybindings, mute state, keeper ranking, and protection rules update immediately.
 - Cache, scan, thumbnail, metadata, and duplicate-matching changes apply when their next relevant scan or processing run starts.
 - Increasing the thumbnail count can prompt you to confirm that existing cached strips need rebuilding.
 - Changing cache storage starts a migration choice before the preference is committed.
@@ -43,11 +43,14 @@ These settings change how the main view starts and how you move through a sessio
 
 | Setting | What it does | Suggested default use |
 | --- | --- | --- |
+| Theme | Switches the app chrome between Dark and Light mode while keeping video and thumbnail wells neutral. | Use Dark in dim environments and Light when the surrounding room or display is bright. |
 | Default card scale | Sets the starting card size in grid view. | Leave it at `1.0x` unless your monitor or footage needs more or less detail. |
 | Default sorting | Controls the first sort field and order for new sessions. | `Name` is the safest default. Use `Date` for chronology, `Size` for storage cleanup, or `Duration` for spotting clips that are too short or too long. |
 | Group by folder | Starts the grid grouped by folder instead of one flat list. | Keep it on when folder context matters. Turn it off when you want one global queue. |
 | Keep playback controls visible in Review | Prevents the timeline and playback controls from auto-hiding while a video is playing in Review mode. | Leave it off for a cleaner playback view. Turn it on when you want the scrubber to remain available without moving the mouse. |
 | Export report | Exports an HTML report for all loaded videos or the current filtered set, grouped by folder and review status. | Use it at the end of a pass or before a destructive cleanup. Export never changes statuses or files. |
+
+The sun or moon button switches theme immediately and saves the choice. It is available on the landing screen and in the sidebar header. You can also use the configurable theme shortcut, which defaults to `Ctrl + Shift + L`. The Theme selector in Settings follows the normal draft behavior and changes the interface only after you choose **Save Preferences**.
 
 ## Features
 

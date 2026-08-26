@@ -18,7 +18,7 @@
   display: block;
   opacity: 0;
   transition: opacity 160ms ease, transform 200ms ease;
-  background: #0a0a12;
+  background: var(--media-bg);
 }
 
 .thumb-img-loaded {

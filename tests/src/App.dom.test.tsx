@@ -17,7 +17,11 @@ import type {
 vi.mock('../../src/components/Sidebar', async () => {
   const ReactModule = await import('react');
   const storeModule = await import('../../src/store');
-  const MockSidebar = (props: { onFindDuplicates?: () => void; onCloseSession?: () => void }) => {
+  const MockSidebar = (props: {
+    onFindDuplicates?: () => void;
+    onCloseSession?: () => void;
+    onToggleTheme?: () => void;
+  }) => {
     const duplicateProgress = storeModule.default((state) => state.duplicateProgress);
     return ReactModule.createElement(ReactModule.Fragment, null,
       ReactModule.createElement(
@@ -42,6 +46,15 @@ vi.mock('../../src/components/Sidebar', async () => {
           onClick: props.onCloseSession,
         },
         'Close'
+      ),
+      ReactModule.createElement(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'sidebar-toggle-theme',
+          onClick: props.onToggleTheme,
+        },
+        'Toggle theme'
       )
     );
   };
@@ -301,6 +314,37 @@ describe('App renderer behavior', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('sidebar-progress').textContent).toBe('Finding candidates:4/10');
+    });
+  });
+
+  test('quick theme toggle applies and persists the next theme', async () => {
+    getStoreApi().setState({ directory: 'D:\\Media' });
+    render(<App />);
+
+    await userEvent.click(screen.getByTestId('sidebar-toggle-theme'));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.theme).toBe('light');
+      expect(document.documentElement.dataset.theme).toBe('light');
+      expect(electron.api.saveConfig).toHaveBeenCalledWith(expect.objectContaining({ theme: 'light' }));
+    });
+  });
+
+  test('configured theme shortcut toggles and persists the theme', async () => {
+    getStoreApi().setState({
+      settings: {
+        ...useStore.getState().settings,
+        keyToggleTheme: { key: 't', ctrl: false, shift: false, alt: true },
+      },
+    });
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: 'T', altKey: true });
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.theme).toBe('light');
+      expect(document.documentElement.dataset.theme).toBe('light');
+      expect(electron.api.saveConfig).toHaveBeenCalledWith(expect.objectContaining({ theme: 'light' }));
     });
   });
 

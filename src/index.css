@@ -6,6 +6,8 @@
 }
 
 :root {
+  color-scheme: dark;
+
   /* Cinematic Glass Backgrounds */
   --bg-app: #08080d;
   --bg-app-rgb: 3, 2, 8;
@@ -15,17 +17,34 @@
   --bg-surface-hover: #1c1a2e;
   --bg-surface-active: #24223d;
   --bg-sidebar: rgba(12, 10, 20, 0.65); /* Translucent dark sidebar */
+  --bg-secondary: #171525;
+  --bg-elevated: #171525;
+  --bg-subtle: rgba(255, 255, 255, 0.025);
+  --bg-subtle-hover: rgba(255, 255, 255, 0.055);
+  --bg-control: rgba(255, 255, 255, 0.07);
+  --bg-popover: rgba(12, 11, 24, 0.98);
+  --bg-toolbar: rgba(8, 8, 12, 0.78);
+  --bg-toolbar-strong: rgba(10, 10, 16, 0.9);
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+  --bg-overlay-soft: rgba(0, 0, 0, 0.35);
+  --bg-hover-danger: rgba(255, 71, 87, 0.18);
+  --media-bg: #0a0a12;
+  --media-overlay: rgba(0, 0, 0, 0.58);
+  --media-text: #ffffff;
   
   /* Borders */
   --border: rgba(255, 255, 255, 0.08);
   --border-hover: rgba(144, 128, 255, 0.3); /* Slight purple tint on hover borders */
   --border-active: rgba(144, 128, 255, 0.6);
+  --border-color: var(--border);
+  --border-strong: rgba(255, 255, 255, 0.16);
 
   /* Elevation / Glow */
   --glass-glow: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 4px rgba(124, 109, 240, 0.15);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
   --blur-md: blur(24px);
   --blur-lg: blur(48px);
+  --blur-sm: blur(12px);
   
   /* Accent */
   --accent: #8b7af0; /* Vivid, energetic indigo */
@@ -51,6 +70,9 @@
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.65);
   --text-tertiary: rgba(255, 255, 255, 0.4);
+  --text-on-accent: #ffffff;
+  --text-on-keep: #00150d;
+  --text-placeholder: rgba(255, 255, 255, 0.4);
 
   /* Shadows */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -61,7 +83,7 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
---transition: 180ms ease;
+  --transition: 180ms ease;
   --spring: 200ms ease-out;
 
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -69,10 +91,69 @@
   background: var(--bg-app);
 }
 
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-app: #e6e7ec;
+  --bg-app-rgb: 230, 231, 236;
+  --bg-surface: #f8f8fa;
+  --bg-surface-hover: #eeeef3;
+  --bg-surface-active: #e0dfea;
+  --bg-sidebar: rgba(241, 242, 246, 0.98);
+  --bg-secondary: #eaebf0;
+  --bg-elevated: #fbfbfc;
+  --bg-subtle: rgba(30, 27, 52, 0.06);
+  --bg-subtle-hover: rgba(30, 27, 52, 0.1);
+  --bg-control: rgba(30, 27, 52, 0.09);
+  --bg-popover: rgba(250, 250, 252, 0.99);
+  --bg-toolbar: rgba(247, 247, 250, 0.94);
+  --bg-toolbar-strong: rgba(251, 251, 253, 0.98);
+  --bg-overlay: rgba(24, 21, 39, 0.42);
+  --bg-overlay-soft: rgba(24, 21, 39, 0.22);
+  --bg-hover-danger: rgba(205, 42, 66, 0.1);
+
+  --border: rgba(30, 27, 52, 0.18);
+  --border-hover: rgba(103, 86, 209, 0.44);
+  --border-active: rgba(103, 86, 209, 0.68);
+  --border-strong: rgba(30, 27, 52, 0.28);
+
+  --glass-glow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -1px 3px rgba(103, 86, 209, 0.08);
+  --glass-shadow: 0 8px 28px rgba(35, 29, 66, 0.12);
+
+  --accent: #6756d1;
+  --accent-hover: #5847c2;
+  --accent-glow: 0 0 14px rgba(103, 86, 209, 0.22);
+  --accent-dim: rgba(103, 86, 209, 0.12);
+  --accent-gradient: linear-gradient(135deg, #6756d1 0%, #9748c0 100%);
+
+  --color-keep: #087f57;
+  --color-keep-dim: rgba(8, 127, 87, 0.11);
+  --color-keep-glow: 0 0 16px rgba(8, 127, 87, 0.16);
+  --color-delete: #ce3048;
+  --color-delete-dim: rgba(206, 48, 72, 0.1);
+  --color-delete-glow: 0 0 16px rgba(206, 48, 72, 0.15);
+  --color-skip: #a76400;
+  --color-skip-dim: rgba(167, 100, 0, 0.11);
+  --color-skip-glow: 0 0 14px rgba(167, 100, 0, 0.14);
+  --color-pending: rgba(30, 27, 52, 0.6);
+  --color-pending-dim: rgba(30, 27, 52, 0.045);
+
+  --text-primary: #211e31;
+  --text-secondary: rgba(33, 30, 49, 0.76);
+  --text-tertiary: rgba(33, 30, 49, 0.56);
+  --text-placeholder: rgba(33, 30, 49, 0.5);
+  --text-on-keep: #ffffff;
+
+  --shadow-sm: 0 2px 8px rgba(35, 29, 66, 0.12);
+  --shadow-md: 0 8px 22px rgba(35, 29, 66, 0.16);
+  --shadow-lg: 0 16px 42px rgba(35, 29, 66, 0.22);
+}
+
 body {
   min-height: 100vh;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  background: var(--bg-app);
 }
 
 #root {

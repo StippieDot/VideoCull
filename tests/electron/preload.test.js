@@ -33,6 +33,9 @@ function loadPreload() {
   };
 
   vm.runInNewContext(source, {
+    process: {
+      argv: ['electron', '.', '--video-cull-theme=light'],
+    },
     require: (name) => {
       if (name === 'electron') return fakeElectron;
       throw new Error(`Unexpected module request: ${name}`);
@@ -55,6 +58,7 @@ describe('preload electronAPI bridge', () => {
   test('exposes the electronAPI contract on the main world', () => {
     expect(exposedName).toBe('electronAPI');
     expect(exposedApi).toBeTruthy();
+    expect(exposedApi.initialTheme).toBe('light');
     expect(exposedApi.selectDirectory).toBeTypeOf('function');
     expect(exposedApi.saveConfig).toBeTypeOf('function');
     expect(exposedApi.exportReport).toBeTypeOf('function');

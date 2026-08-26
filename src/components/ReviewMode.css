@@ -388,7 +388,7 @@
 }
 
 .review-btn-reset:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: var(--bg-subtle-hover) !important;
   color: var(--text-primary) !important;
 }
 
@@ -448,7 +448,7 @@
 
 .review-decode-error-actions button:first-child:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 .review-decode-error-actions button:last-child {
@@ -497,11 +497,11 @@
   flex-wrap: nowrap;
   overflow-x: auto;
   padding: 8px 12px;
-  background: rgba(20, 20, 25, 0.6);
+  background: var(--bg-toolbar);
   backdrop-filter: blur(12px);
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
 }
 
 @media (max-height: 900px) {
@@ -595,7 +595,7 @@
   height: 4px;
 }
 .review-bookmark-bar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--border-strong);
   border-radius: 4px;
 }
 
@@ -605,8 +605,8 @@
   gap: 6px;
   padding: 6px 12px;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--bg-control);
+  border: 1px solid var(--border-strong);
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 500;

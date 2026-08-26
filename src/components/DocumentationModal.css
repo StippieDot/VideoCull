@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(0, 0, 0, 0.68);
+  background: var(--bg-overlay);
   backdrop-filter: blur(4px);
 }
 
@@ -25,7 +25,7 @@
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--bg-surface);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-lg);
   animation: modal-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -96,7 +96,7 @@
 
 .documentation-close-btn:hover {
   background: var(--bg-hover-danger, rgba(255, 71, 87, 0.18));
-  color: #fff;
+  color: var(--color-delete);
 }
 
 .documentation-search,
@@ -163,7 +163,7 @@
   gap: 2px;
   padding: 12px 8px;
   border-right: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--bg-subtle);
   overflow-y: auto;
 }
 
@@ -198,7 +198,7 @@
 
 .documentation-nav-btn.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 .documentation-content {
@@ -261,7 +261,7 @@
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-subtle);
   color: var(--text-primary);
   text-align: left;
   display: flex;
@@ -284,7 +284,7 @@
 }
 
 .documentation-mdx-card:hover {
-  background: rgba(255, 255, 255, 0.038);
+  background: var(--bg-subtle-hover);
   border-color: var(--border-hover);
 }
 
@@ -341,7 +341,7 @@
   font-size: 15px;
   font-weight: 600;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--border);
 }
 
 .documentation-mdx-h3 {
@@ -372,7 +372,7 @@
 .documentation-mdx code {
   padding: 1px 4px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-control);
   color: var(--text-primary);
   font-size: 0.95em;
 }
@@ -405,7 +405,7 @@
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.018);
+  background: var(--bg-subtle);
 }
 
 .documentation-mdx-table {
@@ -432,7 +432,7 @@
 }
 
 .documentation-mdx-table th {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-subtle);
   color: var(--text-primary);
   font-weight: 600;
 }
@@ -447,8 +447,8 @@
   max-width: 860px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.02);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  background: var(--bg-subtle);
+  box-shadow: var(--shadow-sm);
 }
 
 .documentation-callout {
@@ -457,7 +457,7 @@
   border: 1px solid var(--border);
   border-left-width: 3px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.018);
+  background: var(--bg-subtle);
 }
 
 .documentation-callout.warning {
@@ -493,14 +493,14 @@
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.018);
+  background: var(--bg-subtle);
 }
 
 .documentation-step-index {
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-control);
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -530,7 +530,7 @@
 .documentation-accordion {
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.018);
+  background: var(--bg-subtle);
 }
 
 .documentation-accordion summary {

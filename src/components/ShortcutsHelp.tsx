@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import useStore from '../store';
 import { ALL_SHORTCUTS, FIXED_SHORTCUTS, formatKeybind, type ShortcutGroup } from '../keybinds';
 import type { Keybind } from '../keybinds';
+import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 
 interface Props {
   onClose: () => void;
@@ -36,7 +37,7 @@ export default function ShortcutsHelp({ onClose }: Props) {
                     {configurable.map((s) => (
                       <tr key={s.id}>
                         <td className="shortcuts-keys">
-                          <kbd>{formatKeybind(settings[s.id] as Keybind)}</kbd>
+                          <kbd>{formatKeybind((settings[s.id] ?? DEFAULT_KEYBINDS[s.id]) as Keybind)}</kbd>
                         </td>
                         <td className="shortcuts-desc">
                           {s.description}

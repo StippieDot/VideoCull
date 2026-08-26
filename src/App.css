@@ -58,7 +58,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--bg-overlay-soft);
   pointer-events: none;
 }
 
@@ -69,7 +69,7 @@
   padding: 18px 24px;
   border-radius: 12px;
   border: 1px solid var(--border-hover);
-  background: rgba(16, 15, 28, 0.92);
+  background: var(--bg-popover);
   color: var(--text-primary);
   box-shadow: var(--shadow-lg);
   font-size: 15px;
@@ -99,7 +99,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--bg-overlay);
 }
 
 .drop-modal {
@@ -163,7 +163,7 @@
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: rgba(16, 15, 28, 0.96);
+  background: var(--bg-popover);
   color: var(--text-primary);
   box-shadow: var(--shadow-md);
   font-size: 12px;
@@ -279,7 +279,7 @@
   gap: 16px;
   padding: 10px 20px;
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-accent);
   font-size: 13px;
   font-weight: 500;
 }
@@ -294,7 +294,7 @@
   border-radius: 5px;
   border: 1px solid rgba(255, 255, 255, 0.35);
   background: transparent;
-  color: #fff;
+  color: var(--text-on-accent);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -318,7 +318,7 @@
 .shortcuts-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: var(--bg-overlay);
   backdrop-filter: blur(12px);
   z-index: 1100;
   display: flex;
@@ -334,10 +334,10 @@
 }
 
 .shortcuts-modal {
-  background: #0f0f1a;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.8);
+  box-shadow: var(--shadow-lg);
   width: 100%;
   max-width: 520px;
   max-height: 80vh;
@@ -351,13 +351,13 @@
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--border);
 }
 
 .shortcuts-header h2 {
   font-size: 16px;
   font-weight: 600;
-  color: #e8e8f0;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -366,8 +366,8 @@
   height: 32px;
   border-radius: 6px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #999;
+  border: 1px solid var(--border);
+  color: var(--text-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -377,8 +377,8 @@
 }
 
 .shortcuts-close-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #e8e8f0;
+  background: var(--bg-subtle-hover);
+  color: var(--text-primary);
 }
 
 .shortcuts-body {
@@ -394,7 +394,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #666;
+  color: var(--text-tertiary);
   margin: 0 0 8px;
 }
 
@@ -417,34 +417,34 @@
 .shortcuts-keys kbd {
   display: inline-block;
   padding: 2px 7px;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--bg-control);
+  border: 1px solid var(--border-strong);
   border-bottom-width: 2px;
   border-radius: 4px;
   font-family: inherit;
   font-size: 12px;
-  color: #c8c8d8;
+  color: var(--text-secondary);
   margin-right: 4px;
 }
 
 .shortcuts-desc {
   font-size: 13px;
-  color: #aaa;
+  color: var(--text-secondary);
   vertical-align: top;
   padding-top: 3px;
 }
 
 .shortcuts-hint {
   font-size: 12px;
-  color: #555;
+  color: var(--text-tertiary);
   text-align: center;
   padding: 12px 24px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--border);
   margin: 0;
 }
 
 .shortcuts-hint strong {
-  color: #777;
+  color: var(--text-secondary);
 }
 
 .shortcut-context {
@@ -458,7 +458,7 @@
   display: grid;
   place-items: center;
   padding: 32px;
-  background: #0a0a0f;
+  background: var(--bg-app);
   color: var(--text-primary);
 }
 
@@ -468,7 +468,7 @@
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: var(--bg-secondary);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-lg);
 }
 
 .app-crash-panel h1 {

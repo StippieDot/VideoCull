@@ -48,6 +48,7 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keyBookmark:           kb('b'),
   keyShowHelp:           kb('?', { shift: true }),
   keyGlobalMute:         kb('m'),
+  keyToggleTheme:        kb('l', { ctrl: true, shift: true }),
   keySearch:             kb('f', { ctrl: true }),
   keyPreviewSeekBack:    kb('arrowleft'),
   keyPreviewSeekForward: kb('arrowright'),
@@ -103,6 +104,10 @@ const LEGACY_STRING_KEYS = ['keyKeep', 'keyDelete', 'keySkip', 'keyUndo', 'keyPl
  */
 export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettings> {
   const result: Record<string, unknown> = { ...raw };
+
+  if (!['dark', 'light'].includes(result.theme as string)) {
+    result.theme = 'dark';
+  }
 
   // Convert legacy single-char strings to Keybind objects
   for (const field of LEGACY_STRING_KEYS) {

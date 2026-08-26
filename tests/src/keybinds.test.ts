@@ -119,4 +119,12 @@ describe('shortcut metadata', () => {
       ])
     );
   });
+
+  test('lists theme switching as a configurable global shortcut', () => {
+    expect(ALL_SHORTCUTS).toEqual(
+      expect.arrayContaining([
+        { id: 'keyToggleTheme', description: 'Toggle color theme', group: 'Global' },
+      ])
+    );
+  });
 });

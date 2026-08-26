@@ -62,6 +62,8 @@ function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}) {
       globalMuteEnabled={false}
       globalMuteLabel="M"
       onToggleGlobalMute={vi.fn()}
+      theme="dark"
+      onToggleTheme={vi.fn()}
       {...props}
     />,
   );
@@ -77,6 +79,16 @@ describe('Sidebar recent folder behavior', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  test('offers a quick theme toggle in the header', async () => {
+    const onToggleTheme = vi.fn();
+    renderSidebar({ theme: 'dark', onToggleTheme });
+
+    const toggle = screen.getByRole('button', { name: /switch to light mode/i });
+    await userEvent.click(toggle);
+
+    expect(onToggleTheme).toHaveBeenCalledTimes(1);
   });
 
   test('opens a valid recent folder through the recent-session panel', async () => {
