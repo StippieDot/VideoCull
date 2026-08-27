@@ -10,10 +10,10 @@ const COMPAT_UNSUPPORTED_EXTS = new Set([
 ]);
 const COMPAT_UNSUPPORTED_CODECS = new Set([
   'wmv1', 'wmv2', 'wmv3', 'vc1', 'msmpeg4v1', 'msmpeg4v2', 'msmpeg4v3', 'mpeg2video',
-  'prores', 'h263', 'dvvideo', 'theora',
+  'mpeg4', 'mp4v', 'prores', 'h263', 'dvvideo', 'theora',
 ]);
 const COMPAT_SUPPORTED_CODECS = new Set([
-  'h264', 'avc', 'avc1', 'hevc', 'h265', 'hvc1', 'av1', 'av01', 'vp8', 'vp9', 'mpeg4', 'mp4v',
+  'h264', 'avc', 'avc1', 'hevc', 'h265', 'hvc1', 'av1', 'av01', 'vp8', 'vp9',
 ]);
 const COMPAT_SUPPORTED_FORMATS = ['mp4', 'mov', 'matroska', 'webm', 'ogg', '3gp', '3g2', 'm4a', 'mj2'];
 const COMPAT_WEB_EXTS = ['.mp4', '.webm', '.ogg', '.ogv', '.mov', '.mkv', '.m4v'];

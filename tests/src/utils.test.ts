@@ -54,6 +54,8 @@ test('web support and compatibility detection match supported and unsupported fo
   expect(detectVideoCompatibility('mpegts', null, 'clip.ts')).toBe(false);
   expect(detectVideoCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'h264', 'clip.3gp')).toBe(false);
   expect(detectVideoCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'h264', 'clip.3g2')).toBe(false);
+  expect(detectVideoCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'mpeg4', 'clip.mp4')).toBe(false);
+  expect(detectVideoCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'mp4v', 'clip.mp4')).toBe(false);
   expect(detectVideoCompatibility('mxf', 'mpeg4', 'clip.mxf')).toBe(false);
   expect(detectVideoCompatibility('dv', 'dvvideo', 'clip.dv')).toBe(false);
 });
