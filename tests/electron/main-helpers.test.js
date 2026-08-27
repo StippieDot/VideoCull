@@ -43,6 +43,8 @@ describe('compatibility detection', () => {
     assert.equal(detectCompatibility('avi', 'vp9', 'D:\\clip.avi'), false);
     assert.equal(detectCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'h264', 'D:\\clip.3gp'), false);
     assert.equal(detectCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'h264', 'D:\\clip.3g2'), false);
+    assert.equal(detectCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'mpeg4', 'D:\\clip.mp4'), false);
+    assert.equal(detectCompatibility('mov,mp4,m4a,3gp,3g2,mj2', 'mp4v', 'D:\\clip.mp4'), false);
     assert.equal(detectCompatibility('mxf', 'mpeg4', 'D:\\clip.mxf'), false);
     assert.equal(detectCompatibility('dv', 'dvvideo', 'D:\\clip.dv'), false);
   });
