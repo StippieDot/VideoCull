@@ -2,6 +2,26 @@
 
 All notable changes to Video Cull will be documented here.
 
+## [2.2.0] - 2026-08-28
+
+### Added
+- Added a persistent light theme with app-wide styling, a visible theme control, a configurable keyboard shortcut, and startup persistence.
+- Added an option to keep the playback timeline and controls visible while reviewing videos.
+- Added a sessions-and-folders guide and expanded the in-app and website documentation for grid, review, duplicate, cache, settings, and safety workflows.
+
+### Changed
+- Replaced the Video Cull logo and application icon throughout the app, Windows executable, installer, uninstaller, and generated shortcuts.
+- Reorganized Interface settings into clearer sections for grid defaults, Review mode, and report export.
+- Changed downloaded updates to require an explicit choice between updating now, installing on exit, or being asked later.
+- Updated Electron and related runtime packages.
+
+### Fixed
+- Review shortcuts continue working after interacting with the embedded video player.
+- Playback controls remain accessible during keyboard-driven review sessions.
+- Grid scrolling stays anchored when batch status changes remove videos from the current filter.
+- Search shortcuts no longer interfere with editable fields, and cached thumbnails appear more reliably.
+- MPEG-4 Part 2 videos now open in the external player instead of showing a black frame in the built-in player.
+
 ## [2.1.0] - 2026-08-22
 
 ### Added
