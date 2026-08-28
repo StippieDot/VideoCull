@@ -3,9 +3,9 @@
 [![License](https://img.shields.io/github/license/stippie-dot/VideoCull?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge)](https://github.com/stippie-dot/VideoCull/releases)
 [![Docs](https://img.shields.io/badge/docs-videocull.app-1f2937?style=for-the-badge&logo=readthedocs&logoColor=white)](https://docs.videocull.app)
-> Review, sort, and de-duplicate video folders faster.
+> Review, sort, and de-duplicate any local video folder faster.
 
-Video folders get out of hand fast. A few dashcam clips turn into hundreds. Drone footage piles up. Random captures sit there for years because sorting them is too tedious to start.
+Video folders get out of hand fast. Download folders, old backups, personal archives, screen recordings, and camera footage can all grow into collections that are too tedious to review one file at a time.
 
 Video Cull is built to make that part faster. Open a folder and it scans the videos, generates thumbnail strips, and lets you work through them with the keyboard instead of opening files one by one. If thumbnails aren’t enough, play the video right there, scrub through it, rate it, favorite it, or mark it and move on.
 
