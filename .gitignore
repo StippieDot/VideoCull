@@ -47,3 +47,6 @@ AGENTS.md
 .codegraph/
 .superpowers/
 docs/superpowers/
+
+# Private marketing website source (maintained in its own repository)
+/website/

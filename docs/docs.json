@@ -1,7 +1,26 @@
 {
+  "$schema": "https://mintlify.com/docs.json",
+
   "theme": "almond",
   "name": "Video Cull",
-  "description": "Keyboard-first desktop app for reviewing, sorting, and deleting large video libraries locally.",
+
+  "description": "Video Cull is a free and open-source Windows app for quickly sorting and culling large video collections using multiple thumbnails per video and keyboard-first Keep, Delete, and Skip controls.",
+
+  "seo": {
+    "indexing": "navigable",
+    "metatags": {
+      "robots": "index, follow",
+      "googlebot": "index, follow"
+    }
+  },
+
+  "search": {
+    "prompt": "Search Video Cull documentation..."
+  },
+
+  "metadata": {
+    "timestamp": true
+  },
   "colors": {
     "primary": "#8b7af0",
     "light": "#a596f7",
