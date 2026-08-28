@@ -126,7 +126,7 @@ describe('DocumentationModal behavior', () => {
     expect(screen.getByRole('heading', { name: 'Duplicate review' })).toBeTruthy();
 
     await userEvent.clear(screen.getByRole('searchbox', { name: /search documentation/i }));
-    await userEvent.click(within(docsNav).getByRole('button', { name: /^Review mode/i }));
+    await userEvent.click(within(docsNav).getByRole('button', { name: /^Keyboard-first video review mode/i }));
 
     expect(scrollTo).toHaveBeenCalled();
     expect(document.querySelector('#review-mode-use-keyboard-controls summary')?.textContent).toBe('Use keyboard controls');
@@ -218,7 +218,7 @@ describe('DocumentationModal behavior', () => {
     );
 
     const docsNav = screen.getByRole('navigation', { name: /documentation pages/i });
-    await userEvent.click(within(docsNav).getByRole('button', { name: /^Review mode/i }));
+    await userEvent.click(within(docsNav).getByRole('button', { name: /^Keyboard-first video review mode/i }));
 
     await userEvent.click(screen.getByRole('button', { name: /show keyboard shortcuts/i }));
     expect(onOpenShortcutsHelp).toHaveBeenCalledTimes(1);
@@ -236,7 +236,7 @@ describe('DocumentationModal behavior', () => {
     await userEvent.click(within(docsNav).getByRole('button', { name: 'Quick start' }));
     mdxContent = document.querySelector('.documentation-mdx');
     await userEvent.click(within(mdxContent as HTMLElement).getByRole('button', { name: /Keyboard shortcuts/i }));
-    expect(screen.getByRole('heading', { name: 'Keyboard shortcuts' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Keyboard shortcuts for fast video culling' })).toBeTruthy();
     expect(onOpenShortcutsHelp).toHaveBeenCalledTimes(1);
   });
 
