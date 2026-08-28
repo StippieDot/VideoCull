@@ -31,6 +31,10 @@
   "navbar": {
     "links": [
       {
+        "label": "Website",
+        "href": "https://videocull.app"
+      },
+      {
         "type": "github",
         "href": "https://github.com/stippie-dot/VideoCull"
       }
