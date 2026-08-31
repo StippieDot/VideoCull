@@ -8,7 +8,7 @@ All notable changes to VideoCull will be documented here.
 - Standardized the current product, executable, installer, shortcut, publisher, repository, and documentation identity as VideoCull by StippieDot.
 - Renamed the Windows installer to `VideoCull.Setup.2.2.1.exe` and the installed executable to `VideoCull.exe` while preserving the existing application ID and upgrade location.
 - Moved the production Electron profile from `%APPDATA%\video-cull` to `%APPDATA%\VideoCull` with an atomic directory rename. If Windows cannot rename it, VideoCull keeps using the original profile and tries again on the next launch.
-- Added bounded profile validation and safe handling when both old and new profile folders exist. VideoCull never merges, copies, overwrites, or deletes those profiles automatically.
+- Added directory-level safety checks and safe handling when both old and new profile folders exist. VideoCull never merges, copies, overwrites, or deletes those profiles automatically.
 
 ## [2.2.0] - 2026-08-28
 

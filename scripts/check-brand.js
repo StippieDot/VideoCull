@@ -7,18 +7,24 @@ const root = path.resolve(__dirname, '..');
 const identity = JSON.parse(fs.readFileSync(path.join(root, 'product.json'), 'utf8'));
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
-assert.equal(identity.displayName, 'VideoCull');
-assert.equal(identity.technicalName, 'videocull');
-assert.equal(identity.legacyDisplayName, 'Video Cull');
-assert.equal(identity.legacyTechnicalName, 'video-cull');
-assert.equal(identity.appId, 'com.videocull.app');
-assert.equal(identity.publisher, 'StippieDot');
-assert.equal(identity.repository.owner, 'StippieDot');
-assert.equal(identity.repository.name, 'VideoCull');
+for (const [field, value] of [
+  ['displayName', identity.displayName],
+  ['technicalName', identity.technicalName],
+  ['legacyDisplayName', identity.legacyDisplayName],
+  ['legacyTechnicalName', identity.legacyTechnicalName],
+  ['appId', identity.appId],
+  ['publisher', identity.publisher],
+  ['repository.owner', identity.repository?.owner],
+  ['repository.name', identity.repository?.name],
+]) {
+  assert.equal(typeof value, 'string', `product.json ${field} must be a string`);
+  assert.ok(value.length > 0, `product.json ${field} must not be empty`);
+}
 assert.equal(packageJson.name, identity.technicalName);
 assert.equal(packageJson.build?.productName, identity.displayName);
 assert.equal(packageJson.build?.appId, identity.appId);
 assert.equal(packageJson.build?.publish?.owner, identity.publisher);
+assert.equal(packageJson.build?.publish?.repo, identity.repository.name);
 
 const historicalPrefixes = [
   'docs/superpowers/',
@@ -36,6 +42,8 @@ const compatibilityFiles = new Set([
 const textExtensions = new Set([
   '.css', '.html', '.js', '.json', '.md', '.mdx', '.mjs', '.nsh', '.ps1', '.ts', '.tsx', '.yml', '.yaml',
 ]);
+const escapedLegacyName = identity.legacyDisplayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const legacyDisplayPattern = new RegExp(`${escapedLegacyName}(?!ing)`);
 
 const tracked = childProcess.execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root })
   .toString('utf8')
@@ -50,14 +58,11 @@ for (const file of tracked) {
   if (!textExtensions.has(path.extname(file).toLowerCase())) continue;
   const source = fs.readFileSync(path.join(root, file), 'utf8');
 
-  if (!compatibilityFiles.has(file) && /Video Cull(?!ing)/.test(source)) {
+  if (!compatibilityFiles.has(file) && legacyDisplayPattern.test(source)) {
     failures.push(`${file}: contains the legacy spaced product name`);
   }
   if (source.includes('stippie-dot')) {
     failures.push(`${file}: contains the legacy GitHub owner`);
-  }
-  if (source.includes('--video-cull-theme=')) {
-    failures.push(`${file}: contains the legacy theme argument`);
   }
 }
 

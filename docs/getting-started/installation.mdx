@@ -41,6 +41,6 @@ Later updates are handled in-app when a GitHub release is available.
 
 VideoCull v2.2.1 renames the verified v2.2.0 profile at `%APPDATA%\video-cull` to `%APPDATA%\VideoCull`. It uses an atomic directory rename, so it does not duplicate a large thumbnail cache.
 
-If Windows cannot rename the folder, VideoCull leaves it untouched, uses the existing profile for that launch, and tries again next time. If both the old and new profile folders exist, the app never merges or overwrites them. It selects a valid profile, retains both folders, and shows a warning with both paths.
+If Windows cannot rename the folder, VideoCull leaves it untouched, uses the existing profile for that launch, and tries again next time. If both the old and new profile folders exist, the app never merges or overwrites them. It uses the new profile, retains both folders, and shows a warning with both paths.
 
 The existing installation directory stays in place during an upgrade. Because the executable and shortcut are now named `VideoCull`, you may need to remove an old taskbar pin and pin the app again.

@@ -43,7 +43,7 @@ The installer lets you choose the install location and shortcuts. Later updates 
 
 VideoCull v2.2.1 renames the verified v2.2.0 profile at `%APPDATA%\video-cull` to `%APPDATA%\VideoCull` without copying its thumbnail cache. If Windows cannot perform the rename, the app leaves the old profile untouched, uses it for that launch, and tries again next time.
 
-If both folders already exist, VideoCull does not merge or overwrite them. It uses a valid `%APPDATA%\VideoCull` profile when possible, keeps both folders, and shows which one is active. Existing installations stay in their current install directory. Windows may require you to re-pin the renamed app on the taskbar.
+If both folders already exist, VideoCull does not merge or overwrite them. It uses `%APPDATA%\VideoCull`, keeps both folders, and shows which one is active. Existing installations stay in their current install directory. Windows may require you to re-pin the renamed app on the taskbar.
 
 > [!IMPORTANT]
 > **Official links:** Use [videocull.app](https://videocull.app/) for the product website, [docs.videocull.app](https://docs.videocull.app/) for documentation, and this GitHub repository for source and releases.
