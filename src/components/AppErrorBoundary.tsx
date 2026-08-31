@@ -38,7 +38,7 @@ export default class AppErrorBoundary extends React.Component<React.PropsWithChi
       return (
         <div className="app-crash-fallback">
           <div className="app-crash-panel">
-            <h1>Video Cull hit a display error</h1>
+            <h1>VideoCull hit a display error</h1>
             <p>The app is still running, but the interface crashed. The error was sent to the terminal log.</p>
             <button type="button" onClick={() => window.location.reload()}>
               Reload interface

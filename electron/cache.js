@@ -101,7 +101,7 @@ function cacheKeyForFolder(folderPath) {
 /**
  * Returns the absolute path to the SQLite DB file for a given folder.
  * All cache reads/writes must go through this function.
- * cacheRootDir — the parent cache directory (e.g. %APPDATA%\Video-Cull\cache).
+ * cacheRootDir — the parent cache directory (e.g. %APPDATA%\VideoCull\video-cache).
  * In P3, this will gain a `mode` parameter for per-drive vs centralised.
  */
 function getDriveKey(folderPath) {

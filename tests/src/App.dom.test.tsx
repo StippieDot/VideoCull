@@ -257,7 +257,7 @@ describe('App renderer behavior', () => {
 
     electron.emitUpdateStatus({ status: 'ready', version: '2.1.0' });
 
-    expect(await screen.findByText('Video Cull v2.1.0 is ready to install.')).toBeTruthy();
+    expect(await screen.findByText('VideoCull v2.1.0 is ready to install.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Update now' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Install on exit' })).toBeTruthy();
 
@@ -266,7 +266,7 @@ describe('App renderer behavior', () => {
     await waitFor(() => {
       expect(electron.api.deferUpdate).toHaveBeenCalledTimes(1);
       expect(electron.api.scheduleUpdateOnExit).not.toHaveBeenCalled();
-      expect(screen.queryByText('Video Cull v2.1.0 is ready to install.')).toBeNull();
+      expect(screen.queryByText('VideoCull v2.1.0 is ready to install.')).toBeNull();
     });
   });
 
@@ -278,7 +278,7 @@ describe('App renderer behavior', () => {
 
     await waitFor(() => {
       expect(electron.api.scheduleUpdateOnExit).toHaveBeenCalledTimes(1);
-      expect(screen.queryByText('Video Cull v2.1.0 is ready to install.')).toBeNull();
+      expect(screen.queryByText('VideoCull v2.1.0 is ready to install.')).toBeNull();
     });
     expect(await screen.findByText('Update scheduled')).toBeTruthy();
   });

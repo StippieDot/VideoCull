@@ -29,7 +29,7 @@ describe('documentation source adapter', () => {
     const quickStart = DOCUMENTATION_PAGES.find((page) => page.id === 'quick-start');
 
     expect(quickStart?.navigationTitle).toBe('Quick start');
-    expect(quickStart?.title).toBe('Get started with Video Cull');
+    expect(quickStart?.title).toBe('Get started with VideoCull');
     expect(quickStart?.searchableText).toContain('quick start');
     expect(DOCUMENTATION_PAGES.filter((page) => page.id !== 'quick-start')
       .every((page) => page.navigationTitle === page.title)).toBe(true);

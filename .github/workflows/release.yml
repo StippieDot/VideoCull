@@ -46,8 +46,8 @@ jobs:
         shell: pwsh
         run: |
           $version = '${{ steps.vars.outputs.version }}'
-          $expectedExe = "Video.Cull.Setup.$version.exe"
-          $expectedBlockmap = "Video.Cull.Setup.$version.exe.blockmap"
+          $expectedExe = "VideoCull.Setup.$version.exe"
+          $expectedBlockmap = "VideoCull.Setup.$version.exe.blockmap"
           $latestPath = "release/latest.yml"
 
           if (-not (Test-Path "release/$expectedExe")) {
@@ -82,10 +82,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          name: Video Cull ${{ github.ref_name }}
+          name: VideoCull ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
           generate_release_notes: false
           files: |
-            release/Video.Cull.Setup.${{ steps.vars.outputs.version }}.exe
-            release/Video.Cull.Setup.${{ steps.vars.outputs.version }}.exe.blockmap
+            release/VideoCull.Setup.${{ steps.vars.outputs.version }}.exe
+            release/VideoCull.Setup.${{ steps.vars.outputs.version }}.exe.blockmap
             release/latest.yml

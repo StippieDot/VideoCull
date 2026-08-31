@@ -34,14 +34,14 @@ Var VideoCullStartMenuShortcut
       Abort
     ${EndIf}
 
-    !insertmacro MUI_HEADER_TEXT "Video Cull shortcuts" "Choose where setup creates shortcuts."
+    !insertmacro MUI_HEADER_TEXT "VideoCull shortcuts" "Choose where setup creates shortcuts."
     nsDialogs::Create 1018
     Pop $0
     ${If} $0 == error
       Abort
     ${EndIf}
 
-    ${NSD_CreateLabel} 0 0 100% 22u "Create shortcuts for quick access to Video Cull."
+    ${NSD_CreateLabel} 0 0 100% 22u "Create shortcuts for quick access to VideoCull."
     Pop $0
 
     ${NSD_CreateCheckbox} 0 34u 100% 14u "Create a Desktop shortcut"
@@ -87,7 +87,23 @@ Var VideoCullStartMenuShortcut
     StrCpy $launchLink "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
   ${EndIf}
 
+  ${If} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+    Delete "$DESKTOP\Video Cull.lnk"
+    Delete "$SMPROGRAMS\Video Cull.lnk"
+    Delete "$INSTDIR\Video Cull.exe"
+    Delete "$INSTDIR\Uninstall Video Cull.exe"
+  ${EndIf}
+
   WriteRegDWORD SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" VideoCullDesktopShortcut $VideoCullDesktopShortcut
   WriteRegDWORD SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" VideoCullStartMenuShortcut $VideoCullStartMenuShortcut
+!macroend
+!endif
+
+!ifdef BUILD_UNINSTALLER
+!macro customUnInstall
+  Delete "$DESKTOP\Video Cull.lnk"
+  Delete "$SMPROGRAMS\Video Cull.lnk"
+  Delete "$INSTDIR\Video Cull.exe"
+  Delete "$INSTDIR\Uninstall Video Cull.exe"
 !macroend
 !endif

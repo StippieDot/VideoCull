@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Fix thumbnail generation, playback, cache, and deletion issues in Video Cull.
+description: Fix thumbnail generation, playback, cache, and deletion issues in VideoCull.
 ---
 
 Most issues are either stale thumbnails, incomplete metadata, or media compatibility problems. Start with targeted thumbnail regeneration or a rescan. Treat full cache clearing as a last resort because it resets cached review progress.
@@ -9,7 +9,7 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
   <Accordion title="Thumbnails are not generating or are stuck">
     <Steps>
       <Step title="Check that the folder actually contains videos">
-        Video Cull ignores non-video files.
+        VideoCull ignores non-video files.
       </Step>
       <Step title="Regenerate affected thumbnails">
         `Shift`-click in the grid to select the affected videos, then choose **Thumbs** in the batch bar. This preserves their decisions and other metadata.
@@ -37,14 +37,14 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
   </Accordion>
 
   <Accordion title="Windows SmartScreen warns on launch">
-    This is expected. Video Cull is not code-signed yet, so Windows may flag it as an unrecognized app the first time you run it.
+    This is expected. VideoCull is not code-signed yet, so Windows may flag it as an unrecognized app the first time you run it.
 
     <Steps>
       <Step title="Click More info">
         Use the **More info** link on the SmartScreen prompt.
       </Step>
       <Step title="Click Run anyway">
-        Continue only if you downloaded the installer from the official [GitHub Releases](https://github.com/stippie-dot/VideoCull/releases) page.
+        Continue only if you downloaded the installer from the official [GitHub Releases](https://github.com/StippieDot/VideoCull/releases) page.
       </Step>
     </Steps>
   </Accordion>
@@ -56,7 +56,7 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
   </Accordion>
 
   <Accordion title="I accidentally sent videos to the Recycle Bin">
-    Restore them from the Windows Recycle Bin, then rescan in Video Cull so the files appear in the grid again.
+    Restore them from the Windows Recycle Bin, then rescan in VideoCull so the files appear in the grid again.
   </Accordion>
 
   <Accordion title="Thumbnail generation uses too much CPU">
@@ -84,6 +84,6 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
   </Accordion>
 
   <Accordion title="Bookmarks or decisions look missing after an update">
-    Rescan the folder first so any cache migration can complete. If the data is still missing after that, file a report on [GitHub](https://github.com/stippie-dot/VideoCull/issues).
+    Rescan the folder first so any cache migration can complete. If the data is still missing after that, file a report on [GitHub](https://github.com/StippieDot/VideoCull/issues).
   </Accordion>
 </AccordionGroup>

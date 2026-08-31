@@ -5,11 +5,11 @@ description: Understand the difference between marking videos and removing files
 
 {/* in-app-meta
 {
-  "summary": "Know exactly when Video Cull changes a status and when it touches files on disk."
+  "summary": "Know exactly when VideoCull changes a status and when it touches files on disk."
 }
 */}
 
-Video Cull separates review decisions from file deletion. Keep, Delete, Skip, and Reset are reversible status changes. Files only leave disk when you run the final delete action and confirm the batch.
+VideoCull separates review decisions from file deletion. Keep, Delete, Skip, and Reset are reversible status changes. Files only leave disk when you run the final delete action and confirm the batch.
 
 <Warning>
   The final delete action includes every loaded video marked Delete, even when filters currently hide some of them. Check the total count and size in the confirmation.
@@ -43,27 +43,27 @@ The report export can include all loaded videos or only the current filtered res
 
 ## Recycle Bin and permanent fallback
 
-Video Cull first sends each marked file to the Windows Recycle Bin. If that fails for some files, the app asks whether those failed files may be deleted permanently.
+VideoCull first sends each marked file to the Windows Recycle Bin. If that fails for some files, the app asks whether those failed files may be deleted permanently.
 
 - Choose **Cancel** to leave the failed files in place. Files already moved to the Recycle Bin remain there.
-- Choose **Delete Permanently** only when you accept that those files cannot be restored through Video Cull or the Recycle Bin.
+- Choose **Delete Permanently** only when you accept that those files cannot be restored through VideoCull or the Recycle Bin.
 - A result message reports successful, failed, and permanent deletions separately.
 
 ## Path and cache safety
 
 Deletion requests are accepted only for videos inside the folders currently loaded in the session. Paths outside those roots are rejected.
 
-After a successful deletion, Video Cull removes the video from the session and clears its related cache rows and thumbnail files. Failed deletions remain available so you can investigate or retry them.
+After a successful deletion, VideoCull removes the video from the session and clears its related cache rows and thumbnail files. Failed deletions remain available so you can investigate or retry them.
 
 ## Empty-folder cleanup
 
-**Remove empty source folders after delete** is off by default. When enabled, Video Cull removes source folders that become empty after successful video deletion.
+**Remove empty source folders after delete** is off by default. When enabled, VideoCull removes source folders that become empty after successful video deletion.
 
 Leave it off unless cleaning the folder tree is part of your intended workflow. The delete confirmation states when empty-folder cleanup is enabled.
 
 ## Recover a mistaken deletion
 
-Restore files from the Windows Recycle Bin, then rescan the containing folder so they return to the session. A permanent fallback cannot be undone by Video Cull.
+Restore files from the Windows Recycle Bin, then rescan the containing folder so they return to the session. A permanent fallback cannot be undone by VideoCull.
 
 <CardGroup cols={2}>
   <Card title="Quick start" icon="bolt" href="/getting-started/quickstart">

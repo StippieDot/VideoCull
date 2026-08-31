@@ -80,5 +80,5 @@ test('delete confirmation describes recycle bin, fallback, and empty-folder clea
     count: 2,
     sizeBytes: 1536,
     removeEmptyFoldersAfterDelete: true,
-  })).toBe('Move 2 marked videos (2 KB) to the Recycle Bin? If the Recycle Bin is unavailable, Video Cull will ask before permanently deleting. Empty source folders will be cleaned up when they are truly empty.');
+  })).toBe('Move 2 marked videos (2 KB) to the Recycle Bin? If the Recycle Bin is unavailable, VideoCull will ask before permanently deleting. Empty source folders will be cleaned up when they are truly empty.');
 });

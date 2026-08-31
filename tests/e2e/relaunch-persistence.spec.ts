@@ -53,7 +53,7 @@ test('relaunch starts with the saved light theme', async () => {
   try {
     app = await launchElectronApp(userDataDir);
     let page = await app.firstWindow();
-    await expect(page.getByRole('heading', { name: 'Video Cull' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'VideoCull' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Switch to light mode' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');

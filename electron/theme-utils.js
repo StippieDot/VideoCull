@@ -1,5 +1,5 @@
 const DEFAULT_COLOR_THEME = 'dark';
-const THEME_ARGUMENT_PREFIX = '--video-cull-theme=';
+const THEME_ARGUMENT_PREFIX = '--videocull-theme=';
 
 function normalizeColorTheme(value) {
   return value === 'light' ? 'light' : DEFAULT_COLOR_THEME;

@@ -216,7 +216,7 @@ describe('SettingsModal integration behavior', () => {
 
     electronAPI.emitUpdateStatus({ status: 'scheduled', version: '2.2.0' });
 
-    expect(await screen.findByText('v2.2.0 will install when Video Cull exits')).toBeTruthy();
+    expect(await screen.findByText('v2.2.0 will install when VideoCull exits')).toBeTruthy();
     expect(screen.getByRole('button', { name: /update now to v2.2.0/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /ask me later/i })).toBeTruthy();
   });

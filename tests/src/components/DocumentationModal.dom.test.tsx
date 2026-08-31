@@ -45,7 +45,7 @@ describe('DocumentationModal behavior', () => {
     expect(within(header as HTMLElement).getByRole('button', { name: /close documentation/i })).toBeTruthy();
     expect(document.querySelector('.documentation-toolbar')).toBeNull();
     expect(screen.queryByText(/complete offline guide/i)).toBeNull();
-    expect(screen.getByRole('heading', { level: 3, name: 'Get started with Video Cull' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: 'Get started with VideoCull' })).toBeTruthy();
 
     const docsNav = screen.getByRole('navigation', { name: /documentation pages/i });
     const quickStartNav = within(docsNav).getByRole('button', { name: 'Quick start' });

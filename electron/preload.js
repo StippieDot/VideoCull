@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-const initialThemeArgument = process.argv.find((value) => value.startsWith('--video-cull-theme='));
-const initialTheme = initialThemeArgument?.slice('--video-cull-theme='.length) === 'light' ? 'light' : 'dark';
+const initialThemeArgument = process.argv.find((value) => value.startsWith('--videocull-theme='));
+const initialTheme = initialThemeArgument?.slice('--videocull-theme='.length) === 'light' ? 'light' : 'dark';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   initialTheme: initialTheme,

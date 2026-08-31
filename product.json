@@ -1,0 +1,15 @@
+{
+  "displayName": "VideoCull",
+  "technicalName": "videocull",
+  "legacyDisplayName": "Video Cull",
+  "legacyTechnicalName": "video-cull",
+  "appId": "com.videocull.app",
+  "publisher": "StippieDot",
+  "repository": {
+    "owner": "StippieDot",
+    "name": "VideoCull",
+    "url": "https://github.com/StippieDot/VideoCull"
+  },
+  "website": "https://videocull.app",
+  "documentation": "https://docs.videocull.app"
+}

@@ -1,13 +1,13 @@
 ---
-title: Install Video Cull on Windows
-description: Download and install Video Cull on Windows. No admin rights required. FFmpeg and FFprobe are bundled.
+title: Install VideoCull on Windows
+description: Download and install VideoCull on Windows. No admin rights required. FFmpeg and FFprobe are bundled.
 ---
 
-Video Cull ships as a Windows installer for the current user. You do not need administrator rights, and you do not need to install FFmpeg or FFprobe separately. The installer packages everything the app needs for thumbnail generation and video analysis.
+VideoCull ships as a Windows installer for the current user. You do not need administrator rights, and you do not need to install FFmpeg or FFprobe separately. The installer packages everything the app needs for thumbnail generation and video analysis.
 
 <Steps>
   <Step title="Download the latest installer">
-    Open the [GitHub Releases](https://github.com/stippie-dot/VideoCull/releases) page and download the newest Windows installer from the latest release.
+    Open the [GitHub Releases](https://github.com/StippieDot/VideoCull/releases) page and download `VideoCull.Setup.<version>.exe` from the latest release.
   </Step>
   <Step title="Run the installer">
     Double-click the downloaded `.exe` file and choose your install location and shortcut options.
@@ -15,7 +15,7 @@ Video Cull ships as a Windows installer for the current user. You do not need ad
   <Step title="Handle the SmartScreen prompt">
     Windows may show a SmartScreen warning because the app is not code-signed yet. Click **More info**, then **Run anyway** to proceed.
   </Step>
-  <Step title="Launch Video Cull">
+  <Step title="Launch VideoCull">
     Start the app from the Start Menu or the desktop shortcut created by the installer.
   </Step>
 </Steps>
@@ -29,10 +29,18 @@ Video Cull ships as a Windows installer for the current user. You do not need ad
 
 ## What gets installed
 
-The installer creates Start Menu and Desktop shortcuts named **Video Cull**.
+The installer creates Start Menu and Desktop shortcuts named **VideoCull**.
 
 Later updates are handled in-app when a GitHub release is available.
 
 <Note>
   Cache data is stored separately from the installed app, so reinstalling does not automatically wipe your review progress.
 </Note>
+
+## Updating from v2.2.0
+
+VideoCull v2.2.1 renames the verified v2.2.0 profile at `%APPDATA%\video-cull` to `%APPDATA%\VideoCull`. It uses an atomic directory rename, so it does not duplicate a large thumbnail cache.
+
+If Windows cannot rename the folder, VideoCull leaves it untouched, uses the existing profile for that launch, and tries again next time. If both the old and new profile folders exist, the app never merges or overwrites them. It selects a valid profile, retains both folders, and shows a warning with both paths.
+
+The existing installation directory stays in place during an upgrade. Because the executable and shortcut are now named `VideoCull`, you may need to remove an old taskbar pin and pin the app again.

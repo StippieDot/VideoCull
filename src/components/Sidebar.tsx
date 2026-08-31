@@ -8,6 +8,7 @@ import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { formatDeleteConfirmation, formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
+import { PRODUCT } from '../product';
 import videoCullLogo from '../assets/videocull-logo.png';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
@@ -955,7 +956,7 @@ export default function Sidebar({
       <div className="sidebar-header">
         <h1 className="sidebar-logo">
           <img className="sidebar-logo-icon" src={videoCullLogo} alt="" aria-hidden="true" />
-          Video Cull
+          {PRODUCT.displayName}
         </h1>
         <div className="sidebar-header-actions">
           <button

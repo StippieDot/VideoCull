@@ -64,7 +64,7 @@ export async function launchElectronApp(userDataDir: string): Promise<ElectronAp
 
 export async function openSeededRecentFolder(app: ElectronApplication, fileName = 'alpha.mp4'): Promise<Page> {
   const page = await app.firstWindow();
-  await expect(page.getByRole('heading', { name: 'Video Cull' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'VideoCull' })).toBeVisible();
   await page.locator('.empty-recent-item').first().click();
   await expect(page.getByText(fileName)).toBeVisible();
   return page;

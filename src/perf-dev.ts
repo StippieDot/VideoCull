@@ -275,7 +275,7 @@ export function installDevPerfGlobal() {
     },
   };
 
-  window.__VIDEO_CULL_DEV_PERF__ = globalApi;
+  window.__VIDEOCULL_DEV_PERF__ = globalApi;
 }
 import type {
   IdleDiagnosticsSnapshot,

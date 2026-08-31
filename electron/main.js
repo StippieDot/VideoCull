@@ -47,16 +47,11 @@ const {
   videoForDb,
 } = require('./main-helpers');
 const isE2E = process.env.VC_E2E_USE_DIST === '1';
-const e2eUserDataPath = process.env.VC_E2E_USER_DATA_DIR;
 const isDev = !app.isPackaged && !isE2E;
 const updatesEnabled = !isDev && !isE2E && process.env.VC_DISABLE_UPDATES !== '1';
+const profileBootstrap = globalThis.__VIDEOCULL_PROFILE_BOOTSTRAP__ ?? null;
+let pendingProfileWarning = profileBootstrap?.warning ?? null;
 let autoUpdaterInstance = null;
-
-if (e2eUserDataPath) {
-  app.setPath('userData', e2eUserDataPath);
-} else if (isDev) {
-  app.setPath('userData', app.getPath('userData') + '-dev');
-}
 let mainWindow;
 let currentScanDir = null;
 let currentScanDirs = new Set();
@@ -77,9 +72,9 @@ let lastEventLoopUtilization = typeof nodePerformance.eventLoopUtilization === '
 const RESPONSIVE_SCAN_YIELD_MS = 16;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
 const ALLOWED_EXTERNAL_URLS = new Set([
-  'https://github.com/stippie-dot/VideoCull',
-  'https://github.com/stippie-dot/VideoCull/releases',
-  'https://github.com/sponsors/stippie-dot',
+  'https://github.com/StippieDot/VideoCull',
+  'https://github.com/StippieDot/VideoCull/releases',
+  'https://github.com/sponsors/StippieDot',
   'https://paypal.me/stippiedot',
 ]);
 
@@ -292,7 +287,13 @@ function createWindow(initialTheme = 'dark') {
     },
   });
 
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    if (pendingProfileWarning) {
+      sendToRenderer('app-notification', pendingProfileWarning);
+      pendingProfileWarning = null;
+    }
+  });
   mainWindow.webContents.on('render-process-gone', async (_event, details) => {
     log.error('[renderer-crash] Render process gone', details);
     try {
@@ -329,6 +330,14 @@ const customProtocolSchemes = [
 protocol.registerSchemesAsPrivileged(customProtocolSchemes);
 
 app.whenReady().then(async () => {
+  if (profileBootstrap) {
+    log.info('[profile-bootstrap]', {
+      status: profileBootstrap.status,
+      selectedPath: profileBootstrap.selectedPath,
+      userData: app.getPath('userData'),
+      sessionData: app.getPath('sessionData'),
+    });
+  }
   defaultCentralCacheRoot = path.join(app.getPath('userData'), 'video-cache');
 
   protocol.handle('thumb', async (request) => {
@@ -1534,7 +1543,7 @@ function buildReportHtml(videos, dirPaths) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Video Cull Report</title>
+    <title>VideoCull Report</title>
     <style>
       :root { color-scheme: dark; }
       body { margin: 0; font-family: Arial, sans-serif; background: #0b0b12; color: #f3f4f6; }
@@ -1568,7 +1577,7 @@ function buildReportHtml(videos, dirPaths) {
   <body>
     <div class="wrap">
       <header class="hero">
-        <h1>Video Cull Report</h1>
+        <h1>VideoCull Report</h1>
         <p>${escapeHtml(roots.length === 1 ? roots[0] : `${roots.length} folders`)}</p>
         <p>Exported ${escapeHtml(new Date().toLocaleString())}</p>
       </header>
@@ -2520,7 +2529,7 @@ ipcMain.handle('export-report', async (_event, videos, dirPaths) => {
 
   const defaultFileName = `videocull-report-${new Date().toISOString().slice(0, 10)}.html`;
   const result = await dialog.showSaveDialog(mainWindow, {
-    title: 'Export Video Cull Report',
+    title: 'Export VideoCull Report',
     defaultPath: path.join(app.getPath('documents'), defaultFileName),
     filters: [{ name: 'HTML', extensions: ['html'] }],
     properties: ['createDirectory'],
@@ -2628,7 +2637,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
   const { response } = await dialog.showMessageBox(mainWindow, {
     type: 'question',
     title: 'Cache storage changed',
-    message: 'How should Video Cull handle existing cache data?',
+    message: 'How should VideoCull handle existing cache data?',
     detail: `${knownFolders.length} known folder cache${knownFolders.length === 1 ? '' : 's'} can be moved to the new location. Choose Start fresh to discard cache and regenerate thumbnails/metadata next scan.`,
     buttons: ['Migrate existing cache', 'Start fresh', 'Cancel'],
     defaultId: 0,

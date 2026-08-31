@@ -7,6 +7,7 @@ import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { formatRelativeTime, formatRecentPath } from '../utils';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
+import { PRODUCT } from '../product';
 import videoCullIcon from '../assets/videocull-icon.png';
 import './EmptyState.css';
 
@@ -177,7 +178,7 @@ export default function EmptyState({ onNotify, onOpenDocumentation, onToggleThem
       <div className="empty-icon">
         <img src={videoCullIcon} alt="" aria-hidden="true" />
       </div>
-      <h2 className="empty-title">Video Cull</h2>
+      <h2 className="empty-title">{PRODUCT.displayName}</h2>
       <p className="empty-desc">
         Select a folder to start reviewing your video collection.<br />
         Quickly sort, keep, or delete videos using thumbnails.

@@ -8,6 +8,7 @@ export default defineConfig({
     exclude: [
       'tests/electron/cache.test.js',
       'tests/electron/cache.migration.test.js',
+      'tests/electron/profile-bootstrap.test.js',
     ],
     coverage: {
       provider: 'v8',

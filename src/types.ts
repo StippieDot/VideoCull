@@ -599,7 +599,7 @@ export interface ElectronAPI {
 declare global {
   interface Window {
     electronAPI: ElectronAPI;
-    __VIDEO_CULL_DEV_PERF__?: {
+    __VIDEOCULL_DEV_PERF__?: {
       getSnapshot: () => RendererPerformanceSnapshot;
       getCombinedSnapshot: () => Promise<{
         renderer: RendererPerformanceSnapshot;

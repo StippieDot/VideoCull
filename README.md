@@ -1,13 +1,13 @@
-# Video Cull
-[![Release](https://img.shields.io/github/v/release/stippie-dot/VideoCull?style=for-the-badge)](https://github.com/stippie-dot/VideoCull/releases)
-[![License](https://img.shields.io/github/license/stippie-dot/VideoCull?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge)](https://github.com/stippie-dot/VideoCull/releases)
+# VideoCull
+[![Release](https://img.shields.io/github/v/release/StippieDot/VideoCull?style=for-the-badge)](https://github.com/StippieDot/VideoCull/releases)
+[![License](https://img.shields.io/github/license/StippieDot/VideoCull?style=for-the-badge)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge)](https://github.com/StippieDot/VideoCull/releases)
 [![Docs](https://img.shields.io/badge/docs-videocull.app-1f2937?style=for-the-badge&logo=readthedocs&logoColor=white)](https://docs.videocull.app)
 > Review, sort, and de-duplicate any local video folder faster.
 
 Video folders get out of hand fast. Download folders, old backups, personal archives, screen recordings, and camera footage can all grow into collections that are too tedious to review one file at a time.
 
-Video Cull is built to make that part faster. Open a folder and it scans the videos, generates thumbnail strips, and lets you work through them with the keyboard instead of opening files one by one. If thumbnails aren’t enough, play the video right there, scrub through it, rate it, favorite it, or mark it and move on.
+VideoCull is built to make that part faster. Open a folder and it scans the videos, generates thumbnail strips, and lets you work through them with the keyboard instead of opening files one by one. If thumbnails aren’t enough, play the video right there, scrub through it, rate it, favorite it, or mark it and move on.
 
 It also helps with the mess that builds up around large libraries: you can filter and sort aggressively, work through likely duplicates with suggested keepers, and batch-delete what you don’t want without losing track of the rest.
 
@@ -33,13 +33,20 @@ When you’re done, everything marked for deletion goes to the Recycle Bin when 
 
 ## Download
 
-Grab the latest installer from the [Releases](https://github.com/stippie-dot/VideoCull/releases) page.
+Grab `VideoCull.Setup.<version>.exe` from the [Releases](https://github.com/StippieDot/VideoCull/releases) page.
 
 The packaged installer is Windows-first, installs for the current user, and does not require admin rights. On first launch Windows may show a SmartScreen prompt since the app isn't code-signed yet; click "Run anyway" to proceed.
 
 The installer lets you choose the install location and shortcuts. Later updates are handled in-app when a GitHub release is available.
+
+### Updating from v2.2.0
+
+VideoCull v2.2.1 renames the verified v2.2.0 profile at `%APPDATA%\video-cull` to `%APPDATA%\VideoCull` without copying its thumbnail cache. If Windows cannot perform the rename, the app leaves the old profile untouched, uses it for that launch, and tries again next time.
+
+If both folders already exist, VideoCull does not merge or overwrite them. It uses a valid `%APPDATA%\VideoCull` profile when possible, keeps both folders, and shows which one is active. Existing installations stay in their current install directory. Windows may require you to re-pin the renamed app on the taskbar.
+
 > [!IMPORTANT]
-> **Official Links:** The official website and documentation for VideoCull are hosted exclusively at **[videocull.app](https://docs.videocull.app/)** and this GitHub repository. 
+> **Official links:** Use [videocull.app](https://videocull.app/) for the product website, [docs.videocull.app](https://docs.videocull.app/) for documentation, and this GitHub repository for source and releases.
 > 
 > *Please beware of third-party domains (such as `.com` variants) offering downloads. They are NOT affiliated with this project and may contain modified or unsafe binaries.*
 
@@ -112,7 +119,7 @@ Progress lives in SQLite databases under the configured cache location.
 
 ### Known Issues
 
-- Initial scanning can be very slow on some cloud-mounted drives, confirmed on mounted Google Drive setups. See [issue #2](https://github.com/stippie-dot/VideoCull/issues/2).
+- Initial scanning can be very slow on some cloud-mounted drives, confirmed on mounted Google Drive setups. See [issue #2](https://github.com/StippieDot/VideoCull/issues/2).
 
 ### Export
 
@@ -185,7 +192,7 @@ Duplicate detection also has its own settings tab with options for comparison me
 
 ## Supported Formats
 
-Video Cull generates thumbnails and metadata with FFmpeg, so it can inspect many common video formats.
+VideoCull generates thumbnails and metadata with FFmpeg, so it can inspect many common video formats.
 
 The built-in player is intended for compatible web-playable media such as `.mp4`, `.webm`, `.mov`, `.mkv`, `.m4v`, and `.ogv` when the underlying codecs are supported. Legacy or unsupported formats such as `.avi`, `.wmv`, `.asf`, `.flv`, `.ts`, `.mts`, and `.mpeg` open in your default system player instead.
 
@@ -196,7 +203,7 @@ The built-in player is intended for compatible web-playable media such as `.mp4`
 Requires Node.js 24 LTS. FFmpeg and FFprobe are bundled with the app dependencies.
 
 ```bash
-git clone https://github.com/stippie-dot/VideoCull.git
+git clone https://github.com/StippieDot/VideoCull.git
 cd VideoCull
 npm ci
 npm run dev
@@ -223,7 +230,7 @@ Notes:
 - `npm run test:ci` is the normal local verification path.
 - `npm run test:cache-native` is kept separate on purpose. It is useful in clean Node-only installs and CI, but can skip locally after `better-sqlite3` has been rebuilt for Electron packaging.
 - If you run `npm run rebuild` to package or launch Electron with a freshly rebuilt native module, that does not mean the plain Node native-cache lane will also be runnable in the same `node_modules` tree.
-- Development Electron sessions use a separate `userData` folder (`...-dev`) so local settings/cache do not mix with the packaged app.
+- Production Electron sessions use `%APPDATA%\VideoCull`. Development sessions use `%APPDATA%\VideoCull-dev`, so local settings and cache do not mix with the packaged app.
 - E2E runs use their own temporary `userData` directory and do not touch your normal app data.
 
 ---
@@ -236,11 +243,11 @@ Notes:
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=stippie-dot%2FVideoCull&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=StippieDot%2FVideoCull&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=stippie-dot/VideoCull&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=stippie-dot/VideoCull&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=stippie-dot/VideoCull&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=StippieDot/VideoCull&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=StippieDot/VideoCull&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=StippieDot/VideoCull&type=date&legend=top-left" />
  </picture>
 </a>
 

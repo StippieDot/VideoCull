@@ -1,4 +1,4 @@
-﻿import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import useStore from './store';
 import { Profiler } from 'react';
 import { formatKeybind, matchesKeybind } from './keybinds';
@@ -258,7 +258,7 @@ export default function App() {
     queueSettingsSave('theme');
     pushToast({
       title: nextTheme === 'light' ? 'Light mode' : 'Dark mode',
-      detail: `Video Cull now uses the ${nextTheme} theme.`,
+      detail: `VideoCull now uses the ${nextTheme} theme.`,
       kind: 'info',
       dedupeKey: 'theme-toggle',
     });
@@ -271,7 +271,7 @@ export default function App() {
       setUpdateBannerDismissed(true);
       pushToast({
         title: 'Update scheduled',
-        detail: `Video Cull v${updateInfo.version ?? 'the latest version'} will install when the app closes.`,
+        detail: `VideoCull v${updateInfo.version ?? 'the latest version'} will install when the app closes.`,
         kind: 'info',
         dedupeKey: 'update-scheduled',
       });
@@ -1171,7 +1171,7 @@ export default function App() {
       {/* Update-ready banner */}
       {updateInfo.status === 'ready' && !updateBannerDismissed && !isPrivate && (
         <div className="update-banner">
-          <span>Video Cull v{updateInfo.version} is ready to install.</span>
+          <span>VideoCull v{updateInfo.version} is ready to install.</span>
           <div className="update-banner-actions">
             <button className="update-banner-btn primary" onClick={() => void window.electronAPI?.installUpdate()}>
               Update now

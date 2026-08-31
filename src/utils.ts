@@ -22,7 +22,7 @@ export function formatDeleteConfirmation({
   const folderDetail = removeEmptyFoldersAfterDelete
     ? ' Empty source folders will be cleaned up when they are truly empty.'
     : ' Empty source folders will not be removed.';
-  return `Move ${count} ${videoLabel} (${formatSize(sizeBytes)}) to the Recycle Bin? If the Recycle Bin is unavailable, Video Cull will ask before permanently deleting.${folderDetail}`;
+  return `Move ${count} ${videoLabel} (${formatSize(sizeBytes)}) to the Recycle Bin? If the Recycle Bin is unavailable, VideoCull will ask before permanently deleting.${folderDetail}`;
 }
 
 /**

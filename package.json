@@ -1,22 +1,24 @@
 {
-  "name": "video-cull",
-  "version": "2.2.0",
+  "name": "videocull",
+  "version": "2.2.1",
   "description": "High-performance video culling tool for managing large video collections",
-  "author": "stippie dot",
+  "author": "StippieDot",
   "license": "AGPL-3.0-only",
-  "main": "electron/main.js",
+  "main": "electron/bootstrap.js",
   "scripts": {
     "dev:vite": "vite",
     "dev": "node scripts/dev.js",
     "build": "vite build",
     "check:ipc": "node scripts/check-ipc-contract.js",
     "check:installer": "node scripts/check-installer-config.js",
+    "check:brand": "node scripts/check-brand.js",
     "test": "vitest run",
     "test:renderer": "vitest run -c vitest.renderer.config.ts",
     "test:watch": "vitest",
     "test:cache-native": "node --test tests/electron/cache.test.js tests/electron/cache.migration.test.js",
     "coverage": "vitest run --coverage",
-    "test:ci": "npm run check:ipc && npm run check:installer && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
+    "test:profile": "node --test tests/electron/profile-bootstrap.test.js",
+    "test:ci": "npm run check:ipc && npm run check:installer && npm run check:brand && npm run test:profile && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
     "test:e2e": "npm run build && playwright test",
     "test:duplicates": "vitest run tests/electron/duplicate-utils.test.js tests/electron/duplicates.test.js tests/electron/duplicate-worker.test.js tests/electron/visual-worker.test.js",
     "cleanup:cache": "node scripts/cleanup-cache-clutter.js",
@@ -60,13 +62,14 @@
   },
   "build": {
     "appId": "com.videocull.app",
-    "productName": "Video Cull",
+    "productName": "VideoCull",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "product.json",
       "node_modules/@ffmpeg-installer/**/*",
       "node_modules/@ffprobe-installer/**/*",
       "node_modules/fluent-ffmpeg/**/*",
@@ -87,11 +90,12 @@
     "win": {
       "target": "nsis",
       "icon": "build/videocull.ico",
-      "artifactName": "Video.Cull.Setup.${version}.${ext}"
+      "executableName": "VideoCull",
+      "artifactName": "VideoCull.Setup.${version}.${ext}"
     },
     "publish": {
       "provider": "github",
-      "owner": "stippie-dot",
+      "owner": "StippieDot",
       "repo": "VideoCull"
     },
     "nsis": {
@@ -101,7 +105,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
-      "shortcutName": "Video Cull",
+      "shortcutName": "VideoCull",
+      "uninstallDisplayName": "VideoCull ${version}",
       "installerIcon": "build/videocull.ico",
       "uninstallerIcon": "build/videocull.ico",
       "include": "build/installer.nsh",

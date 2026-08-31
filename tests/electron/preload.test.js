@@ -34,7 +34,7 @@ function loadPreload() {
 
   vm.runInNewContext(source, {
     process: {
-      argv: ['electron', '.', '--video-cull-theme=light'],
+      argv: ['electron', '.', '--videocull-theme=light'],
     },
     require: (name) => {
       if (name === 'electron') return fakeElectron;

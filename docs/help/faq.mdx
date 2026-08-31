@@ -13,8 +13,8 @@ description: Answers to common questions about formats, cache, offline use, upda
 These answers cover the short questions that come up during normal culling. For a complete workflow, use the dedicated cache, delete-safety, or feature page instead.
 
 <AccordionGroup>
-  <Accordion title="Which video formats does Video Cull support?">
-    Video Cull can generate thumbnails and metadata for many common formats through FFmpeg.
+  <Accordion title="Which video formats does VideoCull support?">
+    VideoCull can generate thumbnails and metadata for many common formats through FFmpeg.
 
     The built-in player is intended for web-playable formats such as `.mp4`, `.webm`, `.mov`, `.mkv`, `.m4v`, and `.ogv` when the codecs are supported.
 
@@ -22,11 +22,11 @@ These answers cover the short questions that come up during normal culling. For 
   </Accordion>
 
   <Accordion title="Do I need to install FFmpeg separately?">
-    No. FFmpeg and FFprobe are bundled with Video Cull.
+    No. FFmpeg and FFprobe are bundled with VideoCull.
   </Accordion>
 
-  <Accordion title="Where does Video Cull store thumbnails and decisions?">
-    Video Cull stores progress in SQLite databases plus thumbnail files under the configured cache location.
+  <Accordion title="Where does VideoCull store thumbnails and decisions?">
+    VideoCull stores progress in SQLite databases plus thumbnail files under the configured cache location.
 
     The app supports three cache location modes:
 
@@ -38,19 +38,19 @@ These answers cover the short questions that come up during normal culling. For 
   </Accordion>
 
   <Accordion title="How do I move cache to a new drive?">
-    Change the location in cache settings. Video Cull lets you migrate the existing cache, start fresh at the new location, or cancel without changing anything.
+    Change the location in cache settings. VideoCull lets you migrate the existing cache, start fresh at the new location, or cancel without changing anything.
 
     Choose migration when the existing thumbnails and decisions are still valuable and the source drive will remain available during the move. See [Cache and processing](/reference/cache-and-processing) for the storage modes and migration behavior.
   </Accordion>
 
   <Accordion title="Will rescanning regenerate every thumbnail?">
-    Not usually. Video Cull skips videos whose thumbnail set is already complete in cache.
+    Not usually. VideoCull skips videos whose thumbnail set is already complete in cache.
 
     If you change thumbnail settings and need a rebuild, batch-select the affected videos in the grid and choose **Thumbs**. This regenerates their thumbnails without discarding decisions, ratings, favorites, or bookmarks.
   </Accordion>
 
   <Accordion title="Can I review more than one folder in the same session?">
-    Yes. Video Cull supports drag-and-drop folder opening and multi-directory sessions. Recent directories are also tracked so you can reopen them quickly later.
+    Yes. VideoCull supports drag-and-drop folder opening and multi-directory sessions. Recent directories are also tracked so you can reopen them quickly later.
   </Accordion>
 
   <Accordion title="Can I undo a Keep or Delete decision?">
@@ -76,15 +76,15 @@ These answers cover the short questions that come up during normal culling. For 
   </Accordion>
 
   <Accordion title="Are deleted files permanently removed?">
-    No. Video Cull sends marked files to the Recycle Bin when possible. They are not gone forever unless you empty the Recycle Bin or your system cannot use it for that location.
+    No. VideoCull sends marked files to the Recycle Bin when possible. They are not gone forever unless you empty the Recycle Bin or your system cannot use it for that location.
 
-    If you send files there by mistake, you can restore them from the Windows Recycle Bin and then rescan in Video Cull.
+    If you send files there by mistake, you can restore them from the Windows Recycle Bin and then rescan in VideoCull.
 
     See [Delete and safety](/features/delete-and-safety) before committing a large batch or using a location without Recycle Bin support.
   </Accordion>
 
-  <Accordion title="Does Video Cull work offline?">
-    Yes. Video Cull runs locally and does not require an account or cloud sync.
+  <Accordion title="Does VideoCull work offline?">
+    Yes. VideoCull runs locally and does not require an account or cloud sync.
   </Accordion>
 
   <Accordion title="Will upgrades preserve my decisions and bookmarks?">
@@ -94,10 +94,10 @@ These answers cover the short questions that come up during normal culling. For 
   </Accordion>
 
   <Accordion title="Why does Windows SmartScreen warn me about the installer?">
-    The installer is not code-signed yet, so Windows may flag it as an unrecognized app. Use the official [GitHub Releases](https://github.com/stippie-dot/VideoCull/releases) page and click **More info** then **Run anyway**.
+    The installer is not code-signed yet, so Windows may flag it as an unrecognized app. Use the official [GitHub Releases](https://github.com/StippieDot/VideoCull/releases) page and click **More info** then **Run anyway**.
   </Accordion>
 
-  <Accordion title="Can I use Video Cull on macOS or Linux?">
+  <Accordion title="Can I use VideoCull on macOS or Linux?">
     Current packaged releases are Windows-first. The app is built with Electron, but there are no official macOS or Linux installers at the moment.
   </Accordion>
 
@@ -108,6 +108,6 @@ These answers cover the short questions that come up during normal culling. For 
   </Accordion>
 
   <Accordion title="Can I export my keep and delete results?">
-    Yes. Video Cull can generate an HTML report from Settings or the app menu. You can scope the export to all loaded videos or just the current filtered results.
+    Yes. VideoCull can generate an HTML report from Settings or the app menu. You can scope the export to all loaded videos or just the current filtered results.
   </Accordion>
 </AccordionGroup>

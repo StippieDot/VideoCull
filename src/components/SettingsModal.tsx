@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import useStore from '../store';
 import { ArrowDown, ArrowUp, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake } from 'lucide-react';
 import type { AppSettings, ToastInput, UpdateInfo } from '../types';
@@ -6,6 +6,7 @@ import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
 import KeybindInput from './KeybindInput';
+import { PRODUCT } from '../product';
 import './SettingsModal.css';
 
 const KEYBIND_GROUPS: ShortcutGroup[] = ['Review mode', 'Preview', 'Global'];
@@ -13,9 +14,9 @@ const KEYBIND_GROUPS: ShortcutGroup[] = ['Review mode', 'Preview', 'Global'];
 type SettingsTab = 'interface' | 'features' | 'duplicates' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about';
 
 const ABOUT_LINKS = {
-  repo: 'https://github.com/stippie-dot/VideoCull',
-  releases: 'https://github.com/stippie-dot/VideoCull/releases',
-  sponsors: 'https://github.com/sponsors/stippie-dot',
+  repo: PRODUCT.repository.url,
+  releases: `${PRODUCT.repository.url}/releases`,
+  sponsors: `https://github.com/sponsors/${PRODUCT.publisher}`,
   paypal: 'https://paypal.me/stippiedot',
 } as const;
 
@@ -351,7 +352,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
       return;
     }
     if (!currentDriveKey) {
-      setCacheMessage('Open a folder first so Video Cull knows which drive to configure.');
+      setCacheMessage('Open a folder first so VideoCull knows which drive to configure.');
       return;
     }
     handleChange('perDriveCachePaths', {
@@ -808,7 +809,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     />
                     Auto-clean stale cache after scans
                   </label>
-                  <span className="help-text">After a scan, Video Cull can automatically remove stale cache rows, thumbnail folders for files that disappeared, and remembered child-folder caches that no longer exist on disk.</span>
+                  <span className="help-text">After a scan, VideoCull can automatically remove stale cache rows, thumbnail folders for files that disappeared, and remembered child-folder caches that no longer exist on disk.</span>
                 </div>
 
                 <div className="form-group checkbox-group">
@@ -957,7 +958,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 available: `Update available: v${updateInfo.version}`,
                 downloading: `Downloading… ${updateInfo.percent ?? 0}%`,
                 ready: `v${updateInfo.version} ready to install`,
-                scheduled: `v${updateInfo.version} will install when Video Cull exits`,
+                scheduled: `v${updateInfo.version} will install when VideoCull exits`,
                 deferred: `v${updateInfo.version} postponed until the next launch`,
                 'up-to-date': "You're up to date",
                 error: `Error: ${updateInfo.message ?? 'unknown'}`,
@@ -1042,7 +1043,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 <div className="about-header">
                   <div className="about-mark">VC</div>
                   <div>
-                    <h3>Video Cull</h3>
+                    <h3>{PRODUCT.displayName}</h3>
                     <span className="version-display">v{appVersionLabel}</span>
                   </div>
                 </div>
