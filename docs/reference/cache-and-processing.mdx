@@ -12,6 +12,8 @@ description: Choose where VideoCull stores local progress and understand which p
 
 VideoCull stores SQLite databases and generated thumbnails locally. The cache preserves decisions, ratings, favorites, bookmarks, metadata, duplicate fingerprints, and thumbnail paths across rescans and restarts.
 
+![VideoCull Cache settings showing centralised, per-drive, and distributed storage controls](/screenshots/cache-settings-dark.webp)
+
 ## Choose a cache mode
 
 | Mode | Where it lives | Use it when |
@@ -52,6 +54,8 @@ More frames provide more visual context but cost extra CPU time, disk reads, and
 Intro skip delay moves the first sample away from fades and blank lead-ins. Increase it only when early frames are consistently useless.
 
 ## Control processing cost
+
+![VideoCull Processing settings showing thumbnail count, intro delay, and parallel FFmpeg controls](/screenshots/processing-settings-dark.webp)
 
 - Leave **Parallel FFmpeg processes** on Auto unless the machine becomes unresponsive or storage is saturated.
 - Keep **Limit each FFmpeg process to 1 CPU thread** enabled for predictable parallel work.

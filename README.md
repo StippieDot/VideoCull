@@ -3,31 +3,25 @@
 [![License](https://img.shields.io/github/license/StippieDot/VideoCull?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge)](https://github.com/StippieDot/VideoCull/releases)
 [![Docs](https://img.shields.io/badge/docs-videocull.app-1f2937?style=for-the-badge&logo=readthedocs&logoColor=white)](https://docs.videocull.app)
-> Review, sort, and de-duplicate any local video folder faster.
+> See what is inside a video folder before deciding what stays.
 
-Video folders get out of hand fast. Download folders, old backups, personal archives, screen recordings, and camera footage can all grow into collections that are too tedious to review one file at a time.
+VideoCull is a Windows desktop app for folders that are too large or messy to review file by file. It samples several frames from every video and lays them out in a grid, so you can identify clips without opening each one.
 
-VideoCull is built to make that part faster. Open a folder and it scans the videos, generates thumbnail strips, and lets you work through them with the keyboard instead of opening files one by one. If thumbnails aren’t enough, play the video right there, scrub through it, rate it, favorite it, or mark it and move on.
+Make Keep, Delete, and Skip decisions from the grid or work through a focused keyboard queue. Play and scrub uncertain clips inside the app, add ratings or favorites, and review likely duplicates as separate comparison groups.
 
-It also helps with the mess that builds up around large libraries: you can filter and sort aggressively, work through likely duplicates with suggested keepers, and batch-delete what you don’t want without losing track of the rest.
-
-When you’re done, everything marked for deletion goes to the Recycle Bin when possible. Nothing is permanently removed unless you confirm it.
+The workflow stays local. Marking Delete only changes the review state. Files move to the Windows Recycle Bin when possible after you inspect and confirm the complete batch.
 
 ---
 
-## Screenshots
+## See VideoCull
 
-| Landing | Grid |
-|---|---|
-| ![Landing page](docs/screenshots/V2.0.0%20-%20Landing%20Page.png) | ![Grid view](docs/screenshots/V2.0.0%20-%20GridView.png) |
+![VideoCull grid view in dark and light themes showing camera footage as multi-frame thumbnail strips](docs/readme/product-overview.webp)
 
-| Duplicate Review | Duplicate Settings |
-|---|---|
-| ![Duplicate review](docs/screenshots/V2.0.0%20-%20DuplicationMode.png) | ![Duplicate settings](docs/screenshots/V2.0.0%20-%20DuplicationSettings.png) |
+| Review uncertain clips | Compare likely duplicates |
+| --- | --- |
+| ![VideoCull thumbnail and playback review views using Blender Open Movie footage](docs/readme/review-workflow.webp) | ![VideoCull duplicate review comparing Blender Open Movie files and suggested keepers](docs/readme/duplicate-review.webp) |
 
-| Review Mode |
-|---|
-| ![Review mode](docs/screenshots/V2.0.0%20-%20ReviewMode.png) |
+Demo footage shown in these screenshots includes [Blender Open Movies](https://studio.blender.org/films/), used under their applicable Creative Commons Attribution licenses.
 
 ---
 
