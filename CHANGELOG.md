@@ -2,7 +2,7 @@
 
 All notable changes to VideoCull will be documented here.
 
-## [2.2.1] - Unreleased
+## [2.2.1] - 2026-09-09
 
 ### Changed
 - Standardized the current product, executable, installer, shortcut, publisher, repository, and documentation identity as VideoCull by StippieDot.
