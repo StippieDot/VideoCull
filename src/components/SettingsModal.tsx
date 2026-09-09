@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import useStore from '../store';
-import { ArrowDown, ArrowUp, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake } from 'lucide-react';
-import type { AppSettings, ToastInput, UpdateInfo } from '../types';
+import { ArrowDown, ArrowUp, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake, FolderOpen, Copy, Trash2 } from 'lucide-react';
+import type { AppSettings, CacheLocationInfo, DistributionInfo, LegacyInstallStatus, ToastInput, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
@@ -16,6 +16,7 @@ type SettingsTab = 'interface' | 'features' | 'duplicates' | 'keybindings' | 'ca
 const ABOUT_LINKS = {
   repo: PRODUCT.repository.url,
   releases: `${PRODUCT.repository.url}/releases`,
+  support: `${PRODUCT.website}/support/`,
   sponsors: `https://github.com/sponsors/${PRODUCT.publisher}`,
   paypal: 'https://paypal.me/stippiedot',
 } as const;
@@ -67,6 +68,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const [exportMessage, setExportMessage] = useState<string>('');
   const [cacheMessage, setCacheMessage] = useState<string>('');
   const [autoConcurrency, setAutoConcurrency] = useState<number | null>(null);
+  const [distributionInfo, setDistributionInfo] = useState<DistributionInfo | null>(null);
+  const [cacheLocationInfo, setCacheLocationInfo] = useState<CacheLocationInfo | null>(null);
+  const [legacyInstall, setLegacyInstall] = useState<LegacyInstallStatus | null>(null);
   const appVersionLabel = __APP_VERSION__ || appVersion || '...';
 
   const openExternal = (url: string) => {
@@ -83,6 +87,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     }
     setExportMessage('');
     setCacheMessage('');
+    void window.electronAPI?.getDistributionInfo?.().then(setDistributionInfo).catch(() => setDistributionInfo(null));
+    void window.electronAPI?.getCacheLocationInfo?.().then(setCacheLocationInfo).catch(() => setCacheLocationInfo(null));
+    void window.electronAPI?.getLegacyInstallStatus?.().then(setLegacyInstall).catch(() => setLegacyInstall(null));
   }, [isOpen, globalSettings]);
 
   useEffect(() => {
@@ -360,6 +367,16 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
       [currentDriveKey]: dir,
     });
     setCacheMessage('');
+  };
+
+  const handleOpenCache = async (cachePath: string) => {
+    const opened = await window.electronAPI?.openCacheFolder?.(cachePath);
+    setCacheMessage(opened ? 'Opened cache folder.' : 'That cache folder is currently unavailable.');
+  };
+
+  const handleCopyCachePath = async (cachePath: string) => {
+    const copied = await window.electronAPI?.copyCachePath?.(cachePath);
+    setCacheMessage(copied ? 'Cache path copied.' : 'Cache path could not be copied.');
   };
 
   return (
@@ -756,6 +773,28 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 <div className="form-group">
                   <span className="help-text">Cache location changes are saved now and used on the next scan after migration completes.</span>
                 </div>
+                <div className="form-group cache-location-summary">
+                  <label>Current Resolved Cache {cacheLocationInfo?.locations.length === 1 ? 'Location' : 'Locations'}</label>
+                  {cacheLocationInfo?.locations.length ? cacheLocationInfo.locations.map((item) => (
+                    <div className="cache-location-card" key={item.path}>
+                      <div>
+                        <strong>{item.label}</strong>
+                        <span className="cache-location-path" title={item.path}>{item.path}</span>
+                        <span className="help-text">
+                          {item.ownership === 'package' ? 'Store-owned cache' : item.ownership === 'external' ? 'User-selected external cache' : 'Application profile cache'}
+                          {!item.available ? ' · Currently unavailable' : ''}
+                          {item.disposableOnReset ? ' · Can be removed by Store reset or uninstall' : ''}
+                        </span>
+                      </div>
+                      <div className="cache-location-actions">
+                        <button type="button" onClick={() => void handleOpenCache(item.path)} disabled={!item.available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
+                        <button type="button" onClick={() => void handleCopyCachePath(item.path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
+                      </div>
+                    </div>
+                  )) : (
+                    <span className="help-text">No cache path is resolved until a source folder is opened for this mode.</span>
+                  )}
+                </div>
                 <div className="form-group">
                   <label>Cache Storage</label>
                   <select
@@ -952,6 +991,20 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
             )}
 
             {activeTab === 'updates' && (() => {
+              if (distributionInfo?.channel === 'microsoft-store') {
+                return (
+                  <div className="settings-form">
+                    <div className="form-group">
+                      <label>Current Version</label>
+                      <span className="version-display">v{appVersionLabel}</span>
+                    </div>
+                    <div className="form-group">
+                      <label>Microsoft Store edition</label>
+                      <span className="help-text">Updates are managed and installed by Microsoft Store.</span>
+                    </div>
+                  </div>
+                );
+              }
               const statusLabel: Record<string, string> = {
                 idle: 'Not checked yet',
                 checking: 'Checking for updates…',
@@ -1049,6 +1102,11 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 </div>
 
                 <div className="about-link-grid">
+                  <button className="about-link-btn" onClick={() => openExternal(ABOUT_LINKS.support)}>
+                    <HeartHandshake size={16} />
+                    <span>VideoCull Support</span>
+                    <ExternalLink size={13} />
+                  </button>
                   <button className="about-link-btn" onClick={() => openExternal(ABOUT_LINKS.repo)}>
                     <Code2 size={16} />
                     <span>GitHub Repository</span>
@@ -1071,6 +1129,17 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     PayPal
                   </button>
                 </div>
+                {legacyInstall?.eligible && (
+                  <div className="form-group settings-section-divider">
+                    <label>Previous direct installation</label>
+                    <span className="help-text">Your Store profile is ready. Removing the previous app does not automatically delete its profile or external caches.</span>
+                    <button className="about-link-btn" onClick={() => void window.electronAPI?.uninstallLegacyInstall?.()}>
+                      <Trash2 size={16} />
+                      <span>Remove {legacyInstall.displayName || 'previous VideoCull installation'}</span>
+                      <ExternalLink size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

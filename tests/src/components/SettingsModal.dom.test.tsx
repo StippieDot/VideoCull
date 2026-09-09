@@ -24,6 +24,12 @@ type ElectronApiMock = {
   installUpdate: ReturnType<typeof vi.fn>;
   scheduleUpdateOnExit: ReturnType<typeof vi.fn>;
   deferUpdate: ReturnType<typeof vi.fn>;
+  getDistributionInfo: ReturnType<typeof vi.fn>;
+  getCacheLocationInfo: ReturnType<typeof vi.fn>;
+  openCacheFolder: ReturnType<typeof vi.fn>;
+  copyCachePath: ReturnType<typeof vi.fn>;
+  getLegacyInstallStatus: ReturnType<typeof vi.fn>;
+  uninstallLegacyInstall: ReturnType<typeof vi.fn>;
   emitUpdateStatus: (info: UpdateInfo) => void;
 };
 
@@ -51,6 +57,15 @@ function installElectronApiMock(): ElectronApiMock {
     installUpdate: vi.fn().mockResolvedValue(true),
     scheduleUpdateOnExit: vi.fn().mockResolvedValue(true),
     deferUpdate: vi.fn().mockResolvedValue(true),
+    getDistributionInfo: vi.fn().mockResolvedValue({ channel: 'direct', packageFamilyName: null, packageRoot: null, userData: 'C:\\Profile', sessionData: 'C:\\Profile', cacheRoot: 'C:\\Profile\\video-cache' }),
+    getCacheLocationInfo: vi.fn().mockResolvedValue({
+      mode: 'centralised',
+      locations: [{ label: 'Central cache', path: 'C:\\Profile\\video-cache', ownership: 'profile', available: true, disposableOnReset: false }],
+    }),
+    openCacheFolder: vi.fn().mockResolvedValue(true),
+    copyCachePath: vi.fn().mockResolvedValue(true),
+    getLegacyInstallStatus: vi.fn().mockResolvedValue({ installed: false, eligible: false }),
+    uninstallLegacyInstall: vi.fn().mockResolvedValue(true),
     emitUpdateStatus(info: UpdateInfo) {
       act(() => {
         updateStatusHandler?.(info);
@@ -196,6 +211,22 @@ describe('SettingsModal integration behavior', () => {
     });
   });
 
+  test('shows Microsoft Store-managed updates without direct update controls', async () => {
+    electronAPI.getDistributionInfo.mockResolvedValue({
+      channel: 'microsoft-store',
+      packageFamilyName: 'StippieDot.VideoCull_ysntqx69kxmmg',
+      packageRoot: 'C:\\Packages\\VideoCull',
+      userData: 'C:\\Packages\\VideoCull\\LocalState\\profile',
+      sessionData: 'C:\\Packages\\VideoCull\\LocalCache\\session',
+      cacheRoot: 'C:\\Packages\\VideoCull\\LocalCache\\video-cache',
+    });
+    render(<SettingsModal initialTab="updates" />);
+
+    expect(await screen.findByText(/Updates are managed and installed by Microsoft Store/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /check for updates/i })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /automatically check for updates/i })).toBeNull();
+  });
+
   test('offers explicit installation timing when an update is ready', async () => {
     render(<SettingsModal initialTab="updates" />);
 
@@ -236,6 +267,23 @@ describe('SettingsModal integration behavior', () => {
     render(<SettingsModal initialTab="cache" />);
 
     expect(await screen.findByRole('checkbox', { name: /auto-clean stale cache after scans/i })).toBeTruthy();
+  });
+
+  test('shows the resolved cache path and provides open and copy actions', async () => {
+    render(<SettingsModal initialTab="cache" />);
+    expect(await screen.findByText('C:\\Profile\\video-cache')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: /^open$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /copy path/i }));
+    expect(electronAPI.openCacheFolder).toHaveBeenCalledWith('C:\\Profile\\video-cache');
+    expect(electronAPI.copyCachePath).toHaveBeenCalledWith('C:\\Profile\\video-cache');
+  });
+
+  test('keeps an explicit previous-install removal action in About', async () => {
+    electronAPI.getLegacyInstallStatus.mockResolvedValue({ installed: true, eligible: true, displayName: 'VideoCull 2.2.1' });
+    render(<SettingsModal initialTab="about" />);
+    const button = await screen.findByRole('button', { name: /remove videocull 2.2.1/i });
+    await userEvent.click(button);
+    expect(electronAPI.uninstallLegacyInstall).toHaveBeenCalledTimes(1);
   });
 
   test('explains thumbnail count rebuild and reuse behavior', async () => {

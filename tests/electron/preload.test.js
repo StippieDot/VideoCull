@@ -65,6 +65,10 @@ describe('preload electronAPI bridge', () => {
     expect(exposedApi.onUpdateStatus).toBeTypeOf('function');
     expect(exposedApi.scheduleUpdateOnExit).toBeTypeOf('function');
     expect(exposedApi.deferUpdate).toBeTypeOf('function');
+    expect(exposedApi.getDistributionInfo).toBeTypeOf('function');
+    expect(exposedApi.getProfileMigrationStatus).toBeTypeOf('function');
+    expect(exposedApi.getCacheLocationInfo).toBeTypeOf('function');
+    expect(exposedApi.getLegacyInstallStatus).toBeTypeOf('function');
   });
 
   test('forwards invoke and send actions to the expected IPC channels', async () => {
@@ -74,6 +78,10 @@ describe('preload electronAPI bridge', () => {
     await exposedApi.confirmThumbnailRebuild(6, 9, 12);
     await exposedApi.scheduleUpdateOnExit();
     await exposedApi.deferUpdate();
+    await exposedApi.getCacheLocationInfo();
+    await exposedApi.openCacheFolder('C:\\Cache');
+    await exposedApi.copyCachePath('C:\\Cache');
+    await exposedApi.chooseProfileCacheMigration('copy');
     exposedApi.setExportReportAvailable(true);
     exposedApi.getPathForFile({ path: 'D:\\Media\\clip.mp4' });
 
@@ -83,6 +91,10 @@ describe('preload electronAPI bridge', () => {
     expect(invoke).toHaveBeenNthCalledWith(4, 'confirm-thumbnail-rebuild', 6, 9, 12);
     expect(invoke).toHaveBeenNthCalledWith(5, 'schedule-update-on-exit');
     expect(invoke).toHaveBeenNthCalledWith(6, 'defer-update');
+    expect(invoke).toHaveBeenNthCalledWith(7, 'get-cache-location-info');
+    expect(invoke).toHaveBeenNthCalledWith(8, 'open-cache-folder', 'C:\\Cache');
+    expect(invoke).toHaveBeenNthCalledWith(9, 'copy-cache-path', 'C:\\Cache');
+    expect(invoke).toHaveBeenNthCalledWith(10, 'choose-profile-cache-migration', 'copy');
     expect(send).toHaveBeenCalledWith('set-export-report-available', true);
     expect(getPathForFile).toHaveBeenCalledWith({ path: 'D:\\Media\\clip.mp4' });
   });

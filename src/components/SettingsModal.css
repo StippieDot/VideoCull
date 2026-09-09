@@ -217,6 +217,26 @@ input[type="range"] {
   line-height: 1.4;
 }
 
+.cache-location-summary { gap: 10px; }
+
+.cache-location-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-subtle);
+}
+
+.cache-location-card > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.cache-location-card strong { color: var(--text-primary); font-size: 12px; }
+.cache-location-path { overflow: hidden; color: var(--text-secondary); font: 11px monospace; text-overflow: ellipsis; white-space: nowrap; }
+.cache-location-actions { display: flex; flex-shrink: 0; gap: 6px; }
+.cache-location-actions button { display: flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-control); color: var(--text-primary); cursor: pointer; }
+.cache-location-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Duplicates tab */
 .duplicates-settings {
   gap: 20px;

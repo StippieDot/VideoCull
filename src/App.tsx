@@ -11,6 +11,7 @@ import SettingsModal from './components/SettingsModal';
 import DuplicateGroupsView from './components/DuplicateGroupsView';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import DocumentationModal from './components/DocumentationModal';
+import StoreTransition from './components/StoreTransition';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
@@ -1035,6 +1036,7 @@ export default function App() {
       onDrop={handleDrop}
     >
       <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
+      <StoreTransition />
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
       {showDocumentation && (
         <DocumentationModal

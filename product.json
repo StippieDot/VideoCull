@@ -11,5 +11,13 @@
     "url": "https://github.com/StippieDot/VideoCull"
   },
   "website": "https://videocull.app",
-  "documentation": "https://docs.videocull.app"
+  "documentation": "https://docs.videocull.app",
+  "microsoftStore": {
+    "identityName": "StippieDot.VideoCull",
+    "publisher": "CN=6A4B6EC8-38EB-4378-A661-8B04B8C7A5A3",
+    "publisherDisplayName": "StippieDot",
+    "packageFamilyName": "StippieDot.VideoCull_ysntqx69kxmmg",
+    "storeId": "9NG9Z0CL73PC",
+    "lastSubmittedVersion": "0.0.0.0"
+  }
 }

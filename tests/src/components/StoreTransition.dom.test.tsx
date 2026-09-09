@@ -1,0 +1,62 @@
+// @vitest-environment jsdom
+
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import StoreTransition from '../../../src/components/StoreTransition';
+import type { ProfileMigrationStatus } from '../../../src/types';
+
+function awaitingStatus(): ProfileMigrationStatus {
+  return {
+    stage: 'awaiting-cache-choice',
+    durable: 'complete',
+    cacheOutcome: null,
+    preflight: {
+      sourceBytes: 1024,
+      fileCount: 3,
+      freeBytes: 1024 * 1024 * 1024,
+      requiredBytes: 256 * 1024 * 1024 + 1024,
+      headroomBytes: 256 * 1024 * 1024,
+      canCopy: true,
+    },
+  progress: null,
+  warning: null,
+  errors: [],
+};
+}
+
+test('offers cache copy or rebuild only after durable migration succeeds', async () => {
+  const choose = vi.fn().mockResolvedValue({ ...awaitingStatus(), stage: 'complete', cacheOutcome: 'rebuild' });
+  Object.assign(window, {
+    electronAPI: {
+      getProfileMigrationStatus: vi.fn().mockResolvedValue(awaitingStatus()),
+      chooseProfileCacheMigration: choose,
+      onProfileMigrationStatus: vi.fn(() => () => {}),
+      onStoreTransitionReady: vi.fn(() => () => {}),
+      getLegacyInstallStatus: vi.fn().mockResolvedValue({ installed: false, eligible: false }),
+    },
+  });
+  render(<StoreTransition />);
+
+  expect(await screen.findByText(/settings and library state are already migrated/i)).toBeTruthy();
+  expect(screen.getByRole('button', { name: /copy existing cache/i })).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: /skip and rebuild/i }));
+  expect(choose).toHaveBeenCalledWith('rebuild');
+});
+
+test('offers a dismissible legacy uninstall prompt after a completed Store launch', async () => {
+  const dismiss = vi.fn().mockResolvedValue(true);
+  Object.assign(window, {
+    electronAPI: {
+      getProfileMigrationStatus: vi.fn().mockResolvedValue({ ...awaitingStatus(), stage: 'complete', cacheOutcome: 'copied' }),
+      onProfileMigrationStatus: vi.fn(() => () => {}),
+      onStoreTransitionReady: vi.fn(() => () => {}),
+      getLegacyInstallStatus: vi.fn().mockResolvedValue({ installed: true, eligible: true, promptDismissed: false, displayName: 'VideoCull 2.2.1' }),
+      dismissLegacyInstallPrompt: dismiss,
+    },
+  });
+  render(<StoreTransition />);
+
+  expect(await screen.findByText(/Store migration complete/i)).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: /not now/i }));
+  await waitFor(() => expect(dismiss).toHaveBeenCalledTimes(1));
+});

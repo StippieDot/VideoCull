@@ -53,16 +53,23 @@ function createApp(root, options = {}) {
   return { app, calls };
 }
 
-function executeBootstrap({ profileError = null, mainError = null } = {}) {
+async function executeBootstrap({ profileError = null, mainError = null } = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'bootstrap.js'), 'utf8');
   const calls = [];
   const errors = [];
-  const app = { exit: () => calls.push('exit') };
+  const app = { isPackaged: false, exit: () => calls.push('exit') };
   const context = {
     globalThis: {},
+    process: { platform: 'win32', env: {} },
     console: { error: (...args) => errors.push(args) },
     require(specifier) {
-      if (specifier === 'electron') return { app };
+      if (specifier === 'electron') return { app, dialog: { showErrorBox: () => calls.push('show-error') } };
+      if (specifier === './edition-guard') {
+        return {
+          acquireEditionGuard: async () => null,
+          closeEditionGuard: () => {},
+        };
+      }
       if (specifier === './profile-bootstrap') {
         return {
           configureAppProfile(receivedApp) {
@@ -82,6 +89,7 @@ function executeBootstrap({ profileError = null, mainError = null } = {}) {
     },
   };
   vm.runInNewContext(source, context, { filename: 'electron/bootstrap.js' });
+  await new Promise((resolve) => setImmediate(resolve));
   return { calls, context, errors };
 }
 
@@ -91,18 +99,20 @@ afterEach(() => {
   }
 });
 
-test('entrypoint configures the profile before importing the application', () => {
-  const { calls, context } = executeBootstrap();
+test('entrypoint configures the profile before importing the application', async () => {
+  const { calls, context } = await executeBootstrap();
   assert.deepEqual(calls, ['configure', 'main']);
   assert.equal(context.globalThis.__VIDEOCULL_PROFILE_BOOTSTRAP__.selectedPath, 'C:\\AppData\\VideoCull');
 });
 
-test('application import errors are not reported as profile initialization errors', () => {
-  assert.throws(() => executeBootstrap({ mainError: new Error('main import failed') }), /main import failed/);
+test('application import errors are reported by the bootstrap boundary', async () => {
+  const { calls, errors } = await executeBootstrap({ mainError: new Error('main import failed') });
+  assert.deepEqual(calls, ['configure', 'main', 'show-error', 'exit']);
+  assert.match(errors[0][0], /bootstrap/);
 });
 
-test('profile initialization failure exits before importing the application', () => {
-  const { calls, errors } = executeBootstrap({ profileError: new Error('profile failed') });
+test('profile initialization failure exits before importing the application', async () => {
+  const { calls, errors } = await executeBootstrap({ profileError: new Error('profile failed') });
   assert.deepEqual(calls, ['configure', 'exit']);
   assert.equal(errors.length, 1);
 });

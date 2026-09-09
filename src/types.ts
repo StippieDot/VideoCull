@@ -435,6 +435,71 @@ export interface UpdateInfo {
   message?: string;
 }
 
+export type DistributionChannel = 'direct' | 'microsoft-store';
+
+export interface DistributionInfo {
+  channel: DistributionChannel;
+  packageFamilyName: string | null;
+  packageRoot: string | null;
+  userData: string;
+  sessionData: string;
+  cacheRoot: string;
+}
+
+export type ProfileMigrationStage =
+  | 'not-needed'
+  | 'pending'
+  | 'durable-copy'
+  | 'cache-preflight'
+  | 'awaiting-cache-choice'
+  | 'cache-copy'
+  | 'complete'
+  | 'fatal-error';
+
+export interface ProfileMigrationStatus {
+  stage: ProfileMigrationStage;
+  durable: 'pending' | 'complete' | 'not-needed';
+  cacheOutcome: 'not-needed' | 'copied' | 'copied-with-skips' | 'rebuild' | null;
+  preflight: {
+    sourceBytes: number;
+    fileCount: number;
+    freeBytes: number;
+    requiredBytes: number;
+    headroomBytes: number;
+    canCopy: boolean;
+  } | null;
+  progress: {
+    bytesCopied: number;
+    totalBytes: number;
+    filesCopied: number;
+    totalFiles: number;
+    skippedFiles: number;
+  } | null;
+  warning: string | null;
+  errors: string[];
+}
+
+export interface CacheLocationInfo {
+  mode: CacheLocationMode;
+  locations: Array<{
+    label: string;
+    path: string;
+    ownership: 'package' | 'profile' | 'external';
+    available: boolean;
+    disposableOnReset: boolean;
+  }>;
+}
+
+export interface LegacyInstallStatus {
+  installed: boolean;
+  eligible?: boolean;
+  promptDismissed?: boolean;
+  displayName?: string;
+  installLocation?: string;
+  uninstallerPath?: string;
+  registryKey?: string;
+}
+
 export interface PerfCounterSample {
   count: number;
   total: number;
@@ -577,6 +642,17 @@ export interface ElectronAPI {
     newSettings: AppSettings,
     loadedDirs: string[]
   ) => Promise<{ status: 'unchanged' | 'no-cache' | 'cancelled' | 'fresh' | 'migrated' | 'partial' | 'error'; migrated: number; errors: string[] }>;
+  getCacheLocationInfo: () => Promise<CacheLocationInfo>;
+  openCacheFolder: (cachePath: string) => Promise<boolean>;
+  copyCachePath: (cachePath: string) => Promise<boolean>;
+  getDistributionInfo: () => Promise<DistributionInfo>;
+  getProfileMigrationStatus: () => Promise<ProfileMigrationStatus>;
+  chooseProfileCacheMigration: (action: 'copy' | 'rebuild') => Promise<ProfileMigrationStatus | null>;
+  onProfileMigrationStatus: (callback: (data: ProfileMigrationStatus) => void) => () => void;
+  onStoreTransitionReady: (callback: () => void) => () => void;
+  getLegacyInstallStatus: () => Promise<LegacyInstallStatus>;
+  dismissLegacyInstallPrompt: () => Promise<boolean>;
+  uninstallLegacyInstall: () => Promise<boolean>;
   getAppVersion: () => Promise<string>;
   checkForUpdates: () => Promise<{ ok: boolean; status: string; error?: string }>;
   installUpdate: () => Promise<boolean>;
