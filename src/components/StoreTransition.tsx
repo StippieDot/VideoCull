@@ -60,7 +60,20 @@ export default function StoreTransition() {
         <div className="store-transition-overlay">
           <section className="store-transition-dialog" role="dialog" aria-modal="true" aria-labelledby="store-migration-title">
             <h2 id="store-migration-title">Bring your VideoCull cache with you?</h2>
-            {migration.stage === 'cache-preflight' && <p>Checking the existing cache and available disk space…</p>}
+            {migration.stage === 'cache-preflight' && (
+              <>
+                <p>Checking the existing cache and available disk space…</p>
+                {migration.preflightProgress && (
+                  <p className="store-preflight-progress" role="status" aria-live="polite">
+                    {migration.preflightProgress.filesScanned.toLocaleString()} files in{' '}
+                    {migration.preflightProgress.directoriesScanned.toLocaleString()} folders checked
+                    {migration.preflightProgress.bytesScanned > 0
+                      ? ` · ${formatBytes(migration.preflightProgress.bytesScanned)}`
+                      : ''}
+                  </p>
+                )}
+              </>
+            )}
             {migration.stage === 'awaiting-cache-choice' && migration.preflight && (
               <>
                 <p>Your settings and library state are already migrated. Copying thumbnails is optional and can be retried by rebuilding them later.</p>

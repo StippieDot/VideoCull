@@ -47,6 +47,52 @@ test('durable state succeeds before cache choice and excludes updater/session fi
   assert.equal(JSON.parse(await fs.readFile(path.join(paths.targetProfile, MARKER_FILE), 'utf8')).cacheOutcome, null);
 });
 
+test('durable migration completes without waiting for delayed cache inspection', async () => {
+  const paths = await fixture();
+  await fs.writeFile(path.join(paths.sourceProfile, 'settings.json'), '{"theme":"dark"}');
+  await fs.writeFile(path.join(paths.sourceProfile, 'video-cache', 'library.db'), 'database');
+  let cacheInspectionStarted = false;
+  const migration = createStoreProfileMigration({
+    enabled: true,
+    ...paths,
+    collectCacheFiles: async () => {
+      cacheInspectionStarted = true;
+      return new Promise(() => {});
+    },
+  });
+
+  const status = await migration.prepareDurable();
+
+  assert.equal(status.durable, 'complete');
+  assert.equal(status.stage, 'pending');
+  assert.equal(cacheInspectionStarted, false);
+  assert.equal(await fs.readFile(path.join(paths.targetProfile, 'settings.json'), 'utf8'), '{"theme":"dark"}');
+});
+
+test('cache preflight publishes inspection progress', async () => {
+  const paths = await fixture();
+  await fs.writeFile(path.join(paths.sourceProfile, 'video-cache', 'library.db'), 'database');
+  await fs.writeFile(path.join(paths.sourceProfile, 'video-cache', 'thumbs', 'one.jpg'), 'image');
+  const statuses = [];
+  const migration = createStoreProfileMigration({
+    enabled: true,
+    ...paths,
+    availableBytes: async () => Number.MAX_SAFE_INTEGER,
+    onStatus: (status) => statuses.push(status),
+  });
+
+  await migration.prepareDurable();
+  const status = await migration.prepareCache();
+
+  assert.equal(status.stage, 'awaiting-cache-choice');
+  assert.deepEqual(status.preflightProgress, {
+    filesScanned: 2,
+    directoriesScanned: 2,
+    bytesScanned: 13,
+  });
+  assert.ok(statuses.some((item) => item.stage === 'cache-preflight' && item.preflightProgress));
+});
+
 test('preflight includes required headroom and permits a rebuild choice', async () => {
   const paths = await fixture();
   await fs.writeFile(path.join(paths.sourceProfile, 'video-cache', 'library.db'), 'database');

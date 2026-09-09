@@ -13,6 +13,7 @@ const { getCacheLocationInfo } = require('./cache-location-info');
 const { getDistributionChannel, shouldEnableUpdates } = require('./distribution');
 const { detectLegacyInstall, launchLegacyUninstaller } = require('./legacy-install');
 const { createStoreProfileMigration } = require('./store-profile-migration');
+const { showWindowThenPrepareCache } = require('./store-startup');
 const {
   THEME_ARGUMENT_PREFIX,
   getThemeBackgroundColor,
@@ -303,7 +304,19 @@ function createWindow(initialTheme = 'dark') {
 
   mainWindow.once('ready-to-show', () => {
     storeWindowReady = isWindowsStore;
-    mainWindow.show();
+    showWindowThenPrepareCache({
+      showWindow: () => mainWindow.show(),
+      profileMigration: isWindowsStore ? profileMigration : null,
+      onCacheError: (error) => {
+        log.error('[store-profile-migration] Cache preflight failed:', error);
+        sendToRenderer('app-notification', {
+          title: 'Existing cache could not be checked',
+          detail: 'VideoCull will rebuild cache data as it is needed. Your migrated settings are safe.',
+          kind: 'warning',
+          dedupeKey: 'store-cache-preflight-failed',
+        });
+      },
+    });
     if (isWindowsStore) sendToRenderer('store-transition-ready', true);
     if (pendingProfileWarning) {
       sendToRenderer('app-notification', pendingProfileWarning);
@@ -370,7 +383,7 @@ app.whenReady().then(async () => {
       onStatus: (status) => sendToRenderer('profile-migration-status', status),
     });
     try {
-      await profileMigration.prepare();
+      await profileMigration.prepareDurable();
     } catch (error) {
       log.error('[store-profile-migration] Durable profile migration failed:', error);
       dialog.showErrorBox(
@@ -2780,6 +2793,7 @@ ipcMain.handle('get-profile-migration-status', () => (
     durable: 'not-needed',
     cacheOutcome: 'not-needed',
     preflight: null,
+    preflightProgress: null,
     progress: null,
     warning: null,
     errors: [],

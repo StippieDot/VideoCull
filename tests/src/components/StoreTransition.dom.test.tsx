@@ -16,8 +16,9 @@ function awaitingStatus(): ProfileMigrationStatus {
       freeBytes: 1024 * 1024 * 1024,
       requiredBytes: 256 * 1024 * 1024 + 1024,
       headroomBytes: 256 * 1024 * 1024,
-      canCopy: true,
+    canCopy: true,
     },
+  preflightProgress: null,
   progress: null,
   warning: null,
   errors: [],
@@ -41,6 +42,28 @@ test('offers cache copy or rebuild only after durable migration succeeds', async
   expect(screen.getByRole('button', { name: /copy existing cache/i })).toBeTruthy();
   await userEvent.click(screen.getByRole('button', { name: /skip and rebuild/i }));
   expect(choose).toHaveBeenCalledWith('rebuild');
+});
+
+test('shows live cache inspection progress while Store preflight runs', async () => {
+  const preflight: ProfileMigrationStatus = {
+    ...awaitingStatus(),
+    stage: 'cache-preflight',
+    preflight: null,
+    preflightProgress: { filesScanned: 365345, directoriesScanned: 52750, bytesScanned: 4698810774 },
+  };
+  Object.assign(window, {
+    electronAPI: {
+      getProfileMigrationStatus: vi.fn().mockResolvedValue(preflight),
+      onProfileMigrationStatus: vi.fn(() => () => {}),
+      onStoreTransitionReady: vi.fn(() => () => {}),
+      getLegacyInstallStatus: vi.fn().mockResolvedValue({ installed: false, eligible: false }),
+    },
+  });
+
+  render(<StoreTransition />);
+
+  expect(await screen.findByText(/365[,.]345 files/i)).toBeTruthy();
+  expect(screen.getByText(/52[,.]750 folders checked/i)).toBeTruthy();
 });
 
 test('offers a dismissible legacy uninstall prompt after a completed Store launch', async () => {

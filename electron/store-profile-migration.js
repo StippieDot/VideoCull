@@ -78,10 +78,24 @@ function isThumbnail(relativePath) {
   return normalized.split('/').includes('thumbs') || /\.(jpe?g|png|webp)$/.test(normalized);
 }
 
-async function collectCacheFiles(root, fsImpl = fs) {
+async function collectCacheFiles(root, fsImpl = fs, onProgress = null) {
   const files = [];
+  let directoriesScanned = 0;
+  let bytesScanned = 0;
+  let lastProgressAt = 0;
+
+  function reportProgress(force = false) {
+    if (!onProgress) return;
+    const now = Date.now();
+    if (!force && now - lastProgressAt < 250) return;
+    lastProgressAt = now;
+    onProgress({ filesScanned: files.length, directoriesScanned, bytesScanned });
+  }
+
   async function walk(current, relativeRoot = '') {
     const entries = await fsImpl.readdir(current, { withFileTypes: true });
+    directoriesScanned += 1;
+    reportProgress();
     for (const entry of entries) {
       const relativePath = path.join(relativeRoot, entry.name);
       const sourcePath = path.join(current, entry.name);
@@ -91,10 +105,13 @@ async function collectCacheFiles(root, fsImpl = fs) {
       } else if (entry.isFile()) {
         const stats = await fsImpl.stat(sourcePath);
         files.push({ sourcePath, relativePath, size: stats.size, thumbnail: isThumbnail(relativePath) });
+        bytesScanned += stats.size;
+        reportProgress();
       }
     }
   }
   await walk(root);
+  reportProgress(true);
   return files;
 }
 
@@ -152,6 +169,7 @@ function createInitialStatus(enabled) {
     durable: enabled ? 'pending' : 'not-needed',
     cacheOutcome: enabled ? null : 'not-needed',
     preflight: null,
+    preflightProgress: null,
     progress: null,
     warning: null,
     errors: [],
@@ -161,6 +179,7 @@ function createInitialStatus(enabled) {
 function createStoreProfileMigration(options) {
   const fsImpl = options.fsImpl ?? fs;
   const availableBytes = options.availableBytes ?? ((target) => defaultAvailableBytes(target, fsImpl));
+  const collectFiles = options.collectCacheFiles ?? ((root, onProgress) => collectCacheFiles(root, fsImpl, onProgress));
   const enabled = Boolean(options.enabled);
   let status = createInitialStatus(enabled);
   let cacheFiles = [];
@@ -206,23 +225,29 @@ function createStoreProfileMigration(options) {
     await persist(null);
     const externalWarnings = await validateExternalCacheLocations(options.targetProfile, fsImpl);
     publish({
+      stage: 'pending',
       durable: 'complete',
       warning: appendWarning(status.warning, externalWarnings.join(' ')),
     });
   }
 
   async function prepareCache() {
-    const sourceCache = path.join(options.sourceProfile, 'video-cache');
-    if (!await isDirectory(sourceCache, fsImpl)) {
-      await persist('not-needed');
-      return publish({ stage: 'complete', cacheOutcome: 'not-needed' });
-    }
-
-    publish({ stage: 'cache-preflight' });
-    await fsImpl.rm(cacheStage, { recursive: true, force: true }).catch(() => {});
-    await fsImpl.rm(`${cacheStage}.index.json`, { force: true }).catch(() => {});
+    if (!enabled || status.stage === 'complete') return status;
+    if (status.durable === 'pending') throw new Error('Durable profile migration must complete before cache preflight.');
     try {
-      cacheFiles = await collectCacheFiles(sourceCache, fsImpl);
+      const sourceCache = path.join(options.sourceProfile, 'video-cache');
+      if (!await isDirectory(sourceCache, fsImpl)) {
+        await persist('not-needed');
+        return publish({ stage: 'complete', cacheOutcome: 'not-needed' });
+      }
+
+      publish({
+        stage: 'cache-preflight',
+        preflightProgress: { filesScanned: 0, directoriesScanned: 0, bytesScanned: 0 },
+      });
+      await fsImpl.rm(cacheStage, { recursive: true, force: true }).catch(() => {});
+      await fsImpl.rm(`${cacheStage}.index.json`, { force: true }).catch(() => {});
+      cacheFiles = await collectFiles(sourceCache, (preflightProgress) => publish({ preflightProgress }));
       const sourceBytes = cacheFiles.reduce((sum, file) => sum + file.size, 0);
       const headroomBytes = Math.max(Math.ceil(sourceBytes * 0.1), MINIMUM_HEADROOM_BYTES);
       const freeBytes = await availableBytes(path.dirname(options.targetCache));
@@ -239,17 +264,22 @@ function createStoreProfileMigration(options) {
         },
       });
     } catch (error) {
-      await persist('rebuild');
+      let markerWarning = '';
+      try {
+        await persist('rebuild');
+      } catch (markerError) {
+        markerWarning = ` The migration result could not be saved and will be checked again next launch: ${markerError.message}`;
+      }
       return publish({
         stage: 'complete',
         cacheOutcome: 'rebuild',
-        warning: appendWarning(status.warning, `Existing cache could not be inspected and will be rebuilt: ${error.message}`),
+        warning: appendWarning(status.warning, `Existing cache could not be inspected and will be rebuilt: ${error.message}${markerWarning}`),
         errors: [...status.errors, error.message],
       });
     }
   }
 
-  async function prepare() {
+  async function prepareDurable() {
     if (!enabled) return status;
     try {
       await fsImpl.mkdir(options.targetProfile, { recursive: true });
@@ -262,12 +292,18 @@ function createStoreProfileMigration(options) {
         return publish({ stage: 'complete', durable: 'not-needed', cacheOutcome: 'not-needed' });
       }
       if (!marker?.durableComplete) await migrateDurableState();
-      else publish({ durable: 'complete' });
-      return prepareCache();
+      else publish({ stage: 'pending', durable: 'complete' });
+      return status;
     } catch (error) {
       publish({ stage: 'fatal-error', warning: error.message, errors: [...status.errors, error.message] });
       throw error;
     }
+  }
+
+  async function prepare() {
+    const durableStatus = await prepareDurable();
+    if (durableStatus.stage === 'complete') return durableStatus;
+    return prepareCache();
   }
 
   async function chooseCache(action) {
@@ -371,6 +407,8 @@ function createStoreProfileMigration(options) {
     getStatus: () => status,
     markerPath,
     prepare,
+    prepareCache,
+    prepareDurable,
   };
 }
 

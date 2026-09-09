@@ -468,6 +468,11 @@ export interface ProfileMigrationStatus {
     headroomBytes: number;
     canCopy: boolean;
   } | null;
+  preflightProgress: {
+    filesScanned: number;
+    directoriesScanned: number;
+    bytesScanned: number;
+  } | null;
   progress: {
     bytesCopied: number;
     totalBytes: number;

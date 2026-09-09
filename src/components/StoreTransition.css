@@ -21,6 +21,7 @@
 
 .store-transition-dialog h2 { margin: 0 0 12px; font-size: 19px; }
 .store-transition-dialog p { color: var(--text-secondary); line-height: 1.5; }
+.store-preflight-progress { font-variant-numeric: tabular-nums; }
 .store-migration-summary { display: grid; gap: 8px; margin: 18px 0; }
 .store-migration-summary div { display: flex; justify-content: space-between; gap: 20px; }
 .store-migration-summary dt { color: var(--text-secondary); }
