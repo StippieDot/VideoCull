@@ -20,10 +20,11 @@
     "test:renderer": "vitest run -c vitest.renderer.config.ts",
     "test:watch": "vitest",
     "test:cache-native": "node --test tests/electron/cache.test.js tests/electron/cache.migration.test.js",
+    "test:packaging": "node --test tests/electron/build-hooks.test.js",
     "coverage": "vitest run --coverage",
     "test:profile": "node --test tests/electron/profile-bootstrap.test.js",
     "test:store": "node --test tests/electron/store-*.test.js",
-    "test:ci": "npm run check:ipc && npm run check:installer && npm run check:store && npm run check:store-screenshots && npm run check:brand && npm run test:profile && npm run test:store && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
+    "test:ci": "npm run check:ipc && npm run check:installer && npm run check:store && npm run check:store-screenshots && npm run check:brand && npm run test:packaging && npm run test:profile && npm run test:store && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
     "test:e2e": "npm run build && playwright test",
     "test:duplicates": "vitest run tests/electron/duplicate-utils.test.js tests/electron/duplicates.test.js tests/electron/duplicate-worker.test.js tests/electron/visual-worker.test.js",
     "cleanup:cache": "node scripts/cleanup-cache-clutter.js",
@@ -93,6 +94,9 @@
       "node_modules/@ffprobe-installer/**/*",
       "node_modules/better-sqlite3/**/*"
     ],
+    "npmRebuild": true,
+    "beforeBuild": "./scripts/electron-builder-hooks.js",
+    "afterPack": "./scripts/electron-builder-hooks.js",
     "win": {
       "target": "nsis",
       "icon": "build/videocull.ico",
