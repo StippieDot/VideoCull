@@ -278,6 +278,38 @@ describe('SettingsModal integration behavior', () => {
     expect(electronAPI.copyCachePath).toHaveBeenCalledWith('C:\\Profile\\video-cache');
   });
 
+  test('can return a custom central cache to the default location', async () => {
+    const current = useStore.getState();
+    useStore.setState({
+      settings: {
+        ...current.settings,
+        cacheLocation: 'centralised',
+        centralCachePath: 'D:\\VideoCull Cache',
+      },
+    });
+    electronAPI.getCacheLocationInfo.mockResolvedValue({
+      mode: 'centralised',
+      locations: [{ label: 'Central cache', path: 'D:\\VideoCull Cache', ownership: 'external', available: true, disposableOnReset: false }],
+    });
+    electronAPI.migrateCacheSettings.mockResolvedValue({ status: 'no-cache', migrated: 0, errors: [] });
+
+    render(<SettingsModal initialTab="cache" />);
+    await userEvent.click(await screen.findByRole('button', { name: /use default/i }));
+
+    expect(await screen.findByText(/default cache location selected/i)).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
+
+    await waitFor(() => {
+      expect(electronAPI.migrateCacheSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ centralCachePath: 'D:\\VideoCull Cache' }),
+        expect.objectContaining({ centralCachePath: null }),
+        ['D:\\Media'],
+      );
+      expect(electronAPI.saveConfig).toHaveBeenCalled();
+    });
+    expect(useStore.getState().settings.centralCachePath).toBeNull();
+  });
+
   test('keeps an explicit previous-install removal action in About', async () => {
     electronAPI.getLegacyInstallStatus.mockResolvedValue({ installed: true, eligible: true, displayName: 'VideoCull 2.2.1' });
     render(<SettingsModal initialTab="about" />);

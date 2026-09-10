@@ -355,7 +355,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     }
     if (setting === 'centralCachePath') {
       handleChange('centralCachePath', dir);
-      setCacheMessage('');
+      setCacheMessage(`Selected ${dir}. Save Preferences to apply it.`);
       return;
     }
     if (!currentDriveKey) {
@@ -377,6 +377,24 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const handleCopyCachePath = async (cachePath: string) => {
     const copied = await window.electronAPI?.copyCachePath?.(cachePath);
     setCacheMessage(copied ? 'Cache path copied.' : 'Cache path could not be copied.');
+  };
+
+  const handleUseDefaultCentralCache = () => {
+    handleChange('centralCachePath', null);
+    setCacheMessage('Default cache location selected. Save Preferences to apply it.');
+  };
+
+  const activeCacheLocations = cacheLocationInfo?.mode === localSettings.cacheLocation
+    ? cacheLocationInfo.locations
+    : [];
+
+  const cacheLocationDescription = (item: CacheLocationInfo['locations'][number]) => {
+    const description = item.ownership === 'package'
+      ? 'Managed by Microsoft Store and removed when the app is reset or uninstalled'
+      : item.ownership === 'external'
+        ? 'User-selected folder; kept when VideoCull is uninstalled'
+        : 'Managed in the VideoCull application profile';
+    return item.available ? description : `${description} · Currently unavailable`;
   };
 
   return (
@@ -771,31 +789,6 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
             {activeTab === 'cache' && (
               <div className="settings-form">
                 <div className="form-group">
-                  <span className="help-text">Cache location changes are saved now and used on the next scan after migration completes.</span>
-                </div>
-                <div className="form-group cache-location-summary">
-                  <label>Current Resolved Cache {cacheLocationInfo?.locations.length === 1 ? 'Location' : 'Locations'}</label>
-                  {cacheLocationInfo?.locations.length ? cacheLocationInfo.locations.map((item) => (
-                    <div className="cache-location-card" key={item.path}>
-                      <div>
-                        <strong>{item.label}</strong>
-                        <span className="cache-location-path" title={item.path}>{item.path}</span>
-                        <span className="help-text">
-                          {item.ownership === 'package' ? 'Store-owned cache' : item.ownership === 'external' ? 'User-selected external cache' : 'Application profile cache'}
-                          {!item.available ? ' · Currently unavailable' : ''}
-                          {item.disposableOnReset ? ' · Can be removed by Store reset or uninstall' : ''}
-                        </span>
-                      </div>
-                      <div className="cache-location-actions">
-                        <button type="button" onClick={() => void handleOpenCache(item.path)} disabled={!item.available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
-                        <button type="button" onClick={() => void handleCopyCachePath(item.path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
-                      </div>
-                    </div>
-                  )) : (
-                    <span className="help-text">No cache path is resolved until a source folder is opened for this mode.</span>
-                  )}
-                </div>
-                <div className="form-group">
                   <label>Cache Storage</label>
                   <select
                     value={localSettings.cacheLocation}
@@ -808,36 +801,104 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                   <span className="help-text">Centralised stores cache in app data. Per-drive keeps cache on the same drive. Distributed creates a hidden .videocull folder inside each loaded folder.</span>
                 </div>
 
-                <div className="form-group">
-                  <label>Central Cache Location</label>
-                  <button
-                    className="btn-check-updates"
-                    onClick={() => void handleChooseCacheFolder('centralCachePath')}
-                    disabled={localSettings.cacheLocation !== 'centralised'}
-                  >
-                    <Database size={14} />
-                    Choose Folder
-                  </button>
-                  <span className="help-text">{localSettings.centralCachePath || 'Default app cache folder'}</span>
-                </div>
+                {localSettings.cacheLocation === 'centralised' && (
+                  <div className="form-group">
+                    <label>Central Cache Location</label>
+                    <div className="cache-location-panel">
+                      {activeCacheLocations[0] ? (
+                        <>
+                          <div className="cache-location-details">
+                            <span className="cache-location-label">
+                              {globalSettings.centralCachePath ? 'Active custom folder' : 'Active default folder'}
+                            </span>
+                            <span className="cache-location-path" title={activeCacheLocations[0].path}>{activeCacheLocations[0].path}</span>
+                          </div>
+                          <div className="cache-location-actions">
+                            <button type="button" onClick={() => void handleOpenCache(activeCacheLocations[0].path)} disabled={!activeCacheLocations[0].available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
+                            <button type="button" onClick={() => void handleCopyCachePath(activeCacheLocations[0].path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
+                          </div>
+                        </>
+                      ) : (
+                        <span className="help-text">Save this cache mode to resolve its active folder.</span>
+                      )}
+                    </div>
+                    {activeCacheLocations[0] && (
+                      <span className="help-text">{cacheLocationDescription(activeCacheLocations[0])}</span>
+                    )}
+                    <div className="cache-location-controls">
+                      <button className="btn-check-updates" type="button" onClick={() => void handleChooseCacheFolder('centralCachePath')}>
+                        <Database size={14} />
+                        Choose Folder
+                      </button>
+                      {localSettings.centralCachePath && (
+                        <button className="btn-check-updates" type="button" onClick={handleUseDefaultCentralCache}>
+                          <RotateCcw size={14} />
+                          Use Default
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-                <div className="form-group">
-                  <label>Per-drive Cache Location</label>
-                  <button
-                    className="btn-check-updates"
-                    onClick={() => void handleChooseCacheFolder('perDriveCachePaths')}
-                    disabled={localSettings.cacheLocation !== 'per-drive' || !currentDriveKey}
-                  >
-                    <Database size={14} />
-                    Choose Folder
-                  </button>
-                  <span className="help-text">
-                    {currentDriveKey
-                      ? (localSettings.perDriveCachePaths[currentDriveKey] || `Default location for ${currentDriveKey}`)
-                      : 'Open a folder to configure its drive.'}
-                  </span>
-                  {cacheMessage && <span className="help-text">{cacheMessage}</span>}
-                </div>
+                {localSettings.cacheLocation === 'per-drive' && (
+                  <div className="form-group">
+                    <label>Per-drive Cache Locations</label>
+                    {activeCacheLocations.length ? activeCacheLocations.map((item) => (
+                      <div className="cache-location-panel" key={item.path}>
+                        <div className="cache-location-details">
+                          <span className="cache-location-label">{item.label}</span>
+                          <span className="cache-location-path" title={item.path}>{item.path}</span>
+                          <span className="help-text">{cacheLocationDescription(item)}</span>
+                        </div>
+                        <div className="cache-location-actions">
+                          <button type="button" onClick={() => void handleOpenCache(item.path)} disabled={!item.available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
+                          <button type="button" onClick={() => void handleCopyCachePath(item.path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
+                        </div>
+                      </div>
+                    )) : (
+                      <span className="help-text">Open a folder to resolve its drive cache.</span>
+                    )}
+                    <div className="cache-location-controls">
+                      <button
+                        className="btn-check-updates"
+                        type="button"
+                        onClick={() => void handleChooseCacheFolder('perDriveCachePaths')}
+                        disabled={!currentDriveKey}
+                      >
+                        <Database size={14} />
+                        Choose Folder
+                      </button>
+                    </div>
+                    <span className="help-text">
+                      {currentDriveKey
+                        ? (localSettings.perDriveCachePaths[currentDriveKey] || `Using the default location for ${currentDriveKey}`)
+                        : 'Open a folder to configure its drive.'}
+                    </span>
+                  </div>
+                )}
+
+                {localSettings.cacheLocation === 'distributed' && (
+                  <div className="form-group">
+                    <label>Distributed Cache Locations</label>
+                    {activeCacheLocations.length ? activeCacheLocations.map((item) => (
+                      <div className="cache-location-panel" key={item.path}>
+                        <div className="cache-location-details">
+                          <span className="cache-location-label">{item.label}</span>
+                          <span className="cache-location-path" title={item.path}>{item.path}</span>
+                          <span className="help-text">{cacheLocationDescription(item)}</span>
+                        </div>
+                        <div className="cache-location-actions">
+                          <button type="button" onClick={() => void handleOpenCache(item.path)} disabled={!item.available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
+                          <button type="button" onClick={() => void handleCopyCachePath(item.path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
+                        </div>
+                      </div>
+                    )) : (
+                      <span className="help-text">Open a folder to resolve its distributed cache.</span>
+                    )}
+                  </div>
+                )}
+
+                {cacheMessage && <span className="help-text cache-location-message">{cacheMessage}</span>}
 
                 <div className="form-group checkbox-group">
                   <label>
