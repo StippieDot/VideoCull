@@ -130,6 +130,41 @@ test('copies cache and matching index after successful preflight', async () => {
   assert.ok(statuses.some((status) => status.stage === 'cache-copy' && status.progress));
 });
 
+test('copies cache files with bounded concurrency', async () => {
+  const paths = await fixture();
+  const cacheRoot = path.join(paths.sourceProfile, 'video-cache');
+  await Promise.all(Array.from({ length: 8 }, (_, index) => (
+    fs.writeFile(path.join(cacheRoot, `cache-${index}.db`), `database-${index}`)
+  )));
+  let activeCopies = 0;
+  let maximumActiveCopies = 0;
+  const fsImpl = Object.create(fs);
+  fsImpl.copyFile = async (source, target) => {
+    if (!source.startsWith(cacheRoot)) return fs.copyFile(source, target);
+    activeCopies += 1;
+    maximumActiveCopies = Math.max(maximumActiveCopies, activeCopies);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return await fs.copyFile(source, target);
+    } finally {
+      activeCopies -= 1;
+    }
+  };
+  const migration = createStoreProfileMigration({
+    enabled: true,
+    ...paths,
+    fsImpl,
+    cacheCopyConcurrency: 3,
+    availableBytes: async () => Number.MAX_SAFE_INTEGER,
+  });
+
+  await migration.prepare();
+  const complete = await migration.chooseCache('copy');
+
+  assert.equal(complete.cacheOutcome, 'copied');
+  assert.equal(maximumActiveCopies, 3);
+});
+
 test('skips failed thumbnails while keeping the durable migration successful', async () => {
   const paths = await fixture();
   const thumbnail = path.join(paths.sourceProfile, 'video-cache', 'thumbs', 'one.jpg');

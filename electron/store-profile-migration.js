@@ -5,6 +5,8 @@ const DURABLE_FILES = ['settings.json', 'library-state.json', 'distributed-index
 const CACHE_INDEX_FILE = 'cache-index.json';
 const MARKER_FILE = '.store-profile-migration.json';
 const MINIMUM_HEADROOM_BYTES = 256 * 1024 * 1024;
+const DEFAULT_CACHE_COPY_CONCURRENCY = 4;
+const CACHE_COPY_PROGRESS_INTERVAL_MS = 250;
 
 function appendWarning(current, next) {
   if (!next) return current ?? null;
@@ -120,6 +122,21 @@ async function defaultAvailableBytes(targetPath, fsImpl = fs) {
   return Number(stats.bavail) * Number(stats.bsize);
 }
 
+async function mapWithConcurrency(items, limit, worker) {
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      await worker(items[currentIndex], currentIndex);
+    }
+  }
+
+  const workerCount = Math.min(Math.max(1, limit), items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+}
+
 async function validateExternalCacheLocations(profilePath, fsImpl = fs) {
   const configuredPaths = [];
   const warnings = [];
@@ -180,6 +197,7 @@ function createStoreProfileMigration(options) {
   const fsImpl = options.fsImpl ?? fs;
   const availableBytes = options.availableBytes ?? ((target) => defaultAvailableBytes(target, fsImpl));
   const collectFiles = options.collectCacheFiles ?? ((root, onProgress) => collectCacheFiles(root, fsImpl, onProgress));
+  const cacheCopyConcurrency = Math.max(1, Math.min(16, Number(options.cacheCopyConcurrency) || DEFAULT_CACHE_COPY_CONCURRENCY));
   const enabled = Boolean(options.enabled);
   let status = createInitialStatus(enabled);
   let cacheFiles = [];
@@ -331,31 +349,52 @@ function createStoreProfileMigration(options) {
       let filesCopied = 0;
       let skippedFiles = 0;
       const essentialErrors = [];
+      const directoryPromises = new Map();
+      let lastProgressAt = 0;
+      const publishCopyProgress = (force = false) => {
+        const now = Date.now();
+        if (!force && now - lastProgressAt < CACHE_COPY_PROGRESS_INTERVAL_MS) return;
+        lastProgressAt = now;
+        publish({
+          progress: { bytesCopied, totalBytes: status.preflight.sourceBytes, filesCopied, totalFiles: cacheFiles.length, skippedFiles },
+        });
+      };
+      const ensureDirectory = (directoryPath) => {
+        let pending = directoryPromises.get(directoryPath);
+        if (!pending) {
+          pending = fsImpl.mkdir(directoryPath, { recursive: true });
+          directoryPromises.set(directoryPath, pending);
+        }
+        return pending;
+      };
       publish({
         stage: 'cache-copy',
         progress: { bytesCopied, totalBytes: status.preflight.sourceBytes, filesCopied, totalFiles: cacheFiles.length, skippedFiles },
       });
 
-      for (const file of cacheFiles) {
+      await mapWithConcurrency(cacheFiles, cacheCopyConcurrency, async (file) => {
+        if (essentialErrors.length > 0) return;
         const target = path.join(cacheStage, file.relativePath);
         try {
-          await fsImpl.mkdir(path.dirname(target), { recursive: true });
+          await ensureDirectory(path.dirname(target));
           await fsImpl.copyFile(file.sourcePath, target);
-          bytesCopied += file.size;
+          const targetStats = await fsImpl.stat(target);
+          if (!targetStats.isFile() || targetStats.size !== file.size) {
+            throw new Error('Copied file size did not match the source.');
+          }
+          bytesCopied += targetStats.size;
           filesCopied += 1;
         } catch (error) {
           if (file.thumbnail) skippedFiles += 1;
           else essentialErrors.push(`${file.relativePath}: ${error.message}`);
+          await fsImpl.rm(target, { force: true }).catch(() => {});
         }
-        publish({
-          progress: { bytesCopied, totalBytes: status.preflight.sourceBytes, filesCopied, totalFiles: cacheFiles.length, skippedFiles },
-        });
-      }
+        publishCopyProgress();
+      });
+      publishCopyProgress(true);
 
       if (essentialErrors.length > 0) throw new Error(essentialErrors[0]);
-      const stagedFiles = await collectCacheFiles(cacheStage, fsImpl);
-      const stagedBytes = stagedFiles.reduce((sum, file) => sum + file.size, 0);
-      if (stagedFiles.length !== filesCopied || stagedBytes !== bytesCopied) {
+      if (filesCopied + skippedFiles !== cacheFiles.length) {
         throw new Error('Staged cache validation did not match the copied files.');
       }
 
@@ -413,6 +452,7 @@ function createStoreProfileMigration(options) {
 }
 
 module.exports = {
+  DEFAULT_CACHE_COPY_CONCURRENCY,
   CACHE_INDEX_FILE,
   DURABLE_FILES,
   MARKER_FILE,
