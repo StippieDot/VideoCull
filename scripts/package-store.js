@@ -14,6 +14,13 @@ function run(command, args, env = process.env) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+run('powershell.exe', [
+  '-NoProfile',
+  '-ExecutionPolicy',
+  'Bypass',
+  '-File',
+  path.join(root, 'scripts', 'generate-appx-assets.ps1'),
+]);
 run(process.execPath, [path.join(root, 'scripts', 'check-store-config.js')]);
 run(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), 'build']);
 run(

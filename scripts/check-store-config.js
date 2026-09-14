@@ -45,4 +45,17 @@ for (const [asset, width, height] of [
   assert.deepEqual(pngDimensions(assetPath), { width, height }, `${asset} dimensions must be ${width}x${height}`);
 }
 
+for (const targetSize of [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256]) {
+  for (const altForm of ['unplated', 'lightunplated']) {
+    const asset = `Square44x44Logo.targetsize-${targetSize}_altform-${altForm}.png`;
+    const assetPath = path.join(root, 'build', 'appx', asset);
+    assert.ok(fs.existsSync(assetPath), `Missing AppX target-size asset: ${asset}`);
+    assert.deepEqual(
+      pngDimensions(assetPath),
+      { width: targetSize, height: targetSize },
+      `${asset} dimensions must be ${targetSize}x${targetSize}`,
+    );
+  }
+}
+
 console.log(`Store configuration OK. Candidate version: ${candidate}; baseline: ${store.lastSubmittedVersion}.`);

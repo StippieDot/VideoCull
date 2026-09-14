@@ -40,6 +40,12 @@ try {
   foreach ($asset in @('assets/storelogo.png', 'assets/square44x44logo.png', 'assets/square150x150logo.png', 'assets/wide310x150logo.png')) {
     if ($entryNames -notcontains $asset) { throw "Required AppX asset is missing: $asset" }
   }
+  foreach ($targetSize in @(16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)) {
+    foreach ($altForm in @('unplated', 'lightunplated')) {
+      $asset = "assets/square44x44logo.targetsize-${targetSize}_altform-${altForm}.png"
+      if ($entryNames -notcontains $asset) { throw "Required AppX target-size asset is missing: $asset" }
+    }
+  }
 } finally {
   $archive.Dispose()
 }
