@@ -9,6 +9,21 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 ** exponent)).toFixed(exponent === 0 ? 0 : 1)} ${units[exponent]}`;
 }
 
+export function formatByteProgress(bytesCopied: number, totalBytes: number): string {
+  if (!Number.isFinite(totalBytes) || totalBytes <= 0) return `${formatBytes(bytesCopied)} copied`;
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const exponent = Math.min(Math.floor(Math.log(totalBytes) / Math.log(1024)), units.length - 1);
+  const divisor = 1024 ** exponent;
+  const formatInTotalUnit = (bytes: number) => {
+    const value = Math.max(0, Number.isFinite(bytes) ? bytes : 0) / divisor;
+    const decimals = exponent === 0 ? 0 : value > 0 && value < 1 ? 3 : value < 10 ? 2 : 1;
+    return `${value.toFixed(decimals).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')} ${units[exponent]}`;
+  };
+
+  return `${formatInTotalUnit(bytesCopied)} of ${formatInTotalUnit(totalBytes)} copied`;
+}
+
 export default function StoreTransition() {
   const [migration, setMigration] = useState<ProfileMigrationStatus | null>(null);
   const [legacy, setLegacy] = useState<LegacyInstallStatus | null>(null);
@@ -103,7 +118,7 @@ export default function StoreTransition() {
                 <div className="store-migration-progress" role="progressbar" aria-valuenow={progressPercent} aria-valuemin={0} aria-valuemax={100}>
                   <span style={{ width: `${progressPercent}%` }} />
                 </div>
-                <p>{formatBytes(migration.progress.bytesCopied)} of {formatBytes(migration.progress.totalBytes)} copied</p>
+                <p>{formatByteProgress(migration.progress.bytesCopied, migration.progress.totalBytes)}</p>
               </>
             )}
           </section>

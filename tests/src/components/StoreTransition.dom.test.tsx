@@ -2,7 +2,7 @@
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import StoreTransition from '../../../src/components/StoreTransition';
+import StoreTransition, { formatByteProgress } from '../../../src/components/StoreTransition';
 import type { ProfileMigrationStatus } from '../../../src/types';
 
 function awaitingStatus(): ProfileMigrationStatus {
@@ -24,6 +24,11 @@ function awaitingStatus(): ProfileMigrationStatus {
   errors: [],
 };
 }
+
+test('formats cache copy progress using the total size unit for both values', () => {
+  expect(formatByteProgress(1022.3 * 1024 * 1024, 1024 * 1024 * 1024)).toBe('0.998 GB of 1 GB copied');
+  expect(formatByteProgress(512 * 1024 * 1024, 2 * 1024 * 1024 * 1024)).toBe('0.5 GB of 2 GB copied');
+});
 
 test('offers cache copy or rebuild only after durable migration succeeds', async () => {
   const choose = vi.fn().mockResolvedValue({ ...awaitingStatus(), stage: 'complete', cacheOutcome: 'rebuild' });
