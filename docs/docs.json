@@ -9,6 +9,7 @@
   "seo": {
     "indexing": "navigable",
     "metatags": {
+      "canonical": "https://docs.videocull.app",
       "robots": "index, follow",
       "googlebot": "index, follow"
     }
