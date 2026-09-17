@@ -17,10 +17,34 @@ assert.equal(appx.publisherDisplayName, store.publisherDisplayName, 'AppX publis
 assert.equal(appx.displayName, product.displayName, 'AppX display name must match product identity');
 assert.equal(appx.applicationId, 'VideoCull', 'AppX application ID must remain stable');
 assert.deepEqual(appx.languages, ['en-US'], 'Store package must declare en-US');
-assert.deepEqual(appx.capabilities, ['runFullTrust'], 'Store package must request only runFullTrust');
+assert.deepEqual(
+  appx.capabilities,
+  ['runFullTrust', 'unvirtualizedResources'],
+  'Store package must request runFullTrust and unvirtualizedResources',
+);
+assert.equal(
+  appx.customManifestPath,
+  'appx/AppxManifest.xml',
+  'Store package must use the validated AppX manifest template',
+);
 assert.equal(appx.minVersion, '10.0.19041.0', 'Store package must support Windows 10 2004 or newer');
 assert.equal(appx.setBuildNumber, false, 'Store revision must remain zero');
 assert.equal(appx.artifactName, 'VideoCull.Store.${version}.x64.${ext}', 'Store artifact name must identify x64 AppX');
+
+const manifestTemplate = fs.readFileSync(
+  path.join(root, 'build', appx.customManifestPath),
+  'utf8',
+);
+assert.match(
+  manifestTemplate,
+  /<desktop6:FileSystemWriteVirtualization>disabled<\/desktop6:FileSystemWriteVirtualization>/,
+  'Store manifest must disable filesystem write virtualization',
+);
+assert.doesNotMatch(
+  manifestTemplate,
+  /<desktop6:RegistryWriteVirtualization>/,
+  'Store manifest must leave registry write virtualization enabled by default',
+);
 
 const candidate = validateStoreVersion(packageJson.version, store.lastSubmittedVersion);
 const expected = process.argv.includes('--expected')

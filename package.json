@@ -113,8 +113,10 @@
         "en-US"
       ],
       "capabilities": [
-        "runFullTrust"
+        "runFullTrust",
+        "unvirtualizedResources"
       ],
+      "customManifestPath": "appx/AppxManifest.xml",
       "minVersion": "10.0.19041.0",
       "maxVersionTested": "10.0.26100.0",
       "setBuildNumber": false,

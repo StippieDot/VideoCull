@@ -31,6 +31,7 @@ npm run dev
 | `npm run check:ipc` | Validate preload and type IPC contract coverage |
 | `npm run cleanup:cache` | Clean old cache and thumbnail clutter |
 | `npm run package` | Full build plus Windows installer |
+| `npm run package:store` | Build and validate the unsigned x64 Store APPX candidate |
 | `npm run rebuild` | Rebuild native modules against Electron |
 
 ## Notes
@@ -39,3 +40,4 @@ npm run dev
 - `npm run test:cache-native` is mainly intended for CI and clean Node-only installs.
 - Development Electron sessions use a separate `userData` folder so local settings and cache do not mix with the packaged app.
 - E2E runs use their own temporary `userData` directory and do not touch your normal app data.
+- The Store APPX disables filesystem write virtualization so it can share the normal VideoCull profile and user-selected AppData cache locations with the direct edition. This requires Microsoft's restricted `unvirtualizedResources` capability. A technically valid package is not guaranteed Store approval; Partner Center certification remains a separate release gate.

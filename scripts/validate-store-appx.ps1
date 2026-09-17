@@ -31,9 +31,28 @@ try {
   if (-not $desktopDependency -or $desktopDependency.MinVersion -cne '10.0.19041.0') {
     throw 'The AppX must target Windows.Desktop with minimum version 10.0.19041.0.'
   }
-  $capabilities = @($manifest.Package.Capabilities.ChildNodes | ForEach-Object { $_.Name })
-  if ($capabilities.Count -ne 1 -or $capabilities[0] -cne 'runFullTrust') {
+  $capabilities = @($manifest.Package.Capabilities.ChildNodes | ForEach-Object { $_.GetAttribute('Name') } | Sort-Object)
+  $expectedCapabilities = @('runFullTrust', 'unvirtualizedResources') | Sort-Object
+  if (($capabilities -join ',') -cne ($expectedCapabilities -join ',')) {
     throw "Unexpected AppX capabilities: $($capabilities -join ', ')"
+  }
+
+  $namespaceManager = [System.Xml.XmlNamespaceManager]::new($manifest.NameTable)
+  $namespaceManager.AddNamespace('foundation', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10')
+  $namespaceManager.AddNamespace('desktop6', 'http://schemas.microsoft.com/appx/manifest/desktop/windows10/6')
+  $fileSystemVirtualization = @($manifest.SelectNodes(
+    '/foundation:Package/foundation:Properties/desktop6:FileSystemWriteVirtualization',
+    $namespaceManager
+  ))
+  if ($fileSystemVirtualization.Count -ne 1 -or $fileSystemVirtualization[0].InnerText.Trim() -cne 'disabled') {
+    throw 'The AppX must disable desktop6 filesystem write virtualization.'
+  }
+  $registryVirtualization = @($manifest.SelectNodes(
+    '/foundation:Package/foundation:Properties/desktop6:RegistryWriteVirtualization',
+    $namespaceManager
+  ))
+  if ($registryVirtualization.Count -ne 0) {
+    throw 'The AppX must leave registry write virtualization enabled by omitting desktop6:RegistryWriteVirtualization.'
   }
 
   $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/').ToLowerInvariant() })
@@ -50,4 +69,4 @@ try {
   $archive.Dispose()
 }
 
-Write-Host "Store AppX validated: $resolvedPackage ($ExpectedVersion, x64, runFullTrust)"
+Write-Host "Store AppX validated: $resolvedPackage ($ExpectedVersion, x64, runFullTrust, unvirtualizedResources, filesystem virtualization disabled)"
