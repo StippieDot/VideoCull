@@ -22,7 +22,7 @@
     "test:cache-native": "node --test tests/electron/cache.test.js tests/electron/cache.migration.test.js",
     "test:packaging": "node --test tests/electron/build-hooks.test.js",
     "coverage": "vitest run --coverage",
-    "test:profile": "node --test tests/electron/profile-bootstrap.test.js",
+    "test:profile": "node --test tests/electron/profile-bootstrap.test.js tests/electron/storage-compatibility.test.js",
     "test:store": "node --test tests/electron/store-*.test.js",
     "test:ci": "npm run check:ipc && npm run check:installer && npm run check:store && npm run check:store-screenshots && npm run check:brand && npm run test:packaging && npm run test:profile && npm run test:store && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
     "test:e2e": "npm run build && playwright test",

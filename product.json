@@ -12,6 +12,7 @@
   },
   "website": "https://videocull.app",
   "documentation": "https://docs.videocull.app",
+  "storageFormatVersion": 1,
   "microsoftStore": {
     "identityName": "StippieDot.VideoCull",
     "publisher": "CN=6A4B6EC8-38EB-4378-A661-8B04B8C7A5A3",

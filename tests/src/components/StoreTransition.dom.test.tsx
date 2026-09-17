@@ -42,6 +42,29 @@ test('shows and dismisses the direct-install prompt after Store startup', async 
   expect(screen.queryByText(/Both VideoCull editions are installed/i)).toBeNull();
 });
 
+test('warns without blocking when the installed direct edition is older', async () => {
+  Object.assign(window, {
+    electronAPI: {
+      onStoreTransitionReady: vi.fn(() => () => {}),
+      getLegacyInstallStatus: vi.fn().mockResolvedValue({
+        installed: true,
+        eligible: true,
+        promptDismissed: false,
+        olderThanCurrent: true,
+        displayName: 'VideoCull 2.2.1',
+        version: '2.2.1',
+      }),
+    },
+  });
+
+  render(<StoreTransition />);
+
+  expect(await screen.findByText(/older direct VideoCull installation was detected/i)).toBeTruthy();
+  expect(screen.getByText(/update your direct VideoCull installation before switching between editions/i)).toBeTruthy();
+  expect(screen.getByRole('button', { name: /open uninstaller/i })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /not now/i })).toBeTruthy();
+});
+
 test('opens the validated direct-edition uninstaller on request', async () => {
   const uninstall = vi.fn().mockResolvedValue(true);
   Object.assign(window, {

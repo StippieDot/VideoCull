@@ -1,10 +1,14 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const {
+  compareVersions,
+  createLegacyPromptKey,
   detectLegacyInstall,
   launchLegacyUninstaller,
+  normalizeVersion,
   parseInteractiveUninstaller,
   parseRegistryOutput,
+  versionFromEntry,
 } = require('../../electron/legacy-install');
 
 test('parses uninstall registry entries and only accepts interactive VideoCull uninstallers', () => {
@@ -15,6 +19,25 @@ test('parses uninstall registry entries and only accepts interactive VideoCull u
   assert.equal(parseInteractiveUninstaller('"C:\\Windows\\System32\\cmd.exe"'), null);
 });
 
+test('normalizes and compares registered direct-edition versions', () => {
+  assert.equal(normalizeVersion('v2.3.0'), '2.3.0');
+  assert.equal(normalizeVersion('2.3'), null);
+  assert.equal(versionFromEntry({ DisplayVersion: '2.2.1', DisplayName: 'VideoCull' }), '2.2.1');
+  assert.equal(versionFromEntry({ DisplayName: 'VideoCull 2.2.1' }), '2.2.1');
+  assert.equal(compareVersions('2.2.1', '2.3.0'), -1);
+  assert.equal(compareVersions('2.3.0.0', '2.3.0'), 0);
+  assert.equal(compareVersions('2.3.1', '2.3.0'), 1);
+  assert.equal(compareVersions('unknown', '2.3.0'), null);
+  assert.notEqual(
+    createLegacyPromptKey('2.3.0', { version: '2.2.1' }),
+    createLegacyPromptKey('2.3.1', { version: '2.2.1' }),
+  );
+  assert.notEqual(
+    createLegacyPromptKey('2.3.0', { version: '2.2.1' }),
+    createLegacyPromptKey('2.3.0', { version: '2.2.2' }),
+  );
+});
+
 test('detects only validated StippieDot installations whose uninstaller exists', async () => {
   const status = await detectLegacyInstall({
     enabled: true,
@@ -22,6 +45,7 @@ test('detects only validated StippieDot installations whose uninstaller exists',
     queryRegistry: async () => [{
       key: 'HKCU\\Software\\Uninstall\\VideoCull',
       DisplayName: 'VideoCull 2.2.1',
+      DisplayVersion: '2.2.1',
       Publisher: 'StippieDot',
       InstallLocation: 'C:\\Apps\\VideoCull',
       UninstallString: '"C:\\Apps\\VideoCull\\Uninstall VideoCull.exe"',
@@ -29,6 +53,7 @@ test('detects only validated StippieDot installations whose uninstaller exists',
     fsImpl: { lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false }) },
   });
   assert.equal(status.installed, true);
+  assert.equal(status.version, '2.2.1');
   assert.equal(status.uninstallerPath, 'C:\\Apps\\VideoCull\\Uninstall VideoCull.exe');
 });
 

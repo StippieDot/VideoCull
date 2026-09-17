@@ -83,7 +83,7 @@ function dualProfileResult(legacyPath, canonicalPath) {
     status: 'both-canonical',
     warning: warning(
       'Two VideoCull profile folders were found',
-      `VideoCull is using ${canonicalPath}. No files were merged, copied, or removed. The other profile remains at ${legacyPath}.`,
+      `VideoCull is using ${canonicalPath}. An older VideoCull installation may have recreated ${legacyPath}; update or remove that installation before switching editions. No files were merged, copied, or removed.`,
     ),
     legacyPath,
     canonicalPath,

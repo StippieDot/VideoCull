@@ -51,6 +51,40 @@ function parseInteractiveUninstaller(value) {
   return executable;
 }
 
+function normalizeVersion(value) {
+  const match = String(value || '').trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$/i);
+  if (!match) return null;
+  const parts = match.slice(1, 4).map(Number);
+  if (match[4] !== undefined) parts.push(Number(match[4]));
+  return parts.join('.');
+}
+
+function versionFromEntry(entry) {
+  const registered = normalizeVersion(entry.DisplayVersion);
+  if (registered) return registered;
+  const nameMatch = String(entry.DisplayName || '').match(/\bv?(\d+\.\d+\.\d+(?:\.\d+)?)\b/i);
+  return normalizeVersion(nameMatch?.[1]);
+}
+
+function compareVersions(left, right) {
+  const normalizedLeft = normalizeVersion(left);
+  const normalizedRight = normalizeVersion(right);
+  if (!normalizedLeft || !normalizedRight) return null;
+  const leftParts = normalizedLeft.split('.').map(Number);
+  const rightParts = normalizedRight.split('.').map(Number);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return Math.sign(difference);
+  }
+  return 0;
+}
+
+function createLegacyPromptKey(appVersion, install) {
+  const directIdentity = install?.version || install?.displayName || install?.uninstallerPath || 'unknown';
+  return `${appVersion}|${directIdentity}`;
+}
+
 async function detectLegacyInstall(options = {}) {
   if (!options.enabled || options.platform !== 'win32') return { installed: false };
   const entries = await (options.queryRegistry ?? queryRegistry)();
@@ -69,6 +103,7 @@ async function detectLegacyInstall(options = {}) {
     return {
       installed: true,
       displayName: entry.DisplayName,
+      version: versionFromEntry(entry),
       installLocation: entry.InstallLocation || path.dirname(uninstallerPath),
       uninstallerPath,
       registryKey: entry.key,
@@ -90,9 +125,13 @@ function launchLegacyUninstaller(status, spawnImpl = spawn) {
 }
 
 module.exports = {
+  compareVersions,
+  createLegacyPromptKey,
   detectLegacyInstall,
   launchLegacyUninstaller,
+  normalizeVersion,
   parseInteractiveUninstaller,
   parseRegistryOutput,
   queryRegistry,
+  versionFromEntry,
 };

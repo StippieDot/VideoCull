@@ -11,7 +11,12 @@ const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
 const { getDistributionChannel, shouldEnableUpdates } = require('./distribution');
-const { detectLegacyInstall, launchLegacyUninstaller } = require('./legacy-install');
+const {
+  compareVersions,
+  createLegacyPromptKey,
+  detectLegacyInstall,
+  launchLegacyUninstaller,
+} = require('./legacy-install');
 const {
   THEME_ARGUMENT_PREFIX,
   getThemeBackgroundColor,
@@ -1005,7 +1010,13 @@ async function getLegacyTransitionStatus() {
       profileBootstrap.storage.runtimeState,
     ),
   ]);
-  return { ...install, eligible: install.installed, promptDismissed: transition.promptDismissed === true };
+  const promptKey = createLegacyPromptKey(app.getVersion(), install);
+  return {
+    ...install,
+    eligible: install.installed,
+    olderThanCurrent: compareVersions(install.version, app.getVersion()) === -1,
+    promptDismissed: transition.dismissedPromptKey === promptKey,
+  };
 }
 
 function loadCacheMapWithAbsoluteThumbs(db, cacheRootDir, videoIds = null) {
@@ -2770,9 +2781,11 @@ ipcMain.handle('get-legacy-install-status', () => getLegacyTransitionStatus());
 
 ipcMain.handle('dismiss-legacy-install-prompt', async () => {
   if (!isWindowsStore) return false;
+  const status = await getLegacyTransitionStatus();
+  if (!status.eligible) return false;
   await writeJsonFile(
     LEGACY_TRANSITION_FILE,
-    { promptDismissed: true },
+    { dismissedPromptKey: createLegacyPromptKey(app.getVersion(), status) },
     profileBootstrap.storage.runtimeState,
   );
   return true;

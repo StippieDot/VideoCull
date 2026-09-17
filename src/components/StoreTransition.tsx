@@ -25,7 +25,10 @@ export default function StoreTransition() {
   return (
     <aside className="legacy-install-banner" role="status">
       <span>
-        <strong>Both VideoCull editions are installed.</strong> After confirming the Store edition works, we recommend removing {legacy.displayName || 'the direct installation'}.
+        <strong>{legacy.olderThanCurrent ? 'An older direct VideoCull installation was detected.' : 'Both VideoCull editions are installed.'}</strong>{' '}
+        {legacy.olderThanCurrent
+          ? 'Update your direct VideoCull installation before switching between editions.'
+          : `After confirming the Store edition works, we recommend removing ${legacy.displayName || 'the direct installation'}.`}
       </span>
       <div>
         <button onClick={() => void window.electronAPI?.uninstallLegacyInstall?.()}>Open uninstaller</button>

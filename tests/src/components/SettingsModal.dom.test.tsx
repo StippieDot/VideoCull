@@ -313,6 +313,19 @@ describe('SettingsModal integration behavior', () => {
     expect(electronAPI.uninstallLegacyInstall).toHaveBeenCalledTimes(1);
   });
 
+  test('warns in About when the installed direct edition is older', async () => {
+    electronAPI.getLegacyInstallStatus.mockResolvedValue({
+      installed: true,
+      eligible: true,
+      olderThanCurrent: true,
+      displayName: 'VideoCull 2.2.1',
+      version: '2.2.1',
+    });
+    render(<SettingsModal initialTab="about" />);
+
+    expect(await screen.findByText(/update it before switching between editions/i)).toBeTruthy();
+  });
+
   test('explains thumbnail count rebuild and reuse behavior', async () => {
     render(<SettingsModal initialTab="processing" />);
 

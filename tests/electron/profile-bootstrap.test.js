@@ -53,7 +53,7 @@ function createApp(root, options = {}) {
   return { app, calls };
 }
 
-async function executeBootstrap({ profileError = null, mainError = null } = {}) {
+async function executeBootstrap({ profileError = null, storageError = null, mainError = null } = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'bootstrap.js'), 'utf8');
   const calls = [];
   const errors = [];
@@ -80,6 +80,16 @@ async function executeBootstrap({ profileError = null, mainError = null } = {}) 
           },
         };
       }
+      if (specifier === './storage-compatibility') {
+        return {
+          ensureProfileStorageCompatibility(profilePath) {
+            assert.equal(profilePath, 'C:\\AppData\\VideoCull');
+            calls.push('compatibility');
+            if (storageError) throw storageError;
+            return { formatVersion: 1 };
+          },
+        };
+      }
       if (specifier === './main') {
         calls.push('main');
         if (mainError) throw mainError;
@@ -101,13 +111,13 @@ afterEach(() => {
 
 test('entrypoint configures the profile before importing the application', async () => {
   const { calls, context } = await executeBootstrap();
-  assert.deepEqual(calls, ['configure', 'main']);
+  assert.deepEqual(calls, ['configure', 'compatibility', 'main']);
   assert.equal(context.globalThis.__VIDEOCULL_PROFILE_BOOTSTRAP__.selectedPath, 'C:\\AppData\\VideoCull');
 });
 
 test('application import errors are reported by the bootstrap boundary', async () => {
   const { calls, errors } = await executeBootstrap({ mainError: new Error('main import failed') });
-  assert.deepEqual(calls, ['configure', 'main', 'show-error', 'exit']);
+  assert.deepEqual(calls, ['configure', 'compatibility', 'main', 'show-error', 'exit']);
   assert.match(errors[0][0], /bootstrap/);
 });
 
@@ -115,6 +125,15 @@ test('profile initialization failure exits before importing the application', as
   const { calls, errors } = await executeBootstrap({ profileError: new Error('profile failed') });
   assert.deepEqual(calls, ['configure', 'exit']);
   assert.equal(errors.length, 1);
+});
+
+test('storage incompatibility shows a warning and exits before importing the application', async () => {
+  const error = Object.assign(new Error('newer format'), {
+    userMessage: 'This VideoCull data was last used by a newer incompatible version.',
+  });
+  const { calls, errors } = await executeBootstrap({ storageError: error });
+  assert.deepEqual(calls, ['configure', 'compatibility', 'show-error', 'exit']);
+  assert.match(errors[0][0], /storage-compatibility/);
 });
 
 test('fresh production bootstrap creates and selects VideoCull', () => {

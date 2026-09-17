@@ -456,7 +456,9 @@ export interface LegacyInstallStatus {
   installed: boolean;
   eligible?: boolean;
   promptDismissed?: boolean;
+  olderThanCurrent?: boolean;
   displayName?: string;
+  version?: string | null;
   installLocation?: string;
   uninstallerPath?: string;
   registryKey?: string;

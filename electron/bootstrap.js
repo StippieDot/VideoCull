@@ -1,6 +1,7 @@
 const { app, dialog } = require('electron');
 const { configureAppProfile } = require('./profile-bootstrap');
 const { acquireEditionGuard, closeEditionGuard } = require('./edition-guard');
+const { ensureProfileStorageCompatibility } = require('./storage-compatibility');
 
 async function bootstrap() {
   let editionGuard;
@@ -22,6 +23,19 @@ async function bootstrap() {
     profileBootstrap = configureAppProfile(app);
   } catch (error) {
     console.error('[profile-bootstrap] VideoCull could not initialize its profile:', error);
+    closeEditionGuard(editionGuard);
+    app.exit(1);
+    return;
+  }
+
+  try {
+    ensureProfileStorageCompatibility(profileBootstrap.selectedPath);
+  } catch (error) {
+    console.error('[storage-compatibility] VideoCull refused to open the profile:', error);
+    dialog.showErrorBox(
+      'VideoCull cannot open this profile',
+      error.userMessage || 'VideoCull could not verify that this profile is safe to open.',
+    );
     closeEditionGuard(editionGuard);
     app.exit(1);
     return;
