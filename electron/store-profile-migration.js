@@ -122,6 +122,20 @@ async function defaultAvailableBytes(targetPath, fsImpl = fs) {
   return Number(stats.bavail) * Number(stats.bsize);
 }
 
+async function writeJsonAtomic(filePath, value, fsImpl = fs) {
+  const temporary = `${filePath}.${process.pid}.tmp`;
+  await fsImpl.writeFile(temporary, JSON.stringify(value, null, 2), 'utf8');
+  try {
+    await fsImpl.rename(temporary, filePath);
+  } catch (error) {
+    if (error?.code !== 'EEXIST' && error?.code !== 'EPERM') throw error;
+    await fsImpl.rm(filePath, { force: true });
+    await fsImpl.rename(temporary, filePath);
+  } finally {
+    await fsImpl.rm(temporary, { force: true }).catch(() => {});
+  }
+}
+
 async function mapWithConcurrency(items, limit, worker) {
   let nextIndex = 0;
 
@@ -185,6 +199,7 @@ function createInitialStatus(enabled) {
     stage: enabled ? 'pending' : 'not-needed',
     durable: enabled ? 'pending' : 'not-needed',
     cacheOutcome: enabled ? null : 'not-needed',
+    sourceCachePath: null,
     preflight: null,
     preflightProgress: null,
     progress: null,
@@ -205,6 +220,11 @@ function createStoreProfileMigration(options) {
   const markerPath = path.join(options.targetProfile, MARKER_FILE);
   const cacheStage = `${options.targetCache}.migration-staging`;
   const durableStage = path.join(path.dirname(options.targetProfile), '.profile-migration-staging');
+
+  async function discardIncompleteCacheStaging() {
+    await fsImpl.rm(cacheStage, { recursive: true, force: true }).catch(() => {});
+    await fsImpl.rm(`${cacheStage}.index.json`, { force: true }).catch(() => {});
+  }
 
   function publish(patch) {
     status = { ...status, ...patch };
@@ -252,19 +272,26 @@ function createStoreProfileMigration(options) {
   async function prepareCache() {
     if (!enabled || status.stage === 'complete') return status;
     if (status.durable === 'pending') throw new Error('Durable profile migration must complete before cache preflight.');
+    const sourceCache = path.join(options.sourceProfile, 'video-cache');
+    if (!await isDirectory(sourceCache, fsImpl)) {
+      await persist('not-needed');
+      return publish({ stage: 'complete', cacheOutcome: 'not-needed' });
+    }
+    return publish({ stage: 'awaiting-cache-strategy', sourceCachePath: sourceCache });
+  }
+
+  async function preflightCache() {
+    if (status.stage !== 'awaiting-cache-strategy') {
+      throw new Error('Cache migration is not waiting for a strategy.');
+    }
     try {
-      const sourceCache = path.join(options.sourceProfile, 'video-cache');
-      if (!await isDirectory(sourceCache, fsImpl)) {
-        await persist('not-needed');
-        return publish({ stage: 'complete', cacheOutcome: 'not-needed' });
-      }
+      const sourceCache = status.sourceCachePath;
 
       publish({
         stage: 'cache-preflight',
         preflightProgress: { filesScanned: 0, directoriesScanned: 0, bytesScanned: 0 },
       });
-      await fsImpl.rm(cacheStage, { recursive: true, force: true }).catch(() => {});
-      await fsImpl.rm(`${cacheStage}.index.json`, { force: true }).catch(() => {});
+      await discardIncompleteCacheStaging();
       cacheFiles = await collectFiles(sourceCache, (preflightProgress) => publish({ preflightProgress }));
       const sourceBytes = cacheFiles.reduce((sum, file) => sum + file.size, 0);
       const headroomBytes = Math.max(Math.ceil(sourceBytes * 0.1), MINIMUM_HEADROOM_BYTES);
@@ -324,13 +351,51 @@ function createStoreProfileMigration(options) {
     return prepareCache();
   }
 
+  async function retainSourceCache() {
+    await discardIncompleteCacheStaging();
+    const settingsPath = path.join(options.targetProfile, 'settings.json');
+    let settings = {};
+    if (await isRegularFile(settingsPath, fsImpl)) {
+      settings = JSON.parse(await fsImpl.readFile(settingsPath, 'utf8'));
+      if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+        throw new Error('Migrated settings are not a valid object.');
+      }
+    }
+    await writeJsonAtomic(settingsPath, {
+      ...settings,
+      cacheLocation: 'centralised',
+      centralCachePath: status.sourceCachePath,
+    }, fsImpl);
+
+    const sourceIndex = path.join(options.sourceProfile, CACHE_INDEX_FILE);
+    if (await isRegularFile(sourceIndex, fsImpl)) {
+      await atomicCopyFile(sourceIndex, path.join(options.targetProfile, CACHE_INDEX_FILE), fsImpl);
+    }
+    await persist('retained');
+    return publish({ stage: 'complete', cacheOutcome: 'retained' });
+  }
+
   async function chooseCache(action) {
+    if (status.stage === 'awaiting-cache-strategy' && action === 'inspect') {
+      return preflightCache();
+    }
+    if (status.stage === 'awaiting-cache-strategy' && action === 'retain') {
+      return retainSourceCache();
+    }
+    if (status.stage === 'awaiting-cache-strategy' && action === 'rebuild') {
+      await discardIncompleteCacheStaging();
+      await persist('rebuild');
+      return publish({ stage: 'complete', cacheOutcome: 'rebuild' });
+    }
     if (status.stage !== 'awaiting-cache-choice') {
       throw new Error('Cache migration is not waiting for a choice.');
     }
-    if (action !== 'copy' && action !== 'rebuild') throw new Error('Unknown cache migration choice.');
+    if (action !== 'copy' && action !== 'retain' && action !== 'rebuild') throw new Error('Unknown cache migration choice.');
+    if (action === 'retain') {
+      return retainSourceCache();
+    }
     if (action === 'rebuild' || !status.preflight?.canCopy) {
-      await fsImpl.rm(cacheStage, { recursive: true, force: true }).catch(() => {});
+      await discardIncompleteCacheStaging();
       await persist('rebuild');
       return publish({
         stage: 'complete',
@@ -448,6 +513,7 @@ function createStoreProfileMigration(options) {
     prepare,
     prepareCache,
     prepareDurable,
+    preflightCache,
   };
 }
 

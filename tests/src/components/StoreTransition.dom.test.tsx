@@ -10,6 +10,7 @@ function awaitingStatus(): ProfileMigrationStatus {
     stage: 'awaiting-cache-choice',
     durable: 'complete',
     cacheOutcome: null,
+    sourceCachePath: 'C:\\Users\\Example\\AppData\\Roaming\\VideoCull\\video-cache',
     preflight: {
       sourceBytes: 1024,
       fileCount: 3,
@@ -25,12 +26,61 @@ function awaitingStatus(): ProfileMigrationStatus {
 };
 }
 
+function strategyStatus(): ProfileMigrationStatus {
+  return {
+    ...awaitingStatus(),
+    stage: 'awaiting-cache-strategy',
+    sourceCachePath: 'C:\\Users\\Example\\AppData\\Roaming\\VideoCull\\video-cache',
+    preflight: null,
+  };
+}
+
 test('formats cache copy progress using the total size unit for both values', () => {
   expect(formatByteProgress(1022.3 * 1024 * 1024, 1024 * 1024 * 1024)).toBe('0.998 GB of 1 GB copied');
   expect(formatByteProgress(512 * 1024 * 1024, 2 * 1024 * 1024 * 1024)).toBe('0.5 GB of 2 GB copied');
 });
 
-test('offers cache copy or rebuild only after durable migration succeeds', async () => {
+test('offers retain, inspect-and-copy, or rebuild before inspecting cache files', async () => {
+  const choose = vi.fn().mockResolvedValue({ ...strategyStatus(), stage: 'complete', cacheOutcome: 'retained' });
+  Object.assign(window, {
+    electronAPI: {
+      getProfileMigrationStatus: vi.fn().mockResolvedValue(strategyStatus()),
+      chooseProfileCacheMigration: choose,
+      onProfileMigrationStatus: vi.fn(() => () => {}),
+      onStoreTransitionReady: vi.fn(() => () => {}),
+      getLegacyInstallStatus: vi.fn().mockResolvedValue({ installed: false, eligible: false }),
+    },
+  });
+
+  render(<StoreTransition />);
+
+  expect(await screen.findByText(/settings and library state are already migrated/i)).toBeTruthy();
+  expect(screen.getByRole('button', { name: /keep using existing cache/i })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /check size and copy/i })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /rebuild cache/i })).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: /keep using existing cache/i }));
+  expect(choose).toHaveBeenCalledWith('retain');
+});
+
+test('starts cache inspection only when the copy route is selected', async () => {
+  const choose = vi.fn().mockResolvedValue({ ...strategyStatus(), stage: 'cache-preflight' });
+  Object.assign(window, {
+    electronAPI: {
+      getProfileMigrationStatus: vi.fn().mockResolvedValue(strategyStatus()),
+      chooseProfileCacheMigration: choose,
+      onProfileMigrationStatus: vi.fn(() => () => {}),
+      onStoreTransitionReady: vi.fn(() => () => {}),
+      getLegacyInstallStatus: vi.fn().mockResolvedValue({ installed: false, eligible: false }),
+    },
+  });
+
+  render(<StoreTransition />);
+
+  await userEvent.click(await screen.findByRole('button', { name: /check size and copy/i }));
+  expect(choose).toHaveBeenCalledWith('inspect');
+});
+
+test('offers copy, retain, or rebuild after durable migration and copy preflight succeed', async () => {
   const choose = vi.fn().mockResolvedValue({ ...awaitingStatus(), stage: 'complete', cacheOutcome: 'rebuild' });
   Object.assign(window, {
     electronAPI: {
@@ -45,6 +95,7 @@ test('offers cache copy or rebuild only after durable migration succeeds', async
 
   expect(await screen.findByText(/settings and library state are already migrated/i)).toBeTruthy();
   expect(screen.getByRole('button', { name: /copy existing cache/i })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /keep using existing cache/i })).toBeTruthy();
   await userEvent.click(screen.getByRole('button', { name: /skip and rebuild/i }));
   expect(choose).toHaveBeenCalledWith('rebuild');
 });

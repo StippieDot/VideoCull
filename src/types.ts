@@ -450,6 +450,7 @@ export type ProfileMigrationStage =
   | 'not-needed'
   | 'pending'
   | 'durable-copy'
+  | 'awaiting-cache-strategy'
   | 'cache-preflight'
   | 'awaiting-cache-choice'
   | 'cache-copy'
@@ -459,7 +460,8 @@ export type ProfileMigrationStage =
 export interface ProfileMigrationStatus {
   stage: ProfileMigrationStage;
   durable: 'pending' | 'complete' | 'not-needed';
-  cacheOutcome: 'not-needed' | 'copied' | 'copied-with-skips' | 'rebuild' | null;
+  cacheOutcome: 'not-needed' | 'copied' | 'copied-with-skips' | 'retained' | 'rebuild' | null;
+  sourceCachePath: string | null;
   preflight: {
     sourceBytes: number;
     fileCount: number;
@@ -652,7 +654,7 @@ export interface ElectronAPI {
   copyCachePath: (cachePath: string) => Promise<boolean>;
   getDistributionInfo: () => Promise<DistributionInfo>;
   getProfileMigrationStatus: () => Promise<ProfileMigrationStatus>;
-  chooseProfileCacheMigration: (action: 'copy' | 'rebuild') => Promise<ProfileMigrationStatus | null>;
+  chooseProfileCacheMigration: (action: 'inspect' | 'retain' | 'copy' | 'rebuild') => Promise<ProfileMigrationStatus | null>;
   onProfileMigrationStatus: (callback: (data: ProfileMigrationStatus) => void) => () => void;
   onStoreTransitionReady: (callback: () => void) => () => void;
   getLegacyInstallStatus: () => Promise<LegacyInstallStatus>;

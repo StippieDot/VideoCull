@@ -2792,6 +2792,7 @@ ipcMain.handle('get-profile-migration-status', () => (
     stage: 'not-needed',
     durable: 'not-needed',
     cacheOutcome: 'not-needed',
+    sourceCachePath: null,
     preflight: null,
     preflightProgress: null,
     progress: null,

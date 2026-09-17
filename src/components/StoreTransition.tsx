@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import useStore from '../store';
 import type { LegacyInstallStatus, ProfileMigrationStatus } from '../types';
 import './StoreTransition.css';
 
@@ -49,11 +50,19 @@ export default function StoreTransition() {
     };
   }, [refreshLegacy]);
 
-  const chooseCache = async (action: 'copy' | 'rebuild') => {
+  const chooseCache = async (action: 'inspect' | 'retain' | 'copy' | 'rebuild') => {
     setBusy(true);
     try {
       const status = await window.electronAPI?.chooseProfileCacheMigration?.(action);
-      if (status) setMigration(status);
+      if (status) {
+        setMigration(status);
+        if (status.cacheOutcome === 'retained' && status.sourceCachePath) {
+          useStore.getState().updateSettings({
+            cacheLocation: 'centralised',
+            centralCachePath: status.sourceCachePath,
+          });
+        }
+      }
     } finally {
       setBusy(false);
     }
@@ -64,7 +73,7 @@ export default function StoreTransition() {
     setLegacy((current) => current ? { ...current, promptDismissed: true } : current);
   };
 
-  const showMigration = migration && ['cache-preflight', 'awaiting-cache-choice', 'cache-copy'].includes(migration.stage);
+  const showMigration = migration && ['awaiting-cache-strategy', 'cache-preflight', 'awaiting-cache-choice', 'cache-copy'].includes(migration.stage);
   const progressPercent = migration?.progress?.totalBytes
     ? Math.min(100, Math.round((migration.progress.bytesCopied / migration.progress.totalBytes) * 100))
     : 0;
@@ -75,6 +84,32 @@ export default function StoreTransition() {
         <div className="store-transition-overlay">
           <section className="store-transition-dialog" role="dialog" aria-modal="true" aria-labelledby="store-migration-title">
             <h2 id="store-migration-title">Bring your VideoCull cache with you?</h2>
+            {migration.stage === 'awaiting-cache-strategy' && (
+              <>
+                <p>Your settings and library state are already migrated into the Microsoft Store profile. Choose what to do with the existing cache.</p>
+                {migration.sourceCachePath && (
+                  <div className="store-cache-source">
+                    <span>Existing cache</span>
+                    <code>{migration.sourceCachePath}</code>
+                  </div>
+                )}
+                <div className="store-migration-options">
+                  <button className="store-migration-option store-migration-option-primary" disabled={busy} onClick={() => void chooseCache('inspect')}>
+                    <strong>Check size and copy <small>Recommended</small></strong>
+                    <span>Inspect the cache and available space before copying it into Store storage.</span>
+                  </button>
+                  <button className="store-migration-option" disabled={busy} onClick={() => void chooseCache('retain')}>
+                    <strong>Keep using existing cache</strong>
+                    <span>No copying or extra disk space. The cache stays outside the Store package.</span>
+                  </button>
+                  <button className="store-migration-option" disabled={busy} onClick={() => void chooseCache('rebuild')}>
+                    <strong>Rebuild cache</strong>
+                    <span>Leave the old cache untouched and regenerate thumbnails and metadata as needed.</span>
+                  </button>
+                </div>
+                <p className="store-transition-warning">Do not run the previous direct edition at the same time when both editions use this cache.</p>
+              </>
+            )}
             {migration.stage === 'cache-preflight' && (
               <>
                 <p>Checking the existing cache and available disk space…</p>
@@ -105,6 +140,9 @@ export default function StoreTransition() {
                     onClick={() => void chooseCache('copy')}
                   >
                     Copy existing cache (recommended)
+                  </button>
+                  <button className="btn btn-ghost" disabled={busy} onClick={() => void chooseCache('retain')}>
+                    Keep using existing cache
                   </button>
                   <button className="btn btn-ghost" disabled={busy} onClick={() => void chooseCache('rebuild')}>
                     Skip and rebuild

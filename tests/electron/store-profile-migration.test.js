@@ -33,15 +33,21 @@ test('durable state succeeds before cache choice and excludes updater/session fi
   await fs.writeFile(path.join(paths.sourceProfile, '.updaterId'), 'private');
   await fs.writeFile(path.join(paths.sourceProfile, 'video-cache', 'library.db'), 'database');
 
+  let cacheInspectionStarted = false;
   const migration = createStoreProfileMigration({
     enabled: true,
     ...paths,
     availableBytes: async () => Number.MAX_SAFE_INTEGER,
+    collectCacheFiles: async () => {
+      cacheInspectionStarted = true;
+      return [];
+    },
   });
   const status = await migration.prepare();
 
   assert.equal(status.durable, 'complete');
-  assert.equal(status.stage, 'awaiting-cache-choice');
+  assert.equal(status.stage, 'awaiting-cache-strategy');
+  assert.equal(cacheInspectionStarted, false);
   assert.equal(await fs.readFile(path.join(paths.targetProfile, 'settings.json'), 'utf8'), '{"theme":"dark"}');
   await assert.rejects(fs.stat(path.join(paths.targetProfile, '.updaterId')), /ENOENT/);
   assert.equal(JSON.parse(await fs.readFile(path.join(paths.targetProfile, MARKER_FILE), 'utf8')).cacheOutcome, null);
@@ -69,6 +75,94 @@ test('durable migration completes without waiting for delayed cache inspection',
   assert.equal(await fs.readFile(path.join(paths.targetProfile, 'settings.json'), 'utf8'), '{"theme":"dark"}');
 });
 
+test('keeps the legacy cache external while settings remain in the packaged profile', async () => {
+  const paths = await fixture();
+  const sourceCache = path.join(paths.sourceProfile, 'video-cache');
+  const sourceSettings = {
+    theme: 'dark',
+    cacheLocation: 'per-drive',
+    centralCachePath: null,
+    perDriveCachePaths: { 'P:': 'P:\\VideoCull-cache' },
+  };
+  await fs.writeFile(path.join(paths.sourceProfile, 'settings.json'), JSON.stringify(sourceSettings));
+  await fs.writeFile(path.join(paths.sourceProfile, 'cache-index.json'), '{"knownFolders":["P:\\\\Media"]}');
+  await fs.writeFile(path.join(sourceCache, 'library.db'), 'database');
+  const interruptedStage = `${paths.targetCache}.migration-staging`;
+  await fs.mkdir(interruptedStage, { recursive: true });
+  await fs.writeFile(path.join(interruptedStage, 'partial.db'), 'partial');
+  const migration = createStoreProfileMigration({
+    enabled: true,
+    ...paths,
+    collectCacheFiles: async () => { throw new Error('cache inspection should not run'); },
+  });
+
+  const awaiting = await migration.prepare();
+  assert.equal(awaiting.stage, 'awaiting-cache-strategy');
+  const complete = await migration.chooseCache('retain');
+
+  assert.equal(complete.stage, 'complete');
+  assert.equal(complete.cacheOutcome, 'retained');
+  assert.equal(complete.sourceCachePath, sourceCache);
+  assert.deepEqual(
+    JSON.parse(await fs.readFile(path.join(paths.targetProfile, 'settings.json'), 'utf8')),
+    {
+      ...sourceSettings,
+      cacheLocation: 'centralised',
+      centralCachePath: sourceCache,
+    },
+  );
+  assert.deepEqual(
+    JSON.parse(await fs.readFile(path.join(paths.sourceProfile, 'settings.json'), 'utf8')),
+    sourceSettings,
+  );
+  assert.equal(await fs.readFile(path.join(paths.targetProfile, 'cache-index.json'), 'utf8'), '{"knownFolders":["P:\\\\Media"]}');
+  assert.equal(await fs.readFile(path.join(sourceCache, 'library.db'), 'utf8'), 'database');
+  await assert.rejects(fs.stat(paths.targetCache), /ENOENT/);
+  await assert.rejects(fs.stat(interruptedStage), /ENOENT/);
+  assert.equal(JSON.parse(await fs.readFile(path.join(paths.targetProfile, MARKER_FILE), 'utf8')).cacheOutcome, 'retained');
+});
+
+test('choosing rebuild completes without inspecting the legacy cache', async () => {
+  const paths = await fixture();
+  await fs.writeFile(path.join(paths.sourceProfile, 'video-cache', 'library.db'), 'database');
+  const migration = createStoreProfileMigration({
+    enabled: true,
+    ...paths,
+    collectCacheFiles: async () => { throw new Error('cache inspection should not run'); },
+  });
+
+  await migration.prepare();
+  const complete = await migration.chooseCache('rebuild');
+
+  assert.equal(complete.stage, 'complete');
+  assert.equal(complete.cacheOutcome, 'rebuild');
+  assert.equal(await fs.readFile(path.join(paths.sourceProfile, 'video-cache', 'library.db'), 'utf8'), 'database');
+});
+
+test('keeps the legacy cache after copy preflight without copying its files', async () => {
+  const paths = await fixture();
+  const sourceCache = path.join(paths.sourceProfile, 'video-cache');
+  await fs.writeFile(path.join(paths.sourceProfile, 'settings.json'), JSON.stringify({ theme: 'dark' }));
+  await fs.writeFile(path.join(sourceCache, 'library.db'), 'database');
+  const migration = createStoreProfileMigration({
+    enabled: true,
+    ...paths,
+    availableBytes: async () => Number.MAX_SAFE_INTEGER,
+  });
+
+  await migration.prepare();
+  await migration.chooseCache('inspect');
+  const complete = await migration.chooseCache('retain');
+
+  assert.equal(complete.stage, 'complete');
+  assert.equal(complete.cacheOutcome, 'retained');
+  assert.equal(
+    JSON.parse(await fs.readFile(path.join(paths.targetProfile, 'settings.json'), 'utf8')).centralCachePath,
+    sourceCache,
+  );
+  await assert.rejects(fs.stat(paths.targetCache), /ENOENT/);
+});
+
 test('cache preflight publishes inspection progress', async () => {
   const paths = await fixture();
   await fs.writeFile(path.join(paths.sourceProfile, 'video-cache', 'library.db'), 'database');
@@ -81,8 +175,9 @@ test('cache preflight publishes inspection progress', async () => {
     onStatus: (status) => statuses.push(status),
   });
 
-  await migration.prepareDurable();
-  const status = await migration.prepareCache();
+  const initial = await migration.prepare();
+  assert.equal(initial.stage, 'awaiting-cache-strategy');
+  const status = await migration.chooseCache('inspect');
 
   assert.equal(status.stage, 'awaiting-cache-choice');
   assert.deepEqual(status.preflightProgress, {
@@ -101,7 +196,8 @@ test('preflight includes required headroom and permits a rebuild choice', async 
     ...paths,
     availableBytes: async () => 1,
   });
-  const preflight = await migration.prepare();
+  await migration.prepare();
+  const preflight = await migration.chooseCache('inspect');
   assert.equal(preflight.preflight.headroomBytes, MINIMUM_HEADROOM_BYTES);
   assert.equal(preflight.preflight.canCopy, false);
   const complete = await migration.chooseCache('rebuild');
@@ -122,6 +218,7 @@ test('copies cache and matching index after successful preflight', async () => {
     onStatus: (status) => statuses.push(status),
   });
   await migration.prepare();
+  await migration.chooseCache('inspect');
   const complete = await migration.chooseCache('copy');
 
   assert.equal(complete.cacheOutcome, 'copied');
@@ -159,6 +256,7 @@ test('copies cache files with bounded concurrency', async () => {
   });
 
   await migration.prepare();
+  await migration.chooseCache('inspect');
   const complete = await migration.chooseCache('copy');
 
   assert.equal(complete.cacheOutcome, 'copied');
@@ -178,6 +276,7 @@ test('skips failed thumbnails while keeping the durable migration successful', a
   };
   const migration = createStoreProfileMigration({ enabled: true, ...paths, fsImpl, availableBytes: async () => Number.MAX_SAFE_INTEGER });
   await migration.prepare();
+  await migration.chooseCache('inspect');
   const complete = await migration.chooseCache('copy');
   assert.equal(complete.durable, 'complete');
   assert.equal(complete.cacheOutcome, 'copied-with-skips');
@@ -197,6 +296,7 @@ test('falls back to rebuild when an essential cache file cannot be copied', asyn
   };
   const migration = createStoreProfileMigration({ enabled: true, ...paths, fsImpl, availableBytes: async () => Number.MAX_SAFE_INTEGER });
   await migration.prepare();
+  await migration.chooseCache('inspect');
   const complete = await migration.chooseCache('copy');
   assert.equal(complete.durable, 'complete');
   assert.equal(complete.cacheOutcome, 'rebuild');
@@ -217,6 +317,7 @@ test('falls back to rebuild when staged cache promotion fails', async () => {
   };
   const migration = createStoreProfileMigration({ enabled: true, ...paths, fsImpl, availableBytes: async () => Number.MAX_SAFE_INTEGER });
   await migration.prepare();
+  await migration.chooseCache('inspect');
   const complete = await migration.chooseCache('copy');
   assert.equal(complete.durable, 'complete');
   assert.equal(complete.cacheOutcome, 'rebuild');
@@ -233,7 +334,7 @@ test('reports unavailable imported external caches without failing durable migra
   const migration = createStoreProfileMigration({ enabled: true, ...paths, availableBytes: async () => Number.MAX_SAFE_INTEGER });
   const status = await migration.prepare();
   assert.equal(status.durable, 'complete');
-  assert.equal(status.stage, 'awaiting-cache-choice');
+  assert.equal(status.stage, 'awaiting-cache-strategy');
   assert.match(status.warning, /external cache location is unavailable/);
 });
 
@@ -249,6 +350,7 @@ test('an interrupted staging directory is discarded on the next preflight', asyn
     availableBytes: async () => Number.MAX_SAFE_INTEGER,
   });
   await migration.prepare();
+  await migration.chooseCache('inspect');
   await assert.rejects(fs.stat(path.join(staging, 'partial.db')), /ENOENT/);
 });
 
