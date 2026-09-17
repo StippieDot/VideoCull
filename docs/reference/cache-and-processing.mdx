@@ -36,7 +36,7 @@ When using a custom central folder, choose **Use Default** to return to VideoCul
 
 Do not disconnect a source or destination drive during migration. If a partial migration is reported, read the error before rescanning or deleting the old cache manually.
 
-For the Microsoft Store edition, the default cache belongs to the app package and Windows removes it when the app is reset or uninstalled. A custom central, per-drive, or distributed cache is user-owned and remains in place when VideoCull is uninstalled.
+The Microsoft Store and direct-download editions use the same default cache at `%APPDATA%\VideoCull\video-cache`. Resetting or uninstalling the Store package does not remove this shared cache. Custom central, per-drive, and distributed caches also remain in place when VideoCull is uninstalled.
 
 ## Know when settings apply
 

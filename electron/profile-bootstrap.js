@@ -180,7 +180,6 @@ function configureAppProfile(app, options = {}) {
       storage,
       defaultCentralCacheRoot: pathImpl.join(sharedProfile.selectedPath, 'video-cache'),
       distributionChannel: 'microsoft-store',
-      sharedPersistentProfile: true,
     };
   } else if (isE2E) {
     if (!env.VC_E2E_USER_DATA_DIR) {

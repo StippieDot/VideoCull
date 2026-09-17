@@ -57,7 +57,7 @@ function installElectronApiMock(): ElectronApiMock {
     installUpdate: vi.fn().mockResolvedValue(true),
     scheduleUpdateOnExit: vi.fn().mockResolvedValue(true),
     deferUpdate: vi.fn().mockResolvedValue(true),
-    getDistributionInfo: vi.fn().mockResolvedValue({ channel: 'direct', packageFamilyName: null, packageRoot: null, userData: 'C:\\Profile', sessionData: 'C:\\Profile', cacheRoot: 'C:\\Profile\\video-cache' }),
+    getDistributionInfo: vi.fn().mockResolvedValue({ channel: 'direct' }),
     getCacheLocationInfo: vi.fn().mockResolvedValue({
       mode: 'centralised',
       locations: [{ label: 'Central cache', path: 'C:\\Profile\\video-cache', ownership: 'profile', available: true, disposableOnReset: false }],
@@ -214,11 +214,6 @@ describe('SettingsModal integration behavior', () => {
   test('shows Microsoft Store-managed updates without direct update controls', async () => {
     electronAPI.getDistributionInfo.mockResolvedValue({
       channel: 'microsoft-store',
-      packageFamilyName: 'StippieDot.VideoCull_ysntqx69kxmmg',
-      packageRoot: 'C:\\Packages\\VideoCull',
-      userData: 'C:\\Packages\\VideoCull\\LocalState\\profile',
-      sessionData: 'C:\\Packages\\VideoCull\\LocalCache\\session',
-      cacheRoot: 'C:\\Packages\\VideoCull\\LocalCache\\video-cache',
     });
     render(<SettingsModal initialTab="updates" />);
 

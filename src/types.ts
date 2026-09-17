@@ -439,51 +439,6 @@ export type DistributionChannel = 'direct' | 'microsoft-store';
 
 export interface DistributionInfo {
   channel: DistributionChannel;
-  packageFamilyName: string | null;
-  packageRoot: string | null;
-  userData: string;
-  sessionData: string;
-  cacheRoot: string;
-}
-
-export type ProfileMigrationStage =
-  | 'not-needed'
-  | 'pending'
-  | 'durable-copy'
-  | 'awaiting-cache-strategy'
-  | 'cache-preflight'
-  | 'awaiting-cache-choice'
-  | 'cache-copy'
-  | 'complete'
-  | 'fatal-error';
-
-export interface ProfileMigrationStatus {
-  stage: ProfileMigrationStage;
-  durable: 'pending' | 'complete' | 'not-needed';
-  cacheOutcome: 'not-needed' | 'copied' | 'copied-with-skips' | 'retained' | 'rebuild' | null;
-  sourceCachePath: string | null;
-  preflight: {
-    sourceBytes: number;
-    fileCount: number;
-    freeBytes: number;
-    requiredBytes: number;
-    headroomBytes: number;
-    canCopy: boolean;
-  } | null;
-  preflightProgress: {
-    filesScanned: number;
-    directoriesScanned: number;
-    bytesScanned: number;
-  } | null;
-  progress: {
-    bytesCopied: number;
-    totalBytes: number;
-    filesCopied: number;
-    totalFiles: number;
-    skippedFiles: number;
-  } | null;
-  warning: string | null;
-  errors: string[];
 }
 
 export interface CacheLocationInfo {
@@ -653,9 +608,6 @@ export interface ElectronAPI {
   openCacheFolder: (cachePath: string) => Promise<boolean>;
   copyCachePath: (cachePath: string) => Promise<boolean>;
   getDistributionInfo: () => Promise<DistributionInfo>;
-  getProfileMigrationStatus: () => Promise<ProfileMigrationStatus>;
-  chooseProfileCacheMigration: (action: 'inspect' | 'retain' | 'copy' | 'rebuild') => Promise<ProfileMigrationStatus | null>;
-  onProfileMigrationStatus: (callback: (data: ProfileMigrationStatus) => void) => () => void;
   onStoreTransitionReady: (callback: () => void) => () => void;
   getLegacyInstallStatus: () => Promise<LegacyInstallStatus>;
   dismissLegacyInstallPrompt: () => Promise<boolean>;

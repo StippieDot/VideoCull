@@ -12,8 +12,6 @@ const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
 const { getDistributionChannel, shouldEnableUpdates } = require('./distribution');
 const { detectLegacyInstall, launchLegacyUninstaller } = require('./legacy-install');
-const { createStoreProfileMigration } = require('./store-profile-migration');
-const { shouldRunStoreProfileMigration, showWindowThenPrepareCache } = require('./store-startup');
 const {
   THEME_ARGUMENT_PREFIX,
   getThemeBackgroundColor,
@@ -63,7 +61,6 @@ const updatesEnabled = shouldEnableUpdates({
   disableUpdates: process.env.VC_DISABLE_UPDATES === '1',
 });
 let pendingProfileWarning = profileBootstrap?.warning ?? null;
-let profileMigration = null;
 let storeWindowReady = false;
 let autoUpdaterInstance = null;
 let mainWindow;
@@ -304,19 +301,7 @@ function createWindow(initialTheme = 'dark') {
 
   mainWindow.once('ready-to-show', () => {
     storeWindowReady = isWindowsStore;
-    showWindowThenPrepareCache({
-      showWindow: () => mainWindow.show(),
-      profileMigration: isWindowsStore ? profileMigration : null,
-      onCacheError: (error) => {
-        log.error('[store-profile-migration] Cache preflight failed:', error);
-        sendToRenderer('app-notification', {
-          title: 'Existing cache could not be checked',
-          detail: 'VideoCull will rebuild cache data as it is needed. Your migrated settings are safe.',
-          kind: 'warning',
-          dedupeKey: 'store-cache-preflight-failed',
-        });
-      },
-    });
+    mainWindow.show();
     if (isWindowsStore) sendToRenderer('store-transition-ready', true);
     if (pendingProfileWarning) {
       sendToRenderer('app-notification', pendingProfileWarning);
@@ -373,27 +358,6 @@ app.whenReady().then(async () => {
     });
   }
   defaultCentralCacheRoot = profileBootstrap?.defaultCentralCacheRoot ?? path.join(app.getPath('userData'), 'video-cache');
-
-  if (shouldRunStoreProfileMigration(profileBootstrap)) {
-    profileMigration = createStoreProfileMigration({
-      enabled: true,
-      sourceProfile: profileBootstrap.legacyPath,
-      targetProfile: app.getPath('userData'),
-      targetCache: defaultCentralCacheRoot,
-      onStatus: (status) => sendToRenderer('profile-migration-status', status),
-    });
-    try {
-      await profileMigration.prepareDurable();
-    } catch (error) {
-      log.error('[store-profile-migration] Durable profile migration failed:', error);
-      dialog.showErrorBox(
-        'VideoCull could not migrate your profile',
-        `Your existing profile was not removed or changed.\n\n${error.message}`,
-      );
-      app.exit(1);
-      return;
-    }
-  }
 
   protocol.handle('thumb', async (request) => {
     let filePath = getFilePathFromProtocolRequest(request, 'thumb');
@@ -701,23 +665,23 @@ const LEGACY_TRANSITION_FILE = 'legacy-install-transition.json';
 const ATOMIC_SAVE_SYNC_LIMIT = 1000;
 let activeCacheIndexBatch = null;
 
-async function readJsonFile(fileName, fallback) {
+async function readJsonFile(fileName, fallback, rootPath = app.getPath('userData')) {
   if (currentScanDiagnostics && (fileName === CACHE_INDEX_FILE || fileName === DISTRIBUTED_INDEX_FILE)) {
     currentScanDiagnostics.cacheIndexIo.reads += 1;
   }
   try {
-    const data = await fs.readFile(path.join(app.getPath('userData'), fileName), 'utf8');
+    const data = await fs.readFile(path.join(rootPath, fileName), 'utf8');
     return JSON.parse(data);
   } catch {
     return fallback;
   }
 }
 
-async function writeJsonFile(fileName, data) {
+async function writeJsonFile(fileName, data, rootPath = app.getPath('userData')) {
   if (currentScanDiagnostics && (fileName === CACHE_INDEX_FILE || fileName === DISTRIBUTED_INDEX_FILE)) {
     currentScanDiagnostics.cacheIndexIo.writes += 1;
   }
-  await fs.writeFile(path.join(app.getPath('userData'), fileName), JSON.stringify(data, null, 2), 'utf8');
+  await fs.writeFile(path.join(rootPath, fileName), JSON.stringify(data, null, 2), 'utf8');
 }
 
 async function createCacheIndexBatch() {
@@ -1030,13 +994,16 @@ async function getCurrentCacheLocationInfo() {
 }
 
 async function getLegacyTransitionStatus() {
-  const migrationComplete = profileMigration?.getStatus().stage === 'complete';
-  if (!isWindowsStore || !storeWindowReady || !migrationComplete) {
+  if (!isWindowsStore || !storeWindowReady) {
     return { installed: false, eligible: false, promptDismissed: false };
   }
   const [install, transition] = await Promise.all([
     detectLegacyInstall({ enabled: true, platform: process.platform }),
-    readJsonFile(LEGACY_TRANSITION_FILE, { promptDismissed: false }),
+    readJsonFile(
+      LEGACY_TRANSITION_FILE,
+      { promptDismissed: false },
+      profileBootstrap.storage.runtimeState,
+    ),
   ]);
   return { ...install, eligible: install.installed, promptDismissed: transition.promptDismissed === true };
 }
@@ -2780,39 +2747,7 @@ ipcMain.handle('open-video', async (_event, filePath) => {
 
 ipcMain.handle('get-distribution-info', () => ({
   channel: distributionChannel,
-  packageFamilyName: profileBootstrap?.storage?.packageFamilyName ?? null,
-  packageRoot: profileBootstrap?.storage?.packageRoot ?? null,
-  userData: app.getPath('userData'),
-  sessionData: app.getPath('sessionData'),
-  cacheRoot: defaultCentralCacheRoot,
 }));
-
-ipcMain.handle('get-profile-migration-status', () => (
-  profileMigration?.getStatus() ?? {
-    stage: 'not-needed',
-    durable: 'not-needed',
-    cacheOutcome: 'not-needed',
-    sourceCachePath: null,
-    preflight: null,
-    preflightProgress: null,
-    progress: null,
-    warning: null,
-    errors: [],
-  }
-));
-
-ipcMain.handle('choose-profile-cache-migration', async (_event, action) => {
-  if (!profileMigration) return null;
-  const status = await profileMigration.chooseCache(action);
-  if (status.warning) {
-    sendToRenderer('app-notification', {
-      title: status.cacheOutcome === 'rebuild' ? 'Cache will be rebuilt' : 'Cache migration completed with warnings',
-      detail: status.warning,
-      kind: 'warning',
-    });
-  }
-  return status;
-});
 
 ipcMain.handle('get-cache-location-info', () => getCurrentCacheLocationInfo());
 
@@ -2835,7 +2770,11 @@ ipcMain.handle('get-legacy-install-status', () => getLegacyTransitionStatus());
 
 ipcMain.handle('dismiss-legacy-install-prompt', async () => {
   if (!isWindowsStore) return false;
-  await writeJsonFile(LEGACY_TRANSITION_FILE, { promptDismissed: true });
+  await writeJsonFile(
+    LEGACY_TRANSITION_FILE,
+    { promptDismissed: true },
+    profileBootstrap.storage.runtimeState,
+  );
   return true;
 });
 
@@ -2846,7 +2785,7 @@ ipcMain.handle('uninstall-legacy-install', async () => {
     type: 'warning',
     title: 'Remove previous VideoCull installation',
     message: `Uninstall ${status.displayName}?`,
-    detail: 'Your migrated Store profile and any external cache folders will remain. The previous profile is not deleted automatically.',
+    detail: 'Your shared VideoCull profile and cache folders will remain. VideoCull does not delete them automatically.',
     buttons: ['Open uninstaller', 'Cancel'],
     defaultId: 1,
     cancelId: 1,

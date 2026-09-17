@@ -78,15 +78,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openCacheFolder: (cachePath) => ipcRenderer.invoke('open-cache-folder', cachePath),
   copyCachePath: (cachePath) => ipcRenderer.invoke('copy-cache-path', cachePath),
 
-  // Store distribution and migration
+  // Store distribution and direct-install transition
   getDistributionInfo: () => ipcRenderer.invoke('get-distribution-info'),
-  getProfileMigrationStatus: () => ipcRenderer.invoke('get-profile-migration-status'),
-  chooseProfileCacheMigration: (action) => ipcRenderer.invoke('choose-profile-cache-migration', action),
-  onProfileMigrationStatus: (callback) => {
-    const handler = (_event, data) => callback(data);
-    ipcRenderer.on('profile-migration-status', handler);
-    return () => ipcRenderer.removeListener('profile-migration-status', handler);
-  },
   onStoreTransitionReady: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('store-transition-ready', handler);

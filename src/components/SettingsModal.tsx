@@ -1193,7 +1193,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 {legacyInstall?.eligible && (
                   <div className="form-group settings-section-divider">
                     <label>Previous direct installation</label>
-                    <span className="help-text">Your Store profile is ready. Removing the previous app does not automatically delete its profile or external caches.</span>
+                    <span className="help-text">Both editions use the same VideoCull profile. Close both editions before removing the direct installation; shared and external cache folders are not deleted automatically.</span>
                     <button className="about-link-btn" onClick={() => void window.electronAPI?.uninstallLegacyInstall?.()}>
                       <Trash2 size={16} />
                       <span>Remove {legacyInstall.displayName || 'previous VideoCull installation'}</span>

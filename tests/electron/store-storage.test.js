@@ -77,7 +77,6 @@ test('configures Electron Store paths before startup without overriding the pack
 
   assert.equal(result.distributionChannel, 'microsoft-store');
   assert.equal(result.status, 'store-shared-profile');
-  assert.equal(result.sharedPersistentProfile, true);
   assert.equal(result.selectedPath, path.join(roaming, product.displayName));
   assert.equal(result.defaultCentralCacheRoot, path.join(roaming, product.displayName, 'video-cache'));
   assert.ok(calls.some(([name, key, pathValue]) => name === 'setPath' && key === 'userData' && pathValue === result.selectedPath));
