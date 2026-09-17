@@ -37,6 +37,19 @@ test('classifies Store LocalCache separately from external central cache', async
   assert.equal(externalInfo.locations[0].disposableOnReset, false);
 });
 
+test('classifies the shared roaming default cache as persistent profile data', async () => {
+  const root = await tempRoot();
+  const packageRoot = path.join(root, 'Packages', 'PFN');
+  const profileRoot = path.join(root, 'Roaming', 'VideoCull');
+  const defaultCentralRoot = path.join(profileRoot, 'video-cache');
+  await fs.mkdir(defaultCentralRoot, { recursive: true });
+
+  const info = await getCacheLocationInfo({ packageRoot, profileRoot, defaultCentralRoot, settings: {} });
+
+  assert.equal(info.locations[0].ownership, 'profile');
+  assert.equal(info.locations[0].disposableOnReset, false);
+});
+
 test('reports configured per-drive caches without deleting or rewriting them', async () => {
   const root = await tempRoot();
   const external = path.join(root, 'drive-cache');

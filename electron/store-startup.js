@@ -1,3 +1,8 @@
+function shouldRunStoreProfileMigration(profileBootstrap) {
+  return profileBootstrap?.distributionChannel === 'microsoft-store'
+    && profileBootstrap.sharedPersistentProfile !== true;
+}
+
 function showWindowThenPrepareCache(options) {
   options.showWindow();
   if (!options.profileMigration) return null;
@@ -7,4 +12,4 @@ function showWindowThenPrepareCache(options) {
   return task;
 }
 
-module.exports = { showWindowThenPrepareCache };
+module.exports = { shouldRunStoreProfileMigration, showWindowThenPrepareCache };

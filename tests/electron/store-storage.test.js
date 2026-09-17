@@ -22,7 +22,7 @@ afterEach(() => {
   for (const root of tempRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('resolves durable and disposable paths beneath the installed PFN root', () => {
+test('resolves only Store runtime paths beneath the installed PFN root', () => {
   const root = tempRoot();
   const storage = resolveStoreStorage({
     env: { LOCALAPPDATA: root },
@@ -30,9 +30,10 @@ test('resolves durable and disposable paths beneath the installed PFN root', () 
     packageFamilyName: product.microsoftStore.packageFamilyName,
   });
 
-  assert.equal(storage.userData, path.join(root, 'Packages', product.microsoftStore.packageFamilyName, 'LocalState', 'profile'));
-  assert.equal(storage.defaultCentralCacheRoot, path.join(root, 'Packages', product.microsoftStore.packageFamilyName, 'LocalCache', 'video-cache'));
+  assert.equal(storage.runtimeState, path.join(root, 'Packages', product.microsoftStore.packageFamilyName, 'LocalState', 'runtime'));
   assert.equal(storage.sessionData, path.join(root, 'Packages', product.microsoftStore.packageFamilyName, 'LocalCache', 'session'));
+  assert.equal('userData' in storage, false);
+  assert.equal('defaultCentralCacheRoot' in storage, false);
 });
 
 test('rejects missing, relative, or non-Windows Store storage', () => {
@@ -75,9 +76,93 @@ test('configures Electron Store paths before startup without overriding the pack
   });
 
   assert.equal(result.distributionChannel, 'microsoft-store');
-  assert.equal(result.status, 'store-package');
+  assert.equal(result.status, 'store-shared-profile');
+  assert.equal(result.sharedPersistentProfile, true);
+  assert.equal(result.selectedPath, path.join(roaming, product.displayName));
+  assert.equal(result.defaultCentralCacheRoot, path.join(roaming, product.displayName, 'video-cache'));
+  assert.ok(calls.some(([name, key, pathValue]) => name === 'setPath' && key === 'userData' && pathValue === result.selectedPath));
   assert.ok(calls.some(([name, key, pathValue]) => name === 'setPath' && key === 'sessionData' && pathValue === result.storage.sessionData));
   assert.ok(calls.some(([name, key, pathValue]) => name === 'setPath' && key === 'crashDumps' && pathValue === result.storage.crashDumps));
   assert.ok(calls.some(([name, pathValue]) => name === 'setAppLogsPath' && pathValue === result.storage.logs));
   assert.equal(calls.some(([name]) => name === 'setAppUserModelId'), false);
+  assert.equal(fs.existsSync(path.join(result.storage.localState, 'profile')), false);
+  assert.equal(fs.existsSync(path.join(result.storage.localCache, 'video-cache')), false);
+});
+
+test('Store and direct packaged builds select the same existing persistent profile', () => {
+  const root = tempRoot();
+  const roaming = path.join(root, 'Roaming');
+  const existingProfile = path.join(roaming, product.displayName);
+  const existingCache = path.join(existingProfile, 'video-cache');
+  fs.mkdirSync(existingCache, { recursive: true });
+  fs.writeFileSync(path.join(existingProfile, 'settings.json'), '{"shared":true}');
+  fs.writeFileSync(path.join(existingCache, 'shared.db'), 'same-file');
+
+  function createApp() {
+    return {
+      isPackaged: true,
+      getPath(name) {
+        assert.equal(name, 'appData');
+        return roaming;
+      },
+      setName() {},
+      setPath() {},
+      setAppLogsPath() {},
+      setAppUserModelId() {},
+    };
+  }
+
+  const store = configureAppProfile(createApp(), {
+    env: { LOCALAPPDATA: root },
+    platform: 'win32',
+    isWindowsStore: true,
+  });
+  const direct = configureAppProfile(createApp(), {
+    env: { LOCALAPPDATA: root },
+    platform: 'win32',
+    isWindowsStore: false,
+  });
+
+  assert.equal(store.selectedPath, direct.selectedPath);
+  assert.equal(store.defaultCentralCacheRoot, path.join(direct.selectedPath, 'video-cache'));
+  assert.equal(fs.readFileSync(path.join(store.selectedPath, 'settings.json'), 'utf8'), '{"shared":true}');
+  assert.equal(fs.readFileSync(path.join(store.defaultCentralCacheRoot, 'shared.db'), 'utf8'), 'same-file');
+});
+
+test('a Store-first profile is created where a later direct build can use it', () => {
+  const root = tempRoot();
+  const roaming = path.join(root, 'Roaming');
+  fs.mkdirSync(roaming, { recursive: true });
+
+  function createApp() {
+    return {
+      isPackaged: true,
+      getPath: () => roaming,
+      setName() {},
+      setPath() {},
+      setAppLogsPath() {},
+      setAppUserModelId() {},
+    };
+  }
+
+  const store = configureAppProfile(createApp(), {
+    env: { LOCALAPPDATA: root },
+    platform: 'win32',
+    isWindowsStore: true,
+  });
+  fs.mkdirSync(store.defaultCentralCacheRoot, { recursive: true });
+  fs.writeFileSync(path.join(store.selectedPath, 'settings.json'), '{"createdBy":"store"}');
+  fs.writeFileSync(path.join(store.defaultCentralCacheRoot, 'new.db'), 'created-by-store');
+
+  const direct = configureAppProfile(createApp(), {
+    env: { LOCALAPPDATA: root },
+    platform: 'win32',
+    isWindowsStore: false,
+  });
+  assert.equal(direct.selectedPath, store.selectedPath);
+  assert.equal(fs.readFileSync(path.join(direct.selectedPath, 'settings.json'), 'utf8'), '{"createdBy":"store"}');
+  assert.equal(fs.readFileSync(path.join(direct.selectedPath, 'video-cache', 'new.db'), 'utf8'), 'created-by-store');
+
+  fs.writeFileSync(path.join(direct.selectedPath, 'settings.json'), '{"updatedBy":"direct"}');
+  assert.equal(fs.readFileSync(path.join(store.selectedPath, 'settings.json'), 'utf8'), '{"updatedBy":"direct"}');
 });

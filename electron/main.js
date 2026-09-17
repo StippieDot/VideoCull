@@ -13,7 +13,7 @@ const { getCacheLocationInfo } = require('./cache-location-info');
 const { getDistributionChannel, shouldEnableUpdates } = require('./distribution');
 const { detectLegacyInstall, launchLegacyUninstaller } = require('./legacy-install');
 const { createStoreProfileMigration } = require('./store-profile-migration');
-const { showWindowThenPrepareCache } = require('./store-startup');
+const { shouldRunStoreProfileMigration, showWindowThenPrepareCache } = require('./store-startup');
 const {
   THEME_ARGUMENT_PREFIX,
   getThemeBackgroundColor,
@@ -374,7 +374,7 @@ app.whenReady().then(async () => {
   }
   defaultCentralCacheRoot = profileBootstrap?.defaultCentralCacheRoot ?? path.join(app.getPath('userData'), 'video-cache');
 
-  if (isWindowsStore) {
+  if (shouldRunStoreProfileMigration(profileBootstrap)) {
     profileMigration = createStoreProfileMigration({
       enabled: true,
       sourceProfile: profileBootstrap.legacyPath,

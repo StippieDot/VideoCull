@@ -66,8 +66,7 @@ function resolveStoreStorage({ env, platform, packageFamilyName, pathImpl = path
     packageRoot,
     localState,
     localCache,
-    userData: assertPathInside(packageRoot, pathImpl.join(localState, 'profile'), pathImpl),
-    defaultCentralCacheRoot: assertPathInside(packageRoot, pathImpl.join(localCache, 'video-cache'), pathImpl),
+    runtimeState: assertPathInside(packageRoot, pathImpl.join(localState, 'runtime'), pathImpl),
     sessionData: assertPathInside(packageRoot, pathImpl.join(localCache, 'session'), pathImpl),
     logs: assertPathInside(packageRoot, pathImpl.join(localCache, 'logs'), pathImpl),
     crashDumps: assertPathInside(packageRoot, pathImpl.join(localCache, 'crash-dumps'), pathImpl),
@@ -157,12 +156,18 @@ function configureAppProfile(app, options = {}) {
       packageFamilyName: product.microsoftStore?.packageFamilyName,
       pathImpl,
     });
+    const sharedProfile = selectProfile({
+      appDataPath: app.getPath('appData'),
+      legacyName: product.legacyTechnicalName,
+      canonicalName: product.displayName,
+      fsImpl,
+      pathImpl,
+    });
     for (const directory of [
       storage.packageRoot,
       storage.localState,
       storage.localCache,
-      storage.userData,
-      storage.defaultCentralCacheRoot,
+      storage.runtimeState,
       storage.sessionData,
       storage.logs,
       storage.crashDumps,
@@ -170,14 +175,12 @@ function configureAppProfile(app, options = {}) {
       ensureDirectory(directory, fsImpl);
     }
     result = {
-      selectedPath: storage.userData,
-      status: 'store-package',
-      warning: null,
-      legacyPath: expectedChildPath(app.getPath('appData'), product.displayName, pathImpl),
-      canonicalPath: storage.userData,
+      ...sharedProfile,
+      status: 'store-shared-profile',
       storage,
-      defaultCentralCacheRoot: storage.defaultCentralCacheRoot,
+      defaultCentralCacheRoot: pathImpl.join(sharedProfile.selectedPath, 'video-cache'),
       distributionChannel: 'microsoft-store',
+      sharedPersistentProfile: true,
     };
   } else if (isE2E) {
     if (!env.VC_E2E_USER_DATA_DIR) {

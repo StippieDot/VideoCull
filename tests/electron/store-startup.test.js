@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const { test: nodeTest } = require('node:test');
-const { showWindowThenPrepareCache } = require('../../electron/store-startup');
+const {
+  shouldRunStoreProfileMigration,
+  showWindowThenPrepareCache,
+} = require('../../electron/store-startup');
 const test = globalThis.test || nodeTest;
 
 test('a delayed cache preflight starts only after the Store window is shown', async () => {
@@ -33,4 +36,19 @@ test('a delayed cache preflight starts only after the Store window is shown', as
   finishPreflight({ stage: 'awaiting-cache-choice' });
   await task;
   assert.equal(preflightFinished, true);
+});
+
+test('shared Store profiles bypass the separate-profile migration path', () => {
+  assert.equal(shouldRunStoreProfileMigration({
+    distributionChannel: 'microsoft-store',
+    sharedPersistentProfile: true,
+  }), false);
+  assert.equal(shouldRunStoreProfileMigration({
+    distributionChannel: 'microsoft-store',
+    sharedPersistentProfile: false,
+  }), true);
+  assert.equal(shouldRunStoreProfileMigration({
+    distributionChannel: 'direct',
+    sharedPersistentProfile: false,
+  }), false);
 });
