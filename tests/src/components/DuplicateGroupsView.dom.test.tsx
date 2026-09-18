@@ -134,6 +134,46 @@ describe('DuplicateGroupsView behavior', () => {
     });
   });
 
+  test('selects suggested deletions for only the chosen duplicate group', async () => {
+    const firstKeeper = makeVideo('a', { duplicateGroupId: 'group-1' });
+    const firstDuplicate = makeVideo('b', { duplicateGroupId: 'group-1' });
+    const secondKeeper = makeVideo('c', { duplicateGroupId: 'group-2' });
+    const secondDuplicate = makeVideo('d', { duplicateGroupId: 'group-2' });
+    useStore.setState({
+      videos: [firstKeeper, firstDuplicate, secondKeeper, secondDuplicate],
+      duplicateGroups: [
+        makeDuplicateGroup({
+          id: 'group-1',
+          videoIds: ['a', 'b'],
+          suggestedKeeperId: 'a',
+          similarity: 99,
+        }),
+        makeDuplicateGroup({
+          id: 'group-2',
+          videoIds: ['c', 'd'],
+          suggestedKeeperId: 'c',
+          similarity: 90,
+        }),
+      ],
+    });
+
+    render(<DuplicateGroupsView />);
+
+    const groupButtons = await screen.findAllByRole('button', { name: 'Select for deletion' });
+    expect(groupButtons).toHaveLength(2);
+    await userEvent.click(groupButtons[0]!);
+    expect(screen.getByRole('button', { name: /Mark selected as Delete \(1\)/i })).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: /Mark selected as Delete \(1\)/i }));
+
+    await waitFor(() => {
+      expect(useStore.getState().videos.find((video) => video.id === 'b')?.status).toBe('delete');
+      expect(useStore.getState().videos.find((video) => video.id === 'a')?.status).toBe('pending');
+      expect(useStore.getState().videos.find((video) => video.id === 'c')?.status).toBe('pending');
+      expect(useStore.getState().videos.find((video) => video.id === 'd')?.status).toBe('pending');
+    });
+  });
+
   test('clears duplicate selections when filters hide the selected videos', async () => {
     const groupId = 'group-1';
     const keeper = makeVideo('a', { duplicateGroupId: groupId, path: 'D:\\Media\\keeper.mp4' });

@@ -102,6 +102,7 @@ type DuplicateRowRuntimeData = {
   selectedIds: Set<string>;
   galleryCardWidth: number;
   dismissGroup: (group: DuplicateGroup) => void;
+  selectSuggestedDuplicatesForGroup: (groupView: DuplicateGroupView) => void;
   handleToggleSelection: (video: Video) => void;
   handlePlayVideo: (videoId: string, scopeIds: string[]) => void;
   handleOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
@@ -293,10 +294,12 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
 const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
   groupView,
   onDismissGroup,
+  onSelectSuggestedDeletions,
   onOpenGroupContextMenu,
 }: {
   groupView: DuplicateGroupView;
   onDismissGroup: (group: DuplicateGroup) => void;
+  onSelectSuggestedDeletions: (groupView: DuplicateGroupView) => void;
   onOpenGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }) {
   return (
@@ -316,13 +319,23 @@ const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
           <em>{formatSize(groupView.totalSize)}</em>
           <em>{groupView.group.reason}</em>
         </div>
-        <button
-          className="duplicate-group-dismiss-btn"
-          onClick={() => onDismissGroup(groupView.group)}
-        >
-          <Ban size={13} />
-          Dismiss group
-        </button>
+        <div className="duplicate-group-actions">
+          <button
+            className="duplicate-group-action-btn select"
+            onClick={() => onSelectSuggestedDeletions(groupView)}
+            title="Select the suggested non-keeper videos in this group"
+          >
+            <Trash2 size={13} />
+            Select for deletion
+          </button>
+          <button
+            className="duplicate-group-action-btn"
+            onClick={() => onDismissGroup(groupView.group)}
+          >
+            <Ban size={13} />
+            Dismiss group
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -355,6 +368,7 @@ function DuplicateVirtualRowRenderer({
         <DuplicateGroupHeaderPanel
           groupView={groupView}
           onDismissGroup={runtime.dismissGroup}
+          onSelectSuggestedDeletions={runtime.selectSuggestedDuplicatesForGroup}
           onOpenGroupContextMenu={runtime.handleOpenGroupContextMenu}
         />
       </div>
@@ -636,6 +650,10 @@ function DuplicateGroupsView() {
     measureDevNextPaint('duplicates.selectSuggested.nextPaint', startedAt);
   };
 
+  const selectSuggestedDuplicatesForGroup = useCallback((groupView: DuplicateGroupView) => {
+    setSelectedIds(new Set(getMarkableDuplicateIds([groupView])));
+  }, [getMarkableDuplicateIds]);
+
   const markSelectedDuplicates = () => {
     const startedAt = performance.now();
     const ids = Array.from(selectedIds).filter((id) => Boolean(videosById.get(id)));
@@ -838,6 +856,7 @@ function DuplicateGroupsView() {
     selectedIds,
     galleryCardWidth: galleryLayout.cardWidth,
     dismissGroup,
+    selectSuggestedDuplicatesForGroup,
     handleToggleSelection: toggleVideoSelection,
     handlePlayVideo,
     handleOpenVideoContextMenu: openVideoContextMenu,
@@ -849,6 +868,7 @@ function DuplicateGroupsView() {
     openGroupContextMenu,
     openVideoContextMenu,
     handlePlayVideo,
+    selectSuggestedDuplicatesForGroup,
     selectedIds,
     toggleVideoSelection,
     videosById,
@@ -932,10 +952,6 @@ function DuplicateGroupsView() {
       });
     }
   }, [pushToast]);
-
-  const selectSuggestedDuplicatesForGroup = useCallback((groupView: DuplicateGroupView) => {
-    setSelectedIds(new Set(getMarkableDuplicateIds([groupView])));
-  }, [getMarkableDuplicateIds]);
 
   const contextMenuItems = useMemo(() => {
     if (!contextMenuGroup) return [];

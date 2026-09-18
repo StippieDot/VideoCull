@@ -195,7 +195,13 @@
   white-space: nowrap;
 }
 
-.duplicate-group-dismiss-btn {
+.duplicate-group-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.duplicate-group-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -210,10 +216,14 @@
   white-space: nowrap;
 }
 
-.duplicate-group-dismiss-btn:hover {
+.duplicate-group-action-btn:hover {
   color: var(--text-primary);
   border-color: var(--border-hover);
   background: var(--bg-surface-hover);
+}
+
+.duplicate-group-action-btn.select {
+  color: var(--color-delete);
 }
 
 .duplicate-row-list {
