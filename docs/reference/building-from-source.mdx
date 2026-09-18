@@ -28,10 +28,16 @@ npm run dev
 | `npm run test:cache-native` | Optional native cache regression lane |
 | `npm run build` | Renderer-only production build |
 | `npm run check:installer` | Validate Windows installer config and artwork |
+| `npm run check:store` | Validate Store configuration without requiring a new Store version |
+| `npm run check:store:strict` | Validate Store configuration and require a version newer than the submitted baseline |
 | `npm run check:ipc` | Validate preload and type IPC contract coverage |
+| `npm run test:profile` | Run profile bootstrap and storage compatibility tests |
+| `npm run test:store` | Run Store packaging, distribution, guard, and transition tests |
 | `npm run cleanup:cache` | Clean old cache and thumbnail clutter |
 | `npm run package` | Full build plus Windows installer |
 | `npm run package:store` | Build and validate the unsigned x64 Store APPX candidate |
+| `npm run validate:store-package` | Validate the generated APPX identity, manifest, contents, and version |
+| `npm run verify:store-installed` | Verify an installed Store package and its shared/package-specific paths |
 | `npm run rebuild` | Rebuild native modules against Electron |
 
 ## Notes
@@ -40,4 +46,4 @@ npm run dev
 - `npm run test:cache-native` is mainly intended for CI and clean Node-only installs.
 - Development Electron sessions use a separate `userData` folder so local settings and cache do not mix with the packaged app.
 - E2E runs use their own temporary `userData` directory and do not touch your normal app data.
-- The Store APPX disables filesystem write virtualization so it can share the normal VideoCull profile and user-selected AppData cache locations with the direct edition. This requires Microsoft's restricted `unvirtualizedResources` capability. A technically valid package is not guaranteed Store approval; Partner Center certification remains a separate release gate.
+- The Store APPX disables filesystem write virtualization so it can share the normal VideoCull profile and user-selected AppData cache locations with the direct edition. This requires Microsoft's restricted `unvirtualizedResources` capability.

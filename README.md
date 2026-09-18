@@ -27,11 +27,13 @@ Demo footage shown in these screenshots includes [Blender Open Movies](https://s
 
 ## Download
 
-Grab `VideoCull.Setup.<version>.exe` from the [Releases](https://github.com/StippieDot/VideoCull/releases) page.
+[![Download from Microsoft Store](https://img.shields.io/badge/Download_from-Microsoft_Store-0078D4?style=for-the-badge&logo=microsoft)](https://apps.microsoft.com/detail/9NG9Z0CL73PC)
 
-The packaged installer is Windows-first, installs for the current user, and does not require admin rights. On first launch Windows may show a SmartScreen prompt since the app isn't code-signed yet; click "Run anyway" to proceed.
+The Microsoft Store edition is installed and updated by Microsoft Store.
 
-The installer lets you choose the install location and shortcuts. Later updates are handled in-app when a GitHub release is available.
+For a direct installation, download `VideoCull.Setup.<version>.exe` from [GitHub Releases](https://github.com/StippieDot/VideoCull/releases). It installs for the current user without administrator rights and lets you choose the install location and shortcuts. Because the direct installer is not code-signed yet, Windows may show a SmartScreen prompt on first launch; click **More info**, then **Run anyway** if you downloaded it from the official repository.
+
+The direct-download edition checks GitHub Releases for updates. Both editions share `%APPDATA%\VideoCull`, including settings, review decisions, databases, and the default thumbnail cache. Run only one edition at a time and keep both updated before switching. After confirming the Store edition works, you can uninstall the direct edition without deleting the shared profile or cache.
 
 ### Updating from v2.2.0
 
@@ -215,9 +217,16 @@ npm run dev
 | `npm run test:cache-native` | Optional native cache regression lane for clean Node installs; mainly intended for CI because `better-sqlite3` ABI rebuilds conflict with normal Electron-local workflows |
 | `npm run build` | Renderer-only production build |
 | `npm run check:installer` | Validate Windows installer config and bundled installer artwork |
+| `npm run check:store` | Validate Microsoft Store configuration without enforcing a version increase |
+| `npm run check:store:strict` | Require the Store candidate version to exceed the submitted baseline |
 | `npm run check:ipc` | Validate preload/type IPC contract coverage |
+| `npm run test:profile` | Run profile bootstrap and storage compatibility tests |
+| `npm run test:store` | Run Microsoft Store packaging and cross-edition regression tests |
 | `npm run cleanup:cache` | Clean old cache/thumb clutter from earlier builds |
 | `npm run package` | Full build + Windows installer (NSIS) |
+| `npm run package:store` | Build and validate the unsigned x64 Store APPX candidate |
+| `npm run validate:store-package` | Validate the generated APPX package |
+| `npm run verify:store-installed` | Verify an installed Store package and its storage paths |
 | `npm run rebuild` | Rebuild native modules against Electron |
 
 Notes:

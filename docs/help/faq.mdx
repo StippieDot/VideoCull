@@ -93,8 +93,16 @@ These answers cover the short questions that come up during normal culling. For 
     If something looks missing after an update, rescan the folder first so any pending migration can complete.
   </Accordion>
 
+  <Accordion title="Can I switch between the Microsoft Store and direct-download editions?">
+    Yes. Both editions use the shared `%APPDATA%\VideoCull` profile for settings, review decisions, databases, and the default thumbnail cache. VideoCull does not copy or synchronize separate profiles when you switch.
+
+    Close the running edition before opening the other one. VideoCull blocks Microsoft Store and direct-download builds from using the shared profile at the same time.
+
+    Keep both editions updated before switching. After confirming the edition you used before works, you can remove the other edition without deleting the shared profile or cache. Resetting or uninstalling the Store package also leaves that shared data in place.
+  </Accordion>
+
   <Accordion title="Why does Windows SmartScreen warn me about the installer?">
-    The installer is not code-signed yet, so Windows may flag it as an unrecognized app. Use the official [GitHub Releases](https://github.com/StippieDot/VideoCull/releases) page and click **More info** then **Run anyway**.
+    This applies to the direct installer, which is not code-signed yet. Windows may flag it as an unrecognized app. Use the official [GitHub Releases](https://github.com/StippieDot/VideoCull/releases) page and click **More info** then **Run anyway**.
   </Accordion>
 
   <Accordion title="Can I use VideoCull on macOS or Linux?">

@@ -56,7 +56,9 @@ for (const file of tracked) {
   if (historicalFiles.has(file) || historicalPrefixes.some((prefix) => file.startsWith(prefix))) continue;
   if (file === 'scripts/check-brand.js') continue;
   if (!textExtensions.has(path.extname(file).toLowerCase())) continue;
-  const source = fs.readFileSync(path.join(root, file), 'utf8');
+  const filePath = path.join(root, file);
+  if (!fs.existsSync(filePath)) continue;
+  const source = fs.readFileSync(filePath, 'utf8');
 
   if (!compatibilityFiles.has(file) && legacyDisplayPattern.test(source)) {
     failures.push(`${file}: contains the legacy spaced product name`);

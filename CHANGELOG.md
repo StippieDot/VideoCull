@@ -2,6 +2,24 @@
 
 All notable changes to VideoCull will be documented here.
 
+## [2.3.0] - Unreleased
+
+### Added
+- Added Microsoft Store distribution with Store-managed installation and updates alongside the direct-download edition.
+- Added Store packaging, validation, installed-package verification, and release-candidate automation.
+- Added Store-aware cache location details and controls for opening or copying active cache paths.
+- Added notices that identify older, matching, newer, or unknown direct-install versions when both editions are installed.
+
+### Changed
+- The Microsoft Store and direct-download editions now share the `%APPDATA%\VideoCull` profile, including settings, review decisions, databases, and the default thumbnail cache.
+- Store session, log, crash, and runtime data remains isolated inside the Windows package while persistent user data stays available to both editions.
+- Microsoft Store builds now direct users to Microsoft Store for updates instead of using the GitHub updater.
+
+### Fixed
+- Prevented Microsoft Store and direct-download editions from opening the shared profile at the same time.
+- Added storage-format checks that stop an incompatible edition before it can change shared data.
+- Preserved shared profile and cache data when opening the direct-install uninstaller from the Store transition notice.
+
 ## [2.2.1] - 2026-09-09
 
 ### Changed

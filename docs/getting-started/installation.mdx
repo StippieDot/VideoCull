@@ -1,9 +1,15 @@
 ---
 title: Install VideoCull on Windows
-description: Download and install VideoCull on Windows. No admin rights required. FFmpeg and FFprobe are bundled.
+description: Install VideoCull from Microsoft Store or with the direct Windows installer. FFmpeg and FFprobe are bundled.
 ---
 
-VideoCull ships as a Windows installer for the current user. You do not need administrator rights, and you do not need to install FFmpeg or FFprobe separately. The installer packages everything the app needs for thumbnail generation and video analysis.
+VideoCull is free and open source. It is available through Microsoft Store or as a direct Windows installer. Both editions include FFmpeg and FFprobe, use the same core features, and share your VideoCull profile and default cache.
+
+## Install from Microsoft Store
+
+Open [VideoCull in Microsoft Store](https://apps.microsoft.com/detail/9NG9Z0CL73PC) and follow the Store installation prompt. Microsoft Store manages later updates.
+
+## Install directly from GitHub
 
 <Steps>
   <Step title="Download the latest installer">
@@ -13,7 +19,7 @@ VideoCull ships as a Windows installer for the current user. You do not need adm
     Double-click the downloaded `.exe` file and choose your install location and shortcut options.
   </Step>
   <Step title="Handle the SmartScreen prompt">
-    Windows may show a SmartScreen warning because the app is not code-signed yet. Click **More info**, then **Run anyway** to proceed.
+    The direct installer is not code-signed yet, so Windows may show a SmartScreen warning. If you downloaded it from the official GitHub repository, click **More info**, then **Run anyway** to proceed.
   </Step>
   <Step title="Launch VideoCull">
     Start the app from the Start Menu or the desktop shortcut created by the installer.
@@ -22,17 +28,22 @@ VideoCull ships as a Windows installer for the current user. You do not need adm
 
 ## System requirements
 
-- Installs per user, not system-wide.
+- The Microsoft Store edition requires Windows 10 version 2004 or later.
+- The direct installer installs per user, not system-wide, and does not require administrator rights.
 - Windows is the primary supported platform.
 - End users do not need Node.js.
 - FFmpeg and FFprobe are bundled with the app.
 
-## What gets installed
+## Updates and shared data
 
-The installer creates Start Menu and Desktop shortcuts named **VideoCull**.
+- Microsoft Store installs and updates the Store edition.
+- The direct-download edition checks GitHub Releases when automatic update checks are enabled. It asks before installing a downloaded update.
+- Both editions use `%APPDATA%\VideoCull` for settings, review decisions, databases, and the default thumbnail cache.
+- Only run one edition at a time. VideoCull blocks a second packaged edition from opening the shared profile concurrently.
+- Keep both editions updated before switching between them. After confirming the Store edition works, you can remove the direct installation without deleting the shared profile or cache.
 
-Later updates are handled in-app when a GitHub release is available.
+The direct installer creates Start Menu and Desktop shortcuts named **VideoCull**. The Store edition uses the shortcuts managed by Windows.
 
 <Note>
-  Cache data is stored separately from the installed app, so reinstalling does not automatically wipe your review progress.
+  Resetting or uninstalling the Store package does not remove the shared profile or default cache. Custom central, per-drive, and distributed caches also remain user-managed.
 </Note>

@@ -37,7 +37,7 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
   </Accordion>
 
   <Accordion title="Windows SmartScreen warns on launch">
-    This is expected. VideoCull is not code-signed yet, so Windows may flag it as an unrecognized app the first time you run it.
+    This can happen with the direct installer because it is not code-signed yet. The Microsoft Store edition does not use this installer.
 
     <Steps>
       <Step title="Click More info">
@@ -81,6 +81,18 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
 
   <Accordion title="Recent directories include paths that no longer exist">
     Restarting the app should clean stale entries automatically. You can also clear recent directories manually from the UI.
+  </Accordion>
+
+  <Accordion title="VideoCull says another edition is already running">
+    The Microsoft Store and direct-download editions share one profile, so VideoCull prevents them from running at the same time.
+
+    Close the other VideoCull window, then start the edition you want to use. If no window is visible, wait for VideoCull to finish closing or end the remaining VideoCull process in Task Manager before trying again.
+  </Accordion>
+
+  <Accordion title="VideoCull cannot open the shared profile">
+    VideoCull stops before opening a profile whose storage format is invalid or incompatible with the installed edition. This protects settings, decisions, databases, and thumbnails from being changed by an older build.
+
+    Update the older edition before switching again. Do not delete or edit `storage-format.json`, and do not copy one edition's profile over the other. If both editions are current and the message remains, report the exact message on [GitHub](https://github.com/StippieDot/VideoCull/issues).
   </Accordion>
 
   <Accordion title="Bookmarks or decisions look missing after an update">

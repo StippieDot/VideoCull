@@ -33,7 +33,7 @@ After saving:
 - Cache, scan, thumbnail, metadata, and duplicate-matching changes apply when their next relevant scan or processing run starts.
 - Increasing the thumbnail count can prompt you to confirm that existing cached strips need rebuilding.
 - Changing cache storage starts a migration choice before the preference is committed.
-- Changing automatic update checks may require an app restart before startup behavior changes.
+- In the direct-download edition, changing automatic update checks may require an app restart before startup behavior changes.
 
 VideoCull blocks saving while configurable shortcut conflicts remain. The conflicting keybind fields identify what must be changed.
 
@@ -152,12 +152,20 @@ System shortcuts like `Ctrl+O`, `F5`, `Ctrl+Backspace`, and `Shift+Esc` are fixe
 
 ## Updates
 
+The Updates tab reflects how your edition is distributed.
+
+### Microsoft Store edition
+
+The tab shows the installed version and confirms that updates are managed and installed by Microsoft Store. GitHub update controls and the automatic-update setting are not shown.
+
+### Direct-download edition
+
 | Setting | What it does | Suggested default use |
 | --- | --- | --- |
 | Check for updates | Manually checks for a new release. | Use it when you want to pull a release now instead of waiting. |
 | Automatically check for updates on startup | Checks at launch and downloads in the background. | Leave it on unless you want fully manual update control. |
 
-The app always notifies you before anything installs. When an update is ready, choose one of these actions:
+The direct-download edition always notifies you before anything installs. When an update is ready, choose one of these actions:
 
 - **Update now** closes VideoCull, installs the update, and opens the updated version.
 - **Install on exit** keeps the app open and installs only when you later close it.
