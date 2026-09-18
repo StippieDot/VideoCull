@@ -246,13 +246,13 @@ describe('DuplicateGroupsView behavior', () => {
     });
   });
 
-  test('does not mark the smaller file size as best when a larger file has better bitrate', async () => {
+  test('marks file size independently from the other quality metrics', async () => {
     const groupId = 'group-1';
     const smaller = makeVideo('small', {
       duplicateGroupId: groupId,
       filename: 'small.mp4',
       sizeBytes: 100,
-      videoBitrate: 1_000_000,
+      videoBitrate: 3_000_000,
       width: 1920,
       height: 1080,
       fps: 30,
@@ -295,7 +295,7 @@ describe('DuplicateGroupsView behavior', () => {
     expect(betterSizeChip?.classList.contains('best')).toBe(true);
   });
 
-  test('still marks the smaller file size as best when duplicate quality is equal', async () => {
+  test('marks the larger file size as best when duplicate quality is equal', async () => {
     const groupId = 'group-1';
     const smaller = makeVideo('small', {
       duplicateGroupId: groupId,
@@ -338,11 +338,11 @@ describe('DuplicateGroupsView behavior', () => {
       .find((row) => row.textContent?.includes('large.mp4'))
       ?.querySelector('.duplicate-meta-chips .meta-chip:last-child');
 
-    expect(smallSizeChip?.classList.contains('best')).toBe(true);
-    expect(largeSizeChip?.classList.contains('best')).toBe(false);
+    expect(smallSizeChip?.classList.contains('best')).toBe(false);
+    expect(largeSizeChip?.classList.contains('best')).toBe(true);
   });
 
-  test('does not overwrite the saved duplicate scroll position while returning from review', async () => {
+  test('restores the real duplicate list scroll position when returning from review', async () => {
     const groupId = 'group-1';
     const keeper = makeVideo('a', { duplicateGroupId: groupId });
     const duplicate = makeVideo('b', { duplicateGroupId: groupId });
@@ -365,5 +365,6 @@ describe('DuplicateGroupsView behavior', () => {
     fireEvent.scroll(list);
 
     expect(useStore.getState().duplicateScrollTop).toBe(420);
+    await waitFor(() => expect(list.scrollTop).toBe(420));
   });
 });

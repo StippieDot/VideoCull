@@ -152,33 +152,11 @@ function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
           : 'worse';
     }
   }
-  const qualityDominates = (a: Video, b: Video) => {
-    let better = false;
-    for (const metric of qualityMetrics) {
-      const aValue = metric.value(a);
-      const bValue = metric.value(b);
-      if (aValue < bValue) return false;
-      if (aValue > bValue) better = true;
-    }
-    return better;
-  };
-  const allQualityEqual = qualityMetrics.every((metric) => {
-    const values = videos.map((v) => metric.value(v));
-    return values.every((value) => value === values[0]);
-  });
-  if (allQualityEqual) {
-    const sizes = videos.map((v) => v.sizeBytes ?? 0);
-    const bestSize = Math.min(...sizes);
-    const allSizesEqual = sizes.every((size) => size === bestSize);
-    for (let i = 0; i < videos.length; i += 1) {
-      flags.get(videos[i].id)!.size = allSizesEqual ? 'equal' : sizes[i] === bestSize ? 'best' : 'worse';
-    }
-  } else {
-    for (const video of videos) {
-      const isDominated = videos.some((other) => other.id !== video.id && qualityDominates(other, video));
-      const dominatesAny = videos.some((other) => other.id !== video.id && qualityDominates(video, other));
-      flags.get(video.id)!.size = isDominated ? 'worse' : dominatesAny ? 'best' : 'equal';
-    }
+  const sizes = videos.map((v) => v.sizeBytes ?? 0);
+  const bestSize = Math.max(...sizes);
+  const allSizesEqual = sizes.every((size) => size === bestSize);
+  for (let i = 0; i < videos.length; i += 1) {
+    flags.get(videos[i].id)!.size = allSizesEqual ? 'equal' : sizes[i] === bestSize ? 'best' : 'worse';
   }
   return flags;
 }

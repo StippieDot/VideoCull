@@ -1089,10 +1089,13 @@ export default function App() {
             <Profiler id="DuplicateGroupsView" onRender={handleMainProfiler}>
               <div
                 style={{
-                  display: reviewMode ? 'none' : 'flex',
+                  display: 'flex',
                   flex: 1,
                   minHeight: 0,
+                  visibility: reviewMode ? 'hidden' : 'visible',
+                  pointerEvents: reviewMode ? 'none' : 'auto',
                 }}
+                aria-hidden={reviewMode}
               >
                 <DuplicateGroupsView />
               </div>

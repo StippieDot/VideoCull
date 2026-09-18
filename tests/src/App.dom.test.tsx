@@ -100,9 +100,20 @@ vi.mock('../../src/components/SettingsModal', async () => {
   };
 });
 
-vi.mock('../../src/components/DuplicateGroupsView', () => ({
-  default: () => <div data-testid="duplicate-groups">Duplicate Groups</div>,
-}));
+vi.mock('../../src/components/DuplicateGroupsView', async () => {
+  const ReactModule = await import('react');
+  let mountCount = 0;
+  return {
+    default: () => {
+      const mountIdRef = ReactModule.useRef<number | null>(null);
+      if (mountIdRef.current === null) {
+        mountCount += 1;
+        mountIdRef.current = mountCount;
+      }
+      return <div data-testid="duplicate-groups" data-mount-id={String(mountIdRef.current)}>Duplicate Groups</div>;
+    },
+  };
+});
 
 vi.mock('../../src/components/ShortcutsHelp', () => ({
   default: () => <div data-testid="shortcuts-help">Shortcuts Help</div>,
@@ -760,5 +771,39 @@ describe('App renderer behavior', () => {
     expect(gridAfter.parentElement?.getAttribute('style')).toContain('display: flex');
     expect(gridAfter.parentElement?.getAttribute('style')).toContain('visibility: visible');
     expect(gridAfter.parentElement?.getAttribute('aria-hidden')).toBe('false');
+  });
+
+  test('keeps duplicate results laid out while review mode is open so virtual scrolling survives', () => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      videos: [makeVideo('a')],
+      filteredVideos: [makeVideo('a')],
+      duplicateGroupsMode: true,
+      reviewMode: false,
+      stats: { total: 1, pending: 1, skipped: 0, keep: 0, delete: 0, totalSize: 100, deleteSize: 0 },
+    }, true);
+
+    render(<App />);
+
+    const duplicateViewBefore = screen.getByTestId('duplicate-groups');
+    const originalMountId = duplicateViewBefore.getAttribute('data-mount-id');
+
+    act(() => store.setState({ reviewMode: true }));
+
+    const duplicateViewWhileHidden = screen.getByTestId('duplicate-groups');
+    expect(duplicateViewWhileHidden.getAttribute('data-mount-id')).toBe(originalMountId);
+    expect(duplicateViewWhileHidden.parentElement?.getAttribute('style')).toContain('display: flex');
+    expect(duplicateViewWhileHidden.parentElement?.getAttribute('style')).toContain('visibility: hidden');
+    expect(duplicateViewWhileHidden.parentElement?.getAttribute('aria-hidden')).toBe('true');
+
+    act(() => store.setState({ reviewMode: false }));
+
+    const duplicateViewAfter = screen.getByTestId('duplicate-groups');
+    expect(duplicateViewAfter.getAttribute('data-mount-id')).toBe(originalMountId);
+    expect(duplicateViewAfter.parentElement?.getAttribute('style')).toContain('visibility: visible');
+    expect(duplicateViewAfter.parentElement?.getAttribute('aria-hidden')).toBe('false');
   });
 });
