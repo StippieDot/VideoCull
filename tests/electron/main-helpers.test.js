@@ -16,6 +16,7 @@ const {
   getFilePathFromProtocolRequest,
   getRangeDetails,
   isFolderInsideSync,
+  isAllowedExternalUrl,
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,
@@ -28,6 +29,22 @@ const {
   thumbRelative,
   videoForDb,
 } = require('../../electron/main-helpers');
+
+describe('external URL allowlist', () => {
+  const exactUrls = new Set(['https://github.com/StippieDot/VideoCull']);
+  const allowedHttpsHosts = new Set(['docs.videocull.app']);
+
+  test('allows exact product URLs and documentation pages', () => {
+    assert.equal(isAllowedExternalUrl('https://github.com/StippieDot/VideoCull', exactUrls, allowedHttpsHosts), true);
+    assert.equal(isAllowedExternalUrl('https://docs.videocull.app/guides/duplicates', exactUrls, allowedHttpsHosts), true);
+  });
+
+  test('rejects non-HTTPS and lookalike documentation URLs', () => {
+    assert.equal(isAllowedExternalUrl('http://docs.videocull.app/guides/duplicates', exactUrls, allowedHttpsHosts), false);
+    assert.equal(isAllowedExternalUrl('https://docs.videocull.app.evil.test/guides/duplicates', exactUrls, allowedHttpsHosts), false);
+    assert.equal(isAllowedExternalUrl('https://user@docs.videocull.app/guides/duplicates', exactUrls, allowedHttpsHosts), false);
+  });
+});
 
 describe('compatibility detection', () => {
   test('allows formats the renderer can play directly', () => {

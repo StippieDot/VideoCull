@@ -355,6 +355,22 @@ function isServableVideoPath(filePath) {
   return SERVABLE_VIDEO_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
 
+function isAllowedExternalUrl(url, exactUrls, allowedHttpsHosts) {
+  if (typeof url !== 'string') return false;
+  if (exactUrls?.has(url)) return true;
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:'
+      && parsed.port === ''
+      && parsed.username === ''
+      && parsed.password === ''
+      && allowedHttpsHosts?.has(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   canServeThumbPath,
   canServeVideoPath,
@@ -372,6 +388,7 @@ module.exports = {
   getRangeDetails,
   hasAnyCompatFormat,
   isFolderInsideSync,
+  isAllowedExternalUrl,
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,

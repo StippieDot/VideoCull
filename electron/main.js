@@ -41,6 +41,7 @@ const {
   getFilePathFromProtocolRequest,
   getRangeDetails,
   isFolderInsideSync,
+  isAllowedExternalUrl,
   isKnownLoadedFilePath,
   isSameFolderSync,
   isServableVideoPath,
@@ -94,6 +95,7 @@ const ALLOWED_EXTERNAL_URLS = new Set([
   'https://paypal.me/stippiedot',
   'https://videocull.app/support/',
 ]);
+const ALLOWED_EXTERNAL_HTTPS_HOSTS = new Set(['docs.videocull.app']);
 
 // Set of known valid video paths, populated on every scan-directory call.
 // All IPC handlers that accept file paths validate against this set.
@@ -1968,6 +1970,10 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
 
 // 3. Probe metadata for videos that are missing or stale.
 ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {}) => {
+  if (!Array.isArray(videos)) {
+    log.warn('[process-metadata] videos must be an array, rejecting');
+    return false;
+  }
   cancelMetadata();
 
   if (!currentScanDirs.has(dirPath)) {
@@ -1976,6 +1982,10 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
   }
 
   const safeVideos = videos.filter((v) => {
+    if (!v || typeof v !== 'object') {
+      log.warn('[process-metadata] Rejected invalid video record');
+      return false;
+    }
     if (!VALID_VIDEO_ID.test(v.id)) {
       log.warn(`[process-metadata] Rejected video with invalid id: ${v.id}`);
       return false;
@@ -2193,6 +2203,10 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
 
 // 4. Generate thumbnails for videos that don't have them
 ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = {}) => {
+  if (!Array.isArray(videos)) {
+    log.warn('[generate-thumbnails] videos must be an array, rejecting');
+    return false;
+  }
   // Cancel any in-progress generation before starting a new one
   cancelThumbnails();
 
@@ -2204,6 +2218,10 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
 
   // Security: filter out any video with an invalid id or a path not in the known set
   const safeVideos = videos.filter((v) => {
+    if (!v || typeof v !== 'object') {
+      log.warn('[generate-thumbnails] Rejected invalid video record');
+      return false;
+    }
     if (!VALID_VIDEO_ID.test(v.id)) {
       log.warn(`[generate-thumbnails] Rejected video with invalid id: ${v.id}`);
       return false;
@@ -2851,7 +2869,7 @@ ipcMain.handle('open-in-explorer', async (_event, filePath) => {
 ipcMain.handle('get-app-version', () => app.getVersion());
 
 ipcMain.handle('open-external-url', async (_event, url) => {
-  if (!ALLOWED_EXTERNAL_URLS.has(url)) return false;
+  if (!isAllowedExternalUrl(url, ALLOWED_EXTERNAL_URLS, ALLOWED_EXTERNAL_HTTPS_HOSTS)) return false;
   await shell.openExternal(url);
   return true;
 });
