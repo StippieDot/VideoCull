@@ -28,6 +28,30 @@ test('thumbnail cancellation marks the active thumbnail run token', async () => 
   assert.equal(token?.cancelled, true);
 });
 
+test('thumbnail reuse requires the exact expected filenames and nonempty files', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-thumb-reuse-'));
+
+  try {
+    await fs.writeFile(path.join(tempDir, 'thumb_01.jpg'), 'one');
+    await fs.writeFile(path.join(tempDir, 'thumb_02.jpg'), 'two');
+    assert.deepEqual(
+      await __test.getReusableThumbnailPaths(['thumb_02.jpg', 'thumb_01.jpg'], tempDir, 2),
+      [path.join(tempDir, 'thumb_01.jpg'), path.join(tempDir, 'thumb_02.jpg')]
+    );
+
+    await fs.writeFile(path.join(tempDir, 'thumb_02.jpg'), '');
+    assert.equal(await __test.getReusableThumbnailPaths(['thumb_01.jpg', 'thumb_02.jpg'], tempDir, 2), null);
+
+    await fs.writeFile(path.join(tempDir, 'thumb_02.jpg'), 'two');
+    assert.equal(
+      await __test.getReusableThumbnailPaths(['thumb_01.jpg', 'thumb_02.jpg', 'stale.jpg'], tempDir, 2),
+      null
+    );
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('metadata cancellation suppresses callbacks after an in-flight probe finishes', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-metadata-cancel-'));
   const videoPath = path.join(tempDir, 'clip.mp4');
@@ -56,6 +80,33 @@ test('metadata cancellation suppresses callbacks after an in-flight probe finish
 
     assert.equal(progressCount, 0);
     assert.equal(readyCount, 0);
+  } finally {
+    ffmpeg.ffprobe = originalFfprobe;
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('metadata probe failures are reported so the retry backoff can be recorded', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-metadata-failure-'));
+  const videoPath = path.join(tempDir, 'broken.mp4');
+  await fs.writeFile(videoPath, 'not a real video');
+  const originalFfprobe = ffmpeg.ffprobe;
+
+  try {
+    ffmpeg.ffprobe = (_filePath, callback) => callback(new Error('ffprobe failed'));
+
+    const readyIds = [];
+    const failed = [];
+    await processMetadata([
+      { id: 'broken', path: videoPath, filename: 'broken.mp4', thumbnails: [], durationSecs: null },
+    ], {}, null, (videoId) => {
+      readyIds.push(videoId);
+    }, (videoId, error) => {
+      failed.push({ videoId, message: error.message });
+    });
+
+    assert.deepEqual(readyIds, []);
+    assert.deepEqual(failed, [{ videoId: 'broken', message: 'ffprobe failed' }]);
   } finally {
     ffmpeg.ffprobe = originalFfprobe;
     await fs.rm(tempDir, { recursive: true, force: true });

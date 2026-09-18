@@ -558,6 +558,34 @@ describe('App renderer behavior', () => {
     expect(screen.getByText(/1 folder could not be scanned/i)).toBeTruthy();
   });
 
+  test('de-duplicates the same video returned by overlapping parent and child scans', async () => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    const video = makeVideo('shared', {
+      path: 'D:\\Media\\Trips\\shared.mp4',
+      metadataVersion: 2,
+      thumbnails: Array.from({ length: 6 }, (_, index) => `thumb_${index + 1}.jpg`),
+    });
+    electron.api.scanDirectory
+      .mockResolvedValueOnce([video])
+      .mockResolvedValueOnce([{ ...video }]);
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      directories: ['D:\\Media', 'D:\\Media\\Trips'],
+    }, true);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(electron.api.scanDirectory).toHaveBeenCalledTimes(2);
+      expect(store.getState().videos).toHaveLength(1);
+    });
+    expect(store.getState().videos[0]?.path).toBe(video.path);
+    expect(electron.api.processMetadata).not.toHaveBeenCalled();
+    expect(electron.api.generateThumbnails).not.toHaveBeenCalled();
+  });
+
   test('closes the loaded session before Electron cleanup finishes', async () => {
     const store = getStoreApi();
     const initialState = store.getInitialState();

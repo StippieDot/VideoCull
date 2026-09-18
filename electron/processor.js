@@ -134,22 +134,33 @@ function expectedThumbnailCount(duration, count, skipDelaySecs) {
 
 const activeCommands = new Set();
 
-function thumbnailIndex(filePath) {
-  const basename = path.basename(filePath);
-  const match = basename.match(/thumb[_-]?(\d+)/i);
-  return match ? Number(match[1]) : null;
+async function isNonemptyFile(filePath) {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.isFile() && stat.size > 0;
+  } catch {
+    return false;
+  }
 }
 
-function compareThumbnailPaths(a, b) {
-  const aIndex = thumbnailIndex(a);
-  const bIndex = thumbnailIndex(b);
-  if (aIndex !== null && bIndex !== null && aIndex !== bIndex) {
-    return aIndex - bIndex;
-  }
-  return path.basename(a).localeCompare(path.basename(b), undefined, {
-    numeric: true,
-    sensitivity: 'base',
+async function getReusableThumbnailPaths(existingNames, videoThumbDir, expectedCount) {
+  const jpgNames = existingNames.filter((name) => name.toLowerCase().endsWith('.jpg'));
+  if (jpgNames.length !== expectedCount) return null;
+
+  const existingByLowerName = new Map(jpgNames.map((name) => [name.toLowerCase(), name]));
+  const expectedNames = Array.from(
+    { length: expectedCount },
+    (_, index) => `thumb_${String(index + 1).padStart(2, '0')}.jpg`
+  );
+  const reusablePaths = expectedNames.map((name) => {
+    const existingName = existingByLowerName.get(name);
+    return existingName ? path.join(videoThumbDir, existingName) : null;
   });
+  if (reusablePaths.some((filePath) => filePath === null)) return null;
+
+  const completePaths = reusablePaths;
+  const nonempty = await Promise.all(completePaths.map((filePath) => isNonemptyFile(filePath)));
+  return nonempty.every(Boolean) ? completePaths : null;
 }
 
 function sleep(ms) {
@@ -264,15 +275,11 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
   try {
     const existing = await fs.readdir(videoThumbDir);
     if (!options.forceRegenerate) {
-      // Reuse cached thumbnail files only when the set is complete for the current
-      // thumbnail count. Partial sets usually mean a previous run was interrupted.
-      const jpgs = existing.filter((f) => f.endsWith('.jpg')).sort(compareThumbnailPaths);
       const expectedCount = expectedThumbnailCount(duration, THUMB_COUNT, skipDelay);
-      const usableJpgs = jpgs.slice(0, expectedCount);
-      if (usableJpgs.length >= expectedCount) {
-        const usablePaths = usableJpgs.map((f) => path.join(videoThumbDir, f));
+      const reusablePaths = await getReusableThumbnailPaths(existing, videoThumbDir, expectedCount);
+      if (reusablePaths) {
         return {
-          thumbnails: usablePaths,
+          thumbnails: reusablePaths,
           durationSecs: duration,
           creationTime,
           videoCodec,
@@ -306,8 +313,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     const outputPath = path.join(videoThumbDir, `thumb_${String(i + 1).padStart(2, '0')}.jpg`);
     try {
       await extractFrame(video.path, timestamp, outputPath, config, token);
-      const stat = await fs.stat(outputPath);
-      if (stat.size > 0) {
+      if (await isNonemptyFile(outputPath)) {
         thumbnails.push({ index: i, path: outputPath });
       }
     } catch {
@@ -326,8 +332,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     const fallbackPath = path.join(videoThumbDir, 'thumb_01.jpg');
     try {
       await extractFrame(video.path, 0, fallbackPath, config, token);
-      const stat = await fs.stat(fallbackPath);
-      if (stat.size > 0) {
+      if (await isNonemptyFile(fallbackPath)) {
         finalPaths.push(fallbackPath);
       }
     } catch { /* truly can't generate thumbnails for this video */ }
@@ -337,56 +342,23 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
 }
 
 async function readMetadataForVideo(video) {
-  let duration = video.durationSecs;
-  let creationTime = video.metadataDate ?? null;
-  let videoCodec = video.videoCodec ?? null;
-  let audioCodec = video.audioCodec ?? null;
-  let videoBitrate = video.videoBitrate ?? null;
-  let audioBitrate = video.audioBitrate ?? null;
-  let totalBitrate = video.totalBitrate ?? null;
-  let containerFormat = video.containerFormat ?? null;
-  let width = video.width ?? null;
-  let height = video.height ?? null;
-  let fps = video.fps ?? null;
-  let metadataVersion = video.metadataVersion ?? null;
-  let metadataCheckedAt = video.metadataCheckedAt ?? null;
-
-  try {
-    const meta = await getVideoMetadata(video.path);
-    duration = meta.duration;
-    creationTime = meta.creationTime;
-    videoCodec = meta.videoCodec;
-    audioCodec = meta.audioCodec;
-    videoBitrate = meta.videoBitrate;
-    audioBitrate = meta.audioBitrate;
-    totalBitrate = meta.totalBitrate;
-    containerFormat = meta.containerFormat;
-    width = meta.width;
-    height = meta.height;
-    fps = meta.fps;
-    metadataVersion = meta.metadataVersion;
-    metadataCheckedAt = meta.metadataCheckedAt;
-  } catch {
-    // ffprobe failed — keep whatever cached values the video already had.
-    // Ensure duration is at least 0 so thumbnail timestamp calculation won't break.
-    duration = duration ?? 0;
-  }
+  const meta = await getVideoMetadata(video.path);
 
   return {
     thumbnails: video.thumbnails ?? [],
-    durationSecs: duration,
-    creationTime,
-    videoCodec,
-    audioCodec,
-    videoBitrate,
-    audioBitrate,
-    totalBitrate,
-    containerFormat,
-    width,
-    height,
-    fps,
-    metadataVersion,
-    metadataCheckedAt,
+    durationSecs: meta.duration,
+    creationTime: meta.creationTime,
+    videoCodec: meta.videoCodec,
+    audioCodec: meta.audioCodec,
+    videoBitrate: meta.videoBitrate,
+    audioBitrate: meta.audioBitrate,
+    totalBitrate: meta.totalBitrate,
+    containerFormat: meta.containerFormat,
+    width: meta.width,
+    height: meta.height,
+    fps: meta.fps,
+    metadataVersion: meta.metadataVersion,
+    metadataCheckedAt: meta.metadataCheckedAt,
   };
 }
 
@@ -497,7 +469,7 @@ async function processMetadata(videos, config, onProgress, onVideoReady, onVideo
             await onVideoReady(video.id, result);
           }
         } catch (err) {
-          if (err.message === 'Cancelled') break;
+          if (token.cancelled || err.message === 'Cancelled') break;
           current++;
           if (onProgress) onProgress({ current, total });
           if (onVideoFailed) {
@@ -550,6 +522,8 @@ module.exports = {
     getGpuCooldownMs,
     getGpuCooldownBatchSize,
     createQueueCursor,
+    getReusableThumbnailPaths,
+    isNonemptyFile,
     getThumbToken: () => thumbToken,
   },
 };

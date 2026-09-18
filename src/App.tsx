@@ -411,14 +411,24 @@ export default function App() {
         if (scanResult.summary) scanSummaries.push(scanResult.summary);
       }
       if (scanId !== scanIdRef.current) return;
-      const allVideos = scannedGroups.flatMap((group) => group.videos);
+      const seenVideoPaths = new Set<string>();
+      const uniqueScannedGroups = scannedGroups.map((group) => ({
+        ...group,
+        videos: group.videos.filter((video) => {
+          const normalizedPath = normalizeFsPath(video.path);
+          if (seenVideoPaths.has(normalizedPath)) return false;
+          seenVideoPaths.add(normalizedPath);
+          return true;
+        }),
+      }));
+      const allVideos = uniqueScannedGroups.flatMap((group) => group.videos);
       const expectedThumbCount = (v: typeof allVideos[number]) => expectedThumbnailCountForDuration(v.durationSecs, thumbsPerVideo, skipIntroDelaySecs);
       const normalizeVideoThumbs = (video: typeof allVideos[number]) => ({
         ...video,
         thumbnails: video.thumbnails?.slice(0, expectedThumbCount(video)) ?? [],
         compatible: detectVideoCompatibility(video.containerFormat, video.videoCodec, video.path),
       });
-      const normalizedGroups = scannedGroups.map((group) => {
+      const normalizedGroups = uniqueScannedGroups.map((group) => {
         const videos = group.videos.map(normalizeVideoThumbs);
         const compatibilityChanged = videos.filter((video, index) => video.compatible !== group.videos[index].compatible);
         return { ...group, videos, compatibilityChanged };
