@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import useStore from '../store';
-import { ArrowDown, ArrowUp, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake } from 'lucide-react';
-import type { AppSettings, ToastInput, UpdateInfo } from '../types';
+import { ArrowDown, ArrowUp, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake, FolderOpen, Copy, Trash2 } from 'lucide-react';
+import type { AppSettings, CacheLocationInfo, DistributionInfo, LegacyInstallStatus, ToastInput, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
@@ -16,6 +16,7 @@ type SettingsTab = 'interface' | 'features' | 'duplicates' | 'keybindings' | 'ca
 const ABOUT_LINKS = {
   repo: PRODUCT.repository.url,
   releases: `${PRODUCT.repository.url}/releases`,
+  support: `${PRODUCT.website}/support/`,
   sponsors: `https://github.com/sponsors/${PRODUCT.publisher}`,
   paypal: 'https://paypal.me/stippiedot',
 } as const;
@@ -67,6 +68,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const [exportMessage, setExportMessage] = useState<string>('');
   const [cacheMessage, setCacheMessage] = useState<string>('');
   const [autoConcurrency, setAutoConcurrency] = useState<number | null>(null);
+  const [distributionInfo, setDistributionInfo] = useState<DistributionInfo | null>(null);
+  const [cacheLocationInfo, setCacheLocationInfo] = useState<CacheLocationInfo | null>(null);
+  const [legacyInstall, setLegacyInstall] = useState<LegacyInstallStatus | null>(null);
   const appVersionLabel = __APP_VERSION__ || appVersion || '...';
 
   const openExternal = (url: string) => {
@@ -83,6 +87,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     }
     setExportMessage('');
     setCacheMessage('');
+    void window.electronAPI?.getDistributionInfo?.().then(setDistributionInfo).catch(() => setDistributionInfo(null));
+    void window.electronAPI?.getCacheLocationInfo?.().then(setCacheLocationInfo).catch(() => setCacheLocationInfo(null));
+    void window.electronAPI?.getLegacyInstallStatus?.().then(setLegacyInstall).catch(() => setLegacyInstall(null));
   }, [isOpen, globalSettings]);
 
   useEffect(() => {
@@ -348,7 +355,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     }
     if (setting === 'centralCachePath') {
       handleChange('centralCachePath', dir);
-      setCacheMessage('');
+      setCacheMessage(`Selected ${dir}. Save Preferences to apply it.`);
       return;
     }
     if (!currentDriveKey) {
@@ -360,6 +367,34 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
       [currentDriveKey]: dir,
     });
     setCacheMessage('');
+  };
+
+  const handleOpenCache = async (cachePath: string) => {
+    const opened = await window.electronAPI?.openCacheFolder?.(cachePath);
+    setCacheMessage(opened ? 'Opened cache folder.' : 'That cache folder is currently unavailable.');
+  };
+
+  const handleCopyCachePath = async (cachePath: string) => {
+    const copied = await window.electronAPI?.copyCachePath?.(cachePath);
+    setCacheMessage(copied ? 'Cache path copied.' : 'Cache path could not be copied.');
+  };
+
+  const handleUseDefaultCentralCache = () => {
+    handleChange('centralCachePath', null);
+    setCacheMessage('Default cache location selected. Save Preferences to apply it.');
+  };
+
+  const activeCacheLocations = cacheLocationInfo?.mode === localSettings.cacheLocation
+    ? cacheLocationInfo.locations
+    : [];
+
+  const cacheLocationDescription = (item: CacheLocationInfo['locations'][number]) => {
+    const description = item.ownership === 'package'
+      ? 'Managed by Microsoft Store and removed when the app is reset or uninstalled'
+      : item.ownership === 'external'
+        ? 'User-selected folder; kept when VideoCull is uninstalled'
+        : 'Managed in the VideoCull application profile';
+    return item.available ? description : `${description} · Currently unavailable`;
   };
 
   return (
@@ -754,9 +789,6 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
             {activeTab === 'cache' && (
               <div className="settings-form">
                 <div className="form-group">
-                  <span className="help-text">Cache location changes are saved now and used on the next scan after migration completes.</span>
-                </div>
-                <div className="form-group">
                   <label>Cache Storage</label>
                   <select
                     value={localSettings.cacheLocation}
@@ -769,36 +801,104 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                   <span className="help-text">Centralised stores cache in app data. Per-drive keeps cache on the same drive. Distributed creates a hidden .videocull folder inside each loaded folder.</span>
                 </div>
 
-                <div className="form-group">
-                  <label>Central Cache Location</label>
-                  <button
-                    className="btn-check-updates"
-                    onClick={() => void handleChooseCacheFolder('centralCachePath')}
-                    disabled={localSettings.cacheLocation !== 'centralised'}
-                  >
-                    <Database size={14} />
-                    Choose Folder
-                  </button>
-                  <span className="help-text">{localSettings.centralCachePath || 'Default app cache folder'}</span>
-                </div>
+                {localSettings.cacheLocation === 'centralised' && (
+                  <div className="form-group">
+                    <label>Central Cache Location</label>
+                    <div className="cache-location-panel">
+                      {activeCacheLocations[0] ? (
+                        <>
+                          <div className="cache-location-details">
+                            <span className="cache-location-label">
+                              {globalSettings.centralCachePath ? 'Active custom folder' : 'Active default folder'}
+                            </span>
+                            <span className="cache-location-path" title={activeCacheLocations[0].path}>{activeCacheLocations[0].path}</span>
+                          </div>
+                          <div className="cache-location-actions">
+                            <button type="button" onClick={() => void handleOpenCache(activeCacheLocations[0].path)} disabled={!activeCacheLocations[0].available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
+                            <button type="button" onClick={() => void handleCopyCachePath(activeCacheLocations[0].path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
+                          </div>
+                        </>
+                      ) : (
+                        <span className="help-text">Save this cache mode to resolve its active folder.</span>
+                      )}
+                    </div>
+                    {activeCacheLocations[0] && (
+                      <span className="help-text">{cacheLocationDescription(activeCacheLocations[0])}</span>
+                    )}
+                    <div className="cache-location-controls">
+                      <button className="btn-check-updates" type="button" onClick={() => void handleChooseCacheFolder('centralCachePath')}>
+                        <Database size={14} />
+                        Choose Folder
+                      </button>
+                      {localSettings.centralCachePath && (
+                        <button className="btn-check-updates" type="button" onClick={handleUseDefaultCentralCache}>
+                          <RotateCcw size={14} />
+                          Use Default
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-                <div className="form-group">
-                  <label>Per-drive Cache Location</label>
-                  <button
-                    className="btn-check-updates"
-                    onClick={() => void handleChooseCacheFolder('perDriveCachePaths')}
-                    disabled={localSettings.cacheLocation !== 'per-drive' || !currentDriveKey}
-                  >
-                    <Database size={14} />
-                    Choose Folder
-                  </button>
-                  <span className="help-text">
-                    {currentDriveKey
-                      ? (localSettings.perDriveCachePaths[currentDriveKey] || `Default location for ${currentDriveKey}`)
-                      : 'Open a folder to configure its drive.'}
-                  </span>
-                  {cacheMessage && <span className="help-text">{cacheMessage}</span>}
-                </div>
+                {localSettings.cacheLocation === 'per-drive' && (
+                  <div className="form-group">
+                    <label>Per-drive Cache Locations</label>
+                    {activeCacheLocations.length ? activeCacheLocations.map((item) => (
+                      <div className="cache-location-panel" key={item.path}>
+                        <div className="cache-location-details">
+                          <span className="cache-location-label">{item.label}</span>
+                          <span className="cache-location-path" title={item.path}>{item.path}</span>
+                          <span className="help-text">{cacheLocationDescription(item)}</span>
+                        </div>
+                        <div className="cache-location-actions">
+                          <button type="button" onClick={() => void handleOpenCache(item.path)} disabled={!item.available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
+                          <button type="button" onClick={() => void handleCopyCachePath(item.path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
+                        </div>
+                      </div>
+                    )) : (
+                      <span className="help-text">Open a folder to resolve its drive cache.</span>
+                    )}
+                    <div className="cache-location-controls">
+                      <button
+                        className="btn-check-updates"
+                        type="button"
+                        onClick={() => void handleChooseCacheFolder('perDriveCachePaths')}
+                        disabled={!currentDriveKey}
+                      >
+                        <Database size={14} />
+                        Choose Folder
+                      </button>
+                    </div>
+                    <span className="help-text">
+                      {currentDriveKey
+                        ? (localSettings.perDriveCachePaths[currentDriveKey] || `Using the default location for ${currentDriveKey}`)
+                        : 'Open a folder to configure its drive.'}
+                    </span>
+                  </div>
+                )}
+
+                {localSettings.cacheLocation === 'distributed' && (
+                  <div className="form-group">
+                    <label>Distributed Cache Locations</label>
+                    {activeCacheLocations.length ? activeCacheLocations.map((item) => (
+                      <div className="cache-location-panel" key={item.path}>
+                        <div className="cache-location-details">
+                          <span className="cache-location-label">{item.label}</span>
+                          <span className="cache-location-path" title={item.path}>{item.path}</span>
+                          <span className="help-text">{cacheLocationDescription(item)}</span>
+                        </div>
+                        <div className="cache-location-actions">
+                          <button type="button" onClick={() => void handleOpenCache(item.path)} disabled={!item.available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
+                          <button type="button" onClick={() => void handleCopyCachePath(item.path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
+                        </div>
+                      </div>
+                    )) : (
+                      <span className="help-text">Open a folder to resolve its distributed cache.</span>
+                    )}
+                  </div>
+                )}
+
+                {cacheMessage && <span className="help-text cache-location-message">{cacheMessage}</span>}
 
                 <div className="form-group checkbox-group">
                   <label>
@@ -952,6 +1052,20 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
             )}
 
             {activeTab === 'updates' && (() => {
+              if (distributionInfo?.channel === 'microsoft-store') {
+                return (
+                  <div className="settings-form">
+                    <div className="form-group">
+                      <label>Current Version</label>
+                      <span className="version-display">v{appVersionLabel}</span>
+                    </div>
+                    <div className="form-group">
+                      <label>Microsoft Store edition</label>
+                      <span className="help-text">Updates are managed and installed by Microsoft Store.</span>
+                    </div>
+                  </div>
+                );
+              }
               const statusLabel: Record<string, string> = {
                 idle: 'Not checked yet',
                 checking: 'Checking for updates…',
@@ -1049,6 +1163,11 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 </div>
 
                 <div className="about-link-grid">
+                  <button className="about-link-btn" onClick={() => openExternal(ABOUT_LINKS.support)}>
+                    <HeartHandshake size={16} />
+                    <span>VideoCull Support</span>
+                    <ExternalLink size={13} />
+                  </button>
                   <button className="about-link-btn" onClick={() => openExternal(ABOUT_LINKS.repo)}>
                     <Code2 size={16} />
                     <span>GitHub Repository</span>
@@ -1071,6 +1190,25 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     PayPal
                   </button>
                 </div>
+                {legacyInstall?.eligible && (
+                  <div className="form-group settings-section-divider">
+                    <label>Previous direct installation</label>
+                    <span className="help-text">
+                      {legacyInstall.versionRelation === 'older'
+                        ? 'An older direct VideoCull installation was detected. Update it before switching between editions.'
+                        : legacyInstall.versionRelation === 'newer'
+                          ? 'A newer direct VideoCull installation was detected. Update the Microsoft Store edition before switching between editions.'
+                          : legacyInstall.versionRelation === 'same'
+                            ? 'Both editions use the same VideoCull profile. Close both editions before removing the direct installation; shared and external cache folders are not deleted automatically.'
+                            : 'The direct installation version could not be verified. Update both VideoCull editions before switching between them.'}
+                    </span>
+                    <button className="about-link-btn" onClick={() => void window.electronAPI?.uninstallLegacyInstall?.()}>
+                      <Trash2 size={16} />
+                      <span>Remove {legacyInstall.displayName || 'previous VideoCull installation'}</span>
+                      <ExternalLink size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

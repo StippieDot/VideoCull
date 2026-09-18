@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, nativeTheme, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
@@ -9,6 +9,14 @@ const cache = require('./cache');
 const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
+const { getCacheLocationInfo } = require('./cache-location-info');
+const { getDistributionChannel, shouldEnableUpdates } = require('./distribution');
+const {
+  createLegacyPromptKey,
+  detectLegacyInstall,
+  getVersionRelation,
+  launchLegacyUninstaller,
+} = require('./legacy-install');
 const {
   THEME_ARGUMENT_PREFIX,
   getThemeBackgroundColor,
@@ -48,9 +56,17 @@ const {
 } = require('./main-helpers');
 const isE2E = process.env.VC_E2E_USE_DIST === '1';
 const isDev = !app.isPackaged && !isE2E;
-const updatesEnabled = !isDev && !isE2E && process.env.VC_DISABLE_UPDATES !== '1';
 const profileBootstrap = globalThis.__VIDEOCULL_PROFILE_BOOTSTRAP__ ?? null;
+const distributionChannel = getDistributionChannel(profileBootstrap);
+const isWindowsStore = distributionChannel === 'microsoft-store';
+const updatesEnabled = shouldEnableUpdates({
+  isDev,
+  isE2E,
+  distributionChannel,
+  disableUpdates: process.env.VC_DISABLE_UPDATES === '1',
+});
 let pendingProfileWarning = profileBootstrap?.warning ?? null;
+let storeWindowReady = false;
 let autoUpdaterInstance = null;
 let mainWindow;
 let currentScanDir = null;
@@ -76,6 +92,7 @@ const ALLOWED_EXTERNAL_URLS = new Set([
   'https://github.com/StippieDot/VideoCull/releases',
   'https://github.com/sponsors/StippieDot',
   'https://paypal.me/stippiedot',
+  'https://videocull.app/support/',
 ]);
 
 // Set of known valid video paths, populated on every scan-directory call.
@@ -288,7 +305,9 @@ function createWindow(initialTheme = 'dark') {
   });
 
   mainWindow.once('ready-to-show', () => {
+    storeWindowReady = isWindowsStore;
     mainWindow.show();
+    if (isWindowsStore) sendToRenderer('store-transition-ready', true);
     if (pendingProfileWarning) {
       sendToRenderer('app-notification', pendingProfileWarning);
       pendingProfileWarning = null;
@@ -336,9 +355,14 @@ app.whenReady().then(async () => {
       selectedPath: profileBootstrap.selectedPath,
       userData: app.getPath('userData'),
       sessionData: app.getPath('sessionData'),
+      distributionChannel,
+      packageFamilyName: profileBootstrap.storage?.packageFamilyName ?? null,
+      packageRoot: profileBootstrap.storage?.packageRoot ?? null,
+      localState: profileBootstrap.storage?.localState ?? null,
+      localCache: profileBootstrap.storage?.localCache ?? null,
     });
   }
-  defaultCentralCacheRoot = path.join(app.getPath('userData'), 'video-cache');
+  defaultCentralCacheRoot = profileBootstrap?.defaultCentralCacheRoot ?? path.join(app.getPath('userData'), 'video-cache');
 
   protocol.handle('thumb', async (request) => {
     let filePath = getFilePathFromProtocolRequest(request, 'thumb');
@@ -458,8 +482,12 @@ app.whenReady().then(async () => {
   const initialConfig = await readJsonFile(CONFIG_FILE, {});
   createWindow(initialConfig.theme);
   setApplicationMenu();
-  pruneDistributedIndex().catch((err) => log.warn('[cache] Failed to prune distributed index:', err));
+  checkDistributedIndexAvailability().catch((err) => log.warn('[cache] Failed to check distributed cache locations:', err));
   if (updatesEnabled) setupAutoUpdater();
+}).catch((error) => {
+  log.error('[startup] VideoCull could not finish starting:', error);
+  dialog.showErrorBox('VideoCull could not start', error.message);
+  app.exit(1);
 });
 
 function setApplicationMenu() {
@@ -638,26 +666,27 @@ const THUMB_DIR = '.video-cull-thumbs';
 const CONFIG_FILE = 'settings.json';
 const CACHE_INDEX_FILE = 'cache-index.json';
 const DISTRIBUTED_INDEX_FILE = 'distributed-index.json';
+const LEGACY_TRANSITION_FILE = 'legacy-install-transition.json';
 const ATOMIC_SAVE_SYNC_LIMIT = 1000;
 let activeCacheIndexBatch = null;
 
-async function readJsonFile(fileName, fallback) {
+async function readJsonFile(fileName, fallback, rootPath = app.getPath('userData')) {
   if (currentScanDiagnostics && (fileName === CACHE_INDEX_FILE || fileName === DISTRIBUTED_INDEX_FILE)) {
     currentScanDiagnostics.cacheIndexIo.reads += 1;
   }
   try {
-    const data = await fs.readFile(path.join(app.getPath('userData'), fileName), 'utf8');
+    const data = await fs.readFile(path.join(rootPath, fileName), 'utf8');
     return JSON.parse(data);
   } catch {
     return fallback;
   }
 }
 
-async function writeJsonFile(fileName, data) {
+async function writeJsonFile(fileName, data, rootPath = app.getPath('userData')) {
   if (currentScanDiagnostics && (fileName === CACHE_INDEX_FILE || fileName === DISTRIBUTED_INDEX_FILE)) {
     currentScanDiagnostics.cacheIndexIo.writes += 1;
   }
-  await fs.writeFile(path.join(app.getPath('userData'), fileName), JSON.stringify(data, null, 2), 'utf8');
+  await fs.writeFile(path.join(rootPath, fileName), JSON.stringify(data, null, 2), 'utf8');
 }
 
 async function createCacheIndexBatch() {
@@ -788,21 +817,22 @@ async function unregisterCacheFolders(folderPaths) {
   await writeJsonFile(DISTRIBUTED_INDEX_FILE, { ...distributed, knownDistributedPaths });
 }
 
-async function pruneDistributedIndex() {
+async function checkDistributedIndexAvailability() {
   const distributed = await readJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
   const knownDistributedPaths = Array.isArray(distributed.knownDistributedPaths) ? distributed.knownDistributedPaths : [];
-  const pruned = [];
+  const unavailable = [];
   for (const folderPath of knownDistributedPaths) {
     try {
       const stats = await fs.stat(folderPath);
-      if (stats.isDirectory()) pruned.push(folderPath);
+      if (!stats.isDirectory()) unavailable.push(folderPath);
     } catch {
-      // Drop stale paths.
+      unavailable.push(folderPath);
     }
   }
-  if (pruned.length !== knownDistributedPaths.length) {
-    await writeJsonFile(DISTRIBUTED_INDEX_FILE, { ...distributed, knownDistributedPaths: pruned });
+  if (unavailable.length > 0) {
+    log.warn('[cache] Preserving unavailable distributed cache locations:', unavailable);
   }
+  return unavailable;
 }
 
 async function testWritableDirectory(dirPath) {
@@ -954,6 +984,39 @@ async function getKnownCacheFolders(loadedDirs = []) {
   const knownFolders = Array.isArray(index.knownFolders) ? index.knownFolders : [];
   const knownDistributedPaths = Array.isArray(distributed.knownDistributedPaths) ? distributed.knownDistributedPaths : [];
   return Array.from(new Set([...knownFolders, ...knownDistributedPaths, ...loadedDirs].filter(Boolean)));
+}
+
+async function getCurrentCacheLocationInfo() {
+  const settings = await readJsonFile(CONFIG_FILE, {});
+  return getCacheLocationInfo({
+    settings,
+    defaultCentralRoot: defaultCentralCacheRoot,
+    profileRoot: app.getPath('userData'),
+    packageRoot: profileBootstrap?.storage?.packageRoot ?? null,
+    knownFolders: await getKnownCacheFolders(Array.from(currentScanDirs)),
+    username: os.userInfo().username,
+  });
+}
+
+async function getLegacyTransitionStatus() {
+  if (!isWindowsStore || !storeWindowReady) {
+    return { installed: false, eligible: false, promptDismissed: false };
+  }
+  const [install, transition] = await Promise.all([
+    detectLegacyInstall({ enabled: true, platform: process.platform }),
+    readJsonFile(
+      LEGACY_TRANSITION_FILE,
+      { promptDismissed: false },
+      profileBootstrap.storage.runtimeState,
+    ),
+  ]);
+  const promptKey = createLegacyPromptKey(app.getVersion(), install);
+  return {
+    ...install,
+    eligible: install.installed,
+    versionRelation: getVersionRelation(install.version, app.getVersion()),
+    promptDismissed: transition.dismissedPromptKey === promptKey,
+  };
 }
 
 function loadCacheMapWithAbsoluteThumbs(db, cacheRootDir, videoIds = null) {
@@ -2693,6 +2756,60 @@ ipcMain.handle('open-video', async (_event, filePath) => {
   await shell.openPath(filePath);
 });
 
+ipcMain.handle('get-distribution-info', () => ({
+  channel: distributionChannel,
+}));
+
+ipcMain.handle('get-cache-location-info', () => getCurrentCacheLocationInfo());
+
+ipcMain.handle('open-cache-folder', async (_event, requestedPath) => {
+  const info = await getCurrentCacheLocationInfo();
+  const allowed = info.locations.find((item) => item.path.toLowerCase() === String(requestedPath || '').toLowerCase());
+  if (!allowed?.available) return false;
+  return (await shell.openPath(allowed.path)) === '';
+});
+
+ipcMain.handle('copy-cache-path', async (_event, requestedPath) => {
+  const info = await getCurrentCacheLocationInfo();
+  const allowed = info.locations.find((item) => item.path.toLowerCase() === String(requestedPath || '').toLowerCase());
+  if (!allowed) return false;
+  clipboard.writeText(allowed.path);
+  return true;
+});
+
+ipcMain.handle('get-legacy-install-status', () => getLegacyTransitionStatus());
+
+ipcMain.handle('dismiss-legacy-install-prompt', async () => {
+  if (!isWindowsStore) return false;
+  const status = await getLegacyTransitionStatus();
+  if (!status.eligible) return false;
+  await writeJsonFile(
+    LEGACY_TRANSITION_FILE,
+    { dismissedPromptKey: createLegacyPromptKey(app.getVersion(), status) },
+    profileBootstrap.storage.runtimeState,
+  );
+  return true;
+});
+
+ipcMain.handle('uninstall-legacy-install', async () => {
+  const status = await getLegacyTransitionStatus();
+  if (!status.eligible) return false;
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: 'Remove previous VideoCull installation',
+    message: `Uninstall ${status.displayName}?`,
+    detail: 'Your shared VideoCull profile and cache folders will remain. VideoCull does not delete them automatically.',
+    buttons: ['Open uninstaller', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (response !== 0) return false;
+  launchLegacyUninstaller(status);
+  setImmediate(() => app.quit());
+  return true;
+});
+
 // 9. Config management
 ipcMain.handle('get-config', async () => {
   try {
@@ -2742,7 +2859,7 @@ ipcMain.handle('open-external-url', async (_event, url) => {
 // 12. Auto-updater IPC
 ipcMain.handle('check-for-updates', async () => {
   if (!updatesEnabled) {
-    return { ok: false, status: isE2E ? 'disabled-e2e' : 'disabled-dev' };
+    return { ok: false, status: isWindowsStore ? 'managed-by-store' : (isE2E ? 'disabled-e2e' : 'disabled-dev') };
   }
 
   try {

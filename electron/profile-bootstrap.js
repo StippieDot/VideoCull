@@ -32,6 +32,47 @@ function ensureDirectory(profilePath, fsImpl = fs) {
   assertDirectory(profilePath, null, fsImpl);
 }
 
+function assertPathInside(parentPath, childPath, pathImpl = path) {
+  const parent = pathImpl.resolve(parentPath);
+  const child = pathImpl.resolve(childPath);
+  const parentPrefix = `${parent.replace(/[\\/]+$/, '')}${pathImpl.sep}`.toLowerCase();
+  if (!child.toLowerCase().startsWith(parentPrefix)) {
+    throw new Error(`Store path must be a descendant of the package root: ${child}`);
+  }
+  return child;
+}
+
+function resolveStoreStorage({ env, platform, packageFamilyName, pathImpl = path }) {
+  if (platform !== 'win32') {
+    throw new Error('Microsoft Store package storage is only supported on Windows.');
+  }
+  const localAppData = env.LOCALAPPDATA;
+  if (typeof localAppData !== 'string' || !pathImpl.isAbsolute(localAppData)) {
+    throw new Error('LOCALAPPDATA must be an absolute path for Microsoft Store builds.');
+  }
+  if (typeof packageFamilyName !== 'string' || packageFamilyName.trim() === '') {
+    throw new Error('The Microsoft Store package family name is required.');
+  }
+  if (packageFamilyName !== product.microsoftStore?.packageFamilyName) {
+    throw new Error(`Microsoft Store package identity mismatch: ${packageFamilyName}`);
+  }
+
+  const packagesRoot = pathImpl.resolve(localAppData, 'Packages');
+  const packageRoot = assertPathInside(packagesRoot, pathImpl.join(packagesRoot, packageFamilyName), pathImpl);
+  const localState = assertPathInside(packageRoot, pathImpl.join(packageRoot, 'LocalState'), pathImpl);
+  const localCache = assertPathInside(packageRoot, pathImpl.join(packageRoot, 'LocalCache'), pathImpl);
+  return {
+    packageFamilyName,
+    packageRoot,
+    localState,
+    localCache,
+    runtimeState: assertPathInside(packageRoot, pathImpl.join(localState, 'runtime'), pathImpl),
+    sessionData: assertPathInside(packageRoot, pathImpl.join(localCache, 'session'), pathImpl),
+    logs: assertPathInside(packageRoot, pathImpl.join(localCache, 'logs'), pathImpl),
+    crashDumps: assertPathInside(packageRoot, pathImpl.join(localCache, 'crash-dumps'), pathImpl),
+  };
+}
+
 function warning(title, detail) {
   return { title, detail, kind: 'warning' };
 }
@@ -42,7 +83,7 @@ function dualProfileResult(legacyPath, canonicalPath) {
     status: 'both-canonical',
     warning: warning(
       'Two VideoCull profile folders were found',
-      `VideoCull is using ${canonicalPath}. No files were merged, copied, or removed. The other profile remains at ${legacyPath}.`,
+      `VideoCull is using ${canonicalPath}. An older VideoCull installation may have recreated ${legacyPath}; update or remove that installation before switching editions. No files were merged, copied, or removed.`,
     ),
     legacyPath,
     canonicalPath,
@@ -105,9 +146,42 @@ function configureAppProfile(app, options = {}) {
   const pathImpl = options.pathImpl ?? path;
   const isE2E = env.VC_E2E_USE_DIST === '1';
   const isDev = !app.isPackaged && !isE2E;
+  const isWindowsStore = options.isWindowsStore ?? Boolean(process.windowsStore);
   let result;
 
-  if (isE2E) {
+  if (isWindowsStore) {
+    const storage = resolveStoreStorage({
+      env,
+      platform: options.platform ?? process.platform,
+      packageFamilyName: product.microsoftStore?.packageFamilyName,
+      pathImpl,
+    });
+    const sharedProfile = selectProfile({
+      appDataPath: app.getPath('appData'),
+      legacyName: product.legacyTechnicalName,
+      canonicalName: product.displayName,
+      fsImpl,
+      pathImpl,
+    });
+    for (const directory of [
+      storage.packageRoot,
+      storage.localState,
+      storage.localCache,
+      storage.runtimeState,
+      storage.sessionData,
+      storage.logs,
+      storage.crashDumps,
+    ]) {
+      ensureDirectory(directory, fsImpl);
+    }
+    result = {
+      ...sharedProfile,
+      status: 'store-shared-profile',
+      storage,
+      defaultCentralCacheRoot: pathImpl.join(sharedProfile.selectedPath, 'video-cache'),
+      distributionChannel: 'microsoft-store',
+    };
+  } else if (isE2E) {
     if (!env.VC_E2E_USER_DATA_DIR) {
       throw new Error('VC_E2E_USER_DATA_DIR is required when VC_E2E_USE_DIST=1.');
     }
@@ -127,10 +201,21 @@ function configureAppProfile(app, options = {}) {
   ensureDirectory(result.selectedPath, fsImpl);
   app.setName(product.displayName);
   app.setPath('userData', result.selectedPath);
-  app.setPath('sessionData', result.selectedPath);
-  app.setAppUserModelId(product.appId);
+  app.setPath('sessionData', result.storage?.sessionData ?? result.selectedPath);
+  if (result.storage) {
+    app.setAppLogsPath(result.storage.logs);
+    app.setPath('crashDumps', result.storage.crashDumps);
+  } else {
+    app.setAppUserModelId(product.appId);
+  }
 
-  return { ...result, isDev, isE2E };
+  return {
+    ...result,
+    isDev,
+    isE2E,
+    isWindowsStore,
+    distributionChannel: result.distributionChannel ?? 'direct',
+  };
 }
 
 module.exports = {
@@ -138,5 +223,7 @@ module.exports = {
   configureAppProfile,
   ensureDirectory,
   expectedChildPath,
+  assertPathInside,
+  resolveStoreStorage,
   selectProfile,
 };

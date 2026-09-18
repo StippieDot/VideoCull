@@ -11,18 +11,26 @@
     "build": "vite build",
     "check:ipc": "node scripts/check-ipc-contract.js",
     "check:installer": "node scripts/check-installer-config.js",
+    "check:store": "node scripts/check-store-config.js",
+    "check:store:strict": "node scripts/check-store-config.js --strict",
+    "check:store-screenshots": "node scripts/check-store-screenshots.js",
+    "validate:store-package": "node scripts/validate-store-package.js",
+    "verify:store-installed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-installed-store-package.ps1",
     "check:brand": "node scripts/check-brand.js",
     "test": "vitest run",
     "test:renderer": "vitest run -c vitest.renderer.config.ts",
     "test:watch": "vitest",
     "test:cache-native": "node --test tests/electron/cache.test.js tests/electron/cache.migration.test.js",
+    "test:packaging": "node --test tests/electron/build-hooks.test.js",
     "coverage": "vitest run --coverage",
-    "test:profile": "node --test tests/electron/profile-bootstrap.test.js",
-    "test:ci": "npm run check:ipc && npm run check:installer && npm run check:brand && npm run test:profile && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
+    "test:profile": "node --test tests/electron/profile-bootstrap.test.js tests/electron/storage-compatibility.test.js",
+    "test:store": "node --test tests/electron/store-*.test.js",
+    "test:ci": "npm run check:ipc && npm run check:installer && npm run check:store && npm run check:store-screenshots && npm run check:brand && npm run test:packaging && npm run test:profile && npm run test:store && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
     "test:e2e": "npm run build && playwright test",
     "test:duplicates": "vitest run tests/electron/duplicate-utils.test.js tests/electron/duplicates.test.js tests/electron/duplicate-worker.test.js tests/electron/visual-worker.test.js",
     "cleanup:cache": "node scripts/cleanup-cache-clutter.js",
     "package": "vite build && electron-builder --win --publish never",
+    "package:store": "node scripts/package-store.js",
     "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
@@ -87,11 +95,34 @@
       "node_modules/@ffprobe-installer/**/*",
       "node_modules/better-sqlite3/**/*"
     ],
+    "npmRebuild": true,
+    "beforeBuild": "./scripts/electron-builder-hooks.js",
+    "afterPack": "./scripts/electron-builder-hooks.js",
     "win": {
       "target": "nsis",
       "icon": "build/videocull.ico",
       "executableName": "VideoCull",
       "artifactName": "VideoCull.Setup.${version}.${ext}"
+    },
+    "appx": {
+      "applicationId": "VideoCull",
+      "identityName": "StippieDot.VideoCull",
+      "publisher": "CN=6A4B6EC8-38EB-4378-A661-8B04B8C7A5A3",
+      "publisherDisplayName": "StippieDot",
+      "displayName": "VideoCull",
+      "languages": [
+        "en-US"
+      ],
+      "capabilities": [
+        "runFullTrust",
+        "unvirtualizedResources"
+      ],
+      "customManifestPath": "appx/AppxManifest.xml",
+      "minVersion": "10.0.19041.0",
+      "maxVersionTested": "10.0.26100.0",
+      "setBuildNumber": false,
+      "artifactName": "VideoCull.Store.${version}.x64.${ext}",
+      "showNameOnTiles": false
     },
     "publish": {
       "provider": "github",

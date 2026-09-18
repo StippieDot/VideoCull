@@ -1,0 +1,25 @@
+.legacy-install-banner {
+  position: fixed;
+  z-index: 11000;
+  right: 20px;
+  bottom: 20px;
+  width: min(520px, calc(100vw - 40px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-lg);
+}
+
+.legacy-install-banner strong { display: block; color: var(--text-primary); }
+.legacy-install-banner div { display: flex; gap: 8px; flex-shrink: 0; }
+.legacy-install-banner button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-control); color: var(--text-primary); cursor: pointer; }
+
+@media (max-width: 640px) {
+  .legacy-install-banner { align-items: stretch; flex-direction: column; }
+}

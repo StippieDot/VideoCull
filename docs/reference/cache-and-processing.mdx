@@ -28,11 +28,15 @@ Centralised is the safest default. Distributed mode is deliberately marked as a 
 
 Saving a changed cache mode or root starts the cache migration flow. You can migrate existing data, start fresh, or cancel.
 
+When using a custom central folder, choose **Use Default** to return to VideoCull's standard cache location, then save Preferences.
+
 - **Migrate existing cache** keeps current progress when the source cache is available.
 - **Start fresh** leaves the new location empty; the next scan rebuilds metadata and thumbnails.
 - **Cancel** leaves both settings and cache layout unchanged.
 
 Do not disconnect a source or destination drive during migration. If a partial migration is reported, read the error before rescanning or deleting the old cache manually.
+
+The Microsoft Store and direct-download editions use the same default cache at `%APPDATA%\VideoCull\video-cache`. Resetting or uninstalling the Store package does not remove this shared cache. Custom central, per-drive, and distributed caches also remain in place when VideoCull is uninstalled.
 
 ## Know when settings apply
 

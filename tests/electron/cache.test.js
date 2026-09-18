@@ -588,9 +588,12 @@ test('migrateLegacyCacheKeyIfNeeded copies old cache db and sidecars to hashed p
   try {
     const options = { mode: 'centralised', defaultCentralRoot: tempRoot };
     const paths = cache.resolveCachePaths('X:\\Fixture\\Folder__', options);
+    const legacyThumb = path.join(tempRoot, 'thumbs', 'legacy', 'thumb.jpg');
+    await fs.mkdir(path.dirname(legacyThumb), { recursive: true });
     await fs.writeFile(paths.legacyDbPath, 'db');
     await fs.writeFile(paths.legacyDbPath + '-wal', 'wal');
     await fs.writeFile(paths.legacyDbPath + '-shm', 'shm');
+    await fs.writeFile(legacyThumb, 'thumb');
 
     const migrated = await cache.migrateLegacyCacheKeyIfNeeded(paths);
 
@@ -598,7 +601,68 @@ test('migrateLegacyCacheKeyIfNeeded copies old cache db and sidecars to hashed p
     assert.equal(await fs.readFile(paths.dbPath, 'utf8'), 'db');
     assert.equal(await fs.readFile(paths.dbPath + '-wal', 'utf8'), 'wal');
     assert.equal(await fs.readFile(paths.dbPath + '-shm', 'utf8'), 'shm');
+    assert.equal(await fs.readFile(paths.legacyDbPath, 'utf8'), 'db');
+    assert.equal(await fs.readFile(paths.legacyDbPath + '-wal', 'utf8'), 'wal');
+    assert.equal(await fs.readFile(paths.legacyDbPath + '-shm', 'utf8'), 'shm');
+    assert.equal(await fs.readFile(legacyThumb, 'utf8'), 'thumb');
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('resolveCachePaths shortens cache keys that would exceed a safe SQLite path length', async (t) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-cache-long-key-'));
+  try {
+    const shortCacheRoot = path.join(tempRoot, 'short');
+    const cacheRoot = path.join(tempRoot, 'a'.repeat(30));
+    const folderPath = `X:\\${'long-folder-name\\'.repeat(10)}video`;
+    const paths = cache.resolveCachePaths(folderPath, { mode: 'centralised', defaultCentralRoot: cacheRoot });
+    const shortRootPaths = cache.resolveCachePaths(folderPath, { mode: 'centralised', defaultCentralRoot: shortCacheRoot });
+
+    assert.match(path.basename(paths.dbPath), /^[a-zA-Z0-9_.-]+-[a-f0-9]{12}\.db$/);
+    assert.ok(paths.dbPath.length <= 240);
+    assert.ok(paths.folderKey.length <= 96);
+    assert.equal(paths.folderKey, shortRootPaths.folderKey);
+    assert.ok(paths.legacyDbPaths[0].length > paths.dbPath.length);
+
+    await fs.mkdir(cacheRoot, { recursive: true });
+    const verboseThumb = path.join(
+      cacheRoot,
+      'thumbs',
+      path.basename(paths.legacyDbPaths[0], '.db'),
+      'video-id',
+      'thumb_01.jpg',
+    );
+    await fs.mkdir(path.dirname(verboseThumb), { recursive: true });
+    await fs.writeFile(paths.legacyDbPaths[0], 'db');
+    await fs.writeFile(paths.legacyDbPaths[0] + '-wal', 'wal');
+    await fs.writeFile(paths.legacyDbPaths[0] + '-shm', 'shm');
+    await fs.writeFile(verboseThumb, 'thumb');
+    const migrated = await cache.migrateLegacyCacheKeyIfNeeded(paths);
+
+    assert.equal(migrated, true);
+    assert.equal(await fs.readFile(paths.dbPath, 'utf8'), 'db');
+    assert.equal(await fs.readFile(paths.dbPath + '-wal', 'utf8'), 'wal');
+    assert.equal(await fs.readFile(paths.dbPath + '-shm', 'utf8'), 'shm');
+    assert.equal(await fs.readFile(paths.legacyDbPaths[0], 'utf8'), 'db');
+    assert.equal(await fs.readFile(paths.legacyDbPaths[0] + '-wal', 'utf8'), 'wal');
+    assert.equal(await fs.readFile(paths.legacyDbPaths[0] + '-shm', 'utf8'), 'shm');
+    assert.equal(await fs.readFile(verboseThumb, 'utf8'), 'thumb');
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('resolveCachePaths keeps distributed cache paths independent of central cache keys', async () => {
+  const folderPath = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-distributed-cache-'));
+  try {
+    const paths = cache.resolveCachePaths(folderPath, { mode: 'distributed' });
+
+    assert.equal(paths.dbPath, path.join(folderPath, '.videocull', 'cache.db'));
+    assert.equal(paths.thumbRootDir, path.join(folderPath, '.videocull', 'thumbs'));
+    assert.ok(paths.folderKey);
+  } finally {
+    await fs.rm(folderPath, { recursive: true, force: true });
   }
 });

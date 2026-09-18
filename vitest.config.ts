@@ -9,6 +9,8 @@ export default defineConfig({
       'tests/electron/cache.test.js',
       'tests/electron/cache.migration.test.js',
       'tests/electron/profile-bootstrap.test.js',
+      'tests/electron/storage-compatibility.test.js',
+      'tests/electron/store-*.test.js',
     ],
     coverage: {
       provider: 'v8',

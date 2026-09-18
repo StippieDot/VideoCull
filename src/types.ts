@@ -435,6 +435,35 @@ export interface UpdateInfo {
   message?: string;
 }
 
+export type DistributionChannel = 'direct' | 'microsoft-store';
+
+export interface DistributionInfo {
+  channel: DistributionChannel;
+}
+
+export interface CacheLocationInfo {
+  mode: CacheLocationMode;
+  locations: Array<{
+    label: string;
+    path: string;
+    ownership: 'package' | 'profile' | 'external';
+    available: boolean;
+    disposableOnReset: boolean;
+  }>;
+}
+
+export interface LegacyInstallStatus {
+  installed: boolean;
+  eligible?: boolean;
+  promptDismissed?: boolean;
+  versionRelation?: 'older' | 'same' | 'newer' | 'unknown';
+  displayName?: string;
+  version?: string | null;
+  installLocation?: string;
+  uninstallerPath?: string;
+  registryKey?: string;
+}
+
 export interface PerfCounterSample {
   count: number;
   total: number;
@@ -577,6 +606,14 @@ export interface ElectronAPI {
     newSettings: AppSettings,
     loadedDirs: string[]
   ) => Promise<{ status: 'unchanged' | 'no-cache' | 'cancelled' | 'fresh' | 'migrated' | 'partial' | 'error'; migrated: number; errors: string[] }>;
+  getCacheLocationInfo: () => Promise<CacheLocationInfo>;
+  openCacheFolder: (cachePath: string) => Promise<boolean>;
+  copyCachePath: (cachePath: string) => Promise<boolean>;
+  getDistributionInfo: () => Promise<DistributionInfo>;
+  onStoreTransitionReady: (callback: () => void) => () => void;
+  getLegacyInstallStatus: () => Promise<LegacyInstallStatus>;
+  dismissLegacyInstallPrompt: () => Promise<boolean>;
+  uninstallLegacyInstall: () => Promise<boolean>;
   getAppVersion: () => Promise<string>;
   checkForUpdates: () => Promise<{ ok: boolean; status: string; error?: string }>;
   installUpdate: () => Promise<boolean>;

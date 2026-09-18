@@ -217,6 +217,28 @@ input[type="range"] {
   line-height: 1.4;
 }
 
+.cache-location-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-app);
+}
+
+.cache-location-details { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 3px; }
+.cache-location-label { color: var(--text-primary); font-size: 12px; font-weight: 500; }
+.cache-location-path { overflow: hidden; color: var(--text-secondary); font: 11px monospace; text-overflow: ellipsis; white-space: nowrap; }
+.cache-location-actions { display: flex; flex-shrink: 0; gap: 6px; }
+.cache-location-actions button { display: flex; min-height: 30px; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-control); color: var(--text-primary); font-size: 12px; cursor: pointer; }
+.cache-location-actions button:hover:not(:disabled) { background: var(--bg-subtle-hover); }
+.cache-location-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+.cache-location-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.cache-location-message { margin-top: -12px; }
+
 /* Duplicates tab */
 .duplicates-settings {
   gap: 20px;

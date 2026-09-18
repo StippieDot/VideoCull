@@ -35,6 +35,8 @@ build/*
 !build/installerSidebar.bmp
 !build/installerHeader.bmp
 !build/installer.nsh
+!build/appx/
+!build/appx/*.png
 release/
 testspace/
 

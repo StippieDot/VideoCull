@@ -15,6 +15,9 @@ assert.equal(packageJson.name, identity.technicalName, 'package name must use th
 assert.equal(packageJson.main, 'electron/bootstrap.js', 'Electron must start through the profile bootstrap');
 assert.equal(packageJson.build?.appId, identity.appId, 'Windows application ID must remain stable');
 assert.equal(packageJson.build?.productName, identity.displayName, 'product name must use the canonical identity');
+assert.equal(packageJson.build?.npmRebuild, true, 'electron-builder native dependency handling must remain enabled');
+assert.equal(packageJson.build?.beforeBuild, './scripts/electron-builder-hooks.js', 'native dependencies must use the authoritative rebuild hook');
+assert.equal(packageJson.build?.afterPack, './scripts/electron-builder-hooks.js', 'packaged native dependencies must use the runtime smoke hook');
 assert.equal(packageJson.build?.publish?.owner, identity.repository.owner, 'updates must use the canonical GitHub owner');
 assert.equal(packageJson.build?.publish?.repo, identity.repository.name, 'updates must use the canonical GitHub repository');
 assert.equal(win.icon, appIcon, `Windows executable must use the ${identity.displayName} icon`);

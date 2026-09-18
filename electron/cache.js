@@ -9,6 +9,8 @@ const perfMetrics = require('./perf-metrics');
 const Database = require('better-sqlite3');
 
 const OLD_CACHE_FILE = '.video-cull-cache.json';
+const MAX_SQLITE_DB_PATH_LENGTH = 240;
+const MAX_CACHE_KEY_LENGTH = 96;
 
 function thumbnailIndex(filePath) {
   const basename = path.basename(filePath);
@@ -98,6 +100,13 @@ function cacheKeyForFolder(folderPath) {
   return `${legacyKey}-${pathHashForFilename(folderPath)}`;
 }
 
+function boundedCacheKeyForFolder(folderPath) {
+  const legacyKey = sanitizePathForFilename(folderPath) || 'root';
+  const suffix = `-${pathHashForFilename(folderPath)}`;
+  const prefix = legacyKey.slice(0, MAX_CACHE_KEY_LENGTH - suffix.length);
+  return `${prefix}${suffix}`;
+}
+
 /**
  * Returns the absolute path to the SQLite DB file for a given folder.
  * All cache reads/writes must go through this function.
@@ -145,15 +154,14 @@ function normalizeCacheOptions(cacheOptions) {
 function resolveCachePaths(folderPath, cacheOptions) {
   const options = normalizeCacheOptions(cacheOptions);
   const legacyFolderKey = sanitizePathForFilename(folderPath) || 'root';
-  const folderKey = cacheKeyForFolder(folderPath);
+  const verboseFolderKey = cacheKeyForFolder(folderPath);
   const mode = options.mode;
 
   if (mode === 'distributed') {
     const cacheRootDir = path.join(folderPath, '.videocull');
-    fsSync.mkdirSync(cacheRootDir, { recursive: true });
     return {
       mode,
-      folderKey,
+      folderKey: verboseFolderKey,
       legacyFolderKey,
       cacheRootDir,
       dbPath: path.join(cacheRootDir, 'cache.db'),
@@ -171,15 +179,23 @@ function resolveCachePaths(folderPath, cacheOptions) {
     cacheRootDir = options.centralCachePath || options.defaultCentralRoot;
   }
 
-  fsSync.mkdirSync(cacheRootDir, { recursive: true });
+  const folderKey = boundedCacheKeyForFolder(folderPath);
+  const dbPath = path.join(cacheRootDir, `${folderKey}.db`);
+  if (dbPath.length > MAX_SQLITE_DB_PATH_LENGTH) {
+    throw new Error(`Cache location is too long for SQLite: ${cacheRootDir}`);
+  }
+  const legacyDbPaths = [verboseFolderKey, legacyFolderKey]
+    .filter((key, index, keys) => key !== folderKey && keys.indexOf(key) === index)
+    .map((key) => path.join(cacheRootDir, `${key}.db`));
   return {
     mode,
     folderKey,
     legacyFolderKey,
     cacheRootDir,
-    dbPath: path.join(cacheRootDir, `${folderKey}.db`),
+    dbPath,
     thumbRootDir: path.join(cacheRootDir, 'thumbs', folderKey),
     legacyDbPath: path.join(cacheRootDir, `${legacyFolderKey}.db`),
+    legacyDbPaths,
     legacyThumbRootDir: path.join(cacheRootDir, 'thumbs', legacyFolderKey),
   };
 }
@@ -199,24 +215,27 @@ async function copyIfExists(source, target) {
 }
 
 async function migrateLegacyCacheKeyIfNeeded(cachePaths) {
-  if (
-    !cachePaths ||
-    cachePaths.mode === 'distributed' ||
-    !cachePaths.legacyDbPath ||
-    cachePaths.legacyDbPath === cachePaths.dbPath ||
-    fsSync.existsSync(cachePaths.dbPath) ||
-    !fsSync.existsSync(cachePaths.legacyDbPath)
-  ) {
+  if (!cachePaths || cachePaths.mode === 'distributed' || fsSync.existsSync(cachePaths.dbPath)) {
     return false;
   }
 
+  const candidates = Array.isArray(cachePaths.legacyDbPaths)
+    ? cachePaths.legacyDbPaths
+    : [cachePaths.legacyDbPath].filter(Boolean);
+  const sourceDbPath = candidates.find((candidate) => (
+    candidate !== cachePaths.dbPath && fsSync.existsSync(candidate)
+  ));
+  if (!sourceDbPath) return false;
+
   await fs.mkdir(path.dirname(cachePaths.dbPath), { recursive: true });
-  const copied = await copyIfExists(cachePaths.legacyDbPath, cachePaths.dbPath);
+  const copied = await copyIfExists(sourceDbPath, cachePaths.dbPath);
   if (!copied) return false;
 
   for (const ext of ['-wal', '-shm']) {
-    await copyIfExists(cachePaths.legacyDbPath + ext, cachePaths.dbPath + ext);
+    await copyIfExists(sourceDbPath + ext, cachePaths.dbPath + ext);
   }
+  // Keep legacy DBs and thumbnail roots. Copied rows can still reference thumbnails
+  // beneath the old root, and retaining the source avoids destructive cleanup.
   return true;
 }
 
@@ -340,6 +359,7 @@ function openDb(folderPath, cacheOptions) {
   const existing = _dbByPath.get(dbPath);
   if (existing) return existing;
 
+  fsSync.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 5000');

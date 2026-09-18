@@ -74,6 +74,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('confirm-thumbnail-rebuild', fromCount, toCount, videoCount),
   migrateCacheSettings: (oldSettings, newSettings, loadedDirs) =>
     ipcRenderer.invoke('migrate-cache-settings', oldSettings, newSettings, loadedDirs),
+  getCacheLocationInfo: () => ipcRenderer.invoke('get-cache-location-info'),
+  openCacheFolder: (cachePath) => ipcRenderer.invoke('open-cache-folder', cachePath),
+  copyCachePath: (cachePath) => ipcRenderer.invoke('copy-cache-path', cachePath),
+
+  // Store distribution and direct-install transition
+  getDistributionInfo: () => ipcRenderer.invoke('get-distribution-info'),
+  onStoreTransitionReady: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('store-transition-ready', handler);
+    return () => ipcRenderer.removeListener('store-transition-ready', handler);
+  },
+  getLegacyInstallStatus: () => ipcRenderer.invoke('get-legacy-install-status'),
+  dismissLegacyInstallPrompt: () => ipcRenderer.invoke('dismiss-legacy-install-prompt'),
+  uninstallLegacyInstall: () => ipcRenderer.invoke('uninstall-legacy-install'),
 
   // Actions
   batchDelete: (filePaths) => ipcRenderer.invoke('batch-delete', filePaths),
