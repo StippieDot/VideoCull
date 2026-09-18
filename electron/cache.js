@@ -159,7 +159,6 @@ function resolveCachePaths(folderPath, cacheOptions) {
 
   if (mode === 'distributed') {
     const cacheRootDir = path.join(folderPath, '.videocull');
-    fsSync.mkdirSync(cacheRootDir, { recursive: true });
     return {
       mode,
       folderKey: verboseFolderKey,
@@ -180,7 +179,6 @@ function resolveCachePaths(folderPath, cacheOptions) {
     cacheRootDir = options.centralCachePath || options.defaultCentralRoot;
   }
 
-  fsSync.mkdirSync(cacheRootDir, { recursive: true });
   const folderKey = boundedCacheKeyForFolder(folderPath);
   const dbPath = path.join(cacheRootDir, `${folderKey}.db`);
   if (dbPath.length > MAX_SQLITE_DB_PATH_LENGTH) {
@@ -236,6 +234,8 @@ async function migrateLegacyCacheKeyIfNeeded(cachePaths) {
   for (const ext of ['-wal', '-shm']) {
     await copyIfExists(sourceDbPath + ext, cachePaths.dbPath + ext);
   }
+  // Keep legacy DBs and thumbnail roots. Copied rows can still reference thumbnails
+  // beneath the old root, and retaining the source avoids destructive cleanup.
   return true;
 }
 
@@ -359,6 +359,7 @@ function openDb(folderPath, cacheOptions) {
   const existing = _dbByPath.get(dbPath);
   if (existing) return existing;
 
+  fsSync.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 5000');

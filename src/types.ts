@@ -456,7 +456,7 @@ export interface LegacyInstallStatus {
   installed: boolean;
   eligible?: boolean;
   promptDismissed?: boolean;
-  olderThanCurrent?: boolean;
+  versionRelation?: 'older' | 'same' | 'newer' | 'unknown';
   displayName?: string;
   version?: string | null;
   installLocation?: string;

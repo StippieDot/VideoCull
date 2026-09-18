@@ -4,6 +4,7 @@ const {
   compareVersions,
   createLegacyPromptKey,
   detectLegacyInstall,
+  getVersionRelation,
   launchLegacyUninstaller,
   normalizeVersion,
   parseInteractiveUninstaller,
@@ -28,6 +29,10 @@ test('normalizes and compares registered direct-edition versions', () => {
   assert.equal(compareVersions('2.3.0.0', '2.3.0'), 0);
   assert.equal(compareVersions('2.3.1', '2.3.0'), 1);
   assert.equal(compareVersions('unknown', '2.3.0'), null);
+  assert.equal(getVersionRelation('2.2.1', '2.3.0'), 'older');
+  assert.equal(getVersionRelation('2.3.0.0', '2.3.0'), 'same');
+  assert.equal(getVersionRelation('2.3.1', '2.3.0'), 'newer');
+  assert.equal(getVersionRelation(null, '2.3.0'), 'unknown');
   assert.notEqual(
     createLegacyPromptKey('2.3.0', { version: '2.2.1' }),
     createLegacyPromptKey('2.3.1', { version: '2.2.1' }),

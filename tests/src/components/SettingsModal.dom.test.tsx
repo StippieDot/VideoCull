@@ -306,7 +306,12 @@ describe('SettingsModal integration behavior', () => {
   });
 
   test('keeps an explicit previous-install removal action in About', async () => {
-    electronAPI.getLegacyInstallStatus.mockResolvedValue({ installed: true, eligible: true, displayName: 'VideoCull 2.2.1' });
+    electronAPI.getLegacyInstallStatus.mockResolvedValue({
+      installed: true,
+      eligible: true,
+      versionRelation: 'same',
+      displayName: 'VideoCull 2.2.1',
+    });
     render(<SettingsModal initialTab="about" />);
     const button = await screen.findByRole('button', { name: /remove videocull 2.2.1/i });
     await userEvent.click(button);
@@ -317,7 +322,7 @@ describe('SettingsModal integration behavior', () => {
     electronAPI.getLegacyInstallStatus.mockResolvedValue({
       installed: true,
       eligible: true,
-      olderThanCurrent: true,
+      versionRelation: 'older',
       displayName: 'VideoCull 2.2.1',
       version: '2.2.1',
     });

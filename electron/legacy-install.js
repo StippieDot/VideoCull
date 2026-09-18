@@ -80,6 +80,14 @@ function compareVersions(left, right) {
   return 0;
 }
 
+function getVersionRelation(left, right) {
+  const comparison = compareVersions(left, right);
+  if (comparison === null) return 'unknown';
+  if (comparison < 0) return 'older';
+  if (comparison > 0) return 'newer';
+  return 'same';
+}
+
 function createLegacyPromptKey(appVersion, install) {
   const directIdentity = install?.version || install?.displayName || install?.uninstallerPath || 'unknown';
   return `${appVersion}|${directIdentity}`;
@@ -128,6 +136,7 @@ module.exports = {
   compareVersions,
   createLegacyPromptKey,
   detectLegacyInstall,
+  getVersionRelation,
   launchLegacyUninstaller,
   normalizeVersion,
   parseInteractiveUninstaller,

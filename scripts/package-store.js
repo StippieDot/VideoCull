@@ -21,7 +21,7 @@ run('powershell.exe', [
   '-File',
   path.join(root, 'scripts', 'generate-appx-assets.ps1'),
 ]);
-run(process.execPath, [path.join(root, 'scripts', 'check-store-config.js')]);
+run(process.execPath, [path.join(root, 'scripts', 'check-store-config.js'), '--strict']);
 run(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), 'build']);
 run(
   process.execPath,

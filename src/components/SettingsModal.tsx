@@ -1194,9 +1194,13 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                   <div className="form-group settings-section-divider">
                     <label>Previous direct installation</label>
                     <span className="help-text">
-                      {legacyInstall.olderThanCurrent
+                      {legacyInstall.versionRelation === 'older'
                         ? 'An older direct VideoCull installation was detected. Update it before switching between editions.'
-                        : 'Both editions use the same VideoCull profile. Close both editions before removing the direct installation; shared and external cache folders are not deleted automatically.'}
+                        : legacyInstall.versionRelation === 'newer'
+                          ? 'A newer direct VideoCull installation was detected. Update the Microsoft Store edition before switching between editions.'
+                          : legacyInstall.versionRelation === 'same'
+                            ? 'Both editions use the same VideoCull profile. Close both editions before removing the direct installation; shared and external cache folders are not deleted automatically.'
+                            : 'The direct installation version could not be verified. Update both VideoCull editions before switching between them.'}
                     </span>
                     <button className="about-link-btn" onClick={() => void window.electronAPI?.uninstallLegacyInstall?.()}>
                       <Trash2 size={16} />

@@ -12,9 +12,9 @@ const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
 const { getDistributionChannel, shouldEnableUpdates } = require('./distribution');
 const {
-  compareVersions,
   createLegacyPromptKey,
   detectLegacyInstall,
+  getVersionRelation,
   launchLegacyUninstaller,
 } = require('./legacy-install');
 const {
@@ -1014,7 +1014,7 @@ async function getLegacyTransitionStatus() {
   return {
     ...install,
     eligible: install.installed,
-    olderThanCurrent: compareVersions(install.version, app.getVersion()) === -1,
+    versionRelation: getVersionRelation(install.version, app.getVersion()),
     promptDismissed: transition.dismissedPromptKey === promptKey,
   };
 }

@@ -5,7 +5,11 @@ const product = require('../product.json');
 const { validateStoreVersion } = require('./store-version');
 
 const root = path.resolve(__dirname, '..');
-const expectedVersion = validateStoreVersion(packageJson.version, product.microsoftStore?.lastSubmittedVersion);
+const expectedVersion = validateStoreVersion(
+  packageJson.version,
+  product.microsoftStore?.lastSubmittedVersion,
+  { strict: true },
+);
 const packagePath = path.join(root, 'release', `VideoCull.Store.${packageJson.version}.x64.appx`);
 const result = spawnSync('powershell.exe', [
   '-NoProfile',

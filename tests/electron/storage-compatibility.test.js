@@ -27,7 +27,7 @@ afterEach(() => {
   for (const root of tempRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('initializes an unversioned existing profile as storage format 1', () => {
+test('initializes an unversioned existing profile as legacy storage format 1', () => {
   const { profilePath } = createProfile();
   fs.writeFileSync(path.join(profilePath, 'settings.json'), '{"theme":"dark"}');
 
@@ -36,6 +36,35 @@ test('initializes an unversioned existing profile as storage format 1', () => {
   assert.equal(result.initialized, true);
   assert.deepEqual(JSON.parse(fs.readFileSync(result.markerPath, 'utf8')), { formatVersion: 1 });
   assert.equal(fs.readFileSync(path.join(profilePath, 'settings.json'), 'utf8'), '{"theme":"dark"}');
+});
+
+test('never stamps an unversioned legacy profile with a newer supported format', () => {
+  const { profilePath } = createProfile();
+
+  assert.throws(
+    () => ensureProfileStorageCompatibility(profilePath, { supportedFormatVersion: 2 }),
+    (error) => error.code === 'VIDEOCULL_STORAGE_FORMAT_OLDER',
+  );
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(profilePath, STORAGE_FORMAT_FILE), 'utf8')),
+    { formatVersion: 1 },
+  );
+});
+
+test('publishes the marker atomically and removes an interrupted temporary file', () => {
+  const { profilePath } = createProfile();
+  const fsImpl = Object.create(fs);
+  fsImpl.writeFileSync = (descriptor) => {
+    fs.writeFileSync(descriptor, '{"formatVersion":', 'utf8');
+    throw new Error('simulated interruption');
+  };
+
+  assert.throws(
+    () => ensureProfileStorageCompatibility(profilePath, { supportedFormatVersion: 1, fsImpl }),
+    /simulated interruption/,
+  );
+  assert.equal(fs.existsSync(path.join(profilePath, STORAGE_FORMAT_FILE)), false);
+  assert.deepEqual(fs.readdirSync(profilePath), []);
 });
 
 test('accepts matching formats without rewriting the marker', () => {

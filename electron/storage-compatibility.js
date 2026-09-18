@@ -3,6 +3,7 @@ const path = require('node:path');
 const product = require('../product.json');
 
 const STORAGE_FORMAT_FILE = 'storage-format.json';
+const LEGACY_STORAGE_FORMAT_VERSION = 1;
 
 class StorageCompatibilityError extends Error {
   constructor(code, message, userMessage) {
@@ -48,19 +49,21 @@ function readMarker(markerPath, fsImpl = fs) {
 
 function createMarker(markerPath, formatVersion, fsImpl = fs) {
   const content = `${JSON.stringify({ formatVersion }, null, 2)}\n`;
+  const tempPath = `${markerPath}.${process.pid}-${Date.now()}.tmp`;
   let descriptor = null;
-  let created = false;
   try {
-    descriptor = fsImpl.openSync(markerPath, 'wx');
-    created = true;
+    descriptor = fsImpl.openSync(tempPath, 'wx');
     fsImpl.writeFileSync(descriptor, content, 'utf8');
     fsImpl.fsyncSync?.(descriptor);
     fsImpl.closeSync(descriptor);
     descriptor = null;
+    fsImpl.renameSync(tempPath, markerPath);
   } catch (error) {
-    if (error?.code === 'EEXIST') return readMarker(markerPath, fsImpl);
     if (descriptor !== null) try { fsImpl.closeSync(descriptor); } catch { /* Preserve the original error. */ }
-    if (created) try { fsImpl.unlinkSync(markerPath); } catch { /* Preserve the original error. */ }
+    try { fsImpl.unlinkSync(tempPath); } catch { /* Preserve the original error. */ }
+    if ((error?.code === 'EEXIST' || error?.code === 'EPERM') && fsImpl.existsSync(markerPath)) {
+      return readMarker(markerPath, fsImpl);
+    }
     throw error;
   }
   return { formatVersion };
@@ -75,7 +78,7 @@ function ensureProfileStorageCompatibility(profilePath, options = {}) {
   );
   const markerPath = pathImpl.join(profilePath, STORAGE_FORMAT_FILE);
   const existingMarker = readMarker(markerPath, fsImpl);
-  const marker = existingMarker ?? createMarker(markerPath, supportedFormatVersion, fsImpl);
+  const marker = existingMarker ?? createMarker(markerPath, LEGACY_STORAGE_FORMAT_VERSION, fsImpl);
 
   if (marker.formatVersion > supportedFormatVersion) {
     throw new StorageCompatibilityError(
@@ -100,6 +103,7 @@ function ensureProfileStorageCompatibility(profilePath, options = {}) {
 }
 
 module.exports = {
+  LEGACY_STORAGE_FORMAT_VERSION,
   STORAGE_FORMAT_FILE,
   StorageCompatibilityError,
   ensureProfileStorageCompatibility,

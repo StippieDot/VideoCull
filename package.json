@@ -12,6 +12,7 @@
     "check:ipc": "node scripts/check-ipc-contract.js",
     "check:installer": "node scripts/check-installer-config.js",
     "check:store": "node scripts/check-store-config.js",
+    "check:store:strict": "node scripts/check-store-config.js --strict",
     "check:store-screenshots": "node scripts/check-store-screenshots.js",
     "validate:store-package": "node scripts/validate-store-package.js",
     "verify:store-installed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-installed-store-package.ps1",

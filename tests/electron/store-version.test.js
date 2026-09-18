@@ -30,9 +30,15 @@ test('compares every Store version component', () => {
   assert.equal(compareStoreVersions('2.2.0.0', '2.2.1.0'), -1);
 });
 
-test('requires the candidate to exceed the explicit submitted baseline', () => {
-  assert.equal(validateStoreVersion('2.2.1', '2.2.0.0'), '2.2.1.0');
-  assert.throws(() => validateStoreVersion('2.2.1', '2.2.1.0'), /must be greater/);
-  assert.throws(() => validateStoreVersion('2.2.1', '2.3.0.0'), /must be greater/);
+test('normal validation accepts an equal or older candidate while validating the baseline', () => {
+  assert.equal(validateStoreVersion('2.2.1', '2.2.1.0'), '2.2.1.0');
+  assert.equal(validateStoreVersion('2.2.1', '2.3.0.0'), '2.2.1.0');
   assert.throws(() => validateStoreVersion('2.2.1', undefined), /four numeric components/);
+});
+
+test('strict release validation requires the candidate to exceed the submitted baseline', () => {
+  const strict = { strict: true };
+  assert.equal(validateStoreVersion('2.2.1', '2.2.0.0', strict), '2.2.1.0');
+  assert.throws(() => validateStoreVersion('2.2.1', '2.2.1.0', strict), /must be greater/);
+  assert.throws(() => validateStoreVersion('2.2.1', '2.3.0.0', strict), /must be greater/);
 });

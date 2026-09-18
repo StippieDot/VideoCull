@@ -46,7 +46,8 @@ assert.doesNotMatch(
   'Store manifest must leave registry write virtualization enabled by default',
 );
 
-const candidate = validateStoreVersion(packageJson.version, store.lastSubmittedVersion);
+const strict = process.argv.includes('--strict');
+const candidate = validateStoreVersion(packageJson.version, store.lastSubmittedVersion, { strict });
 const expected = process.argv.includes('--expected')
   ? process.argv[process.argv.indexOf('--expected') + 1]
   : null;
@@ -82,4 +83,4 @@ for (const targetSize of [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 25
   }
 }
 
-console.log(`Store configuration OK. Candidate version: ${candidate}; baseline: ${store.lastSubmittedVersion}.`);
+console.log(`Store configuration OK (${strict ? 'strict release' : 'configuration'} mode). Candidate version: ${candidate}; baseline: ${store.lastSubmittedVersion}.`);

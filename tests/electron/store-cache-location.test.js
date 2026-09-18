@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
@@ -62,4 +63,37 @@ test('reports configured per-drive caches without deleting or rewriting them', a
   });
   assert.deepEqual(info.locations.map((item) => item.path), [external]);
   assert.equal(info.locations[0].ownership, 'external');
+});
+
+test('inspecting an inferred per-drive cache does not create it', async () => {
+  const root = await tempRoot();
+  const originalMkdirSync = fsSync.mkdirSync;
+  const mkdirCalls = [];
+  fsSync.mkdirSync = (...args) => {
+    mkdirCalls.push(args);
+    throw new Error('cache inspection attempted to create a directory');
+  };
+
+  try {
+    const info = await getCacheLocationInfo({
+      settings: { cacheLocation: 'per-drive', perDriveCachePaths: {} },
+      profileRoot: path.join(root, 'profile'),
+      defaultCentralRoot: path.join(root, 'default'),
+      knownFolders: [path.join(root, 'media')],
+      username: 'VideoCullMissingUser',
+      fsImpl: {
+        lstat: async () => {
+          const error = new Error('missing');
+          error.code = 'ENOENT';
+          throw error;
+        },
+      },
+    });
+
+    assert.equal(info.locations.length, 1);
+    assert.equal(info.locations[0].available, false);
+    assert.deepEqual(mkdirCalls, []);
+  } finally {
+    fsSync.mkdirSync = originalMkdirSync;
+  }
 });

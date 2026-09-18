@@ -27,6 +27,7 @@ test('shows and dismisses the direct-install prompt after Store startup', async 
         installed: true,
         eligible: true,
         promptDismissed: false,
+        versionRelation: 'same',
         displayName: 'VideoCull 2.2.1',
       }),
       dismissLegacyInstallPrompt: dismiss,
@@ -50,7 +51,7 @@ test('warns without blocking when the installed direct edition is older', async 
         installed: true,
         eligible: true,
         promptDismissed: false,
-        olderThanCurrent: true,
+        versionRelation: 'older',
         displayName: 'VideoCull 2.2.1',
         version: '2.2.1',
       }),
@@ -61,6 +62,38 @@ test('warns without blocking when the installed direct edition is older', async 
 
   expect(await screen.findByText(/older direct VideoCull installation was detected/i)).toBeTruthy();
   expect(screen.getByText(/update your direct VideoCull installation before switching between editions/i)).toBeTruthy();
+  expect(screen.getByRole('button', { name: /open uninstaller/i })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /not now/i })).toBeTruthy();
+});
+
+test.each([
+  {
+    relation: 'newer' as const,
+    title: /newer direct VideoCull installation was detected/i,
+    detail: /update the Microsoft Store edition before switching/i,
+  },
+  {
+    relation: 'unknown' as const,
+    title: /version could not be verified/i,
+    detail: /update both VideoCull editions before switching/i,
+  },
+])('shows the $relation direct-install warning without blocking', async ({ relation, title, detail }) => {
+  Object.assign(window, {
+    electronAPI: {
+      onStoreTransitionReady: vi.fn(() => () => {}),
+      getLegacyInstallStatus: vi.fn().mockResolvedValue({
+        installed: true,
+        eligible: true,
+        promptDismissed: false,
+        versionRelation: relation,
+      }),
+    },
+  });
+
+  render(<StoreTransition />);
+
+  expect(await screen.findByText(title)).toBeTruthy();
+  expect(screen.getByText(detail)).toBeTruthy();
   expect(screen.getByRole('button', { name: /open uninstaller/i })).toBeTruthy();
   expect(screen.getByRole('button', { name: /not now/i })).toBeTruthy();
 });
@@ -89,7 +122,7 @@ test('refreshes direct-install detection when the Store window becomes ready', a
   let readyCallback: (() => void) | undefined;
   const getStatus = vi.fn()
     .mockResolvedValueOnce({ installed: false, eligible: false })
-    .mockResolvedValueOnce({ installed: true, eligible: true, promptDismissed: false });
+    .mockResolvedValueOnce({ installed: true, eligible: true, promptDismissed: false, versionRelation: 'same' });
   Object.assign(window, {
     electronAPI: {
       onStoreTransitionReady: vi.fn((callback: () => void) => {

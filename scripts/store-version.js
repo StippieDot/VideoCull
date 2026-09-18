@@ -42,10 +42,10 @@ function compareStoreVersions(left, right) {
   return 0;
 }
 
-function validateStoreVersion(packageVersion, lastSubmittedVersion) {
+function validateStoreVersion(packageVersion, lastSubmittedVersion, options = {}) {
   const candidate = storeVersionFromPackageVersion(packageVersion);
   parseStoreVersion(lastSubmittedVersion, 'Last submitted Store version');
-  if (compareStoreVersions(candidate, lastSubmittedVersion) <= 0) {
+  if (options.strict && compareStoreVersions(candidate, lastSubmittedVersion) <= 0) {
     throw new Error(`Candidate Store version ${candidate} must be greater than last submitted version ${lastSubmittedVersion}.`);
   }
   return candidate;

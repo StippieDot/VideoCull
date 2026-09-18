@@ -28,7 +28,7 @@ jobs:
       - name: Validate Store tag
         if: startsWith(github.ref, 'refs/tags/store-v')
         shell: pwsh
-        run: node scripts/check-store-config.js --expected $env:GITHUB_REF_NAME.Substring(7)
+        run: node scripts/check-store-config.js --strict --expected $env:GITHUB_REF_NAME.Substring(7)
 
       - name: Build unsigned non-official AppX candidate
         run: npm run package:store
