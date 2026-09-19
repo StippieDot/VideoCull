@@ -300,12 +300,18 @@ describe('useStore public behavior', () => {
     expect(state.duplicateGroupsMode).toBe(true);
     expect(state.duplicateGroups[0]?.suggestedKeeperId).toBe('b');
     expect(state.videos.find((video) => video.id === 'b')?.duplicateSuggestedKeeper).toBe(true);
+    const unrelatedGroup = state.duplicateGroups[1];
+    const unrelatedVideo = state.videos.find((video) => video.id === 'c');
+    const unrelatedFilteredVideo = state.filteredVideos.find((video) => video.id === 'c');
 
     useStore.getState().setManualDuplicateKeeper('group-1', 'a');
     state = useStore.getState();
     expect(state.duplicateGroups[0]?.manualSuggestedKeeperId).toBe('a');
     expect(state.duplicateGroups[0]?.suggestedKeeperId).toBe('a');
     expect(state.videos.find((video) => video.id === 'a')?.duplicateSuggestedKeeper).toBe(true);
+    expect(state.duplicateGroups[1]).toBe(unrelatedGroup);
+    expect(state.videos.find((video) => video.id === 'c')).toBe(unrelatedVideo);
+    expect(state.filteredVideos.find((video) => video.id === 'c')).toBe(unrelatedFilteredVideo);
   });
 
   test('review entry and deleted-video removal keep navigation and duplicate groups consistent', () => {

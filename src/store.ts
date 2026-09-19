@@ -1380,23 +1380,46 @@ const useStore = create<VideoStore>((set, get) => ({
   },
   setManualDuplicateKeeper: (groupId, videoId) => {
     const stateBefore = get();
-    const groupsWithOverride = stateBefore.duplicateGroups.map((group) => {
-      if (group.id !== groupId) return group;
-      return {
-        ...group,
-        manualSuggestedKeeperId: videoId && group.videoIds.includes(videoId) ? videoId : null,
-      };
-    });
-    const groupsWithKeepers = applyKeeperOrderToGroups(
-      groupsWithOverride,
-      stateBefore.videos,
+    const groupIndex = stateBefore.duplicateGroups.findIndex((group) => group.id === groupId);
+    if (groupIndex < 0) return;
+
+    const group = stateBefore.duplicateGroups[groupIndex]!;
+    const manualSuggestedKeeperId = videoId && group.videoIds.includes(videoId) ? videoId : null;
+    const groupVideoIds = new Set(group.videoIds);
+    const suggestedKeeperId = manualSuggestedKeeperId ?? chooseSuggestedKeeperId(
+      stateBefore.videos.filter((video) => groupVideoIds.has(video.id)),
       stateBefore.settings.duplicates.keeperOrder
     );
-    const videos = applyDuplicateGroupsToVideos(stateBefore.videos, groupsWithKeepers);
-    set(buildVideoStateUpdate(stateBefore, videos, ['duplicate'], {
-      duplicateGroups: groupsWithKeepers,
-      duplicateGroupsMode: groupsWithKeepers.length > 0,
-    }));
+    if (
+      group.manualSuggestedKeeperId === manualSuggestedKeeperId &&
+      group.suggestedKeeperId === suggestedKeeperId
+    ) return;
+
+    const nextGroup = {
+      ...group,
+      manualSuggestedKeeperId,
+      suggestedKeeperId,
+    };
+    const duplicateGroups = [...stateBefore.duplicateGroups];
+    duplicateGroups[groupIndex] = nextGroup;
+
+    let videos = stateBefore.videos;
+    const changedVideos = new Map<string, Video>();
+    for (let index = 0; index < stateBefore.videos.length; index += 1) {
+      const video = stateBefore.videos[index]!;
+      if (video.duplicateGroupId !== groupId) continue;
+      const duplicateSuggestedKeeper = video.id === suggestedKeeperId;
+      if (video.duplicateSuggestedKeeper === duplicateSuggestedKeeper) continue;
+      if (videos === stateBefore.videos) videos = [...stateBefore.videos];
+      const nextVideo = { ...video, duplicateSuggestedKeeper };
+      videos[index] = nextVideo;
+      changedVideos.set(video.id, nextVideo);
+    }
+
+    const filteredVideos = changedVideos.size > 0
+      ? stateBefore.filteredVideos.map((video) => changedVideos.get(video.id) ?? video)
+      : stateBefore.filteredVideos;
+    set({ duplicateGroups, videos, filteredVideos });
   },
   applyDuplicateResult: (result) => {
     const stateBefore = get();
