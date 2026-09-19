@@ -94,6 +94,26 @@ function buildCachedVideo(id, filePath, overrides = {}) {
   };
 }
 
+test('closeDbForFolder releases one cached connection and preserves its data', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+  const cacheOptions = { mode: 'centralised', centralCachePath: tempRoot };
+
+  try {
+    insertVideo(db, 'a', path.join(folderPath, 'a.mp4'));
+    cache.closeDbForFolder(folderPath, cacheOptions);
+    assert.equal(db.open, false);
+
+    const reopened = cache.openDb(folderPath, cacheOptions);
+    assert.notEqual(reopened, db);
+    assert.equal(reopened.prepare('SELECT COUNT(*) AS count FROM videos').get().count, 1);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('loadPHashRows and loadGraySampleRows batch rows and keep only complete samples', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;

@@ -1159,6 +1159,7 @@ async function saveVideosByParentFolder(videos, cacheOptions, {
   syncVisitedFolders = null,
   updatedAt = null,
   diagnostics = null,
+  closeAfterWrite = false,
 } = {}) {
   const groups = groupVideosByFolder(videos);
   if (diagnostics) diagnostics.folderGroupCount = Math.max(diagnostics.folderGroupCount, groups.size);
@@ -1179,26 +1180,30 @@ async function saveVideosByParentFolder(videos, cacheOptions, {
 
     const writePayload = async () => {
       const db = await openCacheDbWithRecovery(folderPath, cacheOptions);
-      if (atomic && payload.length <= ATOMIC_SAVE_SYNC_LIMIT) {
-        folderWriteStats = cache.saveCache(db, payload, { updatedAt }) ?? emptyCacheWriteStats();
-      } else {
-        folderWriteStats = await cache.saveCacheChunked(db, payload, null, { updatedAt }) ?? emptyCacheWriteStats();
-      }
-      if (shouldPruneStaleRows) {
-        const staleVideos = cache.pruneStaleVideosBefore(db, updatedAt, { details: true });
-        if (staleVideos.length > 0) {
-          const staleIds = staleVideos.map((video) => video.id);
-          prunedVideoCount += staleVideos.length;
-          prunedFolderCount += 1;
-          prunedVideos.push({ folderPath, videos: staleVideos });
-          log.info('[cache] Auto-pruned stale video cache rows', {
-            folderPath,
-            count: staleVideos.length,
-            videos: staleVideos.slice(0, 25),
-            truncated: staleVideos.length > 25,
-          });
-          await Promise.all(staleIds.map((videoId) => fs.rm(path.join(cachePaths.thumbRootDir, videoId), { recursive: true, force: true }).catch(() => {})));
+      try {
+        if (atomic && payload.length <= ATOMIC_SAVE_SYNC_LIMIT) {
+          folderWriteStats = cache.saveCache(db, payload, { updatedAt }) ?? emptyCacheWriteStats();
+        } else {
+          folderWriteStats = await cache.saveCacheChunked(db, payload, null, { updatedAt }) ?? emptyCacheWriteStats();
         }
+        if (shouldPruneStaleRows) {
+          const staleVideos = cache.pruneStaleVideosBefore(db, updatedAt, { details: true });
+          if (staleVideos.length > 0) {
+            const staleIds = staleVideos.map((video) => video.id);
+            prunedVideoCount += staleVideos.length;
+            prunedFolderCount += 1;
+            prunedVideos.push({ folderPath, videos: staleVideos });
+            log.info('[cache] Auto-pruned stale video cache rows', {
+              folderPath,
+              count: staleVideos.length,
+              videos: staleVideos.slice(0, 25),
+              truncated: staleVideos.length > 25,
+            });
+            await Promise.all(staleIds.map((videoId) => fs.rm(path.join(cachePaths.thumbRootDir, videoId), { recursive: true, force: true }).catch(() => {})));
+          }
+        }
+      } finally {
+        if (closeAfterWrite) cache.closeDbForFolder(folderPath, cacheOptions);
       }
     };
 
@@ -1229,20 +1234,24 @@ async function saveVideosByParentFolder(videos, cacheOptions, {
       if (!hasDb) continue;
 
       const db = await openCacheDbWithRecovery(folderPath, cacheOptions);
-      const staleVideos = cache.pruneStaleVideosBefore(db, updatedAt, { details: true });
-      if (staleVideos.length === 0) continue;
-      const staleIds = staleVideos.map((video) => video.id);
+      try {
+        const staleVideos = cache.pruneStaleVideosBefore(db, updatedAt, { details: true });
+        if (staleVideos.length === 0) continue;
+        const staleIds = staleVideos.map((video) => video.id);
 
-      prunedVideoCount += staleVideos.length;
-      prunedFolderCount += 1;
-      prunedVideos.push({ folderPath, videos: staleVideos });
-      log.info('[cache] Auto-pruned stale video cache rows', {
-        folderPath,
-        count: staleVideos.length,
-        videos: staleVideos.slice(0, 25),
-        truncated: staleVideos.length > 25,
-      });
-      await Promise.all(staleIds.map((videoId) => fs.rm(path.join(cachePaths.thumbRootDir, videoId), { recursive: true, force: true }).catch(() => {})));
+        prunedVideoCount += staleVideos.length;
+        prunedFolderCount += 1;
+        prunedVideos.push({ folderPath, videos: staleVideos });
+        log.info('[cache] Auto-pruned stale video cache rows', {
+          folderPath,
+          count: staleVideos.length,
+          videos: staleVideos.slice(0, 25),
+          truncated: staleVideos.length > 25,
+        });
+        await Promise.all(staleIds.map((videoId) => fs.rm(path.join(cachePaths.thumbRootDir, videoId), { recursive: true, force: true }).catch(() => {})));
+      } finally {
+        if (closeAfterWrite) cache.closeDbForFolder(folderPath, cacheOptions);
+      }
     }
   }
 
@@ -1285,6 +1294,8 @@ async function loadRelevantFolderCacheRowsIntoMap(videos, cacheOptions, cachedMa
     } catch (err) {
       if (err instanceof ScanSupersededError) throw err;
       log.warn(`[scan-directory] Failed to load relevant cache rows for ${folderPath}:`, err);
+    } finally {
+      cache.closeDbForFolder(folderPath, cacheOptions);
     }
   });
 }
@@ -1352,9 +1363,13 @@ async function splitDescendantRowsFromParentDb(parentFolder, parentDb, cacheOpti
     );
     if (scanToken !== null) assertScanCurrent(scanToken);
     const targetDb = await openCacheDbWithRecovery(targetFolder, cacheOptions);
-    if (scanToken !== null) assertScanCurrent(scanToken);
-    cache.saveCache(targetDb, videos.map((video) => videoForDb(video, targetPaths.cacheRootDir)));
-    cache.deleteVideosByIds(parentDb, videos.map((video) => video.id));
+    try {
+      if (scanToken !== null) assertScanCurrent(scanToken);
+      cache.saveCache(targetDb, videos.map((video) => videoForDb(video, targetPaths.cacheRootDir)));
+      cache.deleteVideosByIds(parentDb, videos.map((video) => video.id));
+    } finally {
+      cache.closeDbForFolder(targetFolder, cacheOptions);
+    }
     movedCount += videos.length;
     await yieldToEventLoop();
   }
@@ -1751,6 +1766,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     assertScanCurrent(scanToken);
   }
   recordStageTiming('openAndRecoverPrimaryCache', stageStartedAt);
+  cache.closeDbForFolder(dirPath, cacheOptions);
 
   stageStartedAt = performance.now();
   let knownCacheFolders = await getKnownCacheFolders();
@@ -1769,6 +1785,8 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     } catch (err) {
       if (err instanceof ScanSupersededError) throw err;
       log.warn(`[scan-directory] Failed to split parent cache for ${parentFolder}:`, err);
+    } finally {
+      cache.closeDbForFolder(parentFolder, cacheOptions);
     }
   }
   recordStageTiming('splitParentCaches', stageStartedAt, { items: parentCacheFolders.length });
@@ -1901,6 +1919,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     syncVisitedFolders: cacheOptions.autoPruneMissingSubfolderCache === false ? null : visitedDirs,
     updatedAt: cacheOptions.autoPruneMissingSubfolderCache === false ? null : Date.now(),
     diagnostics: scanDiagnostics,
+    closeAfterWrite: true,
   });
   assertScanCurrent(scanToken);
   recordStageTiming('saveVideosByParentFolder', stageStartedAt, {
@@ -2359,6 +2378,7 @@ ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
   });
   const run = createDuplicateRun();
   activeDuplicateRun = run;
+  const duplicateFolders = Array.from(groupVideosByFolder(safeVideos).keys());
 
   try {
     const result = await findDuplicates({
@@ -2393,6 +2413,10 @@ ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
       error: err?.message || String(err),
     });
     return { status: 'error', error: err.message || String(err) };
+  } finally {
+    for (const folderPath of duplicateFolders) {
+      cache.closeDbForFolder(folderPath, cacheOptions);
+    }
   }
 });
 

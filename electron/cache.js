@@ -396,6 +396,10 @@ function closeDbPath(dbPath) {
   _dbByPath.delete(dbPath);
 }
 
+function closeDbForFolder(folderPath, cacheOptions) {
+  closeDbPath(resolveCachePath(folderPath, cacheOptions));
+}
+
 /** Close all open DB connections. Call on app quit or before broad migrations. */
 function closeDb() {
   for (const dbPath of Array.from(_dbByPath.keys())) {
@@ -1193,6 +1197,7 @@ module.exports = {
   resolveCachePath,
   migrateLegacyCacheKeyIfNeeded,
   openDb,
+  closeDbForFolder,
   closeDb,
   loadCacheVideos,
   loadCacheMap,
