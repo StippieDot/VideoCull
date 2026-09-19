@@ -153,6 +153,7 @@ describe('useStore public behavior', () => {
     useStore.getState().setVideos(firstVideos);
     let state = useStore.getState();
     expect(state.videos[0]?.thumbnails).toEqual(['thumb_01.jpg', 'thumb_2.jpg']);
+    expect(state.videos[1]).toBe(firstVideos[1]);
     expect(state.duplicateGroupsMode).toBe(false);
     expect(state.duplicateGroups).toEqual([]);
 

@@ -137,7 +137,11 @@ export default function App() {
   const folderReviewPathRef = useRef<string | null>(null);
   const settingsSaveQueueRef = useRef(Promise.resolve());
   const previousReviewModeRef = useRef(reviewMode);
-  const autoScannedDirectoriesKeyRef = useRef('');
+  const autoScanStateRef = useRef({
+    key: '',
+    directories: [] as string[],
+    includeSubfolders,
+  });
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [showDocumentation, setShowDocumentation] = useState(false);
@@ -391,14 +395,19 @@ export default function App() {
   }, [applyDuplicateResult, duplicateSettings, genProgress.phase, isFindingDuplicates, isGenerating, pushToast, setDuplicateProgress, setIsFindingDuplicates]);
 
   // Scan directory when selected
-  const handleScan = useCallback(async (dirPaths: string[]) => {
+  const handleScan = useCallback(async (
+    dirPaths: string[],
+    options: { preserveExisting?: boolean } = {}
+  ) => {
     if (!window.electronAPI || dirPaths.length === 0) return;
+    const preserveExisting = options.preserveExisting === true;
     await window.electronAPI.cancelGeneration();
     duplicateRunIdRef.current += 1;
     await window.electronAPI.cancelDuplicateDetection();
-    await window.electronAPI.resetLoadedDirectories();
+    if (!preserveExisting) {
+      await window.electronAPI.resetLoadedDirectories();
+    }
     const scanId = ++scanIdRef.current;
-    useStore.getState().setDuplicateGroups([]);
     setIsScanning(true);
     setIsGenerating(false);
     setScanProgress({ found: 0, currentFile: '' });
@@ -411,7 +420,12 @@ export default function App() {
         if (scanResult.summary) scanSummaries.push(scanResult.summary);
       }
       if (scanId !== scanIdRef.current) return;
-      const seenVideoPaths = new Set<string>();
+      const preservedVideos = preserveExisting
+        ? useStore.getState().videos.filter((video) => (
+          !dirPaths.some((rootPath) => isPathInsideRoot(video.path, rootPath))
+        ))
+        : [];
+      const seenVideoPaths = new Set(preservedVideos.map((video) => normalizeFsPath(video.path)));
       const uniqueScannedGroups = scannedGroups.map((group) => ({
         ...group,
         videos: group.videos.filter((video) => {
@@ -434,7 +448,7 @@ export default function App() {
         return { ...group, videos, compatibilityChanged };
       });
       const normalizedVideos = normalizedGroups.flatMap((group) => group.videos);
-      setVideos(normalizedVideos);
+      setVideos([...preservedVideos, ...normalizedVideos]);
       await Promise.all(normalizedGroups
         .filter((group) => group.compatibilityChanged.length > 0)
         .map((group) => window.electronAPI.saveCacheAtomic(group.dirPath, group.compatibilityChanged)
@@ -489,8 +503,11 @@ export default function App() {
           setIsGenerating(false);
         }
       }
+      const scannedVideoIds = new Set(normalizedVideos.map((video) => video.id));
       const videosAfterMetadata = useStore.getState().videos;
-      const thumbnailTasks = videosAfterMetadata.filter(needsThumbnails);
+      const thumbnailTasks = videosAfterMetadata.filter((video) => (
+        scannedVideoIds.has(video.id) && needsThumbnails(video)
+      ));
       if (thumbnailTasks.length > 0) {
         const thumbnailTaskIds = new Set(thumbnailTasks.map((v) => v.id));
         let completedTasks = 0;
@@ -909,10 +926,29 @@ export default function App() {
 
   useEffect(() => {
     const key = `${directories.join('\0')}|subfolders:${includeSubfolders}`;
-    if (key === autoScannedDirectoriesKeyRef.current) return;
-    autoScannedDirectoriesKeyRef.current = key;
-    if (directories.length > 0) handleScan(directories);
-  }, [directories, handleScan]);
+    const previous = autoScanStateRef.current;
+    if (key === previous.key) return;
+
+    const previousDirectoryKeys = new Set(previous.directories.map(normalizeFsPath));
+    const rootsToScan = directories.filter((rootPath) => !previousDirectoryKeys.has(normalizeFsPath(rootPath)));
+    const canPreserveExisting = previous.directories.length > 0 &&
+      previous.includeSubfolders === includeSubfolders &&
+      previous.directories.every((previousRoot) => (
+        directories.some((currentRoot) => isPathInsideRoot(previousRoot, currentRoot))
+      ));
+
+    autoScanStateRef.current = {
+      key,
+      directories: [...directories],
+      includeSubfolders,
+    };
+    if (directories.length === 0) return;
+    if (canPreserveExisting && rootsToScan.length > 0) {
+      void handleScan(rootsToScan, { preserveExisting: true });
+      return;
+    }
+    void handleScan(directories);
+  }, [directories, handleScan, includeSubfolders]);
 
   // â”€â”€ Drag & Drop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {

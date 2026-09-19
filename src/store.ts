@@ -20,7 +20,8 @@ function thumbnailIndex(filePath: string): number | null {
 
 function orderedThumbnails(thumbnails: string[] | undefined): string[] {
   if (!Array.isArray(thumbnails)) return [];
-  return [...thumbnails].sort((a, b) => {
+  if (thumbnails.length < 2) return thumbnails;
+  const ordered = [...thumbnails].sort((a, b) => {
     const aIndex = thumbnailIndex(a);
     const bIndex = thumbnailIndex(b);
     if (aIndex !== null && bIndex !== null && aIndex !== bIndex) {
@@ -30,13 +31,18 @@ function orderedThumbnails(thumbnails: string[] | undefined): string[] {
     const bBase = b.split(/[\\/]/).pop() ?? b;
     return aBase.localeCompare(bBase, undefined, { numeric: true, sensitivity: 'base' });
   });
+  return ordered.every((thumbnail, index) => thumbnail === thumbnails[index]) ? thumbnails : ordered;
 }
 
+const folderByVideo = new WeakMap<Video, string>();
+
 function getFolder(v: Video): string {
-  const sep = v.path.includes('/') ? '/' : '\\';
-  const parts = v.path.split(sep);
-  // Return parent folder name (last directory component)
-  return parts.length >= 2 ? parts.slice(0, -1).join(sep) : '';
+  const cached = folderByVideo.get(v);
+  if (cached !== undefined) return cached;
+  const separatorIndex = Math.max(v.path.lastIndexOf('/'), v.path.lastIndexOf('\\'));
+  const folder = separatorIndex >= 0 ? v.path.slice(0, separatorIndex) : '';
+  folderByVideo.set(v, folder);
+  return folder;
 }
 
 function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
@@ -130,7 +136,6 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'sta
   };
 
   if (state.groupByFolder) {
-    // Pre-compute folder sizes for size-based folder sorting
     let folderSizeMap: Map<string, number> | null = null;
     if (state.folderSortBy === 'size') {
       folderSizeMap = new Map();
@@ -140,22 +145,33 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'sta
       }
     }
 
-    filtered.sort((a, b) => {
-      const folderA = getFolder(a);
-      const folderB = getFolder(b);
-
+    const videosByFolder = new Map<string, Video[]>();
+    for (const video of filtered) {
+      const folder = getFolder(video);
+      const folderVideos = videosByFolder.get(folder) ?? [];
+      folderVideos.push(video);
+      videosByFolder.set(folder, folderVideos);
+    }
+    const folderEntries = Array.from(videosByFolder.entries());
+    folderEntries.sort(([folderA], [folderB]) => {
       let folderCmp = 0;
       if (state.folderSortBy === 'size' && folderSizeMap) {
         folderCmp = (folderSizeMap.get(folderA) || 0) - (folderSizeMap.get(folderB) || 0);
+        if (folderCmp === 0) folderCmp = folderA.localeCompare(folderB);
       } else {
         folderCmp = folderA.localeCompare(folderB);
       }
-      if (folderCmp !== 0) return state.folderSortOrder === 'asc' ? folderCmp : -folderCmp;
-
-      // Within same folder, sort by selected field
-      const cmp = getSortCmp(a, b);
-      return state.sortOrder === 'asc' ? cmp : -cmp;
+      return state.folderSortOrder === 'asc' ? folderCmp : -folderCmp;
     });
+
+    filtered = [];
+    for (const [, folderVideos] of folderEntries) {
+      folderVideos.sort((a, b) => {
+        const cmp = getSortCmp(a, b);
+        return state.sortOrder === 'asc' ? cmp : -cmp;
+      });
+      for (const video of folderVideos) filtered.push(video);
+    }
   } else {
     filtered.sort((a, b) => {
       const cmp = getSortCmp(a, b);
@@ -179,13 +195,21 @@ function computeStats(videos: Video[]): VideoStats {
   const startedAt = import.meta.env.DEV ? performance.now() : 0;
   const stats = {
     total: videos.length,
-    pending: videos.filter((v) => v.status === 'pending').length,
-    skipped: videos.filter((v) => v.status === 'skipped').length,
-    keep: videos.filter((v) => v.status === 'keep').length,
-    delete: videos.filter((v) => v.status === 'delete').length,
-    totalSize: videos.reduce((sum, v) => sum + v.sizeBytes, 0),
-    deleteSize: videos.filter((v) => v.status === 'delete').reduce((sum, v) => sum + v.sizeBytes, 0),
+    pending: 0,
+    skipped: 0,
+    keep: 0,
+    delete: 0,
+    totalSize: 0,
+    deleteSize: 0,
   };
+  for (const video of videos) {
+    if (video.status === 'pending') stats.pending += 1;
+    else if (video.status === 'skipped') stats.skipped += 1;
+    else if (video.status === 'keep') stats.keep += 1;
+    else if (video.status === 'delete') stats.delete += 1;
+    stats.totalSize += video.sizeBytes;
+    if (video.status === 'delete') stats.deleteSize += video.sizeBytes;
+  }
   recordDevPerf('computeStats', performance.now() - startedAt, { items: videos.length });
   return stats;
 }
@@ -316,6 +340,15 @@ function applyDuplicateGroupsToVideos(videos: Video[], groups: DuplicateGroup[])
   return videos.map((video) => {
     const group = groupByVideo.get(video.id);
     if (!group) {
+      if (
+        video.duplicateGroupId == null &&
+        video.duplicateSimilarity == null &&
+        video.duplicateMatchType == null &&
+        !video.duplicateSuggestedKeeper &&
+        !video.duplicateExact &&
+        !video.duplicateGroupSize &&
+        video.duplicateMatchReason == null
+      ) return video;
       return {
         ...video,
         duplicateGroupId: null,
@@ -1021,10 +1054,10 @@ const useStore = create<VideoStore>((set, get) => ({
   setVideos: (videos: Video[]) => {
     const previousVideos = get().videos;
     const shouldClearDuplicates = !sameVideoIdentitySet(previousVideos, videos);
-    const orderedVideos = videos.map((video) => ({
-      ...video,
-      thumbnails: orderedThumbnails(video.thumbnails),
-    }));
+    const orderedVideos = videos.map((video) => {
+      const thumbnails = orderedThumbnails(video.thumbnails);
+      return thumbnails === video.thumbnails ? video : { ...video, thumbnails };
+    });
     const nextVideos = shouldClearDuplicates
       ? applyDuplicateGroupsToVideos(orderedVideos, [])
       : orderedVideos;

@@ -639,12 +639,24 @@ describe('App renderer behavior', () => {
   test('offers to add a valid dropped folder to the current session and persists the addition', async () => {
     const store = getStoreApi();
     const initialState = store.getInitialState();
+    const existingVideo = makeVideo('a', {
+      metadataVersion: 2,
+      thumbnails: Array.from({ length: 6 }, (_, index) => `existing_thumb_${index + 1}.jpg`),
+    });
+    const addedVideo = makeVideo('b', {
+      path: 'E:\\Clips\\b.mp4',
+      metadataVersion: 2,
+      thumbnails: Array.from({ length: 6 }, (_, index) => `added_thumb_${index + 1}.jpg`),
+    });
+    electron.api.scanDirectory.mockImplementation(async (dirPath: string) => (
+      dirPath === 'E:\\Clips' ? [addedVideo] : [existingVideo]
+    ));
     store.setState({
       ...initialState,
       directory: 'D:\\Media',
       directories: ['D:\\Media'],
-      videos: [makeVideo('a')],
-      filteredVideos: [makeVideo('a')],
+      videos: [existingVideo],
+      filteredVideos: [existingVideo],
       stats: { total: 1, pending: 1, skipped: 0, keep: 0, delete: 0, totalSize: 100, deleteSize: 0 },
     }, true);
 
@@ -652,6 +664,11 @@ describe('App renderer behavior', () => {
     electron.api.validateDroppedPath.mockResolvedValue({ valid: true, isDirectory: true });
 
     render(<App />);
+
+    await waitFor(() => {
+      expect(electron.api.scanDirectory).toHaveBeenCalledTimes(1);
+      expect(electron.api.scanDirectory).toHaveBeenLastCalledWith('D:\\Media', true);
+    });
 
     const layout = document.querySelector('.app-layout');
     expect(layout).toBeTruthy();
@@ -666,6 +683,10 @@ describe('App renderer behavior', () => {
 
     await waitFor(() => {
       expect(getStoreApi().getState().directories).toEqual(['D:\\Media', 'E:\\Clips']);
+      expect(getStoreApi().getState().videos.map((video) => video.id).sort()).toEqual(['a', 'b']);
+      expect(electron.api.scanDirectory).toHaveBeenCalledTimes(2);
+      expect(electron.api.scanDirectory).toHaveBeenLastCalledWith('E:\\Clips', true);
+      expect(electron.api.resetLoadedDirectories).toHaveBeenCalledTimes(1);
       expect(screen.getByText('Folder added')).toBeTruthy();
       expect(electron.api.saveConfig).toHaveBeenCalled();
     });
