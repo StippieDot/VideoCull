@@ -134,7 +134,7 @@ describe('DuplicateGroupsView behavior', () => {
     });
   });
 
-  test('selects suggested deletions for only the chosen duplicate group', async () => {
+  test('adds suggested deletions from multiple chosen duplicate groups', async () => {
     const firstKeeper = makeVideo('a', { duplicateGroupId: 'group-1' });
     const firstDuplicate = makeVideo('b', { duplicateGroupId: 'group-1' });
     const secondKeeper = makeVideo('c', { duplicateGroupId: 'group-2' });
@@ -163,14 +163,16 @@ describe('DuplicateGroupsView behavior', () => {
     expect(groupButtons).toHaveLength(2);
     await userEvent.click(groupButtons[0]!);
     expect(screen.getByRole('button', { name: /Mark selected as Delete \(1\)/i })).toBeTruthy();
+    await userEvent.click(groupButtons[1]!);
+    expect(screen.getByRole('button', { name: /Mark selected as Delete \(2\)/i })).toBeTruthy();
 
-    await userEvent.click(screen.getByRole('button', { name: /Mark selected as Delete \(1\)/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Mark selected as Delete \(2\)/i }));
 
     await waitFor(() => {
       expect(useStore.getState().videos.find((video) => video.id === 'b')?.status).toBe('delete');
       expect(useStore.getState().videos.find((video) => video.id === 'a')?.status).toBe('pending');
       expect(useStore.getState().videos.find((video) => video.id === 'c')?.status).toBe('pending');
-      expect(useStore.getState().videos.find((video) => video.id === 'd')?.status).toBe('pending');
+      expect(useStore.getState().videos.find((video) => video.id === 'd')?.status).toBe('delete');
     });
   });
 

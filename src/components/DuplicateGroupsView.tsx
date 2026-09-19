@@ -651,7 +651,12 @@ function DuplicateGroupsView() {
   };
 
   const selectSuggestedDuplicatesForGroup = useCallback((groupView: DuplicateGroupView) => {
-    setSelectedIds(new Set(getMarkableDuplicateIds([groupView])));
+    const groupIds = getMarkableDuplicateIds([groupView]);
+    setSelectedIds((previousIds) => {
+      const nextIds = new Set(previousIds);
+      for (const id of groupIds) nextIds.add(id);
+      return nextIds.size === previousIds.size ? previousIds : nextIds;
+    });
   }, [getMarkableDuplicateIds]);
 
   const markSelectedDuplicates = () => {
