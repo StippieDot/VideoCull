@@ -943,6 +943,12 @@ export default function App() {
   }, [directory, videoCount, isScanning]);
 
   useEffect(() => {
+    if (!isGenerating && !isFindingDuplicates) {
+      void window.electronAPI?.setProcessingPaused(false);
+    }
+  }, [isFindingDuplicates, isGenerating]);
+
+  useEffect(() => {
     if (!reviewMode && folderReviewPathRef.current) {
       folderReviewPathRef.current = null;
       setFolderFilterPath(null);

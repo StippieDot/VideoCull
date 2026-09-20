@@ -36,6 +36,9 @@ function installElectronApiMock() {
     validateDroppedPath: vi.fn().mockResolvedValue({ valid: true, isDirectory: true }),
     openInExplorer: vi.fn().mockResolvedValue(true),
     saveConfig: vi.fn().mockResolvedValue(true),
+    getProcessingPauseState: vi.fn().mockResolvedValue({ status: 'running' }),
+    setProcessingPaused: vi.fn().mockResolvedValue({ status: 'running' }),
+    onProcessingPauseState: vi.fn(() => vi.fn()),
   };
   Object.assign(window, { electronAPI });
   return electronAPI;
@@ -278,5 +281,32 @@ describe('Sidebar recent folder behavior', () => {
     renderSidebar();
 
     expect((screen.getByRole('button', { name: /scanning/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('Sidebar processing controls', () => {
+  beforeEach(() => {
+    resetPerfDevMock();
+    const store = getStoreApi();
+    store.setState(store.getInitialState(), true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test('offers resume while media processing is paused', async () => {
+    const electronAPI = installElectronApiMock();
+    electronAPI.getProcessingPauseState.mockResolvedValue({ status: 'paused' });
+    useStore.setState({
+      isGenerating: true,
+      genProgress: { current: 2, total: 5, phase: 'thumbnails' },
+    });
+
+    renderSidebar();
+    const resume = await screen.findByRole('button', { name: 'Resume processing' });
+    await userEvent.click(resume);
+
+    expect(electronAPI.setProcessingPaused).toHaveBeenCalledWith(false);
   });
 });

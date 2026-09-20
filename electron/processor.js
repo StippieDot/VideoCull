@@ -7,6 +7,7 @@ ffmpeg.setFfprobePath(ffprobePath);
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
+const { processingPause } = require('./processing-pause');
 
 let thumbToken = null;
 let metadataToken = null;
@@ -167,6 +168,23 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function waitForProcessing(token) {
+  return processingPause.checkpoint(
+    () => Boolean(token?.cancelled),
+    () => new Error('Cancelled'),
+  );
+}
+
+async function runProcessingActivity(token, operation) {
+  await waitForProcessing(token);
+  const finish = processingPause.beginActivity();
+  try {
+    return await operation();
+  } finally {
+    finish();
+  }
+}
+
 function getGpuCooldownMs(config = {}) {
   if (!config.hardwareAccel) return 0;
   const configured = Number(config.gpuCooldownMs);
@@ -312,7 +330,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     if (token.cancelled) throw new Error('Cancelled');
     const outputPath = path.join(videoThumbDir, `thumb_${String(i + 1).padStart(2, '0')}.jpg`);
     try {
-      await extractFrame(video.path, timestamp, outputPath, config, token);
+      await runProcessingActivity(token, () => extractFrame(video.path, timestamp, outputPath, config, token));
       if (await isNonemptyFile(outputPath)) {
         thumbnails.push({ index: i, path: outputPath });
       }
@@ -331,12 +349,14 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
   if (finalPaths.length === 0) {
     const fallbackPath = path.join(videoThumbDir, 'thumb_01.jpg');
     try {
-      await extractFrame(video.path, 0, fallbackPath, config, token);
+      await runProcessingActivity(token, () => extractFrame(video.path, 0, fallbackPath, config, token));
       if (await isNonemptyFile(fallbackPath)) {
         finalPaths.push(fallbackPath);
       }
     } catch { /* truly can't generate thumbnails for this video */ }
   }
+
+  if (token.cancelled) throw new Error('Cancelled');
 
   return { thumbnails: finalPaths, durationSecs: duration, creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps };
 }
@@ -403,6 +423,12 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
       workers.push(
         (async () => {
           while (!token.cancelled) {
+            try {
+              await waitForProcessing(token);
+            } catch (err) {
+              if (token.cancelled) break;
+              throw err;
+            }
             const video = takeNextVideo();
             if (!video) break;
             try {
@@ -440,6 +466,8 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
     await Promise.all(workers);
     if (cooldownMs > 0 && batchEnd < videos.length && !token.cancelled) {
       await sleep(cooldownMs);
+      if (token.cancelled) break;
+      await waitForProcessing(token);
     }
   }
 }
@@ -458,10 +486,16 @@ async function processMetadata(videos, config, onProgress, onVideoReady, onVideo
   for (let i = 0; i < workerCount; i++) {
     workers.push((async () => {
       while (!token.cancelled) {
+        try {
+          await waitForProcessing(token);
+        } catch (err) {
+          if (token.cancelled) break;
+          throw err;
+        }
         const video = takeNextVideo();
         if (!video) break;
         try {
-          const result = await readMetadataForVideo(video);
+          const result = await runProcessingActivity(token, () => readMetadataForVideo(video));
           if (token.cancelled) break;
           current++;
           if (onProgress) onProgress({ current, total });
@@ -485,6 +519,7 @@ async function processMetadata(videos, config, onProgress, onVideoReady, onVideo
 
 function cancelThumbnails() {
   if (thumbToken) thumbToken.cancelled = true;
+  processingPause.wake();
   for (const cmd of activeCommands) {
     try {
       cmd.kill('SIGKILL');
@@ -497,12 +532,14 @@ function cancelThumbnails() {
 
 function cancelMetadata() {
   if (metadataToken) metadataToken.cancelled = true;
+  processingPause.wake();
 }
 
 /** Cancel all pipelines — used on quit and full rescan. */
 function cancelProcessing() {
   cancelThumbnails();
   cancelMetadata();
+  processingPause.resume();
 }
 
 module.exports = {

@@ -1,5 +1,5 @@
-import { useMemo, useState, type CSSProperties } from 'react';
-import type { ColorTheme, DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '../types';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import type { ColorTheme, DuplicateSortField, ProcessingPauseState, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
 import useStore from '../store';
 import { beginDevInteraction } from '../perf-dev';
@@ -14,7 +14,7 @@ import videoCullLogo from '../assets/videocull-logo.png';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, HardDrive, X, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun
+  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, Pause
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -105,8 +105,24 @@ function SidebarProgressSection() {
   const scanProgress = useStore((s) => s.scanProgress);
   const isGenerating = useStore((s) => s.isGenerating);
   const genProgress = useStore((s) => s.genProgress);
+  const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
+  const duplicateProgress = useStore((s) => s.duplicateProgress);
+  const [pauseState, setPauseState] = useState<ProcessingPauseState>({ status: 'running' });
 
-  if (!isScanning && !isGenerating) return null;
+  useEffect(() => {
+    if (!window.electronAPI?.onProcessingPauseState) return;
+    let receivedEvent = false;
+    const unsubscribe = window.electronAPI.onProcessingPauseState((state) => {
+      receivedEvent = true;
+      setPauseState(state);
+    });
+    void window.electronAPI.getProcessingPauseState().then((state) => {
+      if (!receivedEvent) setPauseState(state);
+    });
+    return unsubscribe;
+  }, []);
+
+  if (!isScanning && !isGenerating && !isFindingDuplicates) return null;
 
   const generationLabel =
     genProgress.phase === 'metadata'
@@ -137,29 +153,35 @@ function SidebarProgressSection() {
           </span>
         </div>
       )}
+      {isFindingDuplicates && duplicateProgress && (
+        <div className="progress-info duplicate-progress-info">
+          <span className="progress-label">{duplicateProgress.stage}</span>
+          <div className="progress-bar-track">
+            <div
+              className="progress-bar-fill"
+              style={{ width: `${duplicateProgress.total > 0 ? (duplicateProgress.current / duplicateProgress.total) * 100 : 0}%` }}
+            />
+          </div>
+          <span className="progress-detail">
+            {duplicateProgress.total > 0 ? `${duplicateProgress.current} / ${duplicateProgress.total}` : 'Preparing...'}
+          </span>
+        </div>
+      )}
+      {(isGenerating || isFindingDuplicates) && (
+        <button
+          className="btn btn-outline sidebar-wide-action"
+          disabled={pauseState.status === 'pausing'}
+          onClick={() => void window.electronAPI?.setProcessingPaused(pauseState.status === 'running')}
+        >
+          {pauseState.status === 'running' ? <Pause size={14} /> : <Play size={14} />}
+          {pauseState.status === 'running'
+            ? 'Pause processing'
+            : pauseState.status === 'pausing'
+              ? 'Pausing...'
+              : 'Resume processing'}
+        </button>
+      )}
     </section>
-  );
-}
-
-function DuplicateProgressInfo() {
-  const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
-  const duplicateProgress = useStore((s) => s.duplicateProgress);
-
-  if (!isFindingDuplicates || !duplicateProgress) return null;
-
-  return (
-    <div className="progress-info duplicate-progress-info">
-      <span className="progress-label">{duplicateProgress.stage}</span>
-      <div className="progress-bar-track">
-        <div
-          className="progress-bar-fill"
-          style={{ width: `${duplicateProgress.total > 0 ? (duplicateProgress.current / duplicateProgress.total) * 100 : 0}%` }}
-        />
-      </div>
-      <span className="progress-detail">
-        {duplicateProgress.total > 0 ? `${duplicateProgress.current} / ${duplicateProgress.total}` : 'Preparing...'}
-      </span>
-    </div>
   );
 }
 
@@ -354,7 +376,6 @@ function SidebarDuplicateSection({
           Duplicate Settings
         </button>
 
-        <DuplicateProgressInfo />
       </section>
     );
   }
@@ -370,7 +391,6 @@ function SidebarDuplicateSection({
         <CopyCheck size={14} />
         {isFindingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Find Duplicates'}
       </button>
-      <DuplicateProgressInfo />
       {duplicateGroupCount > 0 && (
         <button
           className={`btn btn-outline sidebar-wide-action ${duplicateGroupsMode ? 'btn-toggle-active' : ''}`}

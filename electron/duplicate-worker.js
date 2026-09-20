@@ -9,6 +9,15 @@ const {
 
 const BUCKET_SIZE_SECS = 1;
 const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
+const pauseView = workerData.pauseSignal ? new Int32Array(workerData.pauseSignal) : null;
+
+function pauseCheckpoint() {
+  if (!pauseView || Atomics.load(pauseView, 0) !== 1) return;
+  Atomics.store(pauseView, 1, 1);
+  parentPort.postMessage({ type: 'paused' });
+  while (Atomics.load(pauseView, 0) === 1) Atomics.wait(pauseView, 0, 1);
+  Atomics.store(pauseView, 1, 0);
+}
 
 function compactSamples(rows, sampleCount) {
   const byVideo = new Map();
@@ -101,6 +110,7 @@ function comparePHashes() {
   let total = 0;
   forEachCandidatePair(candidates, buckets, unknownDurationCandidates, settings, () => {
     total++;
+    if ((total & 1023) === 0) pauseCheckpoint();
   });
 
   const comparePair = (a, b) => {
@@ -136,10 +146,12 @@ function comparePHashes() {
 
   forEachCandidatePair(candidates, buckets, unknownDurationCandidates, settings, (a, b) => {
     compared++;
+    if ((compared & 1023) === 0) pauseCheckpoint();
     comparePair(a, b);
     reportProgress();
   });
 
+  pauseCheckpoint();
   parentPort.postMessage({
     type: 'done',
     pairs,

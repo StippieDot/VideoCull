@@ -28,6 +28,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateThumbnails: (videos, dirPath, options) =>
     ipcRenderer.invoke('generate-thumbnails', videos, dirPath, options),
   cancelGeneration: () => ipcRenderer.invoke('cancel-generation'),
+  getProcessingPauseState: () => ipcRenderer.invoke('get-processing-pause-state'),
+  setProcessingPaused: (paused) => ipcRenderer.invoke('set-processing-paused', paused),
+  onProcessingPauseState: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('processing-pause-state', handler);
+    return () => ipcRenderer.removeListener('processing-pause-state', handler);
+  },
   onMetadataProgress: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('metadata-progress', handler);

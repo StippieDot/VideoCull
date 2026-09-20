@@ -63,6 +63,10 @@ export interface ThumbProgress {
   phase?: 'thumbnails' | 'metadata' | 'media';
 }
 
+export interface ProcessingPauseState {
+  status: 'running' | 'pausing' | 'paused';
+}
+
 export interface ThumbReadyEvent {
   videoId: string;
   thumbnails?: string[];
@@ -576,6 +580,9 @@ export interface ElectronAPI {
   onMetadataReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;
   generateThumbnails: (videos: Video[], dirPath: string, options?: { force?: boolean }) => Promise<boolean>;
   cancelGeneration: () => Promise<boolean>;
+  getProcessingPauseState: () => Promise<ProcessingPauseState>;
+  setProcessingPaused: (paused: boolean) => Promise<ProcessingPauseState>;
+  onProcessingPauseState: (callback: (data: ProcessingPauseState) => void) => () => void;
   onThumbProgress: (callback: (data: ThumbProgress) => void) => () => void;
   onThumbReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;
   findDuplicates: (videos: Video[], options?: { settings?: Partial<DuplicateSettings> }) => Promise<DuplicateResult>;

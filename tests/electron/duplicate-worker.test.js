@@ -16,6 +16,50 @@ function runWorker(workerData) {
   });
 }
 
+function runInitiallyPausedWorker(workerData) {
+  const pauseSignal = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2);
+  const pauseView = new Int32Array(pauseSignal);
+  Atomics.store(pauseView, 0, 1);
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, '../../electron/duplicate-worker.js'), {
+      workerData: { ...workerData, pauseSignal },
+    });
+    let paused = false;
+    worker.on('message', (message) => {
+      if (message.type === 'paused') {
+        paused = true;
+        Atomics.store(pauseView, 0, 0);
+        Atomics.notify(pauseView, 0);
+      }
+      if (message.type === 'done') resolve({ message, paused });
+      if (message.type === 'error') reject(new Error(message.message));
+    });
+    worker.on('error', reject);
+  });
+}
+
+test('comparison workers cooperatively pause before returning results', async () => {
+  const { paused, message } = await runInitiallyPausedWorker({
+    videos: [
+      { id: 'a', durationSecs: 10 },
+      { id: 'b', durationSecs: 10 },
+    ],
+    phashRows: [
+      { video_id: 'a', sample_index: 0, phash_hex: 'ffff000000000000' },
+      { video_id: 'b', sample_index: 0, phash_hex: 'ffff000000000000' },
+    ],
+    settings: {
+      sampleCount: 1,
+      comparisonMode: 'phash',
+      finalSimilarityThreshold: 95,
+      durationTolerancePercent: 20,
+    },
+  });
+
+  assert.equal(paused, true);
+  assert.equal(message.pairs.length, 1);
+});
+
 test('unknown-duration videos are NOT compared against known-duration videos', async () => {
   const result = await runWorker({
     videos: [

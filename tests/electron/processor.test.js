@@ -5,6 +5,7 @@ const path = require('node:path');
 const ffmpeg = require('fluent-ffmpeg');
 
 const { processVideos, processMetadata, cancelMetadata, cancelThumbnails, __test } = require('../../electron/processor');
+const { processingPause } = require('../../electron/processing-pause');
 
 test('videos under 10 seconds only expect one thumbnail', () => {
   assert.equal(__test.expectedThumbnailCount(9.99, 6, 3), 1);
@@ -81,6 +82,36 @@ test('metadata cancellation suppresses callbacks after an in-flight probe finish
     assert.equal(progressCount, 0);
     assert.equal(readyCount, 0);
   } finally {
+    ffmpeg.ffprobe = originalFfprobe;
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('metadata pause blocks new probes and resumes the queue once', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-metadata-pause-'));
+  const videoPath = path.join(tempDir, 'clip.mp4');
+  await fs.writeFile(videoPath, 'not a real video');
+  const originalFfprobe = ffmpeg.ffprobe;
+  let probeCount = 0;
+
+  try {
+    ffmpeg.ffprobe = (_filePath, callback) => {
+      probeCount += 1;
+      callback(null, { format: { duration: 12, tags: {} }, streams: [] });
+    };
+    processingPause.pause();
+    const run = processMetadata([
+      { id: 'a', path: videoPath, filename: 'clip.mp4', thumbnails: [], durationSecs: null },
+    ], {}, null, () => {});
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(probeCount, 0);
+    assert.deepEqual(processingPause.getState(), { status: 'paused' });
+
+    processingPause.resume();
+    await run;
+    assert.equal(probeCount, 1);
+  } finally {
+    processingPause.resume();
     ffmpeg.ffprobe = originalFfprobe;
     await fs.rm(tempDir, { recursive: true, force: true });
   }

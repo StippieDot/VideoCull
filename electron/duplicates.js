@@ -1,11 +1,11 @@
 const path = require('path');
 const fs = require('fs/promises');
-const fsSync = require('fs');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { Worker } = require('worker_threads');
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path.replace('app.asar', 'app.asar.unpacked');
 const cache = require('./cache');
+const { processingPause } = require('./processing-pause');
 const {
   normalizeDuplicateSettings,
   getDuplicateFingerprintKey,
@@ -47,6 +47,7 @@ function createDuplicateRun() {
     commands: new Set(),
     cancel() {
       this.cancelled = true;
+      processingPause.wake();
       if (this.worker) {
         try { this.worker.terminate(); } catch { /* ignore */ }
       }
@@ -60,6 +61,23 @@ function createDuplicateRun() {
 
 function assertNotCancelled(run) {
   if (run?.cancelled) throw new DuplicateCancelledError();
+}
+
+function waitForDuplicateProcessing(run) {
+  return processingPause.checkpoint(
+    () => Boolean(run?.cancelled),
+    () => new DuplicateCancelledError(),
+  );
+}
+
+async function runDuplicateActivity(run, operation) {
+  await waitForDuplicateProcessing(run);
+  const finish = processingPause.beginActivity();
+  try {
+    return await operation();
+  } finally {
+    finish();
+  }
 }
 
 function groupVideosByFolder(videos) {
@@ -172,14 +190,22 @@ async function quickSignature(video) {
   return hash.digest('hex');
 }
 
-async function fullFileHash(video) {
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash('sha256');
-    const stream = fsSync.createReadStream(video.path);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('error', reject);
-    stream.on('end', () => resolve(hash.digest('hex')));
-  });
+async function fullFileHash(video, run) {
+  const hash = crypto.createHash('sha256');
+  const handle = await fs.open(video.path, 'r');
+  const buffer = Buffer.alloc(4 * ONE_MIB);
+  let position = 0;
+  try {
+    while (true) {
+      const { bytesRead } = await runDuplicateActivity(run, () => handle.read(buffer, 0, buffer.length, position));
+      if (bytesRead === 0) break;
+      hash.update(bytesRead === buffer.length ? buffer : buffer.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+  } finally {
+    await handle.close();
+  }
+  return hash.digest('hex');
 }
 
 function groupBy(items, getKey) {
@@ -232,14 +258,14 @@ async function findExactGroups(videos, dbByFolder, settings, run, sendProgress) 
   let fullCacheHits = 0;
 
   for (const sameSize of bySize.values()) {
-    assertNotCancelled(run);
+    await waitForDuplicateProcessing(run);
     if (sameSize.length < 2) {
       processed += sameSize.length;
       continue;
     }
 
     for (const durationGroup of splitExactCandidatesByDuration(sameSize, settings)) {
-      assertNotCancelled(run);
+      await waitForDuplicateProcessing(run);
       if (durationGroup.length < 2) {
         processed += durationGroup.length;
         continue;
@@ -247,10 +273,10 @@ async function findExactGroups(videos, dbByFolder, settings, run, sendProgress) 
 
       const quickRows = [];
       for (const video of durationGroup) {
-        assertNotCancelled(run);
+        await waitForDuplicateProcessing(run);
         const db = dbByFolder.get(path.dirname(video.path));
         const cached = signatureById.get(video.id);
-        const quick = cached?.file_signature_quick || await quickSignature(video);
+        const quick = cached?.file_signature_quick || await runDuplicateActivity(run, () => quickSignature(video));
         if (cached?.file_signature_quick) quickCacheHits++;
         if (db && !cached?.file_signature_quick) {
           assertNotCancelled(run);
@@ -265,8 +291,8 @@ async function findExactGroups(videos, dbByFolder, settings, run, sendProgress) 
         if (quickGroup.length < 2) continue;
         const fullRows = [];
         for (const row of quickGroup) {
-          assertNotCancelled(run);
-          const full = row.cachedFull || await fullFileHash(row.video);
+          await waitForDuplicateProcessing(run);
+          const full = row.cachedFull || await fullFileHash(row.video, run);
           if (row.cachedFull) fullCacheHits++;
           const db = dbByFolder.get(path.dirname(row.video.path));
           if (db && !row.cachedFull) {
@@ -291,8 +317,8 @@ async function findExactGroups(videos, dbByFolder, settings, run, sendProgress) 
   return exactGroups;
 }
 
-function extractGrayFramesWithArgs(args, expectedFrameCount, run) {
-  return new Promise((resolve, reject) => {
+async function extractGrayFramesWithArgs(args, expectedFrameCount, run) {
+  return runDuplicateActivity(run, () => new Promise((resolve, reject) => {
     assertNotCancelled(run);
     const child = spawn(ffmpegPath, args, { windowsHide: true });
     run.commands.add(child);
@@ -323,7 +349,7 @@ function extractGrayFramesWithArgs(args, expectedFrameCount, run) {
       }
       resolve(frames);
     });
-  });
+  }));
 }
 
 function extractGrayFrame(videoPath, timestamp, run, executionOptions) {
@@ -374,7 +400,10 @@ async function buildFingerprintsForVideo(video, settings, run, executionOptions)
     }
   }
   assertNotCancelled(run);
-  return buildFingerprintsFromGrayFrames(grayFrames, timestamps, settings);
+  return runDuplicateActivity(
+    run,
+    () => buildFingerprintsFromGrayFrames(grayFrames, timestamps, settings),
+  );
 }
 
 async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgress, maxConcurrency = 2, executionOptions = {}) {
@@ -422,7 +451,7 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
 
   const workers = Array.from({ length: workerCount }, async () => {
     while (true) {
-      assertNotCancelled(run);
+      await waitForDuplicateProcessing(run);
       const video = takeNextVideo();
       if (!video) break;
       try {
@@ -622,6 +651,7 @@ function runPHashWorker(videos, phashRows, settings, run, sendProgress) {
       similarity: settings.finalSimilarityThreshold,
     });
     progress(sendProgress, 'Comparing pHashes', { current: 0, total: 0 });
+    const pauseHandle = processingPause.createWorkerPauseHandle();
     const worker = new Worker(path.join(__dirname, 'duplicate-worker.js'), {
       workerData: {
         videos: videos.map((video) => ({
@@ -630,14 +660,18 @@ function runPHashWorker(videos, phashRows, settings, run, sendProgress) {
         })),
         phashRows,
         settings,
+        pauseSignal: pauseHandle.buffer,
       },
     });
     run.worker = worker;
     worker.on('message', (message) => {
       if (message.type === 'progress') {
         progress(sendProgress, 'Comparing pHashes', { current: message.compared, total: message.total });
+      } else if (message.type === 'paused') {
+        pauseHandle.markPaused();
       } else if (message.type === 'done') {
         run.worker = null;
+        pauseHandle.release();
         progress(sendProgress, 'Comparing pHashes', { current: message.total, total: message.total });
         duplicateLog('pHash comparison complete', {
           compared: message.compared,
@@ -650,16 +684,19 @@ function runPHashWorker(videos, phashRows, settings, run, sendProgress) {
         resolve(message.pairs ?? []);
       } else if (message.type === 'error') {
         run.worker = null;
+        pauseHandle.release();
         reject(new Error(message.message));
       }
     });
     worker.on('error', (err) => {
       run.worker = null;
+      pauseHandle.release();
       if (run.cancelled) reject(new DuplicateCancelledError());
       else reject(err);
     });
     worker.on('exit', (code) => {
       run.worker = null;
+      pauseHandle.release();
       if (run.cancelled) reject(new DuplicateCancelledError());
       else if (code !== 0) reject(new Error(`Duplicate worker exited with ${code}`));
     });
@@ -676,6 +713,7 @@ function runVisualWorker(videos, grayRows, settings, run, sendProgress) {
     });
     progress(sendProgress, 'Finding candidates', { current: 0, total: 0 });
     progress(sendProgress, 'Confirming visual matches', { current: 0, total: 0 });
+    const pauseHandle = processingPause.createWorkerPauseHandle();
     const worker = new Worker(path.join(__dirname, 'visual-worker.js'), {
       workerData: {
         videos: videos.map((video) => ({
@@ -684,6 +722,7 @@ function runVisualWorker(videos, grayRows, settings, run, sendProgress) {
         })),
         grayRows,
         settings,
+        pauseSignal: pauseHandle.buffer,
       },
     });
     run.worker = worker;
@@ -691,8 +730,11 @@ function runVisualWorker(videos, grayRows, settings, run, sendProgress) {
       if (message.type === 'progress') {
         progress(sendProgress, 'Finding candidates', { current: message.compared, total: message.total });
         progress(sendProgress, 'Confirming visual matches', { current: message.compared, total: message.total });
+      } else if (message.type === 'paused') {
+        pauseHandle.markPaused();
       } else if (message.type === 'done') {
         run.worker = null;
+        pauseHandle.release();
         progress(sendProgress, 'Finding candidates', { current: message.total, total: message.total });
         progress(sendProgress, 'Confirming visual matches', { current: message.total, total: message.total });
         duplicateLog('Visual comparison worker complete', {
@@ -705,16 +747,19 @@ function runVisualWorker(videos, grayRows, settings, run, sendProgress) {
         resolve(message.pairs ?? []);
       } else if (message.type === 'error') {
         run.worker = null;
+        pauseHandle.release();
         reject(new Error(message.message));
       }
     });
     worker.on('error', (err) => {
       run.worker = null;
+      pauseHandle.release();
       if (run.cancelled) reject(new DuplicateCancelledError());
       else reject(err);
     });
     worker.on('exit', (code) => {
       run.worker = null;
+      pauseHandle.release();
       if (run.cancelled) reject(new DuplicateCancelledError());
       else if (code !== 0) reject(new Error(`Visual duplicate worker exited with ${code}`));
     });
@@ -1134,6 +1179,7 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
 
   const dbByFolder = new Map();
   for (const folder of groupVideosByFolder(safeVideos).keys()) {
+    await waitForDuplicateProcessing(run);
     dbByFolder.set(folder, await openDb(folder, cacheOptions));
   }
   duplicateLog('Cache databases ready', { folders: dbByFolder.size });

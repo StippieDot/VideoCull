@@ -7,6 +7,7 @@ const { scanDirectory } = require('./scanner');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
 const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
+const { processingPause } = require('./processing-pause');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
@@ -1108,6 +1109,10 @@ async function acquireCacheDbWithRecovery(folderPath, cacheOptions) {
     return cache.acquireDb(folderPath, cacheOptions);
   }
 }
+
+processingPause.subscribe((state) => {
+  sendToRenderer('processing-pause-state', state);
+});
 
 const cacheOperationQueue = createKeyedOperationQueue();
 
@@ -2497,6 +2502,12 @@ ipcMain.handle('cancel-generation', async () => {
   cancelProcessing();
   return true;
 });
+
+ipcMain.handle('get-processing-pause-state', async () => processingPause.getState());
+
+ipcMain.handle('set-processing-paused', async (_event, paused) => (
+  paused ? processingPause.pause() : processingPause.resume()
+));
 
 // 5. Save cache
 ipcMain.handle('save-cache', async (event, dirPath, videos) => {
