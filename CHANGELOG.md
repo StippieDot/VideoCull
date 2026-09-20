@@ -5,20 +5,27 @@ All notable changes to VideoCull will be documented here.
 ## [2.3.0] - Unreleased
 
 ### Added
-- Added Microsoft Store distribution with Store-managed installation and updates alongside the direct-download edition.
-- Added Store packaging, validation, installed-package verification, and release-candidate automation.
-- Added Store-aware cache location details and controls for opening or copying active cache paths.
-- Added notices that identify older, matching, newer, or unknown direct-install versions when both editions are installed.
+- Added a Microsoft Store edition with Store-managed installation and updates alongside the direct-download edition, including safeguards that prevent both editions from using the shared profile simultaneously.
+- Added transition notices that identify older, matching, newer, or unknown direct-install versions and can open the verified direct-edition uninstaller without removing shared profile data.
+- Added cache-location details in Settings, including availability and ownership information plus controls to open or copy active cache paths.
+- Added a per-group **Select for deletion** action in duplicate review. It follows the group’s current selected keeper, stacks selections across groups, and preserves unrelated selections when a group is dismissed.
 
 ### Changed
 - The Microsoft Store and direct-download editions now share the `%APPDATA%\VideoCull` profile, including settings, review decisions, databases, and the default thumbnail cache.
-- Store session, log, crash, and runtime data remains isolated inside the Windows package while persistent user data stays available to both editions.
+- Store session, log, crash, and other disposable runtime data remains isolated inside the Windows package while persistent user data stays available to both editions. Incompatible profile formats are rejected before shared data is changed.
 - Microsoft Store builds now direct users to Microsoft Store for updates instead of using the GitHub updater.
+- Adding folders to an existing session now scans and merges only the newly added folders instead of repeatedly rebuilding the entire session.
+- Reduced UI stalls and memory growth in large sessions, especially when adding folders, changing duplicate keepers, and moving between duplicate and playback review.
+- Reduced cache connection, memory, and disk-activity spikes during scans, rapid review decisions, and background media processing.
 
 ### Fixed
-- Prevented Microsoft Store and direct-download editions from opening the shared profile at the same time.
-- Added storage-format checks that stop an incompatible edition before it can change shared data.
-- Preserved shared profile and cache data when opening the direct-install uninstaller from the Store transition notice.
+- Returning from duplicate playback now preserves the duplicate list’s scroll position.
+- Duplicate size comparison now marks the larger file as best independently of the other quality metrics.
+- Parent and child folders added to the same session no longer produce duplicate video entries.
+- Cached thumbnails are reused only when the complete expected filename set exists and every image is non-empty.
+- Failed metadata probes are recorded and temporarily backed off instead of being treated as successful incomplete results and retried repeatedly.
+- Web documentation links now open correctly from the in-app documentation window.
+- Deeply nested or long folder paths no longer create cache database paths that exceed Windows SQLite path limits.
 
 ## [2.2.1] - 2026-09-09
 
