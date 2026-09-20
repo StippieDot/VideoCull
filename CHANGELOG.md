@@ -8,6 +8,7 @@ All notable changes to VideoCull will be documented here.
 - Added a Microsoft Store edition with Store-managed installation and updates alongside the direct-download edition, including safeguards that prevent both editions from using the shared profile simultaneously.
 - Added transition notices that identify older, matching, newer, or unknown direct-install versions and can open the verified direct-edition uninstaller without removing shared profile data.
 - Added cache-location details in Settings, including availability and ownership information plus controls to open or copy active cache paths.
+- Added a sidebar control to pause and resume metadata, thumbnail, and duplicate processing without losing completed progress.
 - Added a per-group **Select for deletion** action in duplicate review. It follows the group’s current selected keeper, stacks selections across groups, and preserves unrelated selections when a group is dismissed.
 
 ### Changed
@@ -17,6 +18,8 @@ All notable changes to VideoCull will be documented here.
 - Adding folders to an existing session now scans and merges only the newly added folders instead of repeatedly rebuilding the entire session.
 - Reduced UI stalls and memory growth in large sessions, especially when adding folders, changing duplicate keepers, and moving between duplicate and playback review.
 - Reduced cache connection, memory, and disk-activity spikes during scans, rapid review decisions, and background media processing.
+- Files that cannot be moved to the Recycle Bin are now listed for review before VideoCull offers permanent deletion.
+- Renderer crashes now produce local diagnostic dumps without uploading them, and the app log identifies the dump location.
 
 ### Fixed
 - Returning from duplicate playback now preserves the duplicate list’s scroll position.
