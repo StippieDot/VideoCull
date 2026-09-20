@@ -2,7 +2,7 @@
 
 All notable changes to VideoCull will be documented here.
 
-## [2.3.0] - Unreleased
+## [2.3.0] - 2026-09-20
 
 ### Added
 - Added a Microsoft Store edition with Store-managed installation and updates alongside the direct-download edition, including safeguards that prevent both editions from using the shared profile simultaneously.
