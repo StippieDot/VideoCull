@@ -737,6 +737,7 @@ function DuplicateGroupsView() {
   const ignorePairsWithUndo = useCallback((
     nextIgnoredPairKeys: string[],
     groupsToHide: DuplicateGroup[],
+    selectionIdsToRemove: string[],
     title: string,
     detail: string
   ) => {
@@ -750,7 +751,13 @@ function DuplicateGroupsView() {
     if (hiddenGroupIds.size > 0) {
       setDuplicateGroups(groups.filter((group) => !hiddenGroupIds.has(group.id)));
     }
-    setSelectedIds(new Set());
+    if (selectionIdsToRemove.length > 0) {
+      const idsToRemove = new Set(selectionIdsToRemove);
+      setSelectedIds((previousIds) => {
+        if (!selectionIdsToRemove.some((id) => previousIds.has(id))) return previousIds;
+        return new Set(Array.from(previousIds).filter((id) => !idsToRemove.has(id)));
+      });
+    }
     pushToast({
       title,
       detail,
@@ -781,6 +788,7 @@ function DuplicateGroupsView() {
     ignorePairsWithUndo(
       pairKeysForGroup(group),
       [group],
+      group.videoIds,
       'Group dismissed',
       'This group will be ignored in future duplicate runs.'
     );
@@ -792,6 +800,7 @@ function DuplicateGroupsView() {
     ignorePairsWithUndo(
       [duplicatePairKey(selectedPair.ids[0], selectedPair.ids[1])],
       hideCurrentGroup,
+      selectedPair.ids,
       'Pair marked as not a match',
       hideCurrentGroup.length > 0
         ? 'This pair will be ignored in future duplicate runs.'

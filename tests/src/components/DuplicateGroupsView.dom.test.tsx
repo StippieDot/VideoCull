@@ -294,6 +294,50 @@ describe('DuplicateGroupsView behavior', () => {
     });
   });
 
+  test('preserves selections from other groups when dismissing a group', async () => {
+    const firstKeeper = makeVideo('a', { duplicateGroupId: 'group-1' });
+    const firstDuplicate = makeVideo('b', { duplicateGroupId: 'group-1' });
+    const secondKeeper = makeVideo('c', { duplicateGroupId: 'group-2' });
+    const secondDuplicate = makeVideo('d', { duplicateGroupId: 'group-2' });
+    useStore.setState({
+      videos: [firstKeeper, firstDuplicate, secondKeeper, secondDuplicate],
+      duplicateGroups: [
+        makeDuplicateGroup({
+          id: 'group-1',
+          videoIds: ['a', 'b'],
+          suggestedKeeperId: 'a',
+          similarity: 99,
+        }),
+        makeDuplicateGroup({
+          id: 'group-2',
+          videoIds: ['c', 'd'],
+          suggestedKeeperId: 'c',
+          similarity: 90,
+        }),
+      ],
+    });
+
+    render(<DuplicateGroupsView />);
+
+    const selectButtons = await screen.findAllByRole('button', { name: 'Select for deletion' });
+    await userEvent.click(selectButtons[0]!);
+    await userEvent.click(selectButtons[1]!);
+    expect(screen.getByRole('button', { name: /Mark selected as Delete \(2\)/i })).toBeTruthy();
+
+    const dismissButtons = screen.getAllByRole('button', { name: 'Dismiss group' });
+    await userEvent.click(dismissButtons[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Mark selected as Delete \(1\)/i })).toBeTruthy();
+    });
+    await userEvent.click(screen.getByRole('button', { name: /Mark selected as Delete \(1\)/i }));
+
+    await waitFor(() => {
+      expect(useStore.getState().videos.find((video) => video.id === 'b')?.status).toBe('pending');
+      expect(useStore.getState().videos.find((video) => video.id === 'd')?.status).toBe('delete');
+    });
+  });
+
   test('does not render an empty thumbnail src when a duplicate row has no thumbnail image', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const groupId = 'group-1';
