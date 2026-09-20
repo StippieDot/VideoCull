@@ -95,6 +95,7 @@ interface GridScrollAnchor {
 }
 
 let gridRowRuntime: GridRowData | null = null;
+let gridRowRuntimeOwner: symbol | null = null;
 
 function getFolderLabel(video: Video, rootDirs: string[]): string {
   const sep = video.path.includes('/') ? '/' : '\\';
@@ -384,6 +385,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const rowContentVersionRef = useRef(0);
   const lastSelectedIdsRef = useRef(selectedIds);
   const selectionVersionRef = useRef(0);
+  const runtimeOwnerRef = useRef(Symbol('grid-row-runtime'));
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [contextMenu, setContextMenu] = useState<{
     kind: 'video' | 'folder';
@@ -848,7 +850,18 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     selectionVersionRef.current += 1;
   }
 
+  gridRowRuntimeOwner = runtimeOwnerRef.current;
   gridRowRuntime = itemData;
+
+  useLayoutEffect(() => {
+    gridRowRuntimeOwner = runtimeOwnerRef.current;
+    gridRowRuntime = itemData;
+    return () => {
+      if (gridRowRuntimeOwner !== runtimeOwnerRef.current) return;
+      gridRowRuntimeOwner = null;
+      gridRowRuntime = null;
+    };
+  }, [itemData]);
 
   const rowRenderSignals = useMemo<GridRowRenderSignals>(() => ({
     cardHeight,
@@ -1022,4 +1035,5 @@ export const __test__ = {
   buildGridRows,
   getLastSelectedIdInOrder,
   getRangeAnchorIdForSelection,
+  hasActiveRowRuntime: () => gridRowRuntime !== null,
 };

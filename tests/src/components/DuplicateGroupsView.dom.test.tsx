@@ -135,6 +135,15 @@ describe('DuplicateGroupsView behavior', () => {
     expect(updated.views[1]).toBe(initial.views[1]);
   });
 
+  test('releases virtual row data when the duplicate view unmounts', () => {
+    const view = render(<DuplicateGroupsView />);
+    expect(__test__.hasActiveRowRuntime()).toBe(true);
+
+    view.unmount();
+
+    expect(__test__.hasActiveRowRuntime()).toBe(false);
+  });
+
   test('selects suggested deletions and marks the non-keeper videos for deletion', async () => {
     const groupId = 'group-1';
     const keeper = makeVideo('a', { duplicateGroupId: groupId, path: 'D:\\Media\\a.mp4' });

@@ -125,6 +125,7 @@ type DuplicateRowRenderSignals = {
 };
 
 let duplicateRowRuntime: DuplicateRowRuntimeData | null = null;
+let duplicateRowRuntimeOwner: symbol | null = null;
 
 function thumbSrc(video: Video): string | null {
   if (video.thumbnails[0]) return `thumb://local/${encodeURIComponent(video.thumbnails[0])}`;
@@ -522,6 +523,7 @@ function DuplicateGroupsView() {
   const lastSelectedIdsRef = useRef(selectedIds);
   const selectionVersionRef = useRef(0);
   const groupViewCacheRef = useRef<DuplicateGroupViewCache>(new Map());
+  const runtimeOwnerRef = useRef(Symbol('duplicate-row-runtime'));
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const activeVideos = useActiveValue(videos, !reviewMode);
   const activeGroups = useActiveValue(groups, !reviewMode);
@@ -924,7 +926,18 @@ function DuplicateGroupsView() {
     virtualRows,
   ]);
 
+  duplicateRowRuntimeOwner = runtimeOwnerRef.current;
   duplicateRowRuntime = itemData;
+
+  useLayoutEffect(() => {
+    duplicateRowRuntimeOwner = runtimeOwnerRef.current;
+    duplicateRowRuntime = itemData;
+    return () => {
+      if (duplicateRowRuntimeOwner !== runtimeOwnerRef.current) return;
+      duplicateRowRuntimeOwner = null;
+      duplicateRowRuntime = null;
+    };
+  }, [itemData]);
 
   const rowRenderSignals = useMemo<DuplicateRowRenderSignals>(() => ({
     galleryCardWidth: galleryLayout.cardWidth,
@@ -1143,4 +1156,5 @@ export default memo(DuplicateGroupsView);
 
 export const __test__ = {
   buildDuplicateGroupViews,
+  hasActiveRowRuntime: () => duplicateRowRuntime !== null,
 };

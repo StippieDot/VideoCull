@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
 import { vi } from 'vitest';
-import GridMode from '../../../src/components/GridMode';
+import GridMode, { __test__ } from '../../../src/components/GridMode';
 import useStore from '../../../src/store';
 import { makeVideo } from '../../helpers/videoFactory';
 
@@ -189,6 +189,15 @@ describe('GridMode search', () => {
 
     expect(document.activeElement).not.toBe(searchbox);
     expect(useStore.getState().searchQuery).toBe('trip');
+  });
+
+  test('releases virtual row data when the grid unmounts', () => {
+    const view = renderGrid();
+    expect(__test__.hasActiveRowRuntime()).toBe(true);
+
+    view.unmount();
+
+    expect(__test__.hasActiveRowRuntime()).toBe(false);
   });
 
   test('defers hidden grid data updates until review closes', async () => {
