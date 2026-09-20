@@ -435,4 +435,31 @@ describe('DuplicateGroupsView behavior', () => {
     expect(useStore.getState().duplicateScrollTop).toBe(420);
     await waitFor(() => expect(list.scrollTop).toBe(420));
   });
+
+  test('defers hidden duplicate data updates until review closes', async () => {
+    const groupId = 'group-1';
+    const keeper = makeVideo('a', { duplicateGroupId: groupId, filename: 'keeper.mp4' });
+    const duplicate = makeVideo('b', { duplicateGroupId: groupId, filename: 'duplicate.mp4' });
+    useStore.setState({
+      videos: [keeper, duplicate],
+      duplicateGroups: [makeDuplicateGroup({
+        id: groupId,
+        videoIds: ['a', 'b'],
+        suggestedKeeperId: 'a',
+      })],
+    });
+    render(<DuplicateGroupsView />);
+    expect(await screen.findByText('duplicate.mp4')).toBeTruthy();
+
+    act(() => useStore.getState().setReviewMode(true));
+    act(() => useStore.setState({
+      videos: [keeper, { ...duplicate, filename: 'updated.mp4' }],
+    }));
+
+    expect(screen.getByText('duplicate.mp4')).toBeTruthy();
+    expect(screen.queryByText('updated.mp4')).toBeNull();
+
+    act(() => useStore.getState().setReviewMode(false));
+    expect(await screen.findByText('updated.mp4')).toBeTruthy();
+  });
 });

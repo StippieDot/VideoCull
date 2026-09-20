@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
 import { vi } from 'vitest';
@@ -189,6 +189,24 @@ describe('GridMode search', () => {
 
     expect(document.activeElement).not.toBe(searchbox);
     expect(useStore.getState().searchQuery).toBe('trip');
+  });
+
+  test('defers hidden grid data updates until review closes', async () => {
+    renderGrid();
+    expect(await screen.findByText('Trip.mp4')).toBeTruthy();
+
+    act(() => useStore.getState().setReviewMode(true));
+    const updatedVideos = [
+      makeVideo('trip', { filename: 'Updated trip.mp4', path: 'D:\\Media\\Trip.mp4' }),
+      makeVideo('meeting', { filename: 'Meeting.mp4', path: 'D:\\Media\\Meeting.mp4' }),
+    ];
+    act(() => useStore.setState({ videos: updatedVideos, filteredVideos: updatedVideos }));
+
+    expect(screen.getByText('Trip.mp4')).toBeTruthy();
+    expect(screen.queryByText('Updated trip.mp4')).toBeNull();
+
+    act(() => useStore.getState().setReviewMode(false));
+    expect(await screen.findByText('Updated trip.mp4')).toBeTruthy();
   });
 
   test('preserves the next surviving video offset when the visible pending batch disappears', async () => {

@@ -10,6 +10,7 @@ import {
 import { List } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
 import useStore from '../store';
+import useActiveValue from '../hooks/useActiveValue';
 import type { DuplicateGroup, DuplicateViewMode, Video } from '../types';
 import {
   formatDuration,
@@ -522,21 +523,23 @@ function DuplicateGroupsView() {
   const selectionVersionRef = useRef(0);
   const groupViewCacheRef = useRef<DuplicateGroupViewCache>(new Map());
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const activeVideos = useActiveValue(videos, !reviewMode);
+  const activeGroups = useActiveValue(groups, !reviewMode);
 
   const videosById = useMemo(
-    () => new Map(videos.map((video) => [video.id, video])),
-    [videos]
+    () => new Map(activeVideos.map((video) => [video.id, video])),
+    [activeVideos]
   );
 
   const groupViews = useMemo<DuplicateGroupView[]>(() => {
     const startedAt = performance.now();
-    const built = buildDuplicateGroupViews(groups, videosById, groupViewCacheRef.current);
+    const built = buildDuplicateGroupViews(activeGroups, videosById, groupViewCacheRef.current);
     groupViewCacheRef.current = built.cache;
     recordDevPerf('duplicates.groupViews.compute', performance.now() - startedAt, {
       items: built.recomputedCount,
     });
     return built.views;
-  }, [groups, videosById]);
+  }, [activeGroups, videosById]);
 
   const visibleGroupViews = useMemo(() => {
     const startedAt = performance.now();
@@ -1052,7 +1055,7 @@ function DuplicateGroupsView() {
       <div>
         <h2>Duplicates</h2>
         <span>
-          {visibleGroupViews.length} / {groups.length} groups / {visibleVideoCount} videos
+          {visibleGroupViews.length} / {activeGroups.length} groups / {visibleVideoCount} videos
         </span>
       </div>
       <div className="duplicate-toolbar-actions">
@@ -1093,7 +1096,7 @@ function DuplicateGroupsView() {
     </div>
   );
 
-  if (groups.length === 0) {
+  if (activeGroups.length === 0) {
     return (
       <div className="duplicate-empty">
         <h2>No duplicate groups</h2>

@@ -12,6 +12,7 @@ import { List } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
 import type { Video } from '../types';
 import useStore from '../store';
+import useActiveValue from '../hooks/useActiveValue';
 import VideoCard from './VideoCard';
 import { formatSize, isWebSupported } from '../utils';
 import { matchesKeybind } from '../keybinds';
@@ -393,7 +394,12 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   } | null>(null);
   const isSelectionMode = selectedIds.size > 0;
   const gridActive = !reviewMode && !duplicateGroupsMode;
-  const videosById = useMemo(() => new Map(videos.map((video) => [video.id, video])), [videos]);
+  const activeVideos = useActiveValue(videos, gridActive);
+  const activeFilteredVideos = useActiveValue(filteredVideos, gridActive);
+  const videosById = useMemo(
+    () => new Map(activeVideos.map((video) => [video.id, video])),
+    [activeVideos]
+  );
   const directoriesKey = useMemo(() => directories.join('\0'), [directories]);
 
   const initialScrollOffset = useMemo(() => {
@@ -426,21 +432,21 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
   const folderSizeByPath = useMemo(() => {
     const map = new Map<string, number>();
-    for (const video of videos) {
+    for (const video of activeVideos) {
       const folderPath = getFolderPath(video);
       map.set(folderPath, (map.get(folderPath) ?? 0) + video.sizeBytes);
     }
     return map;
-  }, [videos]);
+  }, [activeVideos]);
 
   const filteredFolderSizeByPath = useMemo(() => {
     const map = new Map<string, number>();
-    for (const video of filteredVideos) {
+    for (const video of activeFilteredVideos) {
       const folderPath = getFolderPath(video);
       map.set(folderPath, (map.get(folderPath) ?? 0) + video.sizeBytes);
     }
     return map;
-  }, [filteredVideos]);
+  }, [activeFilteredVideos]);
 
   const { rows, headerIndexes, filteredVideoIds } = useMemo(() => {
     const cached = rowStructureCacheRef.current;
@@ -449,12 +455,12 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       cached.columnCount === columnCount &&
       cached.groupByFolder === groupByFolder &&
       cached.directoriesKey === directoriesKey &&
-      sameVideoIdOrder(filteredVideos, cached.filteredVideoIds)
+      sameVideoIdOrder(activeFilteredVideos, cached.filteredVideoIds)
     ) {
       return cached;
     }
 
-    const nextRows = buildGridRows(filteredVideos, columnCount, groupByFolder, directories);
+    const nextRows = buildGridRows(activeFilteredVideos, columnCount, groupByFolder, directories);
     const nextCache: CachedGridRows = {
       ...nextRows,
       columnCount,
@@ -463,7 +469,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     };
     rowStructureCacheRef.current = nextCache;
     return nextCache;
-  }, [columnCount, directories, directoriesKey, filteredVideos, groupByFolder]);
+  }, [activeFilteredVideos, columnCount, directories, directoriesKey, groupByFolder]);
 
   const filteredIdSet = useMemo(() => new Set(filteredVideoIds), [filteredVideoIds]);
   const filteredIndexById = useMemo(() => {
@@ -832,8 +838,8 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     rowContentVersionRef.current += 1;
   }
 
-  if (lastVideosRef.current !== videos) {
-    lastVideosRef.current = videos;
+  if (lastVideosRef.current !== activeVideos) {
+    lastVideosRef.current = activeVideos;
     rowContentVersionRef.current += 1;
   }
 
@@ -849,7 +855,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     columnWidth,
     rowContentVersion: rowContentVersionRef.current,
     selectionVersion: selectionVersionRef.current,
-  }), [cardHeight, columnWidth, rows, selectedIds, videos]);
+  }), [activeVideos, cardHeight, columnWidth, rows, selectedIds]);
 
   const contextMenuVideo = contextMenu?.kind === 'video' && contextMenu.videoId
     ? videosById.get(contextMenu.videoId) ?? null
@@ -915,8 +921,8 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       <div className="grid-toolbar">
         <span className="grid-result-count">
           {searchQuery.trim()
-            ? `${filteredVideos.length} of ${videos.length} videos`
-            : `${filteredVideos.length} ${filteredVideos.length === 1 ? 'video' : 'videos'}`}
+            ? `${activeFilteredVideos.length} of ${activeVideos.length} videos`
+            : `${activeFilteredVideos.length} ${activeFilteredVideos.length === 1 ? 'video' : 'videos'}`}
         </span>
         <label className="grid-search-field">
           <Search size={15} aria-hidden="true" />
@@ -935,7 +941,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
           )}
         </label>
       </div>
-      {filteredVideos.length === 0 ? (
+      {activeFilteredVideos.length === 0 ? (
         <div className="grid-empty">
           <p>{searchQuery.trim() ? 'No videos match your search.' : 'No videos match your current filters.'}</p>
           {searchQuery.trim() && (
