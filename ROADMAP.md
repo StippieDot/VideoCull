@@ -892,51 +892,6 @@ do not need to infer what a technical option does.
 
 ---
 
-## Future Resource Efficiency
-
-These changes are intentionally deferred beyond `2.3.0`. They either need broader architectural
-work or introduce a user-visible tradeoff that should be designed and measured separately.
-
-### Renderer state and IPC
-
-- **Normalize the renderer video store and update it incrementally.** Keep video records keyed by
-  ID with ordered ID lists for each view, rather than repeatedly copying and filtering the full
-  video array after individual status or metadata changes. This should reduce allocation pressure
-  and long UI pauses in very large sessions, but it touches most selectors and update paths.
-- **Use purpose-specific IPC payloads and cache queries.** Send only the fields needed by each
-  operation and query only the required SQLite columns instead of moving complete video records
-  between the main process, database, and renderer. This reduces peak memory and serialization
-  work, but requires coordinated contract changes and migration of many callers.
-- **Consolidate duplicate session path indexes.** Replace parallel full-library path collections
-  with one authoritative index where lookup requirements allow it. The likely saving is modest,
-  so make this part of a broader session-state cleanup rather than an isolated refactor.
-
-### Media processing
-
-- **Redesign visual-duplicate worker memory flow.** Process fingerprints in bounded batches and
-  use compact transferable data so workers do not retain multiple full representations of the
-  same samples. This can materially lower peak memory during large duplicate runs, but it changes
-  a performance-sensitive algorithm and needs benchmark and result-equivalence coverage.
-- **Coordinate FFmpeg work across features.** Use one adaptive concurrency budget for metadata,
-  thumbnails, duplicate fingerprints, and other FFmpeg jobs. Optionally reduce that budget while
-  the app is minimized or in the background. The tradeoff is longer processing time in exchange
-  for lower CPU, memory, disk pressure, heat, and fan noise.
-- **Add cancellable FFprobe timeouts.** Terminate probes that stop producing a result and report
-  the file as a retryable metadata failure. This prevents a malformed or inaccessible video from
-  holding a worker indefinitely, but a timeout that is too short could defer valid probes on slow
-  disks or network shares.
-
-### Bounded retained data
-
-- **Add a configurable cache quota and eviction policy.** Remove least-recently-used thumbnail
-  artifacts and other reproducible cache data once the configured limit is exceeded. This bounds
-  disk use, but evicted thumbnails must be regenerated when those videos are opened again.
-- **Cap undo history by count and retained data size.** Keep recent actions while discarding the
-  oldest entries once a conservative limit is reached. This bounds long-session memory use, with
-  the explicit tradeoff that very old actions can no longer be undone.
-
----
-
 ## Skipped Features (Recorded for Future Reference)
 
 | Feature | Reason skipped |
