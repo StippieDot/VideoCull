@@ -1,5 +1,4 @@
 const assert = require('node:assert/strict');
-const { test } = require('node:test');
 const { createKeyedOperationQueue } = require('../../electron/keyed-operation-queue');
 
 test('serializes work for one key and releases it after the final operation', async () => {
