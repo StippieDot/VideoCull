@@ -358,6 +358,7 @@ const customProtocolSchemes = [
 protocol.registerSchemesAsPrivileged(customProtocolSchemes);
 
 app.whenReady().then(async () => {
+  log.info(`[crash-reporter] Local crash dumps: ${globalThis.__VIDEOCULL_CRASH_DUMPS_PATH__ ?? app.getPath('crashDumps')}`);
   if (profileBootstrap) {
     log.info('[profile-bootstrap]', {
       status: profileBootstrap.status,
