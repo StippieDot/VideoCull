@@ -211,6 +211,38 @@ describe('DuplicateGroupsView behavior', () => {
     });
   });
 
+  test('replaces one group selection after its selected keeper changes', async () => {
+    const groupId = 'group-1';
+    const first = makeVideo('a', { duplicateGroupId: groupId, filename: 'a.mp4' });
+    const second = makeVideo('b', { duplicateGroupId: groupId, filename: 'b.mp4' });
+    const third = makeVideo('c', { duplicateGroupId: groupId, filename: 'c.mp4' });
+    useStore.setState({
+      videos: [first, second, third],
+      duplicateGroups: [makeDuplicateGroup({
+        id: groupId,
+        videoIds: ['a', 'b', 'c'],
+        suggestedKeeperId: 'a',
+      })],
+    });
+
+    render(<DuplicateGroupsView />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Select for deletion' }));
+    expect(screen.getByRole('button', { name: /Mark selected as Delete \(2\)/i })).toBeTruthy();
+
+    const secondRow = (await screen.findByText('b.mp4')).closest('.duplicate-row');
+    fireEvent.contextMenu(secondRow!);
+    await userEvent.click(await screen.findByRole('button', { name: 'Mark as selected keeper' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Select for deletion' }));
+    await userEvent.click(screen.getByRole('button', { name: /Mark selected as Delete \(2\)/i }));
+
+    await waitFor(() => {
+      expect(useStore.getState().videos.find((video) => video.id === 'a')?.status).toBe('delete');
+      expect(useStore.getState().videos.find((video) => video.id === 'b')?.status).toBe('pending');
+      expect(useStore.getState().videos.find((video) => video.id === 'c')?.status).toBe('delete');
+    });
+  });
+
   test('clears duplicate selections when filters hide the selected videos', async () => {
     const groupId = 'group-1';
     const keeper = makeVideo('a', { duplicateGroupId: groupId, path: 'D:\\Media\\keeper.mp4' });

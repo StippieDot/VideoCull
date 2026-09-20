@@ -697,11 +697,18 @@ function DuplicateGroupsView() {
   };
 
   const selectSuggestedDuplicatesForGroup = useCallback((groupView: DuplicateGroupView) => {
+    const groupVideoIds = new Set(groupView.group.videoIds);
     const groupIds = getMarkableDuplicateIds([groupView]);
     setSelectedIds((previousIds) => {
-      const nextIds = new Set(previousIds);
+      const nextIds = new Set(
+        Array.from(previousIds).filter((id) => !groupVideoIds.has(id))
+      );
       for (const id of groupIds) nextIds.add(id);
-      return nextIds.size === previousIds.size ? previousIds : nextIds;
+      if (
+        nextIds.size === previousIds.size &&
+        Array.from(nextIds).every((id) => previousIds.has(id))
+      ) return previousIds;
+      return nextIds;
     });
   }, [getMarkableDuplicateIds]);
 
