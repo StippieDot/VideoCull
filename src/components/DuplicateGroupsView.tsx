@@ -56,6 +56,13 @@ type DuplicateGroupView = {
   bestFlags: Map<string, MetricFlags>;
 };
 
+type DuplicateGroupViewCacheEntry = {
+  videoRefs: Video[];
+  view: DuplicateGroupView;
+};
+
+type DuplicateGroupViewCache = Map<string, DuplicateGroupViewCacheEntry>;
+
 type DuplicateContextMenuState =
   | {
       kind: 'video';
@@ -160,6 +167,53 @@ function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
     flags.get(videos[i].id)!.size = allSizesEqual ? 'equal' : sizes[i] === bestSize ? 'best' : 'worse';
   }
   return flags;
+}
+
+function haveSameVideoRefs(previous: Video[], current: Video[]): boolean {
+  return previous.length === current.length
+    && previous.every((video, index) => video === current[index]);
+}
+
+function buildDuplicateGroupViews(
+  groups: DuplicateGroup[],
+  videosById: Map<string, Video>,
+  previousCache: DuplicateGroupViewCache
+) {
+  const nextCache: DuplicateGroupViewCache = new Map();
+  const views: DuplicateGroupView[] = [];
+  let recomputedCount = 0;
+
+  for (const group of groups) {
+    const groupVideos = group.videoIds
+      .map((id) => videosById.get(id))
+      .filter((video): video is Video => Boolean(video));
+    const cached = previousCache.get(group.id);
+    let view: DuplicateGroupView;
+
+    if (cached && haveSameVideoRefs(cached.videoRefs, groupVideos)) {
+      view = cached.view.group === group
+        ? cached.view
+        : { ...cached.view, group, groupSize: group.videoIds.length };
+    } else {
+      recomputedCount += 1;
+      view = {
+        group,
+        videos: groupVideos,
+        groupSize: group.videoIds.length,
+        totalSize: groupVideos.reduce((sum, video) => sum + (video.sizeBytes ?? 0), 0),
+        searchText: groupVideos
+          .map((video) => `${video.filename} ${video.path}`)
+          .join('\n')
+          .toLowerCase(),
+        bestFlags: computeBestFlags(groupVideos),
+      };
+    }
+
+    nextCache.set(group.id, { videoRefs: groupVideos, view });
+    views.push(view);
+  }
+
+  return { views, cache: nextCache, recomputedCount };
 }
 
 function parentPath(filePath: string): string {
@@ -466,6 +520,7 @@ function DuplicateGroupsView() {
   const rowContentVersionRef = useRef(0);
   const lastSelectedIdsRef = useRef(selectedIds);
   const selectionVersionRef = useRef(0);
+  const groupViewCacheRef = useRef<DuplicateGroupViewCache>(new Map());
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   const videosById = useMemo(
@@ -475,26 +530,12 @@ function DuplicateGroupsView() {
 
   const groupViews = useMemo<DuplicateGroupView[]>(() => {
     const startedAt = performance.now();
-    const built = groups.map((group) => {
-      const groupVideos = group.videoIds
-        .map((id) => videosById.get(id))
-        .filter((video): video is Video => Boolean(video));
-      return {
-        group,
-        videos: groupVideos,
-        groupSize: group.videoIds.length,
-        totalSize: groupVideos.reduce((sum, video) => sum + (video.sizeBytes ?? 0), 0),
-        searchText: groupVideos
-          .map((video) => `${video.filename} ${video.path}`)
-          .join('\n')
-          .toLowerCase(),
-        bestFlags: computeBestFlags(groupVideos),
-      };
-    });
+    const built = buildDuplicateGroupViews(groups, videosById, groupViewCacheRef.current);
+    groupViewCacheRef.current = built.cache;
     recordDevPerf('duplicates.groupViews.compute', performance.now() - startedAt, {
-      items: groups.length,
+      items: built.recomputedCount,
     });
-    return built;
+    return built.views;
   }, [groups, videosById]);
 
   const visibleGroupViews = useMemo(() => {
@@ -1096,3 +1137,7 @@ function DuplicateGroupsView() {
 }
 
 export default memo(DuplicateGroupsView);
+
+export const __test__ = {
+  buildDuplicateGroupViews,
+};

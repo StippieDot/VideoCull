@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
 import { vi } from 'vitest';
-import DuplicateGroupsView from '../../../src/components/DuplicateGroupsView';
+import DuplicateGroupsView, { __test__ } from '../../../src/components/DuplicateGroupsView';
 import useStore from '../../../src/store';
 import { resetPerfDevMock } from '../../helpers/perfDevMock';
 import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
@@ -107,6 +107,32 @@ describe('DuplicateGroupsView behavior', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  test('reuses derived data for duplicate groups whose videos did not change', () => {
+    const firstVideos = [makeVideo('a'), makeVideo('b')];
+    const secondVideos = [makeVideo('c'), makeVideo('d')];
+    const groups = [
+      makeDuplicateGroup({ id: 'group-1', videoIds: ['a', 'b'] }),
+      makeDuplicateGroup({ id: 'group-2', videoIds: ['c', 'd'] }),
+    ];
+    const initialVideos = [...firstVideos, ...secondVideos];
+    const initial = __test__.buildDuplicateGroupViews(
+      groups,
+      new Map(initialVideos.map((video) => [video.id, video])),
+      new Map()
+    );
+    const changedVideo = { ...firstVideos[0], status: 'delete' as const };
+    const updated = __test__.buildDuplicateGroupViews(
+      groups,
+      new Map([changedVideo, firstVideos[1], ...secondVideos].map((video) => [video.id, video])),
+      initial.cache
+    );
+
+    expect(initial.recomputedCount).toBe(2);
+    expect(updated.recomputedCount).toBe(1);
+    expect(updated.views[0]).not.toBe(initial.views[0]);
+    expect(updated.views[1]).toBe(initial.views[1]);
   });
 
   test('selects suggested deletions and marks the non-keeper videos for deletion', async () => {
