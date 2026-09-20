@@ -2567,7 +2567,23 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   }
 });
 
-// 6. Batch delete â†’ OS Trash first, then explicit permanent-delete fallback for failures
+// 6. Delete to the OS Trash first; permanent fallback requires renderer review.
+async function finalizeDeletedFiles(results, cacheTargets) {
+  const successfulPaths = new Set(results.filter((result) => result.success).map((result) => result.path));
+  await removeDeletedVideoCacheArtifacts(cacheTargets.filter((target) => successfulPaths.has(target.filePath)));
+  for (const filePath of successfulPaths) {
+    knownVideoPaths.delete(filePath);
+    knownVideoIdsByPath.delete(filePath);
+  }
+  const removedFolders = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successfulPaths));
+  if (removedFolders.size === 0) return results;
+  return results.map((result) => {
+    if (!result.success) return result;
+    const folder = path.resolve(path.dirname(result.path));
+    return removedFolders.has(folder) ? { ...result, removedFolder: folder } : result;
+  });
+}
+
 ipcMain.handle('batch-delete', async (_event, filePaths) => {
   const results = [];
 
@@ -2588,56 +2604,32 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
       await shell.trashItem(filePath);
       return { path: filePath, success: true, method: 'trash' };
     } catch (err) {
-      return { path: filePath, success: false, error: err.message };
+      return { path: filePath, success: false, error: err.message, method: 'trash' };
     }
   });
   results.push(...trashResults);
 
-  const failedTrash = trashResults.filter((result) => !result.success).map((result) => result.path);
-  if (failedTrash.length === 0) {
-    const successful = new Set(trashResults.filter((result) => result.success).map((result) => result.path));
-    await removeDeletedVideoCacheArtifacts(cacheTargets.filter((target) => successful.has(target.filePath)));
-    for (const filePath of successful) {
-      knownVideoPaths.delete(filePath);
-      knownVideoIdsByPath.delete(filePath);
-    }
-    const removedFolders1 = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successful));
-    if (removedFolders1.size === 0) return results;
-    return results.map((r) => {
-      if (!r.success) return r;
-      const folder = path.resolve(path.dirname(r.path));
-      return removedFolders1.has(folder) ? { ...r, removedFolder: folder } : r;
-    });
-  }
+  return finalizeDeletedFiles(results, cacheTargets);
+});
 
-  const { response } = await dialog.showMessageBox(mainWindow, {
-    type: 'warning',
-    title: 'Recycle Bin not available',
-    message: `Recycle Bin failed for ${failedTrash.length} file(s). Do you want to permanently delete them instead?`,
-    detail: 'This action cannot be undone.',
-    buttons: ['Cancel', 'Delete Permanently'],
-    defaultId: 0,
-    cancelId: 0,
-    noLink: true,
+ipcMain.handle('permanently-delete', async (_event, filePaths) => {
+  const results = [];
+  const validPaths = await filterLoadedDeletionPaths({
+    filePaths,
+    isValidLoadedPath,
+    onReject: (filePath) => {
+      log.warn(`[permanently-delete] Rejected path outside loaded directory: ${filePath}`);
+      results.push({
+        path: filePath,
+        success: false,
+        error: 'Path is outside the loaded directory scope.',
+        method: 'permanent',
+      });
+    },
   });
-
-  if (response === 0) {
-    const successfulPaths = new Set(results.filter((result) => result.success).map((result) => result.path));
-    await removeDeletedVideoCacheArtifacts(cacheTargets.filter((target) => successfulPaths.has(target.filePath)));
-    for (const filePath of successfulPaths) {
-      knownVideoPaths.delete(filePath);
-      knownVideoIdsByPath.delete(filePath);
-    }
-    const removedFolders2 = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successfulPaths));
-    if (removedFolders2.size === 0) return results;
-    return results.map((r) => {
-      if (!r.success) return r;
-      const folder = path.resolve(path.dirname(r.path));
-      return removedFolders2.has(folder) ? { ...r, removedFolder: folder } : r;
-    });
-  }
-
-  const permanentResults = await mapWithConcurrency(failedTrash, 5, async (filePath) => {
+  if (validPaths.length === 0) return results;
+  const cacheTargets = await collectDeletionCacheTargets(validPaths);
+  const permanentResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
     try {
       await fs.unlink(filePath);
       return { path: filePath, success: true, method: 'permanent' };
@@ -2646,24 +2638,8 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
     }
   });
 
-  const merged = new Map(results.map((result) => [result.path, result]));
-  for (const result of permanentResults) {
-    merged.set(result.path, result);
-  }
-  const mergedResults = Array.from(merged.values());
-  const successfulPaths = new Set(mergedResults.filter((result) => result.success).map((result) => result.path));
-  await removeDeletedVideoCacheArtifacts(cacheTargets.filter((target) => successfulPaths.has(target.filePath)));
-  for (const filePath of successfulPaths) {
-    knownVideoPaths.delete(filePath);
-    knownVideoIdsByPath.delete(filePath);
-  }
-  const removedFolders3 = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successfulPaths));
-  if (removedFolders3.size === 0) return mergedResults;
-  return mergedResults.map((r) => {
-    if (!r.success) return r;
-    const folder = path.resolve(path.dirname(r.path));
-    return removedFolders3.has(folder) ? { ...r, removedFolder: folder } : r;
-  });
+  results.push(...permanentResults);
+  return finalizeDeletedFiles(results, cacheTargets);
 });
 
 ipcMain.handle('export-report', async (_event, videos, dirPaths) => {

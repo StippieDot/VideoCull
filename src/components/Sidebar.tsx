@@ -6,6 +6,7 @@ import { beginDevInteraction } from '../perf-dev';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { formatDeleteConfirmation, formatSize, formatRelativeTime, formatRecentPath } from '../utils';
+import { deleteWithPermanentReview } from '../deletion';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
 import { PRODUCT } from '../product';
@@ -26,6 +27,7 @@ interface SidebarProps {
   onFindDuplicates: () => void;
   onOpenDuplicateSettings: () => void;
   onOpenDocumentation: () => void;
+  onRequestPermanentDelete: (filePaths: string[]) => Promise<boolean>;
   globalMute: boolean;
   globalMuteEnabled: boolean;
   globalMuteLabel: string;
@@ -701,6 +703,7 @@ export default function Sidebar({
   onFindDuplicates,
   onOpenDuplicateSettings,
   onOpenDocumentation,
+  onRequestPermanentDelete,
   globalMute,
   globalMuteEnabled,
   globalMuteLabel,
@@ -889,7 +892,12 @@ export default function Sidebar({
 
     setIsDeleting(true);
     try {
-      const results = await window.electronAPI.batchDelete(toDelete.map((v) => v.path));
+      const results = await deleteWithPermanentReview({
+        filePaths: toDelete.map((video) => video.path),
+        moveToTrash: window.electronAPI.batchDelete,
+        permanentlyDelete: window.electronAPI.permanentlyDelete,
+        confirmPermanentDelete: onRequestPermanentDelete,
+      });
       const succeeded = results.filter((r) => r.success).map((r) => r.path);
       useStore.getState().removeDeletedVideos(succeeded);
       const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;

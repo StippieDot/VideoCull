@@ -586,6 +586,7 @@ export interface ElectronAPI {
   saveCacheAtomic: (dirPath: string, videos: Video[]) => Promise<boolean>;
   clearCache: (dirPath: string) => Promise<boolean>;
   batchDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
+  permanentlyDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
   exportReport: (videos: Video[], dirPaths: string[]) => Promise<'saved' | 'cancelled' | 'error'>;
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
   setExportReportAvailable: (enabled: boolean) => void;

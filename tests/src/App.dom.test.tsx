@@ -177,6 +177,7 @@ function createElectronApiMock() {
     processMetadata: vi.fn().mockResolvedValue(true),
     generateThumbnails: vi.fn().mockResolvedValue(true),
     batchDelete: vi.fn().mockResolvedValue([]),
+    permanentlyDelete: vi.fn().mockResolvedValue([]),
     findDuplicates: vi.fn().mockResolvedValue({ status: 'ok', groups: [], videos: [], stats: { groupCount: 0, duplicateVideoCount: 0, exactGroupCount: 0, similarityGroupCount: 0 } }),
     chooseReportScope: vi.fn().mockResolvedValue('all'),
     exportReport: vi.fn().mockResolvedValue('saved'),
@@ -508,6 +509,41 @@ describe('App renderer behavior', () => {
 
     expect(window.confirm).not.toHaveBeenCalled();
     expect(electron.api.batchDelete).not.toHaveBeenCalled();
+  });
+
+  test('lists failed Recycle Bin paths before permanent deletion', async () => {
+    const deleteVideo = makeVideo('locked', {
+      path: 'D:\\Media\\private\\locked.mp4',
+      status: 'delete',
+    });
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+      videos: [deleteVideo],
+      filteredVideos: [deleteVideo],
+      stats: { total: 1, pending: 0, skipped: 0, keep: 0, delete: 1, totalSize: 100, deleteSize: 100 },
+    }, true);
+    electron.api.batchDelete.mockResolvedValue([
+      { path: deleteVideo.path, success: false, method: 'trash' },
+    ]);
+    electron.api.permanentlyDelete.mockResolvedValue([
+      { path: deleteVideo.path, success: true, method: 'permanent' },
+    ]);
+
+    render(<App />);
+    const action = electron.emitMenuAction('delete-all');
+
+    expect(await screen.findByRole('alertdialog', { name: 'Recycle Bin unavailable' })).toBeTruthy();
+    expect(screen.getByText(deleteVideo.path)).toBeTruthy();
+    expect(electron.api.permanentlyDelete).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete permanently' }));
+    await action;
+
+    expect(electron.api.permanentlyDelete).toHaveBeenCalledWith([deleteVideo.path]);
   });
 
   test('shows a scan message while old videos are still visible', async () => {

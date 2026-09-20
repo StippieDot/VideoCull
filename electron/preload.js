@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Actions
   batchDelete: (filePaths) => ipcRenderer.invoke('batch-delete', filePaths),
+  permanentlyDelete: (filePaths) => ipcRenderer.invoke('permanently-delete', filePaths),
   exportReport: (videos, dirPaths) => ipcRenderer.invoke('export-report', videos, dirPaths),
   chooseReportScope: () => ipcRenderer.invoke('choose-report-scope'),
   setExportReportAvailable: (enabled) => ipcRenderer.send('set-export-report-available', enabled),

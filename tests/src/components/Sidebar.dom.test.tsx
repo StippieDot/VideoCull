@@ -58,6 +58,7 @@ function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}) {
       onFindDuplicates={vi.fn()}
       onOpenDuplicateSettings={vi.fn()}
       onOpenDocumentation={vi.fn()}
+      onRequestPermanentDelete={vi.fn().mockResolvedValue(false)}
       globalMute={false}
       globalMuteEnabled={false}
       globalMuteLabel="M"

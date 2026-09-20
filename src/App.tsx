@@ -15,6 +15,7 @@ import StoreTransition from './components/StoreTransition';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
+import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
 import { applyDocumentTheme } from './theme';
@@ -152,6 +153,25 @@ export default function App() {
   const [settingsTabRequestId, setSettingsTabRequestId] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
+  const [permanentDeletePaths, setPermanentDeletePaths] = useState<string[]>([]);
+  const permanentDeleteResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
+
+  const requestPermanentDelete = useCallback((filePaths: string[]) => new Promise<boolean>((resolve) => {
+    permanentDeleteResolverRef.current?.(false);
+    permanentDeleteResolverRef.current = resolve;
+    setPermanentDeletePaths(filePaths);
+  }), []);
+
+  const settlePermanentDeleteReview = useCallback((confirmed: boolean) => {
+    permanentDeleteResolverRef.current?.(confirmed);
+    permanentDeleteResolverRef.current = null;
+    setPermanentDeletePaths([]);
+  }, []);
+
+  useEffect(() => () => {
+    permanentDeleteResolverRef.current?.(false);
+    permanentDeleteResolverRef.current = null;
+  }, []);
 
   const handleSidebarProfiler = useCallback((
     id: string,
@@ -801,7 +821,12 @@ export default function App() {
             removeEmptyFoldersAfterDelete: state.settings.removeEmptyFoldersAfterDelete,
           }));
           if (confirmed) {
-            const results = await window.electronAPI.batchDelete(toDelete.map((v) => v.path));
+            const results = await deleteWithPermanentReview({
+              filePaths: toDelete.map((video) => video.path),
+              moveToTrash: window.electronAPI.batchDelete,
+              permanentlyDelete: window.electronAPI.permanentlyDelete,
+              confirmPermanentDelete: requestPermanentDelete,
+            });
             const deletedPaths = results.filter((r) => r.success).map((r) => r.path);
             state.removeDeletedVideos(deletedPaths);
             const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;
@@ -911,7 +936,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', blurPointerActivatedButton, true);
     };
-  }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, toggleGlobalMute, toggleTheme, handleExportReport]);
+  }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, requestPermanentDelete, toggleGlobalMute, toggleTheme, handleExportReport]);
 
   useEffect(() => {
     window.electronAPI?.setExportReportAvailable(Boolean(directory && videoCount > 0 && !isScanning));
@@ -1112,6 +1137,7 @@ export default function App() {
             onCloseSession={() => void handleCloseSession()}
             onFindDuplicates={() => void handleFindDuplicates()}
             onOpenDuplicateSettings={() => openSettings('duplicates')}
+            onRequestPermanentDelete={requestPermanentDelete}
             globalMute={globalMute}
             globalMuteEnabled={globalMuteEnabled && !isPrivate}
             globalMuteLabel={formatKeybind(globalMuteKeybind)}
@@ -1214,6 +1240,36 @@ export default function App() {
               <button className="btn btn-primary" autoFocus onClick={handleDropModalOpenNew}>Open as new</button>
               <button className="btn btn-ghost" onClick={handleDropModalAddSession}>Add to session</button>
               <button className="btn btn-ghost" onClick={() => setDropModalPath(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {permanentDeletePaths.length > 0 && (
+        <div className="drop-modal-backdrop" onClick={() => settlePermanentDeleteReview(false)}>
+          <div
+            className="drop-modal permanent-delete-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="permanent-delete-title"
+            aria-describedby="permanent-delete-warning"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') settlePermanentDeleteReview(false);
+            }}
+          >
+            <p className="drop-modal-title" id="permanent-delete-title">Recycle Bin unavailable</p>
+            <p className="permanent-delete-warning" id="permanent-delete-warning">
+              {permanentDeletePaths.length} {permanentDeletePaths.length === 1 ? 'file could' : 'files could'} not be moved to the Recycle Bin. Review every path before permanently deleting. This cannot be undone.
+            </p>
+            <ul className="permanent-delete-paths" aria-label="Files to permanently delete">
+              {permanentDeletePaths.map((filePath) => (
+                <li key={filePath} title={filePath}>{filePath}</li>
+              ))}
+            </ul>
+            <div className="drop-modal-actions">
+              <button className="btn btn-ghost" autoFocus onClick={() => settlePermanentDeleteReview(false)}>Cancel</button>
+              <button className="btn btn-danger" onClick={() => settlePermanentDeleteReview(true)}>Delete permanently</button>
             </div>
           </div>
         </div>
