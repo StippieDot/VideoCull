@@ -114,6 +114,30 @@ test('closeDbForFolder releases one cached connection and preserves its data', a
   }
 });
 
+test('database leases prevent overlapping operations from closing a shared connection', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+  const cacheOptions = { mode: 'centralised', centralCachePath: tempRoot };
+
+  try {
+    const firstLease = cache.acquireDb(folderPath, cacheOptions);
+    const secondLease = cache.acquireDb(folderPath, cacheOptions);
+    assert.equal(firstLease, db);
+    assert.equal(secondLease, db);
+
+    assert.equal(cache.closeDbForFolder(folderPath, cacheOptions), false);
+    assert.equal(db.open, true);
+    assert.equal(cache.releaseDb(folderPath, cacheOptions), false);
+    assert.equal(db.open, true);
+    assert.equal(cache.releaseDb(folderPath, cacheOptions), true);
+    assert.equal(db.open, false);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('loadPHashRows and loadGraySampleRows batch rows and keep only complete samples', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;

@@ -346,6 +346,7 @@ const FINGERPRINT_SCHEMA_COLUMNS = {
 // ── DB lifecycle ──────────────────────────────────────────────────────────
 
 const _dbByPath = new Map();
+const _dbLeaseCountByPath = new Map();
 
 /**
  * Open (or reuse) the SQLite database for a folder.
@@ -389,21 +390,51 @@ function ensureFingerprintSchemaColumns(db) {
   }
 }
 
-function closeDbPath(dbPath) {
+function closeDbPath(dbPath, options = {}) {
+  if (!options.force && (_dbLeaseCountByPath.get(dbPath) ?? 0) > 0) return false;
+  if (options.force) _dbLeaseCountByPath.delete(dbPath);
   const db = _dbByPath.get(dbPath);
-  if (!db) return;
+  if (!db) return false;
   try { db.close(); } catch { /* ignore */ }
   _dbByPath.delete(dbPath);
+  return true;
 }
 
-function closeDbForFolder(folderPath, cacheOptions) {
-  closeDbPath(resolveCachePath(folderPath, cacheOptions));
+function closeDbForFolder(folderPath, cacheOptions, options = {}) {
+  return closeDbPath(resolveCachePath(folderPath, cacheOptions), options);
+}
+
+function acquireDb(folderPath, cacheOptions) {
+  const dbPath = resolveCachePath(folderPath, cacheOptions);
+  _dbLeaseCountByPath.set(dbPath, (_dbLeaseCountByPath.get(dbPath) ?? 0) + 1);
+  try {
+    return openDb(folderPath, cacheOptions);
+  } catch (err) {
+    const remaining = (_dbLeaseCountByPath.get(dbPath) ?? 1) - 1;
+    if (remaining > 0) _dbLeaseCountByPath.set(dbPath, remaining);
+    else _dbLeaseCountByPath.delete(dbPath);
+    throw err;
+  }
+}
+
+function releaseDb(folderPath, cacheOptions) {
+  const dbPath = resolveCachePath(folderPath, cacheOptions);
+  const leaseCount = _dbLeaseCountByPath.get(dbPath) ?? 0;
+  if (leaseCount === 0) return false;
+  const remaining = leaseCount - 1;
+  if (remaining > 0) {
+    _dbLeaseCountByPath.set(dbPath, remaining);
+    return false;
+  }
+  _dbLeaseCountByPath.delete(dbPath);
+  return closeDbPath(dbPath);
 }
 
 /** Close all open DB connections. Call on app quit or before broad migrations. */
 function closeDb() {
+  _dbLeaseCountByPath.clear();
   for (const dbPath of Array.from(_dbByPath.keys())) {
-    closeDbPath(dbPath);
+    closeDbPath(dbPath, { force: true });
   }
 }
 
@@ -1179,7 +1210,8 @@ function deleteDb(folderPath, cacheOptions, options = {}) {
   }
 
   const dbPath = resolveCachePath(folderPath, cacheOptions);
-  closeDbPath(dbPath);
+  _dbLeaseCountByPath.delete(dbPath);
+  closeDbPath(dbPath, { force: true });
   try {
     fsSync.unlinkSync(dbPath);
   } catch {
@@ -1197,6 +1229,8 @@ module.exports = {
   resolveCachePath,
   migrateLegacyCacheKeyIfNeeded,
   openDb,
+  acquireDb,
+  releaseDb,
   closeDbForFolder,
   closeDb,
   loadCacheVideos,
