@@ -1,4 +1,4 @@
-const { app, dialog } = require('electron');
+const { app, crashReporter, dialog } = require('electron');
 const { configureAppProfile } = require('./profile-bootstrap');
 const { acquireEditionGuard, closeEditionGuard } = require('./edition-guard');
 const { ensureProfileStorageCompatibility } = require('./storage-compatibility');
@@ -41,8 +41,17 @@ async function bootstrap() {
     return;
   }
 
+  crashReporter.start({
+    productName: 'VideoCull',
+    uploadToServer: false,
+    compress: false,
+  });
+  const crashDumpsPath = app.getPath('crashDumps');
+  console.info(`[crash-reporter] Local crash dumps: ${crashDumpsPath}`);
+
   globalThis.__VIDEOCULL_EDITION_GUARD__ = editionGuard;
   globalThis.__VIDEOCULL_PROFILE_BOOTSTRAP__ = profileBootstrap;
+  globalThis.__VIDEOCULL_CRASH_DUMPS_PATH__ = crashDumpsPath;
   require('./main');
 }
 

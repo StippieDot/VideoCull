@@ -319,7 +319,10 @@ function createWindow(initialTheme = 'dark') {
     }
   });
   mainWindow.webContents.on('render-process-gone', async (_event, details) => {
-    log.error('[renderer-crash] Render process gone', details);
+    log.error('[renderer-crash] Render process gone', {
+      ...details,
+      crashDumpsPath: globalThis.__VIDEOCULL_CRASH_DUMPS_PATH__ ?? app.getPath('crashDumps'),
+    });
     try {
       log.error('[renderer-crash] idle diagnostics', await collectIdleDiagnostics());
     } catch (err) {

@@ -57,13 +57,33 @@ async function executeBootstrap({ profileError = null, storageError = null, main
   const source = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'bootstrap.js'), 'utf8');
   const calls = [];
   const errors = [];
-  const app = { isPackaged: false, exit: () => calls.push('exit') };
+  const app = {
+    isPackaged: false,
+    exit: () => calls.push('exit'),
+    getPath: (name) => {
+      assert.equal(name, 'crashDumps');
+      return 'C:\\AppData\\VideoCull\\Crashpad';
+    },
+  };
   const context = {
     globalThis: {},
     process: { platform: 'win32', env: {} },
-    console: { error: (...args) => errors.push(args) },
+    console: {
+      error: (...args) => errors.push(args),
+      info: () => {},
+    },
     require(specifier) {
-      if (specifier === 'electron') return { app, dialog: { showErrorBox: () => calls.push('show-error') } };
+      if (specifier === 'electron') {
+        return {
+          app,
+          crashReporter: {
+            start(options) {
+              calls.push(['crash-reporter', options]);
+            },
+          },
+          dialog: { showErrorBox: () => calls.push('show-error') },
+        };
+      }
       if (specifier === './edition-guard') {
         return {
           acquireEditionGuard: async () => null,
@@ -111,13 +131,23 @@ afterEach(() => {
 
 test('entrypoint configures the profile before importing the application', async () => {
   const { calls, context } = await executeBootstrap();
-  assert.deepEqual(calls, ['configure', 'compatibility', 'main']);
+  assert.equal(calls[0], 'configure');
+  assert.equal(calls[1], 'compatibility');
+  assert.equal(calls[2][0], 'crash-reporter');
+  assert.equal(calls[2][1].productName, 'VideoCull');
+  assert.equal(calls[2][1].uploadToServer, false);
+  assert.equal(calls[2][1].compress, false);
+  assert.equal(calls[3], 'main');
   assert.equal(context.globalThis.__VIDEOCULL_PROFILE_BOOTSTRAP__.selectedPath, 'C:\\AppData\\VideoCull');
+  assert.equal(context.globalThis.__VIDEOCULL_CRASH_DUMPS_PATH__, 'C:\\AppData\\VideoCull\\Crashpad');
 });
 
 test('application import errors are reported by the bootstrap boundary', async () => {
   const { calls, errors } = await executeBootstrap({ mainError: new Error('main import failed') });
-  assert.deepEqual(calls, ['configure', 'compatibility', 'main', 'show-error', 'exit']);
+  assert.equal(calls[0], 'configure');
+  assert.equal(calls[1], 'compatibility');
+  assert.equal(calls[2][0], 'crash-reporter');
+  assert.deepEqual(calls.slice(3), ['main', 'show-error', 'exit']);
   assert.match(errors[0][0], /bootstrap/);
 });
 
