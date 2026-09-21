@@ -27,7 +27,12 @@ Demo footage shown in these screenshots includes [Blender Open Movies](https://s
 
 ## Download
 
-[![Download from Microsoft Store](https://img.shields.io/badge/Download_from-Microsoft_Store-0078D4?style=for-the-badge&logo=microsoft)](https://apps.microsoft.com/detail/9NG9Z0CL73PC)
+<a href="https://apps.microsoft.com/detail/9NG9Z0CL73PC?referrer=appbadge&amp;cid=videocull_github&amp;mode=full" target="_blank" rel="noopener noreferrer">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://get.microsoft.com/images/en-us%20light.svg" />
+    <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get VideoCull from Microsoft" width="200" />
+  </picture>
+</a>
 
 The Microsoft Store edition is installed and updated by Microsoft Store.
 
