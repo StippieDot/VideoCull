@@ -23,12 +23,25 @@ const {
   listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
   normalizeReportRoots,
+  normalizeReviewStateChanges,
   removeEmptyDeletedVideoFolders,
   summarizeMediaProbeError,
   thumbAbsolute,
   thumbRelative,
   videoForDb,
 } = require('../../electron/main-helpers');
+
+test('review state validation accepts only bounded allowlisted fields', () => {
+  assert.deepEqual(normalizeReviewStateChanges({ status: 'keep', rating: 5, favorite: true, bookmarks: [1.2] }), {
+    status: 'keep',
+    rating: 5,
+    favorite: true,
+    bookmarks: [1.2],
+  });
+  assert.equal(normalizeReviewStateChanges({ status: 'invalid' }), null);
+  assert.equal(normalizeReviewStateChanges({ status: 'keep', path: 'C:\\other.mp4' }), null);
+  assert.equal(normalizeReviewStateChanges({ bookmarks: [-1] }), null);
+});
 
 describe('external URL allowlist', () => {
   const exactUrls = new Set(['https://github.com/StippieDot/VideoCull']);

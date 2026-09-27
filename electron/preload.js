@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Cache & Config
   saveCache: (dirPath, videos) => ipcRenderer.invoke('save-cache', dirPath, videos),
   saveCacheAtomic: (dirPath, videos) => ipcRenderer.invoke('save-cache-atomic', dirPath, videos),
+  saveReviewState: (dirPath, updates) => ipcRenderer.invoke('save-review-state', dirPath, updates),
   clearCache: (dirPath) => ipcRenderer.invoke('clear-cache', dirPath),
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),

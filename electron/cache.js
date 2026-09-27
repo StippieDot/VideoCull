@@ -732,6 +732,42 @@ function updateVideoMetadataBatch(db, updates) {
   writeAll(updates);
 }
 
+function updateVideoReviewStateBatch(db, updates) {
+  if (!Array.isArray(updates) || updates.length === 0) return;
+
+  const allowedColumns = {
+    status: 'status',
+    rating: 'rating',
+    favorite: 'favorite',
+    bookmarks: 'bookmarks',
+  };
+  const statements = new Map();
+  const now = Date.now();
+  const writeAll = db.transaction((batch) => {
+    for (const item of batch) {
+      if (!item?.id || !item.changes) continue;
+      const fields = Object.keys(item.changes).filter((field) => allowedColumns[field]).sort();
+      if (fields.length === 0) continue;
+      const key = fields.join(',');
+      let statement = statements.get(key);
+      if (!statement) {
+        const assignments = fields.map((field) => `${allowedColumns[field]} = ?`).join(', ');
+        statement = db.prepare(`UPDATE videos SET ${assignments}, updated_at = ? WHERE id = ?`);
+        statements.set(key, statement);
+      }
+      const values = fields.map((field) => {
+        const value = item.changes[field];
+        if (field === 'favorite') return value ? 1 : 0;
+        if (field === 'bookmarks') return JSON.stringify(value);
+        return value;
+      });
+      statement.run(...values, now, item.id);
+    }
+  });
+
+  writeAll(updates);
+}
+
 function updateVideoThumbnailMetadataBatch(db, updates) {
   if (!Array.isArray(updates) || updates.length === 0) return;
 
@@ -1285,6 +1321,7 @@ module.exports = {
   loadRecentMetadataFailureIds,
   updateVideoMetadata,
   updateVideoMetadataBatch,
+  updateVideoReviewStateBatch,
   updateVideoThumbnailMetadataBatch,
   loadPHashRows,
   loadGraySamples,

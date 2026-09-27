@@ -561,6 +561,39 @@ test('updateVideoThumbnailMetadataBatch changes only generated media fields', as
   }
 });
 
+test('updateVideoReviewStateBatch changes only requested review fields', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    cache.saveCache(db, [buildCachedVideo('a', path.join(folderPath, 'a.mp4'), {
+      status: 'pending',
+      rating: 1,
+      favorite: false,
+      bookmarks: [2],
+      durationSecs: 15,
+    })]);
+
+    cache.updateVideoReviewStateBatch(db, [
+      { id: 'a', changes: { status: 'keep', favorite: true } },
+      { id: 'a', changes: { bookmarks: [2, 4.5] } },
+    ]);
+
+    const video = db.prepare('SELECT status, rating, favorite, bookmarks, duration_secs FROM videos WHERE id = ?').get('a');
+    assert.deepEqual(video, {
+      status: 'keep',
+      rating: 1,
+      favorite: 1,
+      bookmarks: '[2,4.5]',
+      duration_secs: 15,
+    });
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('markMetadataFailuresBatch records failure state for multiple videos', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;

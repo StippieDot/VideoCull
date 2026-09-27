@@ -164,6 +164,33 @@ async function filterValidCacheSaveVideos({
   return safeVideos;
 }
 
+function normalizeReviewStateChanges(changes) {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return null;
+  const allowed = new Set(['status', 'rating', 'favorite', 'bookmarks']);
+  const keys = Object.keys(changes);
+  if (keys.length === 0 || keys.some((key) => !allowed.has(key))) return null;
+
+  const normalized = {};
+  if (Object.hasOwn(changes, 'status')) {
+    if (!['pending', 'keep', 'delete', 'skipped'].includes(changes.status)) return null;
+    normalized.status = changes.status;
+  }
+  if (Object.hasOwn(changes, 'rating')) {
+    if (!Number.isInteger(changes.rating) || changes.rating < 0 || changes.rating > 5) return null;
+    normalized.rating = changes.rating;
+  }
+  if (Object.hasOwn(changes, 'favorite')) {
+    if (typeof changes.favorite !== 'boolean') return null;
+    normalized.favorite = changes.favorite;
+  }
+  if (Object.hasOwn(changes, 'bookmarks')) {
+    if (!Array.isArray(changes.bookmarks) || changes.bookmarks.length > 10000) return null;
+    if (changes.bookmarks.some((value) => !Number.isFinite(value) || value < 0)) return null;
+    normalized.bookmarks = [...changes.bookmarks];
+  }
+  return normalized;
+}
+
 async function isKnownLoadedFilePath({
   filePath,
   knownVideoPaths,
@@ -395,6 +422,7 @@ module.exports = {
   listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
   normalizeReportRoots,
+  normalizeReviewStateChanges,
   removeEmptyDeletedVideoFolders,
   summarizeMediaProbeError,
   thumbAbsolute,

@@ -6,6 +6,7 @@ type ElectronApiMock = {
   saveConfig: ReturnType<typeof vi.fn>;
   saveCache: ReturnType<typeof vi.fn>;
   saveCacheAtomic: ReturnType<typeof vi.fn>;
+  saveReviewState: ReturnType<typeof vi.fn>;
   getConfig: ReturnType<typeof vi.fn>;
   validateDroppedPath: ReturnType<typeof vi.fn>;
 };
@@ -21,6 +22,7 @@ function installElectronApiMock(): ElectronApiMock {
     saveConfig: vi.fn().mockResolvedValue(true),
     saveCache: vi.fn().mockResolvedValue(true),
     saveCacheAtomic: vi.fn().mockResolvedValue(true),
+    saveReviewState: vi.fn().mockResolvedValue(true),
     getConfig: vi.fn().mockResolvedValue(null),
     validateDroppedPath: vi.fn(),
   };
@@ -212,9 +214,9 @@ describe('useStore public behavior', () => {
     expect(state.videos.find((video) => video.id === 'a')?.status).toBe('delete');
     expect(state.stats.delete).toBe(1);
     expect(state.undoStack).toHaveLength(1);
-    expect(electronAPI.saveCache).toHaveBeenCalledWith(
+    expect(electronAPI.saveReviewState).toHaveBeenCalledWith(
       'D:\\Media',
-      expect.arrayContaining([expect.objectContaining({ id: 'a', status: 'delete' })])
+      [{ id: 'a', path: 'D:\\Media\\a.mp4', changes: { status: 'delete' } }]
     );
 
     useStore.getState().undo();

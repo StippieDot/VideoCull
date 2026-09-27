@@ -58,6 +58,7 @@ const {
   listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
   normalizeReportRoots,
+  normalizeReviewStateChanges,
   removeEmptyDeletedVideoFolders,
   summarizeMediaProbeError,
   thumbAbsolute,
@@ -1320,6 +1321,25 @@ function mergeScannedVideoWithCache(video, cached) {
     fps: cached.fps ?? null,
     compatible: detectCompatibility(cached.containerFormat ?? null, cached.videoCodec ?? null, video.path),
   };
+}
+
+async function saveReviewStateByParentFolder(updates, cacheOptions) {
+  for (const [folderPath, folderUpdates] of groupVideosByFolder(updates)) {
+    await prepareCacheFolder(folderPath, cacheOptions);
+    const write = () => runFolderCacheOperation(
+      folderPath,
+      cacheOptions,
+      (db) => cache.updateVideoReviewStateBatch(db, folderUpdates),
+      { priority: 'interactive' },
+    );
+    try {
+      await write();
+    } catch (err) {
+      if (!isSqliteCorruptionError(err)) throw err;
+      await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
+      await write();
+    }
+  }
 }
 
 async function removeStaleThumbnailDirectories(cachePaths, staleVideos) {
@@ -2681,6 +2701,28 @@ ipcMain.handle('save-cache', async (event, dirPath, videos) => {
     return true;
   } catch (err) {
     log.error('[save-cache] Error saving cache:', err);
+    return false;
+  }
+});
+
+ipcMain.handle('save-review-state', async (_event, dirPath, updates) => {
+  if (!dirPath || typeof dirPath !== 'string') return false;
+  try {
+    const safeUpdates = await validateCacheSavePayload(dirPath, updates);
+    const normalizedUpdates = safeUpdates.flatMap((update) => {
+      const changes = normalizeReviewStateChanges(update.changes);
+      if (!changes) {
+        log.warn(`[save-review-state] Rejected invalid changes for video ${update.id}`);
+        return [];
+      }
+      return [{ id: update.id, path: update.path, changes }];
+    });
+    if (normalizedUpdates.length === 0) return false;
+    const cacheOptions = await getCacheOptions();
+    await saveReviewStateByParentFolder(normalizedUpdates, cacheOptions);
+    return true;
+  } catch (err) {
+    log.error('[save-review-state] Error saving cache:', err);
     return false;
   }
 });
