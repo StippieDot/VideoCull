@@ -67,3 +67,23 @@ test('continues queued work after a failed operation and still releases the key'
   assert.deepEqual(events, ['failed', 'recovered']);
   assert.equal(queue.pendingCount(), 0);
 });
+
+test('runs interactive work before queued background work for the same key', async () => {
+  const queue = createKeyedOperationQueue();
+  const events = [];
+  let releaseFirst;
+  const gate = new Promise((resolve) => { releaseFirst = resolve; });
+
+  const first = queue.run('folder-a', async () => {
+    events.push('running');
+    await gate;
+  }, 'background');
+  const background = queue.run('folder-a', () => events.push('background'), 'background');
+  const interactive = queue.run('folder-a', () => events.push('interactive'), 'interactive');
+
+  await new Promise((resolve) => setImmediate(resolve));
+  releaseFirst();
+  await Promise.all([first, background, interactive]);
+
+  assert.deepEqual(events, ['running', 'interactive', 'background']);
+});

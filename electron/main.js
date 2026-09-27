@@ -1101,13 +1101,13 @@ function logSlowCacheFolderDiagnostics(diagnostics) {
   });
 }
 
-async function acquireCacheDbWithRecovery(folderPath, cacheOptions) {
+async function acquireCacheDbWithRecovery(folderPath, cacheOptions, options = {}) {
   try {
-    return await cache.acquireDb(folderPath, cacheOptions);
+    return await cache.acquireDb(folderPath, cacheOptions, options);
   } catch (err) {
     if (!isSqliteCorruptionError(err)) throw err;
     await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
-    return cache.acquireDb(folderPath, cacheOptions);
+    return cache.acquireDb(folderPath, cacheOptions, options);
   }
 }
 
@@ -1117,16 +1117,16 @@ processingPause.subscribe((state) => {
 
 const cacheOperationQueue = createKeyedOperationQueue();
 
-function runFolderCacheOperation(folderPath, cacheOptions, operation) {
+function runFolderCacheOperation(folderPath, cacheOptions, operation, { priority = 'foreground' } = {}) {
   const dbPath = cache.resolveCachePath(folderPath, cacheOptions);
   return cacheOperationQueue.run(dbPath, async () => {
-    const db = await acquireCacheDbWithRecovery(folderPath, cacheOptions);
+    const db = await acquireCacheDbWithRecovery(folderPath, cacheOptions, { priority });
     try {
       return await operation(db);
     } finally {
       cache.releaseDb(folderPath, cacheOptions);
     }
-  });
+  }, priority);
 }
 
 function getVideoFolderPath(video) {
@@ -2120,19 +2120,26 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
   const pendingMetadataFailures = new Map();
   const metadataFlushPromisesByFolder = new Map();
   let metadataFlushAllPromise = null;
-  const METADATA_DB_BATCH_SIZE = 16;
+  const METADATA_DB_BATCH_SIZE = 64;
 
   const appendPendingFolderWrite = (map, folderPath, entry) => {
-    const queue = map.get(folderPath) ?? [];
-    queue.push(entry);
+    const queue = map.get(folderPath) ?? new Map();
+    queue.set(entry.videoId, entry);
     map.set(folderPath, queue);
+  };
+
+  const deletePendingFolderWrite = (map, folderPath, videoId) => {
+    const queue = map.get(folderPath);
+    if (!queue) return;
+    queue.delete(videoId);
+    if (queue.size === 0) map.delete(folderPath);
   };
 
   const takePendingFolderWrites = (map, folderPath) => {
     const queue = map.get(folderPath);
-    if (!queue || queue.length === 0) return [];
+    if (!queue || queue.size === 0) return [];
     map.delete(folderPath);
-    return queue;
+    return Array.from(queue.values());
   };
 
   const writeMetadataFolderBatch = async (folderPath, successes, failures) => {
@@ -2169,11 +2176,11 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
     };
 
     try {
-      await runFolderCacheOperation(folderPath, cacheOptions, applyWithFallback);
+        await runFolderCacheOperation(folderPath, cacheOptions, applyWithFallback, { priority: 'background' });
     } catch (err) {
       if (!isSqliteCorruptionError(err)) throw err;
       await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
-      await runFolderCacheOperation(folderPath, cacheOptions, applyWithFallback);
+        await runFolderCacheOperation(folderPath, cacheOptions, applyWithFallback, { priority: 'background' });
     }
   };
 
@@ -2234,7 +2241,7 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
     }
   };
 
-  const batchInterval = setInterval(flushBatch, 1000);
+  const batchInterval = setInterval(flushBatch, 250);
   activeBatchIntervals.add(batchInterval);
   let saved = 0;
   let failed = 0;
@@ -2266,8 +2273,9 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
       };
       const videoFolder = getVideoFolderPath(video);
       saved++;
+      deletePendingFolderWrite(pendingMetadataFailures, videoFolder, videoId);
       appendPendingFolderWrite(pendingMetadataSuccesses, videoFolder, metadataUpdate);
-      if ((pendingMetadataSuccesses.get(videoFolder)?.length ?? 0) >= METADATA_DB_BATCH_SIZE) {
+      if ((pendingMetadataSuccesses.get(videoFolder)?.size ?? 0) >= METADATA_DB_BATCH_SIZE) {
         await flushMetadataFolderWrites(videoFolder);
       }
       readyBatch.push(metadataUpdate);
@@ -2277,8 +2285,9 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
       const reason = summarizeMediaProbeError(err);
       const videoFolder = getVideoFolderPath(video);
       failed++;
+      deletePendingFolderWrite(pendingMetadataSuccesses, videoFolder, videoId);
       appendPendingFolderWrite(pendingMetadataFailures, videoFolder, { videoId, reason });
-      if ((pendingMetadataFailures.get(videoFolder)?.length ?? 0) >= METADATA_DB_BATCH_SIZE) {
+      if ((pendingMetadataFailures.get(videoFolder)?.size ?? 0) >= METADATA_DB_BATCH_SIZE) {
         await flushMetadataFolderWrites(videoFolder);
       }
       if (failureExamples.length < 8) {
@@ -2340,11 +2349,13 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
   // Thumbnails are written to each video's owning cache directory, not the scan root.
   const cacheOptions = await getCacheOptions();
   const thumbRootByFolder = new Map();
+  const cacheRootByFolder = new Map();
   for (const video of safeVideos) {
     const videoFolder = getVideoFolderPath(video);
     if (thumbRootByFolder.has(videoFolder)) continue;
     const videoCachePaths = await prepareCacheFolder(videoFolder, cacheOptions);
     thumbRootByFolder.set(videoFolder, videoCachePaths.thumbRootDir);
+    cacheRootByFolder.set(videoFolder, videoCachePaths.cacheRootDir);
   }
 
   let config = {};
@@ -2378,8 +2389,74 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
 
   let readyBatch = [];
   let lastProgress = null;
+  const videoById = new Map(safeVideos.map((video) => [video.id, video]));
+  const pendingThumbnailWrites = new Map();
+  const thumbnailFlushPromisesByFolder = new Map();
+  let thumbnailFlushAllPromise = null;
+  let thumbnailPersistenceFailed = false;
+  const THUMBNAIL_DB_BATCH_SIZE = 64;
+
+  const takePendingThumbnailWrites = (folderPath) => {
+    const queued = pendingThumbnailWrites.get(folderPath);
+    if (!queued || queued.size === 0) return [];
+    pendingThumbnailWrites.delete(folderPath);
+    return Array.from(queued.values());
+  };
+
+  const writeThumbnailFolderBatch = async (folderPath, updates) => {
+    if (updates.length === 0) return;
+    const apply = (db) => cache.updateVideoThumbnailMetadataBatch(db, updates);
+    try {
+      await runFolderCacheOperation(folderPath, cacheOptions, apply, { priority: 'background' });
+    } catch (err) {
+      if (!isSqliteCorruptionError(err)) throw err;
+      await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
+      await runFolderCacheOperation(folderPath, cacheOptions, apply, { priority: 'background' });
+    }
+  };
+
+  const flushThumbnailFolderWrites = (folderPath) => {
+    const queuedPromise = thumbnailFlushPromisesByFolder.get(folderPath);
+    if (queuedPromise) return queuedPromise;
+    const promise = (async () => {
+      while (true) {
+        const updates = takePendingThumbnailWrites(folderPath);
+        if (updates.length === 0) return;
+        await writeThumbnailFolderBatch(folderPath, updates);
+      }
+    })().catch((err) => {
+      thumbnailPersistenceFailed = true;
+      log.error(`[generate-thumbnails] Failed to persist thumbnail batch for ${folderPath}:`, err);
+    }).finally(() => {
+      thumbnailFlushPromisesByFolder.delete(folderPath);
+    });
+    thumbnailFlushPromisesByFolder.set(folderPath, promise);
+    return promise;
+  };
+
+  const flushAllThumbnailWrites = () => {
+    if (thumbnailFlushAllPromise) return thumbnailFlushAllPromise;
+    thumbnailFlushAllPromise = (async () => {
+      while (true) {
+        const folderPaths = new Set([
+          ...pendingThumbnailWrites.keys(),
+          ...thumbnailFlushPromisesByFolder.keys(),
+        ]);
+        if (folderPaths.size === 0) return;
+        await mapWithConcurrency(
+          Array.from(folderPaths),
+          METADATA_FLUSH_CONCURRENCY,
+          (folderPath) => flushThumbnailFolderWrites(folderPath),
+        );
+      }
+    })().finally(() => {
+      thumbnailFlushAllPromise = null;
+    });
+    return thumbnailFlushAllPromise;
+  };
   
   const flushBatch = () => {
+    void flushAllThumbnailWrites();
     if (!canSendToRenderer()) return;
     if (readyBatch.length > 0) {
       const batch = readyBatch;
@@ -2393,13 +2470,37 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
     }
   };
 
-  const batchInterval = setInterval(flushBatch, 1000);
+  const batchInterval = setInterval(flushBatch, 250);
   activeBatchIntervals.add(batchInterval);
 
   try {
     await processVideos(needThumbs, (video) => thumbRootByFolder.get(getVideoFolderPath(video)), config, (progress) => {
       lastProgress = progress;
     }, (videoId, thumbnails, durationSecs, creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps) => {
+      const video = videoById.get(videoId);
+      if (video) {
+        const folderPath = getVideoFolderPath(video);
+        const cacheRoot = cacheRootByFolder.get(folderPath);
+        const folderUpdates = pendingThumbnailWrites.get(folderPath) ?? new Map();
+        folderUpdates.set(videoId, {
+          videoId,
+          thumbnails: thumbnails.map((thumb) => thumbRelative(thumb, cacheRoot)),
+          durationSecs,
+          metadataDate: creationTime,
+          videoCodec,
+          audioCodec,
+          videoBitrate,
+          audioBitrate,
+          totalBitrate,
+          containerFormat,
+          width,
+          height,
+          fps,
+          compatible: detectCompatibility(containerFormat, videoCodec, video.path),
+        });
+        pendingThumbnailWrites.set(folderPath, folderUpdates);
+        if (folderUpdates.size >= THUMBNAIL_DB_BATCH_SIZE) void flushThumbnailFolderWrites(folderPath);
+      }
       readyBatch.push({
         videoId,
         thumbnails,
@@ -2419,10 +2520,19 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
   } finally {
     clearInterval(batchInterval);
     activeBatchIntervals.delete(batchInterval);
+    await flushAllThumbnailWrites();
     if (!isQuitting) flushBatch();
   }
 
-  return true;
+  if (thumbnailPersistenceFailed) {
+    sendToRenderer('app-notification', {
+      title: 'Some thumbnails were not saved',
+      detail: 'Generated thumbnails remain visible, but some may need to be regenerated after restarting.',
+      kind: 'warning',
+      dedupeKey: 'thumbnail-persistence-failed',
+    });
+  }
+  return !thumbnailPersistenceFailed;
 });
 
 ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {

@@ -729,6 +729,59 @@ function updateVideoMetadataBatch(db, updates) {
   writeAll(updates);
 }
 
+function updateVideoThumbnailMetadataBatch(db, updates) {
+  if (!Array.isArray(updates) || updates.length === 0) return;
+
+  const now = Date.now();
+  const updateVideo = db.prepare(`
+    UPDATE videos SET
+      metadata_date = COALESCE(?, metadata_date),
+      duration_secs = COALESCE(?, duration_secs),
+      fps = COALESCE(?, fps),
+      video_codec = COALESCE(?, video_codec),
+      audio_codec = COALESCE(?, audio_codec),
+      video_bitrate = COALESCE(?, video_bitrate),
+      audio_bitrate = COALESCE(?, audio_bitrate),
+      total_bitrate = COALESCE(?, total_bitrate),
+      container_format = COALESCE(?, container_format),
+      width = COALESCE(?, width),
+      height = COALESCE(?, height),
+      compatible = COALESCE(?, compatible),
+      updated_at = ?
+    WHERE id = ?
+  `);
+  const selectThumbs = db.prepare('SELECT file_path FROM thumbnails WHERE video_id = ? ORDER BY idx');
+  const deleteThumbs = db.prepare('DELETE FROM thumbnails WHERE video_id = ?');
+  const insertThumb = db.prepare('INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)');
+
+  const writeAll = db.transaction((batch) => {
+    for (const item of batch) {
+      if (!item?.videoId) continue;
+      updateVideo.run(
+        item.metadataDate ?? null,
+        item.durationSecs ?? null,
+        item.fps ?? null,
+        item.videoCodec ?? null,
+        item.audioCodec ?? null,
+        item.videoBitrate ?? null,
+        item.audioBitrate ?? null,
+        item.totalBitrate ?? null,
+        item.containerFormat ?? null,
+        item.width ?? null,
+        item.height ?? null,
+        item.compatible == null ? null : (item.compatible ? 1 : 0),
+        now,
+        item.videoId,
+      );
+      if (Array.isArray(item.thumbnails)) {
+        writeThumbnailRowsIfChanged(selectThumbs, deleteThumbs, insertThumb, item.videoId, item.thumbnails);
+      }
+    }
+  });
+
+  writeAll(updates);
+}
+
 /**
  * Chunked upsert with optional progress callback.
  * Use for bulk operations (initial scan, JSON migration) where IPC progress
@@ -1229,6 +1282,7 @@ module.exports = {
   loadRecentMetadataFailureIds,
   updateVideoMetadata,
   updateVideoMetadataBatch,
+  updateVideoThumbnailMetadataBatch,
   loadPHashRows,
   loadGraySamples,
   loadGraySampleRows,

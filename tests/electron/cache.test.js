@@ -528,6 +528,39 @@ test('updateVideoMetadataBatch applies metadata updates transactionally for mult
   }
 });
 
+test('updateVideoThumbnailMetadataBatch changes only generated media fields', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    cache.saveCache(db, [buildCachedVideo('a', path.join(folderPath, 'a.mp4'), {
+      status: 'keep',
+      rating: 4,
+      thumbnails: ['thumbs/a/old.jpg'],
+    })]);
+
+    cache.updateVideoThumbnailMetadataBatch(db, [{
+      videoId: 'a',
+      thumbnails: ['thumbs/a/new-1.jpg', 'thumbs/a/new-2.jpg'],
+      durationSecs: 15,
+      videoCodec: 'h264',
+      compatible: true,
+    }]);
+
+    const video = db.prepare('SELECT status, rating, duration_secs, video_codec, compatible FROM videos WHERE id = ?').get('a');
+    const thumbnails = db.prepare('SELECT file_path FROM thumbnails WHERE video_id = ? ORDER BY idx').all('a');
+    assert.deepEqual(video, { status: 'keep', rating: 4, duration_secs: 15, video_codec: 'h264', compatible: 1 });
+    assert.deepEqual(thumbnails, [
+      { file_path: 'thumbs/a/new-1.jpg' },
+      { file_path: 'thumbs/a/new-2.jpg' },
+    ]);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('markMetadataFailuresBatch records failure state for multiple videos', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;

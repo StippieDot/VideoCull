@@ -1094,7 +1094,6 @@ const useStore = create<VideoStore>((set, get) => ({
     const indexById = new Map(videos.map((video, index) => [video.id, index]));
     let changed = false;
     const changedFields = new Set<InvalidationField>();
-    const videosToPersist = new Map<string, Video>();
     for (const item of batch) {
       const vIdx = indexById.get(item.videoId);
       if (vIdx === undefined) continue;
@@ -1152,16 +1151,11 @@ const useStore = create<VideoStore>((set, get) => ({
       if (changedCompatibility) changedFields.add('compatible');
 
       videos[vIdx] = nextVideo;
-      if (item.thumbnails) videosToPersist.set(item.videoId, nextVideo);
       changed = true;
     }
     if (!changed) return;
     set(buildVideoStateUpdate(stateBefore, videos, changedFields));
 
-    const stateNow = get();
-    if (videosToPersist.size > 0) {
-      persistChangedVideos(stateNow.directory, stateNow.directories, Array.from(videosToPersist.values()));
-    }
     recordDevPerf('updateVideoThumbnailsBatch', performance.now() - startedAt, { items: batch.length });
   },
 
