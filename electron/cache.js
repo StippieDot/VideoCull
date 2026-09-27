@@ -476,6 +476,9 @@ function hydrateCachedVideos(rows, thumbRows) {
       width: row.width ?? null,
       height: row.height ?? null,
       osThumbnail: row.os_thumbnail_path ?? null,
+      fileSignatureQuick: row.file_signature_quick ?? null,
+      fileSignatureFull: row.file_signature_full ?? null,
+      signatureUpdatedAt: row.signature_updated_at ?? null,
     });
   }
   return Array.from(map.values());

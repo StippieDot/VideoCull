@@ -3,7 +3,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const cache = require('../../electron/cache');
-const { DuplicateCancelledError, __test__ } = require('../../electron/duplicates');
+const { clearDuplicateSessionCache, DuplicateCancelledError, __test__ } = require('../../electron/duplicates');
 const { normalizeDuplicateSettings } = require('../../electron/duplicate-utils');
 
 function video(id) {
@@ -19,6 +19,30 @@ function video(id) {
     sizeBytes: 1000,
   };
 }
+
+test('duplicate cache state is reused within the library session', async () => {
+  const videos = [video('a')];
+  const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', sampleCount: 1 });
+  let opens = 0;
+  vi.spyOn(cache, 'getFingerprintCounts').mockReturnValue(new Map([['a', true]]));
+  vi.spyOn(cache, 'loadFingerprintFailureIds').mockReturnValue([]);
+  vi.spyOn(cache, 'loadPHashRows').mockReturnValue([{ video_id: 'a', sample_index: 0, phash_hex: 'abc' }]);
+  vi.spyOn(cache, 'loadSignatureRows').mockReturnValue([{ id: 'a', file_signature_quick: 'quick' }]);
+  const withDb = async (_folderPath, operation) => {
+    opens++;
+    return operation({});
+  };
+
+  try {
+    clearDuplicateSessionCache();
+    await __test__.loadDuplicateCacheState(videos, settings, { cancelled: false }, withDb);
+    await __test__.loadDuplicateCacheState(videos, settings, { cancelled: false }, withDb);
+    assert.equal(opens, 1);
+  } finally {
+    clearDuplicateSessionCache();
+    vi.restoreAllMocks();
+  }
+});
 
 test('daisy-chain validation splits weak connected duplicate groups', () => {
   const videos = ['a', 'b', 'c', 'd', 'e'].map(video);
@@ -248,13 +272,19 @@ test('exact duplicate pass skips hashing same-size videos outside duration toler
     readAttempts++;
     return await vi.importActual('fs/promises').then((mod) => mod.readFile(...args));
   });
-  vi.spyOn(cache, 'loadSignatureRows').mockReturnValue([]);
   vi.spyOn(cache, 'updateVideoSignatures').mockImplementation(() => {
     writeAttempts++;
   });
 
   try {
-    const exactGroups = await __test__.findExactGroups(videos, new Map([[folder, {}]]), settings, { cancelled: false }, () => {});
+    const exactGroups = await __test__.findExactGroups(
+      videos,
+      { signatureById: new Map() },
+      settings,
+      { cancelled: false },
+      () => {},
+      async (_folderPath, operation) => operation({}),
+    );
     assert.deepEqual(exactGroups, []);
     assert.equal(readAttempts, 0);
     assert.equal(writeAttempts, 0);
@@ -292,7 +322,6 @@ test('exact duplicate pass stops before cache writes after cancellation', async 
   ];
 
   let writeAttempts = 0;
-  vi.spyOn(cache, 'loadSignatureRows').mockReturnValue([]);
   vi.spyOn(cache, 'updateVideoSignatures').mockImplementation(() => {
     writeAttempts++;
   });
@@ -304,7 +333,14 @@ test('exact duplicate pass stops before cache writes after cancellation', async 
 
   try {
     await assert.rejects(
-      __test__.findExactGroups(videos, new Map([[folder, {}]]), normalizeDuplicateSettings({}), run, () => {}),
+      __test__.findExactGroups(
+        videos,
+        { signatureById: new Map() },
+        normalizeDuplicateSettings({}),
+        run,
+        () => {},
+        async (_folderPath, operation) => operation({}),
+      ),
       (err) => err instanceof DuplicateCancelledError,
     );
     assert.equal(writeAttempts, 0);

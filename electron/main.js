@@ -6,7 +6,14 @@ const { performance: nodePerformance } = require('perf_hooks');
 const { scanDirectory } = require('./scanner');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
-const { createDuplicateRun, findDuplicates, DuplicateCancelledError } = require('./duplicates');
+const {
+  clearDuplicateSessionCache,
+  createDuplicateRun,
+  findDuplicates,
+  forgetDuplicateVideos,
+  rememberDuplicateSignatures,
+  DuplicateCancelledError,
+} = require('./duplicates');
 const { processingPause } = require('./processing-pause');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
@@ -909,6 +916,7 @@ async function quarantineCorruptCacheDb(folderPath, cacheOptions, reason) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   log.warn(`[cache] Corrupt DB detected for ${folderPath}; quarantining cache. Reason: ${reason}`);
 
+  clearDuplicateSessionCache();
   cache.closeDbForFolder(folderPath, cacheOptions, { force: true });
 
   for (const sourcePath of collectCacheSidecars(cachePaths.dbPath)) {
@@ -1366,6 +1374,7 @@ async function reconcileScannedVideosByFolder(videos, cacheOptions, {
       const saveStartedAt = performance.now();
       const payload = mergedVideos.map((video) => videoForDb(video, cachePaths.cacheRootDir));
       const writeStats = await cache.saveCacheChunked(db, payload, null, { updatedAt });
+      rememberDuplicateSignatures(cache.loadSignatureRows(db, folderVideos.map((video) => video.id)));
       const staleVideos = shouldPrune
         ? cache.pruneStaleVideosBefore(db, updatedAt, { details: true })
         : [];
@@ -1420,6 +1429,7 @@ async function reconcileScannedVideosByFolder(videos, cacheOptions, {
     ...results.filter((result) => result.staleVideos.length > 0),
     ...emptyFolderResults.filter((result) => result?.staleVideos.length > 0),
   ].map((result) => ({ folderPath: result.folderPath, videos: result.staleVideos }));
+  forgetDuplicateVideos(prunedVideos.flatMap((entry) => entry.videos.map((video) => video.id)));
 
   return {
     videos: videos.map((video) => mergedById.get(video.id) ?? mergeScannedVideoWithCache(video, null)),
@@ -1839,6 +1849,7 @@ ipcMain.handle('reset-loaded-directories', async () => {
   activeCacheRoots = new Set();
   knownVideoPaths.clear();
   knownVideoIdsByPath.clear();
+  clearDuplicateSessionCache();
   cache.closeDb();
   return true;
 });
@@ -2573,17 +2584,19 @@ ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
   });
   const run = createDuplicateRun();
   activeDuplicateRun = run;
-  const duplicateFolders = Array.from(groupVideosByFolder(safeVideos).keys());
-
   try {
     const result = await findDuplicates({
       videos: safeVideos,
       settings,
-      cacheOptions,
       maxConcurrency: duplicateConcurrency,
       executionOptions: duplicateExecutionOptions,
       run,
-      openDb: acquireCacheDbWithRecovery,
+      withDb: (folderPath, operation) => runFolderCacheOperation(
+        folderPath,
+        cacheOptions,
+        operation,
+        { priority: 'foreground' },
+      ),
       sendProgress: (payload) => sendToRenderer('duplicate-progress', payload),
     });
     if (activeDuplicateRun === run) activeDuplicateRun = null;
@@ -2608,10 +2621,6 @@ ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
       error: err?.message || String(err),
     });
     return { status: 'error', error: err.message || String(err) };
-  } finally {
-    for (const folderPath of duplicateFolders) {
-      cache.releaseDb(folderPath, cacheOptions);
-    }
   }
 });
 
@@ -2705,6 +2714,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   }
 
   cancelProcessing();
+  clearDuplicateSessionCache();
 
   const cacheOptions = await getCacheOptions();
   const knownCacheFolders = await getKnownCacheFolders();
@@ -2733,7 +2743,9 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
 // 6. Delete to the OS Trash first; permanent fallback requires renderer review.
 async function finalizeDeletedFiles(results, cacheTargets) {
   const successfulPaths = new Set(results.filter((result) => result.success).map((result) => result.path));
-  await removeDeletedVideoCacheArtifacts(cacheTargets.filter((target) => successfulPaths.has(target.filePath)));
+  const successfulTargets = cacheTargets.filter((target) => successfulPaths.has(target.filePath));
+  await removeDeletedVideoCacheArtifacts(successfulTargets);
+  forgetDuplicateVideos(successfulTargets.map((target) => target.id));
   for (const filePath of successfulPaths) {
     knownVideoPaths.delete(filePath);
     knownVideoIdsByPath.delete(filePath);
@@ -2931,6 +2943,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
     return { status: 'cancelled', migrated: 0, errors: [] };
   }
 
+  clearDuplicateSessionCache();
   cache.closeDb();
 
   if (response === 1) {
