@@ -1637,51 +1637,30 @@ async function removeDeletedVideoCacheArtifacts(targets) {
     byFolder.set(target.folderPath, group);
   }
 
+  const thumbnailDirs = [];
   for (const [folderPath, ids] of byFolder) {
+    const uniqueIds = Array.from(new Set(ids));
+    const cachePaths = getCachePaths(folderPath, cacheOptions);
+    thumbnailDirs.push(...uniqueIds.map((id) => path.join(cachePaths.thumbRootDir, id)));
     try {
-      const uniqueIds = Array.from(new Set(ids));
-      const cachePaths = getCachePaths(folderPath, cacheOptions);
       const dbExists = await fs.access(cachePaths.dbPath).then(() => true).catch(() => false);
       if (dbExists) await runFolderCacheOperation(
         folderPath,
         cacheOptions,
         (db) => cache.deleteVideosByIds(db, uniqueIds)
       );
-      for (const id of uniqueIds) {
-        const thumbDir = path.join(cachePaths.thumbRootDir, id);
-        try {
-          await fs.access(thumbDir);
-          await shell.trashItem(thumbDir);
-        } catch (err) {
-          if (err?.code !== 'ENOENT') {
-            try {
-              const quarantinedPath = await quarantineCacheDirectory(cachePaths.cacheRootDir, thumbDir, id);
-              log.warn(`[batch-delete] Recycle Bin unavailable for thumbnail cache; moved to ${quarantinedPath}`);
-            } catch (quarantineErr) {
-              log.warn(`[batch-delete] Failed to move thumbnail cache to Recycle Bin or quarantine: ${thumbDir}`, quarantineErr);
-            }
-          }
-        }
-      }
     } catch (err) {
       log.warn(`[batch-delete] Failed to remove deleted-video cache for ${folderPath}:`, err);
     }
   }
-}
 
-async function quarantineCacheDirectory(cacheRootDir, sourcePath, label) {
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const quarantineRoot = path.join(cacheRootDir, '.deleted-thumbs');
-  const targetPath = path.join(quarantineRoot, `${label}-${stamp}`);
-  await fs.mkdir(quarantineRoot, { recursive: true });
-  try {
-    await fs.rename(sourcePath, targetPath);
-  } catch (err) {
-    if (err.code !== 'EXDEV') throw err;
-    await fs.cp(sourcePath, targetPath, { recursive: true, force: true });
-    await fs.rm(sourcePath, { recursive: true, force: true });
-  }
-  return targetPath;
+  await mapWithConcurrency(thumbnailDirs, CACHE_IO_CONCURRENCY, async (thumbDir) => {
+    try {
+      await fs.rm(thumbDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    } catch (err) {
+      log.warn(`[batch-delete] Failed to remove generated thumbnail cache: ${thumbDir}`, err);
+    }
+  });
 }
 
 async function maybeRemoveEmptyDeletedVideoFolders(deletedFilePaths) {
