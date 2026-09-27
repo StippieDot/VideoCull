@@ -4,6 +4,7 @@ const fsSync = require('fs');
 const crypto = require('crypto');
 const log = require('./logger');
 const perfMetrics = require('./perf-metrics');
+const { createCacheConnectionManager } = require('./cache-connection-manager');
 
 // better-sqlite3 is a native module unpacked from asar — require it directly.
 const Database = require('better-sqlite3');
@@ -345,8 +346,7 @@ const FINGERPRINT_SCHEMA_COLUMNS = {
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
 
-const _dbByPath = new Map();
-const _dbLeaseCountByPath = new Map();
+const connectionManager = createCacheConnectionManager();
 
 /**
  * Open (or reuse) the SQLite database for a folder.
@@ -354,12 +354,8 @@ const _dbLeaseCountByPath = new Map();
  * cacheRootDir — computed by main.js from app.getPath('userData').
  * Returns the open Database instance.
  */
-function openDb(folderPath, cacheOptions) {
+function openPhysicalDb(folderPath, cacheOptions) {
   const dbPath = resolveCachePath(folderPath, cacheOptions);
-
-  const existing = _dbByPath.get(dbPath);
-  if (existing) return existing;
-
   fsSync.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
@@ -369,9 +365,13 @@ function openDb(folderPath, cacheOptions) {
   ensureVideoSchemaColumns(db);
   ensureFingerprintSchemaColumns(db);
 
-  _dbByPath.set(dbPath, db);
   log.info(`[cache] Opened DB for: ${folderPath}`);
   return db;
+}
+
+function openDb(folderPath, cacheOptions) {
+  const dbPath = resolveCachePath(folderPath, cacheOptions);
+  return connectionManager.openUnleased(dbPath, () => openPhysicalDb(folderPath, cacheOptions));
 }
 
 function ensureVideoSchemaColumns(db) {
@@ -391,51 +391,33 @@ function ensureFingerprintSchemaColumns(db) {
 }
 
 function closeDbPath(dbPath, options = {}) {
-  if (!options.force && (_dbLeaseCountByPath.get(dbPath) ?? 0) > 0) return false;
-  if (options.force) _dbLeaseCountByPath.delete(dbPath);
-  const db = _dbByPath.get(dbPath);
-  if (!db) return false;
-  try { db.close(); } catch { /* ignore */ }
-  _dbByPath.delete(dbPath);
-  return true;
+  return connectionManager.close(dbPath, options);
 }
 
 function closeDbForFolder(folderPath, cacheOptions, options = {}) {
   return closeDbPath(resolveCachePath(folderPath, cacheOptions), options);
 }
 
-function acquireDb(folderPath, cacheOptions) {
+function acquireDb(folderPath, cacheOptions, options = {}) {
   const dbPath = resolveCachePath(folderPath, cacheOptions);
-  _dbLeaseCountByPath.set(dbPath, (_dbLeaseCountByPath.get(dbPath) ?? 0) + 1);
-  try {
-    return openDb(folderPath, cacheOptions);
-  } catch (err) {
-    const remaining = (_dbLeaseCountByPath.get(dbPath) ?? 1) - 1;
-    if (remaining > 0) _dbLeaseCountByPath.set(dbPath, remaining);
-    else _dbLeaseCountByPath.delete(dbPath);
-    throw err;
-  }
+  return connectionManager.acquire(
+    dbPath,
+    () => openPhysicalDb(folderPath, cacheOptions),
+    options.priority,
+  );
 }
 
 function releaseDb(folderPath, cacheOptions) {
-  const dbPath = resolveCachePath(folderPath, cacheOptions);
-  const leaseCount = _dbLeaseCountByPath.get(dbPath) ?? 0;
-  if (leaseCount === 0) return false;
-  const remaining = leaseCount - 1;
-  if (remaining > 0) {
-    _dbLeaseCountByPath.set(dbPath, remaining);
-    return false;
-  }
-  _dbLeaseCountByPath.delete(dbPath);
-  return closeDbPath(dbPath);
+  return connectionManager.release(resolveCachePath(folderPath, cacheOptions));
 }
 
 /** Close all open DB connections. Call on app quit or before broad migrations. */
 function closeDb() {
-  _dbLeaseCountByPath.clear();
-  for (const dbPath of Array.from(_dbByPath.keys())) {
-    closeDbPath(dbPath, { force: true });
-  }
+  connectionManager.closeAll();
+}
+
+function getDbConnectionStats() {
+  return connectionManager.getStats();
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────
@@ -1210,7 +1192,6 @@ function deleteDb(folderPath, cacheOptions, options = {}) {
   }
 
   const dbPath = resolveCachePath(folderPath, cacheOptions);
-  _dbLeaseCountByPath.delete(dbPath);
   closeDbPath(dbPath, { force: true });
   try {
     fsSync.unlinkSync(dbPath);
@@ -1233,6 +1214,7 @@ module.exports = {
   releaseDb,
   closeDbForFolder,
   closeDb,
+  getDbConnectionStats,
   loadCacheVideos,
   loadCacheMap,
   saveCache,

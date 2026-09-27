@@ -121,8 +121,8 @@ test('database leases prevent overlapping operations from closing a shared conne
   const cacheOptions = { mode: 'centralised', centralCachePath: tempRoot };
 
   try {
-    const firstLease = cache.acquireDb(folderPath, cacheOptions);
-    const secondLease = cache.acquireDb(folderPath, cacheOptions);
+    const firstLease = await cache.acquireDb(folderPath, cacheOptions);
+    const secondLease = await cache.acquireDb(folderPath, cacheOptions);
     assert.equal(firstLease, db);
     assert.equal(secondLease, db);
 
@@ -131,7 +131,11 @@ test('database leases prevent overlapping operations from closing a shared conne
     assert.equal(cache.releaseDb(folderPath, cacheOptions), false);
     assert.equal(db.open, true);
     assert.equal(cache.releaseDb(folderPath, cacheOptions), true);
-    assert.equal(db.open, false);
+    assert.equal(db.open, true);
+
+    const reused = await cache.acquireDb(folderPath, cacheOptions);
+    assert.equal(reused, db);
+    cache.releaseDb(folderPath, cacheOptions);
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });

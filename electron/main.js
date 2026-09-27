@@ -1103,7 +1103,7 @@ function logSlowCacheFolderDiagnostics(diagnostics) {
 
 async function acquireCacheDbWithRecovery(folderPath, cacheOptions) {
   try {
-    return cache.acquireDb(folderPath, cacheOptions);
+    return await cache.acquireDb(folderPath, cacheOptions);
   } catch (err) {
     if (!isSqliteCorruptionError(err)) throw err;
     await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
@@ -1136,7 +1136,7 @@ async function loadCacheMapWithRecovery(folderPath, cacheOptions, cacheRootDir, 
   } catch (err) {
     if (!isSqliteCorruptionError(err)) throw err;
     await quarantineCorruptCacheDb(folderPath, cacheOptions, err.code || err.message);
-    db = cache.acquireDb(folderPath, cacheOptions);
+    db = await cache.acquireDb(folderPath, cacheOptions);
     return loadCacheMapWithAbsoluteThumbs(db, cacheRootDir, videoIds);
   }
 }
