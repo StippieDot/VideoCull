@@ -197,3 +197,23 @@ test('global transitions drain accepted work and reject new cache requests until
   worker.emit('message', { id: worker.messages[2].id, result: [] });
   assert.deepEqual(await next, []);
 });
+
+test('failed transition close restores normal cache requests', async () => {
+  const service = createService();
+  const initial = service.loadVideos('D:\\Videos', cacheOptions);
+  const worker = FakeWorker.instances[0];
+  worker.emit('message', { id: worker.messages[0].id, result: [] });
+  await initial;
+
+  const transition = service.beginTransition();
+  const closeRequest = worker.messages[1];
+  worker.emit('message', {
+    id: closeRequest.id,
+    error: { name: 'Error', message: 'close failed' },
+  });
+  await assert.rejects(transition, /close failed/);
+
+  const next = service.loadVideos('D:\\Videos', cacheOptions);
+  worker.emit('message', { id: worker.messages[2].id, result: ['ok'] });
+  assert.deepEqual(await next, ['ok']);
+});

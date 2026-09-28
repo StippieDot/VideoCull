@@ -94,7 +94,12 @@ function createCacheService({
     if (shuttingDown) throw new Error('Cache service is shutting down');
     transitionDepth += 1;
     if (transitionDepth > 1 || !worker) return;
-    await request('closeAll', {}, 'background', { internal: true });
+    try {
+      await request('closeAll', {}, 'background', { internal: true });
+    } catch (error) {
+      transitionDepth = Math.max(0, transitionDepth - 1);
+      throw error;
+    }
   }
 
   function endTransition() {
