@@ -52,25 +52,23 @@ async function main() {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'videocull-packaged-smoke-'));
   const libraryPath = path.join(tempRoot, 'library');
   fs.mkdirSync(libraryPath, { recursive: true });
+  fs.writeFileSync(path.join(libraryPath, 'smoke.mp4'), Buffer.alloc(42));
   const cacheOptions = { mode: 'centralised', centralCachePath: path.join(tempRoot, 'cache') };
   const { createCacheService } = require(packagedCacheServicePath);
+  const packagedCache = require(path.join(resourcesPath, 'app.asar', 'electron', 'cache.js'));
+  const { scanDirectory } = require(path.join(resourcesPath, 'app.asar', 'electron', 'scanner.js'));
   const cacheService = createCacheService();
   try {
-    await cacheService.saveVideos(libraryPath, cacheOptions, [{
-      id: 'packaged-smoke',
-      filename: 'smoke.mp4',
-      path: path.join(libraryPath, 'smoke.mp4'),
-      sizeBytes: 42,
-      date: 1,
-      status: 'pending',
-      rating: 0,
-      favorite: false,
-      compatible: true,
-      bookmarks: [],
-      thumbnails: [],
-    }], { atomic: true, atomicLimit: 1 });
+    const [scanned] = await scanDirectory(libraryPath, false);
+    assert.equal(scanned.sizeBytes, 42);
+    const cachePaths = packagedCache.resolveCachePaths(libraryPath, cacheOptions);
+    await cacheService.reconcileScannedFolder(libraryPath, cacheOptions, [scanned], {
+      cacheRootDir: cachePaths.cacheRootDir,
+      updatedAt: Date.now(),
+      prune: false,
+    });
     await cacheService.updateReviewState(libraryPath, cacheOptions, [{
-      id: 'packaged-smoke',
+      id: scanned.id,
       changes: { status: 'keep', rating: 4, favorite: true, bookmarks: [1.25] },
     }]);
     const [loaded] = await cacheService.loadVideos(libraryPath, cacheOptions);
