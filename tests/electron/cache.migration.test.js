@@ -4,15 +4,11 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = globalThis.test || nodeTest;
+const cache = require('../../electron/cache');
+const log = require('../../electron/logger');
 
-let cache = null;
-let cacheLoadError = null;
-
-try {
-  cache = require('../../electron/cache');
-} catch (err) {
-  cacheLoadError = err;
-}
+log.transports.console.level = false;
+log.transports.file.level = false;
 
 async function openTempCacheDb() {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-cache-migration-'));
@@ -30,23 +26,8 @@ async function openTempCacheDb() {
   return { tempRoot, folderPath, db };
 }
 
-test('migrateJsonIfNeeded imports legacy JSON review decisions and deletes the old cache file', async (t) => {
-  if (cacheLoadError) {
-    t.skip(`better-sqlite3 is unavailable in plain node test mode: ${cacheLoadError.message}`);
-    return;
-  }
-
-  let setup;
-  try {
-    setup = await openTempCacheDb();
-  } catch (err) {
-    if (err?.code === 'ERR_DLOPEN_FAILED') {
-      t.skip(`better-sqlite3 is unavailable in plain node test mode: ${err.message}`);
-      return;
-    }
-    throw err;
-  }
-
+test('migrateJsonIfNeeded imports legacy JSON review decisions and deletes the old cache file', async () => {
+  const setup = await openTempCacheDb();
   const { tempRoot, folderPath, db } = setup;
   const jsonPath = path.join(folderPath, '.video-cull-cache.json');
   const filePath = path.join(folderPath, 'clip.mp4');
@@ -110,23 +91,8 @@ test('migrateJsonIfNeeded imports legacy JSON review decisions and deletes the o
   }
 });
 
-test('migrateJsonIfNeeded deletes corrupt legacy JSON caches without importing garbage', async (t) => {
-  if (cacheLoadError) {
-    t.skip(`better-sqlite3 is unavailable in plain node test mode: ${cacheLoadError.message}`);
-    return;
-  }
-
-  let setup;
-  try {
-    setup = await openTempCacheDb();
-  } catch (err) {
-    if (err?.code === 'ERR_DLOPEN_FAILED') {
-      t.skip(`better-sqlite3 is unavailable in plain node test mode: ${err.message}`);
-      return;
-    }
-    throw err;
-  }
-
+test('migrateJsonIfNeeded deletes corrupt legacy JSON caches without importing garbage', async () => {
+  const setup = await openTempCacheDb();
   const { tempRoot, folderPath, db } = setup;
   const jsonPath = path.join(folderPath, '.video-cull-cache.json');
 

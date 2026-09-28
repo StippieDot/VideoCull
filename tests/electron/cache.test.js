@@ -4,24 +4,13 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const test = globalThis.test || nodeTest;
-let cache = null;
-let cacheLoadError = null;
+const cache = require('../../electron/cache');
+const log = require('../../electron/logger');
 
-try {
-  cache = require('../../electron/cache');
-} catch (err) {
-  cacheLoadError = err;
-}
+log.transports.console.level = false;
+log.transports.file.level = false;
 
-function skipIfCacheUnavailable(t, err = cacheLoadError) {
-  if (!err) return false;
-  t.skip(`better-sqlite3 is unavailable in plain node test mode: ${err.message}`);
-  return true;
-}
-
-async function openTempCacheDb(t) {
-  if (skipIfCacheUnavailable(t)) return null;
-
+async function openTempCacheDb() {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-cache-'));
   const folderPath = path.join(tempRoot, 'library');
   await fs.mkdir(folderPath, { recursive: true });
@@ -31,9 +20,6 @@ async function openTempCacheDb(t) {
     return { tempRoot, folderPath, db };
   } catch (err) {
     await fs.rm(tempRoot, { recursive: true, force: true });
-    if (skipIfCacheUnavailable(t, err?.code === 'ERR_DLOPEN_FAILED' ? err : null)) {
-      return null;
-    }
     throw err;
   }
 }

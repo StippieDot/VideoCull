@@ -19,7 +19,7 @@
     "test": "vitest run",
     "test:renderer": "vitest run -c vitest.renderer.config.ts",
     "test:watch": "vitest",
-    "test:cache-native": "node --test tests/electron/cache.test.js tests/electron/cache.migration.test.js",
+    "test:cache-native": "node scripts/run-electron-node-tests.js tests/electron/cache.test.js tests/electron/cache.migration.test.js",
     "test:packaging": "node --test tests/electron/build-hooks.test.js",
     "coverage": "vitest run --coverage",
     "test:profile": "node --test tests/electron/profile-bootstrap.test.js tests/electron/storage-compatibility.test.js",
