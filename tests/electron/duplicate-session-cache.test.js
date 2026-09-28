@@ -28,6 +28,23 @@ test('reuses complete folder snapshots for the same fingerprint settings', () =>
   assert.equal(session.hasFolder(['a'], 'phash'), false);
 });
 
+test('invalidates cached fingerprints when flipped comparison changes', () => {
+  const session = createDuplicateSessionCache();
+  session.beginFingerprintSettings('settings-a', false);
+  session.rememberFolder({
+    videoIds: ['a'],
+    signatureRows: [{ id: 'a' }],
+    completeById: new Map([['a', true]]),
+    failedIds: new Set(),
+    mode: 'phash',
+    comparisonRows: [{ video_id: 'a', sample_index: 0, phash_hex: 'abc' }],
+  });
+
+  session.beginFingerprintSettings('settings-a', true);
+
+  assert.equal(session.hasFolder(['a'], 'phash'), false);
+});
+
 test('evicts least-recently-used gray samples at the byte limit', () => {
   const session = createDuplicateSessionCache({ grayByteLimit: 4 });
   session.beginFingerprintSettings('settings-a');
@@ -45,6 +62,27 @@ test('evicts least-recently-used gray samples at the byte limit', () => {
   assert.equal(session.hasFolder(['a'], 'visual'), false);
   assert.equal(session.hasFolder(['b'], 'visual'), true);
   assert.equal(session.getStats().grayBytes, 3);
+});
+
+test('returns all freshly loaded gray samples before applying the session cache limit', () => {
+  const session = createDuplicateSessionCache({ grayByteLimit: 4 });
+  session.beginFingerprintSettings('settings-a');
+
+  const loaded = session.rememberFolder({
+    videoIds: ['a', 'b'],
+    signatureRows: [{ id: 'a' }, { id: 'b' }],
+    completeById: new Map([['a', true], ['b', true]]),
+    failedIds: new Set(),
+    mode: 'visual',
+    comparisonRows: [
+      { video_id: 'a', sample_index: 0, gray_bytes: Buffer.alloc(3) },
+      { video_id: 'b', sample_index: 0, gray_bytes: Buffer.alloc(3) },
+    ],
+  });
+
+  assert.deepEqual(loaded.comparisonRows.map((row) => row.video_id), ['a', 'b']);
+  assert.equal(session.hasFolder(['a'], 'visual'), false);
+  assert.equal(session.hasFolder(['b'], 'visual'), true);
 });
 
 test('invalidates derived duplicate data when a video file changes', () => {

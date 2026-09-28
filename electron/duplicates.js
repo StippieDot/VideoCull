@@ -244,7 +244,7 @@ function splitExactCandidatesByDuration(videos, settings) {
 async function loadDuplicateCacheState(videos, settings, run, cacheAccess, cacheOptions) {
   const fingerprintKey = getDuplicateFingerprintKey(settings);
   const mode = settings.comparisonMode;
-  duplicateSessionCache.beginFingerprintSettings(fingerprintKey);
+  duplicateSessionCache.beginFingerprintSettings(fingerprintKey, settings.compareFlipped);
 
   const signatureById = new Map();
   const completeById = new Map();
@@ -254,6 +254,7 @@ async function loadDuplicateCacheState(videos, settings, run, cacheAccess, cache
   for (const [folderPath, folderVideos] of groupVideosByFolder(videos)) {
     await waitForDuplicateProcessing(run);
     const videoIds = folderVideos.map((video) => video.id);
+    let snapshot;
     if (!duplicateSessionCache.hasFolder(videoIds, mode)) {
       const workerState = await cacheAccess.loadDuplicateFolderState(folderPath, cacheOptions, videoIds, {
         fingerprintKey,
@@ -266,10 +267,10 @@ async function loadDuplicateCacheState(videos, settings, run, cacheAccess, cache
         completeById: new Map(workerState.completeEntries),
         failedIds: new Set(workerState.failedIds),
       };
-      duplicateSessionCache.rememberFolder(loaded);
+      snapshot = duplicateSessionCache.rememberFolder(loaded);
     }
 
-    const snapshot = duplicateSessionCache.folderSnapshot(videoIds, mode);
+    snapshot ??= duplicateSessionCache.folderSnapshot(videoIds, mode);
     for (const row of snapshot.signatureRows) signatureById.set(row.id, row);
     for (const [videoId, complete] of snapshot.completeById) completeById.set(videoId, complete);
     for (const videoId of snapshot.failedIds) failedIds.add(videoId);

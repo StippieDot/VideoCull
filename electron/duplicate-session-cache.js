@@ -13,11 +13,14 @@ function createDuplicateSessionCache({ grayByteLimit = grayCacheLimitForMemory()
   const pHashRowsByVideo = new Map();
   const grayRowsByVideo = new Map();
   let activeFingerprintKey = null;
+  let activeCompareFlipped = false;
   let grayBytes = 0;
 
-  function beginFingerprintSettings(fingerprintKey) {
-    if (activeFingerprintKey === fingerprintKey) return;
+  function beginFingerprintSettings(fingerprintKey, compareFlipped = false) {
+    const nextCompareFlipped = Boolean(compareFlipped);
+    if (activeFingerprintKey === fingerprintKey && activeCompareFlipped === nextCompareFlipped) return;
     activeFingerprintKey = fingerprintKey;
+    activeCompareFlipped = nextCompareFlipped;
     fingerprintState.clear();
     pHashRowsByVideo.clear();
     grayRowsByVideo.clear();
@@ -102,7 +105,14 @@ function createDuplicateSessionCache({ grayByteLimit = grayCacheLimitForMemory()
         failed: failedIds.has(videoId),
       });
     }
+    const loadedSnapshot = {
+      signatureRows: videoIds.map((videoId) => signatures.get(videoId)).filter(Boolean),
+      completeById: new Map(Array.from(completeById).filter(([, complete]) => complete)),
+      failedIds: new Set(failedIds),
+      comparisonRows: [...comparisonRows],
+    };
     storeComparisonRows(videoIds, mode, comparisonRows);
+    return loadedSnapshot;
   }
 
   function hasFolder(videoIds, mode) {
@@ -169,6 +179,7 @@ function createDuplicateSessionCache({ grayByteLimit = grayCacheLimitForMemory()
     pHashRowsByVideo.clear();
     grayRowsByVideo.clear();
     activeFingerprintKey = null;
+    activeCompareFlipped = false;
     grayBytes = 0;
   }
 

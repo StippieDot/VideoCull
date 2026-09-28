@@ -47,6 +47,45 @@ test('duplicate cache state is reused within the library session', async () => {
   }
 });
 
+test('enabling flipped comparison reloads duplicate session data', async () => {
+  const videos = [video('a')];
+  const baseSettings = normalizeDuplicateSettings({
+    comparisonMode: 'phash',
+    sampleCount: 1,
+    compareFlipped: false,
+  });
+  let opens = 0;
+  const cacheAccess = {
+    loadDuplicateFolderState: async (_folderPath, _cacheOptions, _videoIds, settings) => {
+      opens++;
+      return {
+        videoIds: ['a'],
+        signatureRows: [{ id: 'a' }],
+        completeEntries: [['a', true]],
+        failedIds: [],
+        mode: 'phash',
+        comparisonRows: [{
+          video_id: 'a',
+          sample_index: 0,
+          phash_hex: 'abc',
+          flipped_phash_hex: settings.compareFlipped ? 'def' : null,
+        }],
+      };
+    },
+  };
+
+  try {
+    clearDuplicateSessionCache();
+    await __test__.loadDuplicateCacheState(videos, baseSettings, { cancelled: false }, cacheAccess, {});
+    const flippedSettings = { ...baseSettings, compareFlipped: true };
+    await __test__.loadDuplicateCacheState(videos, flippedSettings, { cancelled: false }, cacheAccess, {});
+    await __test__.loadDuplicateCacheState(videos, flippedSettings, { cancelled: false }, cacheAccess, {});
+    assert.equal(opens, 2);
+  } finally {
+    clearDuplicateSessionCache();
+  }
+});
+
 test('daisy-chain validation splits weak connected duplicate groups', () => {
   const videos = ['a', 'b', 'c', 'd', 'e'].map(video);
   const videosById = new Map(videos.map((item) => [item.id, item]));
