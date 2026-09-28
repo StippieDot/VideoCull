@@ -608,6 +608,14 @@ function saveCache(db, videos, options = {}) {
         WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
         ELSE signature_updated_at
       END,
+      fingerprint_failed_at = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE fingerprint_failed_at
+      END,
+      fingerprint_failure_key = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE fingerprint_failure_key
+      END,
       bookmarks   = excluded.bookmarks,
       os_thumbnail_path = COALESCE(excluded.os_thumbnail_path, os_thumbnail_path),
       duplicate_hash = excluded.duplicate_hash,
@@ -618,10 +626,19 @@ function saveCache(db, videos, options = {}) {
   const insertThumb = db.prepare(
     'INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)'
   );
+  const invalidateChangedFingerprint = db.prepare(`
+    DELETE FROM video_fingerprints
+    WHERE video_id = ?
+      AND EXISTS (
+        SELECT 1 FROM videos
+        WHERE id = ? AND (size_bytes IS NOT ? OR file_date IS NOT ?)
+      )
+  `);
 
   const upsertAll = db.transaction((vids) => {
     for (const v of vids) {
       resolvePathConflict(v);
+      invalidateChangedFingerprint.run(v.id, v.id, v.sizeBytes, v.date ?? null);
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
@@ -894,6 +911,14 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
         WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
         ELSE signature_updated_at
       END,
+      fingerprint_failed_at = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE fingerprint_failed_at
+      END,
+      fingerprint_failure_key = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE fingerprint_failure_key
+      END,
       bookmarks   = excluded.bookmarks,
       os_thumbnail_path = COALESCE(excluded.os_thumbnail_path, os_thumbnail_path),
       duplicate_hash = excluded.duplicate_hash,
@@ -904,12 +929,21 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
   const insertThumb = db.prepare(
     'INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)'
   );
+  const invalidateChangedFingerprint = db.prepare(`
+    DELETE FROM video_fingerprints
+    WHERE video_id = ?
+      AND EXISTS (
+        SELECT 1 FROM videos
+        WHERE id = ? AND (size_bytes IS NOT ? OR file_date IS NOT ?)
+      )
+  `);
 
   const CHUNK_SIZE = 500;
 
   const insertChunk = db.transaction((chunk) => {
     for (const v of chunk) {
       resolvePathConflict(v);
+      invalidateChangedFingerprint.run(v.id, v.id, v.sizeBytes, v.date ?? null);
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
@@ -1207,7 +1241,7 @@ function updateVideoSignatures(db, videoId, signatures) {
 
 function loadSignatureRows(db, videoIds) {
   if (!videoIds.length) return [];
-  return batchSelectIn(db, 'SELECT id, file_signature_quick, file_signature_full, signature_updated_at FROM videos WHERE id IN (__IN__)', videoIds);
+  return batchSelectIn(db, 'SELECT id, size_bytes, file_date, file_signature_quick, file_signature_full, signature_updated_at FROM videos WHERE id IN (__IN__)', videoIds);
 }
 
 // ── JSON migration ────────────────────────────────────────────────────────

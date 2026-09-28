@@ -27,13 +27,28 @@ function createDuplicateSessionCache({ grayByteLimit = grayCacheLimitForMemory()
   function rememberSignatures(rows) {
     for (const row of rows) {
       if (!row?.id) continue;
-      signatures.set(row.id, {
+      const next = {
         id: row.id,
+        size_bytes: row.size_bytes ?? row.sizeBytes ?? null,
+        file_date: row.file_date ?? row.date ?? null,
         file_signature_quick: row.file_signature_quick ?? row.fileSignatureQuick ?? null,
         file_signature_full: row.file_signature_full ?? row.fileSignatureFull ?? null,
         signature_updated_at: row.signature_updated_at ?? row.signatureUpdatedAt ?? null,
-      });
+      };
+      const previous = signatures.get(row.id);
+      if (previous && (previous.size_bytes !== next.size_bytes || previous.file_date !== next.file_date)) {
+        deleteDerived(row.id);
+      }
+      signatures.set(row.id, next);
     }
+  }
+
+  function deleteDerived(videoId) {
+    fingerprintState.delete(videoId);
+    pHashRowsByVideo.delete(videoId);
+    const gray = grayRowsByVideo.get(videoId);
+    if (gray) grayBytes -= gray.bytes;
+    grayRowsByVideo.delete(videoId);
   }
 
   function updateSignature(videoId, update) {
@@ -144,11 +159,7 @@ function createDuplicateSessionCache({ grayByteLimit = grayCacheLimitForMemory()
   function deleteVideos(videoIds) {
     for (const videoId of videoIds) {
       signatures.delete(videoId);
-      fingerprintState.delete(videoId);
-      pHashRowsByVideo.delete(videoId);
-      const gray = grayRowsByVideo.get(videoId);
-      if (gray) grayBytes -= gray.bytes;
-      grayRowsByVideo.delete(videoId);
+      deleteDerived(videoId);
     }
   }
 

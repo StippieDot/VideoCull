@@ -275,6 +275,41 @@ test('saveCacheChunked replaces stale rows when the same path gets a new id', as
   }
 });
 
+test('cache saves invalidate duplicate data when the same video id refers to a changed file', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    const syncVideo = buildCachedVideo('sync-id', path.join(folderPath, 'sync.mp4'), { sizeBytes: 10, date: 100 });
+    const chunkedVideo = buildCachedVideo('chunked-id', path.join(folderPath, 'chunked.mp4'), { sizeBytes: 20, date: 200 });
+    cache.saveCache(db, [syncVideo, chunkedVideo]);
+    for (const video of [syncVideo, chunkedVideo]) {
+      insertFingerprint(db, video.id, 0);
+      cache.updateVideoSignatures(db, video.id, { quick: `${video.id}-quick` });
+      cache.markFingerprintFailure(db, video.id, { fingerprintKey: 'settings-a' });
+    }
+
+    cache.saveCache(db, [{ ...syncVideo, date: 101 }]);
+    await cache.saveCacheChunked(db, [{ ...chunkedVideo, date: 201 }]);
+
+    assert.deepEqual(db.prepare('SELECT video_id FROM video_fingerprints').all(), []);
+    assert.deepEqual(
+      db.prepare(`
+        SELECT id, file_signature_quick, signature_updated_at, fingerprint_failed_at, fingerprint_failure_key
+        FROM videos ORDER BY id
+      `).all(),
+      [
+        { id: 'chunked-id', file_signature_quick: null, signature_updated_at: null, fingerprint_failed_at: null, fingerprint_failure_key: null },
+        { id: 'sync-id', file_signature_quick: null, signature_updated_at: null, fingerprint_failed_at: null, fingerprint_failure_key: null },
+      ],
+    );
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('saveCacheChunked round-trips cached video metadata, bookmarks, and thumbnails', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;

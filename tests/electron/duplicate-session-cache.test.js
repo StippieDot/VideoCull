@@ -46,3 +46,28 @@ test('evicts least-recently-used gray samples at the byte limit', () => {
   assert.equal(session.hasFolder(['b'], 'visual'), true);
   assert.equal(session.getStats().grayBytes, 3);
 });
+
+test('invalidates derived duplicate data when a video file changes', () => {
+  const session = createDuplicateSessionCache();
+  session.beginFingerprintSettings('settings-a');
+  session.rememberFolder({
+    videoIds: ['a'],
+    signatureRows: [{ id: 'a', size_bytes: 10, file_date: 100 }],
+    completeById: new Map([['a', true]]),
+    failedIds: new Set(),
+    mode: 'phash',
+    comparisonRows: [{ video_id: 'a', sample_index: 0, phash_hex: 'abc' }],
+  });
+
+  session.rememberSignatures([{ id: 'a', size_bytes: 10, file_date: 101 }]);
+
+  assert.equal(session.hasFolder(['a'], 'phash'), false);
+  assert.deepEqual(session.getStats(), {
+    signatures: 1,
+    fingerprintStates: 0,
+    pHashVideos: 0,
+    grayVideos: 0,
+    grayBytes: 0,
+    grayByteLimit: session.getStats().grayByteLimit,
+  });
+});
