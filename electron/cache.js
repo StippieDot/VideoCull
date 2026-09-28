@@ -802,7 +802,12 @@ function updateVideoReviewStateBatch(db, updates) {
         if (field === 'bookmarks') return JSON.stringify(value);
         return value;
       });
-      statement.run(...values, now, item.id);
+      const result = statement.run(...values, now, item.id);
+      if (result.changes !== 1) {
+        const error = new Error(`Cached video not found while saving review state: ${item.id}`);
+        error.code = 'CACHE_VIDEO_NOT_FOUND';
+        throw error;
+      }
     }
   });
 

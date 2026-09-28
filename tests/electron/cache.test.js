@@ -629,6 +629,32 @@ test('updateVideoReviewStateBatch changes only requested review fields', async (
   }
 });
 
+test('updateVideoReviewStateBatch rejects missing rows without partially saving the batch', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    cache.saveCache(db, [buildCachedVideo('a', path.join(folderPath, 'a.mp4'), {
+      status: 'pending',
+    })]);
+
+    assert.throws(
+      () => cache.updateVideoReviewStateBatch(db, [
+        { id: 'a', changes: { status: 'keep' } },
+        { id: 'missing', changes: { status: 'delete' } },
+      ]),
+      (error) => error.code === 'CACHE_VIDEO_NOT_FOUND',
+    );
+
+    const video = db.prepare('SELECT status FROM videos WHERE id = ?').get('a');
+    assert.deepEqual(video, { status: 'pending' });
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('markMetadataFailuresBatch records failure state for multiple videos', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;
