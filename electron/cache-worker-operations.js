@@ -57,7 +57,10 @@ async function executeCacheOperation(operation, args) {
         const loadDurationMs = performance.now() - loadStartedAt;
         const saveStartedAt = performance.now();
         const payload = mergedVideos.map((video) => videoForDb(video, options.cacheRootDir));
-        const writeStats = await cache.saveCacheChunked(db, payload, null, { updatedAt: options.updatedAt });
+        const writeStats = await cache.saveCacheChunked(db, payload, null, {
+          updatedAt: options.updatedAt,
+          existingVideos: cachedMap,
+        });
         const signatureRows = cache.loadSignatureRows(db, args.videos.map((video) => video.id));
         const staleVideos = options.prune
           ? cache.pruneStaleVideosBefore(db, options.updatedAt, { details: true })

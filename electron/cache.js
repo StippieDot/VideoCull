@@ -545,6 +545,26 @@ function createPathConflictResolver(db) {
 
 // ── Write ─────────────────────────────────────────────────────────────────
 
+function findChangedVideoIds(db, videos, existingVideos = null) {
+  if (videos.length === 0) return new Set();
+  const existingById = existingVideos ?? new Map(batchSelectIn(
+    db,
+    'SELECT id, size_bytes, file_date FROM videos WHERE id IN (__IN__)',
+    videos.map((video) => video.id),
+  ).map((row) => [row.id, row]));
+  const changedIds = new Set();
+  for (const video of videos) {
+    const existing = existingById.get(video.id);
+    if (!existing) continue;
+    const existingSize = existing.size_bytes ?? existing.sizeBytes ?? null;
+    const existingDate = existing.file_date ?? existing.date ?? null;
+    if (existingSize !== (video.sizeBytes ?? null) || existingDate !== (video.date ?? null)) {
+      changedIds.add(video.id);
+    }
+  }
+  return changedIds;
+}
+
 /**
  * Upsert all videos in a single transaction.
  * Used for status changes and bookmark updates — no progress IPC needed.
@@ -553,6 +573,7 @@ function saveCache(db, videos, options = {}) {
   const resolvePathConflict = createPathConflictResolver(db);
   const updatedAt = Number.isFinite(options.updatedAt) ? options.updatedAt : Date.now();
   const stats = { thumbnailRowsWritten: 0, thumbnailRowsSkipped: 0 };
+  const changedFingerprintIds = findChangedVideoIds(db, videos, options.existingVideos);
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
@@ -626,19 +647,12 @@ function saveCache(db, videos, options = {}) {
   const insertThumb = db.prepare(
     'INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)'
   );
-  const invalidateChangedFingerprint = db.prepare(`
-    DELETE FROM video_fingerprints
-    WHERE video_id = ?
-      AND EXISTS (
-        SELECT 1 FROM videos
-        WHERE id = ? AND (size_bytes IS NOT ? OR file_date IS NOT ?)
-      )
-  `);
+  const deleteFingerprints = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
 
   const upsertAll = db.transaction((vids) => {
     for (const v of vids) {
       resolvePathConflict(v);
-      invalidateChangedFingerprint.run(v.id, v.id, v.sizeBytes, v.date ?? null);
+      if (changedFingerprintIds.has(v.id)) deleteFingerprints.run(v.id);
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
@@ -858,6 +872,7 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
   const resolvePathConflict = createPathConflictResolver(db);
   const updatedAt = Number.isFinite(options.updatedAt) ? options.updatedAt : Date.now();
   const stats = { thumbnailRowsWritten: 0, thumbnailRowsSkipped: 0 };
+  const changedFingerprintIds = findChangedVideoIds(db, videos, options.existingVideos);
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
@@ -929,21 +944,14 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
   const insertThumb = db.prepare(
     'INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)'
   );
-  const invalidateChangedFingerprint = db.prepare(`
-    DELETE FROM video_fingerprints
-    WHERE video_id = ?
-      AND EXISTS (
-        SELECT 1 FROM videos
-        WHERE id = ? AND (size_bytes IS NOT ? OR file_date IS NOT ?)
-      )
-  `);
+  const deleteFingerprints = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
 
   const CHUNK_SIZE = 500;
 
   const insertChunk = db.transaction((chunk) => {
     for (const v of chunk) {
       resolvePathConflict(v);
-      invalidateChangedFingerprint.run(v.id, v.id, v.sizeBytes, v.date ?? null);
+      if (changedFingerprintIds.has(v.id)) deleteFingerprints.run(v.id);
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
