@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { Worker } = require('worker_threads');
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path.replace('app.asar', 'app.asar.unpacked');
-const cache = require('./cache');
+const { createDuplicateSessionCache } = require('./duplicate-session-cache');
 const { processingPause } = require('./processing-pause');
 const {
   normalizeDuplicateSettings,
@@ -24,6 +24,7 @@ const ONE_MIB = 1024 * 1024;
 const FRAME_BYTE_COUNT = 32 * 32;
 const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 const FRAME_FILTER = 'scale=32:32:flags=bicubic,setsar=1,format=gray';
+const duplicateSessionCache = createDuplicateSessionCache();
 
 function duplicateLog(message, detail) {
   if (detail === undefined) {
@@ -240,17 +241,50 @@ function splitExactCandidatesByDuration(videos, settings) {
   return groups;
 }
 
-async function findExactGroups(videos, dbByFolder, settings, run, sendProgress) {
+async function loadDuplicateCacheState(videos, settings, run, cacheAccess, cacheOptions) {
+  const fingerprintKey = getDuplicateFingerprintKey(settings);
+  const mode = settings.comparisonMode;
+  duplicateSessionCache.beginFingerprintSettings(fingerprintKey, settings.compareFlipped);
+
+  const signatureById = new Map();
+  const completeById = new Map();
+  const failedIds = new Set();
+  const comparisonRows = [];
+
+  for (const [folderPath, folderVideos] of groupVideosByFolder(videos)) {
+    await waitForDuplicateProcessing(run);
+    const videoIds = folderVideos.map((video) => video.id);
+    let snapshot;
+    if (!duplicateSessionCache.hasFolder(videoIds, mode)) {
+      const workerState = await cacheAccess.loadDuplicateFolderState(folderPath, cacheOptions, videoIds, {
+        fingerprintKey,
+        sampleCount: settings.sampleCount,
+        compareFlipped: settings.compareFlipped,
+        comparisonMode: mode,
+      });
+      const loaded = {
+        ...workerState,
+        completeById: new Map(workerState.completeEntries),
+        failedIds: new Set(workerState.failedIds),
+      };
+      snapshot = duplicateSessionCache.rememberFolder(loaded);
+    }
+
+    snapshot ??= duplicateSessionCache.folderSnapshot(videoIds, mode);
+    for (const row of snapshot.signatureRows) signatureById.set(row.id, row);
+    for (const [videoId, complete] of snapshot.completeById) completeById.set(videoId, complete);
+    for (const videoId of snapshot.failedIds) failedIds.add(videoId);
+    comparisonRows.push(...snapshot.comparisonRows);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  return { fingerprintKey, signatureById, completeById, failedIds, comparisonRows };
+}
+
+async function findExactGroups(videos, duplicateState, settings, run, sendProgress, cacheAccess, cacheOptions) {
   duplicateLog('Starting exact duplicate pass', { videos: videos.length });
   progress(sendProgress, 'Checking exact matches', { current: 0, total: videos.length });
-  const signatureById = new Map();
-  for (const [folder, folderVideos] of groupVideosByFolder(videos)) {
-    const db = dbByFolder.get(folder);
-    if (!db) continue;
-    for (const row of cache.loadSignatureRows(db, folderVideos.map((video) => video.id))) {
-      signatureById.set(row.id, row);
-    }
-  }
+  const signatureById = duplicateState.signatureById;
   const bySize = groupBy(videos.filter((video) => video.sizeBytes > 0), (video) => String(video.sizeBytes));
   const exactGroups = [];
   let processed = 0;
@@ -274,13 +308,13 @@ async function findExactGroups(videos, dbByFolder, settings, run, sendProgress) 
       const quickRows = [];
       for (const video of durationGroup) {
         await waitForDuplicateProcessing(run);
-        const db = dbByFolder.get(path.dirname(video.path));
         const cached = signatureById.get(video.id);
         const quick = cached?.file_signature_quick || await runDuplicateActivity(run, () => quickSignature(video));
         if (cached?.file_signature_quick) quickCacheHits++;
-        if (db && !cached?.file_signature_quick) {
+        if (!cached?.file_signature_quick) {
           assertNotCancelled(run);
-          cache.updateVideoSignatures(db, video.id, { quick });
+          await cacheAccess.updateVideoSignatures(path.dirname(video.path), cacheOptions, video.id, { quick });
+          duplicateSessionCache.updateSignature(video.id, { quick });
         }
         quickRows.push({ video, quick, cachedFull: cached?.file_signature_full || null });
         processed++;
@@ -294,10 +328,15 @@ async function findExactGroups(videos, dbByFolder, settings, run, sendProgress) 
           await waitForDuplicateProcessing(run);
           const full = row.cachedFull || await fullFileHash(row.video, run);
           if (row.cachedFull) fullCacheHits++;
-          const db = dbByFolder.get(path.dirname(row.video.path));
-          if (db && !row.cachedFull) {
+          if (!row.cachedFull) {
             assertNotCancelled(run);
-            cache.updateVideoSignatures(db, row.video.id, { quick: row.quick, full });
+            await cacheAccess.updateVideoSignatures(
+              path.dirname(row.video.path),
+              cacheOptions,
+              row.video.id,
+              { quick: row.quick, full },
+            );
+            duplicateSessionCache.updateSignature(row.video.id, { quick: row.quick, full });
           }
           fullRows.push({ video: row.video, full });
         }
@@ -406,26 +445,15 @@ async function buildFingerprintsForVideo(video, settings, run, executionOptions)
   );
 }
 
-async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgress, maxConcurrency = 2, executionOptions = {}) {
-  const fingerprintKey = getDuplicateFingerprintKey(settings);
-  const byFolder = groupVideosByFolder(videos);
+async function backfillFingerprints(videos, duplicateState, settings, run, sendProgress, maxConcurrency = 2, executionOptions = {}, cacheAccess, cacheOptions) {
+  const fingerprintKey = duplicateState.fingerprintKey;
   const missing = [];
   let skippedFailed = 0;
-  for (const [folder, folderVideos] of byFolder) {
-    const db = dbByFolder.get(folder);
-    if (!db) continue;
-    const folderVideoIds = folderVideos.map((video) => video.id);
-    const completeById = cache.getFingerprintCounts(db, folderVideoIds, settings.sampleCount, {
-      requireFlipped: settings.compareFlipped,
-      fingerprintKey,
-    });
-    const failedIds = settings.retryFailedFingerprintExtraction
-      ? new Set()
-      : cache.loadFingerprintFailureIds(db, folderVideos.map((video) => video.id), { fingerprintKey });
-    for (const video of folderVideos) {
-      if (!completeById.get(video.id) && !failedIds.has(video.id)) missing.push(video);
-      else if (!completeById.get(video.id) && failedIds.has(video.id)) skippedFailed++;
-    }
+  for (const video of videos) {
+    const complete = duplicateState.completeById.get(video.id);
+    const failedPreviously = !settings.retryFailedFingerprintExtraction && duplicateState.failedIds.has(video.id);
+    if (!complete && !failedPreviously) missing.push(video);
+    else if (!complete && failedPreviously) skippedFailed++;
   }
 
   progress(sendProgress, 'Building fingerprints', { current: 0, total: missing.length });
@@ -456,25 +484,46 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
       if (!video) break;
       try {
         const fingerprints = await buildFingerprintsForVideo(video, settings, run, executionOptions);
-        const db = dbByFolder.get(path.dirname(video.path));
-        if (db) {
-          assertNotCancelled(run);
-          cache.saveVideoFingerprints(db, video.id, fingerprints, { fingerprintKey });
-          saved++;
-        } else {
-          failed++;
-          if (failureExamples.length < 8) {
-            failureExamples.push({
-              filename: video.filename,
+        assertNotCancelled(run);
+        await cacheAccess.saveVideoFingerprints(
+          path.dirname(video.path),
+          cacheOptions,
+          video.id,
+          fingerprints,
+          fingerprintKey,
+        );
+        duplicateSessionCache.rememberFingerprints(video.id, fingerprints, settings.comparisonMode);
+        duplicateState.completeById.set(video.id, true);
+        duplicateState.failedIds.delete(video.id);
+        duplicateState.comparisonRows = duplicateState.comparisonRows.filter((row) => row.video_id !== video.id);
+        duplicateState.comparisonRows.push(...fingerprints.map((fingerprint) => ({
+          video_id: video.id,
+          sample_index: fingerprint.sampleIndex,
+          phash_hex: fingerprint.phashHex,
+          flipped_phash_hex: fingerprint.flippedPHashHex ?? null,
+          gray_bytes: fingerprint.grayBytes,
+          frame_dark_ratio: fingerprint.frameDarkRatio ?? null,
+        })));
+        saved++;
+      } catch (err) {
+        if (err instanceof DuplicateCancelledError) throw err;
+        if (!run?.cancelled) {
+          try {
+            await cacheAccess.markFingerprintFailure(
+              path.dirname(video.path),
+              cacheOptions,
+              video.id,
+              fingerprintKey,
+            );
+            duplicateSessionCache.rememberFingerprintFailure(video.id);
+            duplicateState.failedIds.add(video.id);
+          } catch (markError) {
+            duplicateLog('Could not record fingerprint failure', {
               path: video.path,
-              error: 'No cache database for folder',
+              error: markError?.message || String(markError),
             });
           }
         }
-      } catch (err) {
-        if (err instanceof DuplicateCancelledError) throw err;
-        const db = dbByFolder.get(path.dirname(video.path));
-        if (db && !run?.cancelled) cache.markFingerprintFailure(db, video.id, { fingerprintKey });
         failed++;
         if (failureExamples.length < 8) {
           failureExamples.push({
@@ -501,28 +550,6 @@ async function backfillFingerprints(videos, dbByFolder, settings, run, sendProgr
     failed,
     failureExamples,
   });
-}
-
-function loadAllPHashes(videos, dbByFolder, settings) {
-  const fingerprintKey = getDuplicateFingerprintKey(settings);
-  const rows = [];
-  for (const [folder, folderVideos] of groupVideosByFolder(videos)) {
-    const db = dbByFolder.get(folder);
-    if (!db) continue;
-    rows.push(...cache.loadPHashRows(db, folderVideos.map((video) => video.id), settings.sampleCount, { fingerprintKey }));
-  }
-  return rows;
-}
-
-function loadAllGrayRows(videos, dbByFolder, settings) {
-  const fingerprintKey = getDuplicateFingerprintKey(settings);
-  const rows = [];
-  for (const [folder, folderVideos] of groupVideosByFolder(videos)) {
-    const db = dbByFolder.get(folder);
-    if (!db) continue;
-    rows.push(...cache.loadGraySampleRows(db, folderVideos.map((video) => video.id), settings.sampleCount, { fingerprintKey }));
-  }
-  return rows;
 }
 
 function compactPHashSamples(rows, sampleCount) {
@@ -1165,7 +1192,7 @@ function deriveVideos(videos, groups) {
   });
 }
 
-async function findDuplicates({ videos, settings: rawSettings, cacheOptions, openDb, maxConcurrency, executionOptions, run, sendProgress }) {
+async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cacheOptions, maxConcurrency, executionOptions, run, sendProgress }) {
   const settings = normalizeDuplicateSettings(rawSettings);
   const safeVideos = Array.isArray(videos) ? videos.filter((video) => video?.id && video?.path) : [];
   const videosById = new Map(safeVideos.map((video) => [video.id, video]));
@@ -1177,14 +1204,10 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
   });
   progress(sendProgress, 'Preparing', { current: 0, total: safeVideos.length });
 
-  const dbByFolder = new Map();
-  for (const folder of groupVideosByFolder(safeVideos).keys()) {
-    await waitForDuplicateProcessing(run);
-    dbByFolder.set(folder, await openDb(folder, cacheOptions));
-  }
-  duplicateLog('Cache databases ready', { folders: dbByFolder.size });
+  const duplicateState = await loadDuplicateCacheState(safeVideos, settings, run, cacheAccess, cacheOptions);
+  duplicateLog('Cache data ready', { folders: groupVideosByFolder(safeVideos).size });
 
-  const exactGroups = await findExactGroups(safeVideos, dbByFolder, settings, run, sendProgress);
+  const exactGroups = await findExactGroups(safeVideos, duplicateState, settings, run, sendProgress, cacheAccess, cacheOptions);
   const representativeIndex = buildExactRepresentativeIndex(exactGroups, safeVideos, settings);
   const representativeVideos = representativeIndex.representativeVideos;
   duplicateLog('Representative reduction prepared', {
@@ -1192,12 +1215,24 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
     representatives: representativeVideos.length,
     reducedBy: safeVideos.length - representativeVideos.length,
   });
-  await backfillFingerprints(representativeVideos, dbByFolder, settings, run, sendProgress, maxConcurrency, executionOptions);
+  await backfillFingerprints(
+    representativeVideos,
+    duplicateState,
+    settings,
+    run,
+    sendProgress,
+    maxConcurrency,
+    executionOptions,
+    cacheAccess,
+    cacheOptions,
+  );
   assertNotCancelled(run);
   let similarityPairs = [];
   let comparisonData = null;
+  const representativeIds = new Set(representativeVideos.map((video) => video.id));
+  const comparisonRows = duplicateState.comparisonRows.filter((row) => representativeIds.has(row.video_id));
   if (settings.comparisonMode === 'phash') {
-    const phashRows = loadAllPHashes(representativeVideos, dbByFolder, settings);
+    const phashRows = comparisonRows;
     comparisonData = { mode: 'phash', rows: phashRows };
     const expectedRows = representativeVideos.length * settings.sampleCount;
     duplicateLog('pHash rows loaded', {
@@ -1214,7 +1249,7 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
     })), representativeIndex.membersByRepresentativeId);
   } else {
     assertNotCancelled(run);
-    const grayRows = loadAllGrayRows(representativeVideos, dbByFolder, settings);
+    const grayRows = comparisonRows;
     comparisonData = { mode: 'visual', rows: grayRows };
     duplicateLog('Gray sample rows loaded', { rows: grayRows.length });
     const visualPairs = await runVisualWorker(representativeVideos, grayRows, settings, run, sendProgress);
@@ -1241,10 +1276,25 @@ async function findDuplicates({ videos, settings: rawSettings, cacheOptions, ope
   return result;
 }
 
+function rememberDuplicateSignatures(videos) {
+  duplicateSessionCache.rememberSignatures(Array.isArray(videos) ? videos : []);
+}
+
+function forgetDuplicateVideos(videoIds) {
+  duplicateSessionCache.deleteVideos(Array.isArray(videoIds) ? videoIds : []);
+}
+
+function clearDuplicateSessionCache() {
+  duplicateSessionCache.clear();
+}
+
 module.exports = {
   DuplicateCancelledError,
+  clearDuplicateSessionCache,
   createDuplicateRun,
   findDuplicates,
+  forgetDuplicateVideos,
+  rememberDuplicateSignatures,
   __test__: {
     buildGroups,
     buildExactRepresentativeIndex,
@@ -1253,6 +1303,7 @@ module.exports = {
     shouldFallbackToSingleFrameExtraction,
     expandRepresentativePairs,
     findExactGroups,
+    loadDuplicateCacheState,
     splitDaisyChainIds,
   },
 };

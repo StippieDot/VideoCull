@@ -42,6 +42,60 @@ function detectCompatibility(containerFormat, videoCodec, filePath) {
   return false;
 }
 
+function mergeScannedVideoWithCache(video, cached) {
+  if (!cached) {
+    return {
+      ...video,
+      status: 'pending',
+      thumbnails: [],
+      metadataDate: null,
+      bookmarks: [],
+      rating: 0,
+      favorite: false,
+      compatible: detectCompatibility(null, null, video.path),
+      videoCodec: null,
+      audioCodec: null,
+      videoBitrate: null,
+      audioBitrate: null,
+      totalBitrate: null,
+      metadataCheckedAt: null,
+      metadataVersion: null,
+      metadataFailedAt: null,
+      metadataFailureReason: null,
+      containerFormat: null,
+      width: null,
+      height: null,
+      fps: null,
+    };
+  }
+
+  return {
+    ...video,
+    status: cached.status,
+    durationSecs: cached.durationSecs ?? video.durationSecs,
+    thumbnails: cached.thumbnails,
+    duplicateHash: cached.duplicateHash || video.duplicateHash,
+    metadataDate: cached.metadataDate ?? null,
+    bookmarks: cached.bookmarks,
+    rating: cached.rating ?? 0,
+    favorite: Boolean(cached.favorite),
+    videoCodec: cached.videoCodec ?? null,
+    audioCodec: cached.audioCodec ?? null,
+    videoBitrate: cached.videoBitrate ?? null,
+    audioBitrate: cached.audioBitrate ?? null,
+    totalBitrate: cached.totalBitrate ?? null,
+    metadataCheckedAt: cached.metadataCheckedAt ?? null,
+    metadataVersion: cached.metadataVersion ?? null,
+    metadataFailedAt: cached.metadataFailedAt ?? null,
+    metadataFailureReason: cached.metadataFailureReason ?? null,
+    containerFormat: cached.containerFormat ?? null,
+    width: cached.width ?? null,
+    height: cached.height ?? null,
+    fps: cached.fps ?? null,
+    compatible: detectCompatibility(cached.containerFormat ?? null, cached.videoCodec ?? null, video.path),
+  };
+}
+
 async function canServeThumbPath({
   filePath,
   activeCacheRoots,
@@ -162,6 +216,33 @@ async function filterValidCacheSaveVideos({
   }
 
   return safeVideos;
+}
+
+function normalizeReviewStateChanges(changes) {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return null;
+  const allowed = new Set(['status', 'rating', 'favorite', 'bookmarks']);
+  const keys = Object.keys(changes);
+  if (keys.length === 0 || keys.some((key) => !allowed.has(key))) return null;
+
+  const normalized = {};
+  if (Object.hasOwn(changes, 'status')) {
+    if (!['pending', 'keep', 'delete', 'skipped'].includes(changes.status)) return null;
+    normalized.status = changes.status;
+  }
+  if (Object.hasOwn(changes, 'rating')) {
+    if (!Number.isInteger(changes.rating) || changes.rating < 0 || changes.rating > 5) return null;
+    normalized.rating = changes.rating;
+  }
+  if (Object.hasOwn(changes, 'favorite')) {
+    if (typeof changes.favorite !== 'boolean') return null;
+    normalized.favorite = changes.favorite;
+  }
+  if (Object.hasOwn(changes, 'bookmarks')) {
+    if (!Array.isArray(changes.bookmarks) || changes.bookmarks.length > 10000) return null;
+    if (changes.bookmarks.some((value) => !Number.isFinite(value) || value < 0)) return null;
+    normalized.bookmarks = [...changes.bookmarks];
+  }
+  return normalized;
 }
 
 async function isKnownLoadedFilePath({
@@ -394,7 +475,9 @@ module.exports = {
   isSqliteCorruptionError,
   listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
+  mergeScannedVideoWithCache,
   normalizeReportRoots,
+  normalizeReviewStateChanges,
   removeEmptyDeletedVideoFolders,
   summarizeMediaProbeError,
   thumbAbsolute,

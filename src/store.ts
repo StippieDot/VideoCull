@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   AppSettings, DuplicateGroup,
-  Video, VideoStatus, VideoStats, SidebarAggregates, VideoStore, ThumbReadyEvent,
+  Video, VideoReviewChanges, VideoReviewUpdate, VideoStatus, VideoStats, SidebarAggregates, VideoStore, ThumbReadyEvent,
   ScanProgress, ThumbProgress, UndoEntry,
   StatusFilter, SortField, SortOrder, FolderSortField, RatingFilter,
   ToastInput, ToastKind,
@@ -547,14 +547,17 @@ function pruneRecentToastKeys(now: number) {
 const SAVE_RETRY_DELAY_MS = 750;
 const MAX_SAVE_RETRY_ATTEMPTS = 3;
 
+type ReviewStateField = keyof VideoReviewChanges;
+
 type RetryQueueEntry = {
-  video: Video;
+  update: VideoReviewUpdate;
+  field: ReviewStateField;
   token: number;
 };
 
 let retryDirectory: string | null = null;
 let retryAttempts = 0;
-let retryQueueByVideoId = new Map<string, RetryQueueEntry>();
+let retryQueueByField = new Map<string, RetryQueueEntry>();
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryFlushInFlight = false;
 let retryTokenCounter = 0;
@@ -575,25 +578,29 @@ function resetRetryQueue() {
   clearRetryTimer();
   retryDirectory = null;
   retryAttempts = 0;
-  retryQueueByVideoId = new Map<string, RetryQueueEntry>();
+  retryQueueByField = new Map<string, RetryQueueEntry>();
 }
 
-function acknowledgeSavedTokens(directory: string, savedTokenByVideoId: Map<string, number>) {
-  if (retryDirectory !== directory || savedTokenByVideoId.size === 0 || retryQueueByVideoId.size === 0) return;
+function retryKey(videoId: string, field: ReviewStateField) {
+  return `${videoId}:${field}`;
+}
 
-  const nextQueue = new Map(retryQueueByVideoId);
-  for (const [videoId, savedToken] of savedTokenByVideoId) {
-    const queued = nextQueue.get(videoId);
+function acknowledgeSavedTokens(directory: string, savedTokenByKey: Map<string, number>) {
+  if (retryDirectory !== directory || savedTokenByKey.size === 0 || retryQueueByField.size === 0) return;
+
+  const nextQueue = new Map(retryQueueByField);
+  for (const [key, savedToken] of savedTokenByKey) {
+    const queued = nextQueue.get(key);
     if (!queued) continue;
 
     // Only clear the queue entry if the queued version is not newer.
     if (queued.token <= savedToken) {
-      nextQueue.delete(videoId);
+      nextQueue.delete(key);
     }
   }
-  retryQueueByVideoId = nextQueue;
+  retryQueueByField = nextQueue;
 
-  if (retryQueueByVideoId.size === 0 && !retryFlushInFlight) {
+  if (retryQueueByField.size === 0 && !retryFlushInFlight) {
     clearRetryTimer();
     retryDirectory = null;
     retryAttempts = 0;
@@ -601,15 +608,15 @@ function acknowledgeSavedTokens(directory: string, savedTokenByVideoId: Map<stri
 }
 
 function scheduleRetryFlush() {
-  if (!retryDirectory || retryQueueByVideoId.size === 0 || retryTimer || retryFlushInFlight) return;
+  if (!retryDirectory || retryQueueByField.size === 0 || retryTimer || retryFlushInFlight) return;
   retryTimer = setTimeout(() => {
     retryTimer = null;
     flushRetryQueue();
   }, SAVE_RETRY_DELAY_MS);
 }
 
-function enqueueRetryVideos(directory: string, videos: Video[], token: number) {
-  if (videos.length === 0) return;
+function enqueueRetryUpdates(directory: string, updates: VideoReviewUpdate[], token: number) {
+  if (updates.length === 0) return;
 
   if (retryDirectory && retryDirectory !== directory) {
     // Directory changed; drop stale retry payloads from previous directory.
@@ -617,30 +624,42 @@ function enqueueRetryVideos(directory: string, videos: Video[], token: number) {
   }
 
   retryDirectory = directory;
-  const nextQueue = new Map(retryQueueByVideoId);
-  for (const video of videos) {
-    const existing = nextQueue.get(video.id);
-    if (!existing || existing.token <= token) {
-      nextQueue.set(video.id, { video, token });
+  const nextQueue = new Map(retryQueueByField);
+  for (const update of updates) {
+    for (const field of Object.keys(update.changes) as ReviewStateField[]) {
+      const key = retryKey(update.id, field);
+      const existing = nextQueue.get(key);
+      if (!existing || existing.token <= token) {
+        nextQueue.set(key, {
+          update: { id: update.id, path: update.path, changes: { [field]: update.changes[field] } },
+          field,
+          token,
+        });
+      }
     }
   }
-  retryQueueByVideoId = nextQueue;
+  retryQueueByField = nextQueue;
   scheduleRetryFlush();
 }
 
 function flushRetryQueue() {
-  if (!retryDirectory || retryQueueByVideoId.size === 0 || !window.electronAPI || retryFlushInFlight) return;
+  if (!retryDirectory || retryQueueByField.size === 0 || !window.electronAPI || retryFlushInFlight) return;
 
   const directory = retryDirectory;
-  const retryEntries = Array.from(retryQueueByVideoId.values());
-  const retryPayload = retryEntries.map((entry) => entry.video);
-  const sentTokenByVideoId = new Map<string, number>();
-  for (const entry of retryEntries) {
-    sentTokenByVideoId.set(entry.video.id, entry.token);
+  const retryEntries = Array.from(retryQueueByField.entries());
+  const updatesByVideoId = new Map<string, VideoReviewUpdate>();
+  const sentTokenByKey = new Map<string, number>();
+  for (const [key, entry] of retryEntries) {
+    const existing = updatesByVideoId.get(entry.update.id);
+    updatesByVideoId.set(entry.update.id, existing
+      ? { ...existing, changes: { ...existing.changes, ...entry.update.changes } }
+      : entry.update);
+    sentTokenByKey.set(key, entry.token);
   }
+  const retryPayload = Array.from(updatesByVideoId.values());
   retryFlushInFlight = true;
 
-  void window.electronAPI.saveCache(directory, retryPayload)
+  void window.electronAPI.saveReviewState(directory, retryPayload)
     .then((ok) => {
       retryFlushInFlight = false;
 
@@ -649,7 +668,7 @@ function flushRetryQueue() {
         return;
       }
 
-      if (retryQueueByVideoId.size === 0) {
+      if (retryQueueByField.size === 0) {
         retryDirectory = null;
         retryAttempts = 0;
         return;
@@ -658,8 +677,8 @@ function flushRetryQueue() {
       if (ok) {
         retryAttempts = 0;
         // Remove only queue entries that match the successful payload version.
-        acknowledgeSavedTokens(directory, sentTokenByVideoId);
-        if (retryQueueByVideoId.size > 0) {
+        acknowledgeSavedTokens(directory, sentTokenByKey);
+        if (retryQueueByField.size > 0) {
           scheduleRetryFlush();
         }
         return;
@@ -667,7 +686,7 @@ function flushRetryQueue() {
 
       retryAttempts += 1;
       if (retryAttempts >= MAX_SAVE_RETRY_ATTEMPTS) {
-        console.error('[store] saveCache retry exhausted', {
+        console.error('[store] saveReviewState retry exhausted', {
           attempts: retryAttempts,
           count: retryPayload.length,
         });
@@ -681,7 +700,7 @@ function flushRetryQueue() {
         return;
       }
 
-      console.warn('[store] saveCache retry scheduled after false result', {
+      console.warn('[store] saveReviewState retry scheduled after false result', {
         attempt: retryAttempts,
         count: retryPayload.length,
       });
@@ -703,7 +722,7 @@ function flushRetryQueue() {
         return;
       }
 
-      if (retryQueueByVideoId.size === 0) {
+      if (retryQueueByField.size === 0) {
         retryDirectory = null;
         retryAttempts = 0;
         return;
@@ -711,7 +730,7 @@ function flushRetryQueue() {
 
       retryAttempts += 1;
       if (retryAttempts >= MAX_SAVE_RETRY_ATTEMPTS) {
-        console.error('[store] saveCache retry failed permanently', err);
+        console.error('[store] saveReviewState retry failed permanently', err);
         notify({
           title: 'Decisions not saved',
           detail: `${plural(retryPayload.length, 'change')} could be lost for "${folderLabel(directory)}".`,
@@ -722,7 +741,7 @@ function flushRetryQueue() {
         return;
       }
 
-      console.warn('[store] saveCache retry scheduled after error', {
+      console.warn('[store] saveReviewState retry scheduled after error', {
         attempt: retryAttempts,
         count: retryPayload.length,
       });
@@ -738,102 +757,66 @@ function flushRetryQueue() {
     });
 }
 
-function persistChangedVideos(directory: string | null, directories: string[], videos: Video[]) {
+function persistReviewState(
+  directory: string | null,
+  directories: string[],
+  videos: Video[],
+  fields: ReviewStateField[],
+) {
   if (!window.electronAPI || videos.length === 0) return;
 
-  const videosByRoot = new Map<string, Video[]>();
+  const updatesByRoot = new Map<string, VideoReviewUpdate[]>();
   for (const video of videos) {
     const root = findRootForVideo(video, directories, directory);
     if (!root) continue;
-    const list = videosByRoot.get(root) ?? [];
-    list.push(video);
-    videosByRoot.set(root, list);
+    const list = updatesByRoot.get(root) ?? [];
+    list.push({
+      id: video.id,
+      path: video.path,
+      changes: Object.fromEntries(fields.map((field) => [field, video[field]])) as VideoReviewChanges,
+    });
+    updatesByRoot.set(root, list);
   }
 
-  for (const [root, rootVideos] of videosByRoot) {
+  for (const [root, rootUpdates] of updatesByRoot) {
     const requestToken = nextRetryToken();
 
-    void window.electronAPI.saveCache(root, rootVideos)
+    void window.electronAPI.saveReviewState(root, rootUpdates)
       .then((ok) => {
         if (ok) {
-          const queueSizeBeforeAck = retryQueueByVideoId.size;
-          const savedTokenByVideoId = new Map<string, number>();
-          for (const video of rootVideos) {
-            savedTokenByVideoId.set(video.id, requestToken);
+          const queueSizeBeforeAck = retryQueueByField.size;
+          const savedTokenByKey = new Map<string, number>();
+          for (const update of rootUpdates) {
+            for (const field of Object.keys(update.changes) as ReviewStateField[]) {
+              savedTokenByKey.set(retryKey(update.id, field), requestToken);
+            }
           }
-          acknowledgeSavedTokens(root, savedTokenByVideoId);
-          if (retryDirectory === root && retryQueueByVideoId.size < queueSizeBeforeAck) {
+          acknowledgeSavedTokens(root, savedTokenByKey);
+          if (retryDirectory === root && retryQueueByField.size < queueSizeBeforeAck) {
             retryAttempts = 0;
           }
           return;
         }
 
-        console.warn('[store] saveCache returned false for partial save', { count: rootVideos.length });
+        console.warn('[store] saveReviewState returned false', { count: rootUpdates.length });
         notify({
           title: 'Saving decisions delayed',
-          detail: `Retrying ${plural(rootVideos.length, 'change')} for "${folderLabel(root)}".`,
+          detail: `Retrying ${plural(rootUpdates.length, 'change')} for "${folderLabel(root)}".`,
           kind: 'warning',
           dedupeKey: `save-delayed:${root}`,
         });
-        enqueueRetryVideos(root, rootVideos, requestToken);
+        enqueueRetryUpdates(root, rootUpdates, requestToken);
       })
       .catch((err) => {
-        console.error('[store] saveCache failed for partial save', err);
+        console.error('[store] saveReviewState failed', err);
         notify({
           title: 'Saving decisions delayed',
-          detail: `Retrying ${plural(rootVideos.length, 'change')} for "${folderLabel(root)}".`,
+          detail: `Retrying ${plural(rootUpdates.length, 'change')} for "${folderLabel(root)}".`,
           kind: 'warning',
           dedupeKey: `save-delayed:${root}`,
         });
-        enqueueRetryVideos(root, rootVideos, requestToken);
+        enqueueRetryUpdates(root, rootUpdates, requestToken);
       });
-  }
-}
-
-function persistChangedVideosAtomic(directory: string | null, directories: string[], videos: Video[]) {
-  if (!window.electronAPI || videos.length === 0) return;
-
-  const videosByRoot = new Map<string, Video[]>();
-  for (const video of videos) {
-    const root = findRootForVideo(video, directories, directory);
-    if (!root) continue;
-    const list = videosByRoot.get(root) ?? [];
-    list.push(video);
-    videosByRoot.set(root, list);
-  }
-
-  for (const [root, rootVideos] of videosByRoot) {
-    const requestToken = nextRetryToken();
-    void window.electronAPI.saveCacheAtomic(root, rootVideos)
-      .then((ok) => {
-        if (!ok) {
-          console.warn('[store] saveCacheAtomic returned false; falling back to queued save', { count: rootVideos.length });
-          notify({
-            title: 'Saving decisions delayed',
-            detail: `Retrying ${plural(rootVideos.length, 'change')} for "${folderLabel(root)}".`,
-            kind: 'warning',
-            dedupeKey: `save-delayed:${root}`,
-          });
-          persistChangedVideos(root, [root], rootVideos);
-          return;
-        }
-
-        const savedTokenByVideoId = new Map<string, number>();
-        for (const video of rootVideos) {
-          savedTokenByVideoId.set(video.id, requestToken);
-        }
-        acknowledgeSavedTokens(root, savedTokenByVideoId);
-      })
-      .catch((err) => {
-        console.error('[store] saveCacheAtomic failed', err);
-        notify({
-          title: 'Saving decisions delayed',
-          detail: `Retrying ${plural(rootVideos.length, 'change')} for "${folderLabel(root)}".`,
-          kind: 'warning',
-          dedupeKey: `save-delayed:${root}`,
-        });
-        persistChangedVideos(root, [root], rootVideos);
-    });
   }
 }
 
@@ -1094,7 +1077,6 @@ const useStore = create<VideoStore>((set, get) => ({
     const indexById = new Map(videos.map((video, index) => [video.id, index]));
     let changed = false;
     const changedFields = new Set<InvalidationField>();
-    const videosToPersist = new Map<string, Video>();
     for (const item of batch) {
       const vIdx = indexById.get(item.videoId);
       if (vIdx === undefined) continue;
@@ -1152,16 +1134,11 @@ const useStore = create<VideoStore>((set, get) => ({
       if (changedCompatibility) changedFields.add('compatible');
 
       videos[vIdx] = nextVideo;
-      if (item.thumbnails) videosToPersist.set(item.videoId, nextVideo);
       changed = true;
     }
     if (!changed) return;
     set(buildVideoStateUpdate(stateBefore, videos, changedFields));
 
-    const stateNow = get();
-    if (videosToPersist.size > 0) {
-      persistChangedVideos(stateNow.directory, stateNow.directories, Array.from(videosToPersist.values()));
-    }
     recordDevPerf('updateVideoThumbnailsBatch', performance.now() - startedAt, { items: batch.length });
   },
 
@@ -1188,7 +1165,7 @@ const useStore = create<VideoStore>((set, get) => ({
     }));
 
     const stateNow = get();
-    persistChangedVideos(stateNow.directory, stateNow.directories, updatedVideo ? [updatedVideo] : []);
+    persistReviewState(stateNow.directory, stateNow.directories, updatedVideo ? [updatedVideo] : [], ['status']);
   },
 
   setVideoStatusesBatch: (videoIds: string[], status: VideoStatus) => {
@@ -1224,7 +1201,7 @@ const useStore = create<VideoStore>((set, get) => ({
     }));
 
     const stateNow = get();
-    persistChangedVideosAtomic(stateNow.directory, stateNow.directories, changedVideos);
+    persistReviewState(stateNow.directory, stateNow.directories, changedVideos, ['status']);
   },
 
   setVideoRating: (videoId, rating) => {
@@ -1238,7 +1215,7 @@ const useStore = create<VideoStore>((set, get) => ({
     if (!updatedVideo) return;
     set(buildVideoStateUpdate(stateBefore, videos, ['rating']));
     const stateNow = get();
-    persistChangedVideos(stateNow.directory, stateNow.directories, [updatedVideo]);
+    persistReviewState(stateNow.directory, stateNow.directories, [updatedVideo], ['rating']);
   },
 
   toggleFavorite: (videoId) => {
@@ -1252,7 +1229,7 @@ const useStore = create<VideoStore>((set, get) => ({
     if (!updatedVideo) return;
     set(buildVideoStateUpdate(stateBefore, videos, ['favorite']));
     const stateNow = get();
-    persistChangedVideos(stateNow.directory, stateNow.directories, [updatedVideo]);
+    persistReviewState(stateNow.directory, stateNow.directories, [updatedVideo], ['favorite']);
   },
 
   undo: () => {
@@ -1278,7 +1255,7 @@ const useStore = create<VideoStore>((set, get) => ({
     }));
 
     const stateNow = get();
-    persistChangedVideos(stateNow.directory, stateNow.directories, restoredVideos);
+    persistReviewState(stateNow.directory, stateNow.directories, restoredVideos, ['status']);
   },
 
   // ── Filter/Sort ──
@@ -1661,7 +1638,7 @@ const useStore = create<VideoStore>((set, get) => ({
     if (!updatedVideo) return;
     set({ videos, filteredVideos: computeFiltered({ ...get(), videos }) });
     const stateNow = get();
-    persistChangedVideos(stateNow.directory, stateNow.directories, [updatedVideo]);
+    persistReviewState(stateNow.directory, stateNow.directories, [updatedVideo], ['bookmarks']);
   },
 
   removeBookmark: (videoId, time) => {
@@ -1679,7 +1656,7 @@ const useStore = create<VideoStore>((set, get) => ({
     if (!updatedVideo) return;
     set({ videos, filteredVideos: computeFiltered({ ...get(), videos }) });
     const stateNow = get();
-    persistChangedVideos(stateNow.directory, stateNow.directories, [updatedVideo]);
+    persistReviewState(stateNow.directory, stateNow.directories, [updatedVideo], ['bookmarks']);
   },
 
   clearRecentDirectories: () => {

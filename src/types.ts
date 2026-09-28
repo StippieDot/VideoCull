@@ -1,6 +1,14 @@
 // ── Video Status ────────────────────────────────────────────────────
 export type VideoStatus = 'pending' | 'keep' | 'delete' | 'skipped';
 
+export type VideoReviewChanges = Partial<Pick<Video, 'status' | 'rating' | 'favorite' | 'bookmarks'>>;
+
+export interface VideoReviewUpdate {
+  id: string;
+  path: string;
+  changes: VideoReviewChanges;
+}
+
 export interface Video {
   id: string;
   filename: string;
@@ -591,6 +599,7 @@ export interface ElectronAPI {
   onMenuAction: (callback: (action: string) => void) => () => void;
   saveCache: (dirPath: string, videos: Video[]) => Promise<boolean>;
   saveCacheAtomic: (dirPath: string, videos: Video[]) => Promise<boolean>;
+  saveReviewState: (dirPath: string, updates: VideoReviewUpdate[]) => Promise<boolean>;
   clearCache: (dirPath: string) => Promise<boolean>;
   batchDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
   permanentlyDelete: (filePaths: string[]) => Promise<DeleteResult[]>;

@@ -4,9 +4,21 @@ const fsSync = require('fs');
 const crypto = require('crypto');
 const log = require('./logger');
 const perfMetrics = require('./perf-metrics');
+const { createCacheConnectionManager } = require('./cache-connection-manager');
 
 // better-sqlite3 is a native module unpacked from asar — require it directly.
-const Database = require('better-sqlite3');
+let Database = null;
+let connectionManager = null;
+
+function getDatabaseConstructor() {
+  Database ??= require('better-sqlite3');
+  return Database;
+}
+
+function getConnectionManager() {
+  connectionManager ??= createCacheConnectionManager();
+  return connectionManager;
+}
 
 const OLD_CACHE_FILE = '.video-cull-cache.json';
 const MAX_SQLITE_DB_PATH_LENGTH = 240;
@@ -345,23 +357,17 @@ const FINGERPRINT_SCHEMA_COLUMNS = {
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
 
-const _dbByPath = new Map();
-const _dbLeaseCountByPath = new Map();
-
 /**
  * Open (or reuse) the SQLite database for a folder.
  * Creates the cache directory and schema if they don't exist.
  * cacheRootDir — computed by main.js from app.getPath('userData').
  * Returns the open Database instance.
  */
-function openDb(folderPath, cacheOptions) {
+function openPhysicalDb(folderPath, cacheOptions) {
   const dbPath = resolveCachePath(folderPath, cacheOptions);
-
-  const existing = _dbByPath.get(dbPath);
-  if (existing) return existing;
-
   fsSync.mkdirSync(path.dirname(dbPath), { recursive: true });
-  const db = new Database(dbPath);
+  const DatabaseConstructor = getDatabaseConstructor();
+  const db = new DatabaseConstructor(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
@@ -369,9 +375,13 @@ function openDb(folderPath, cacheOptions) {
   ensureVideoSchemaColumns(db);
   ensureFingerprintSchemaColumns(db);
 
-  _dbByPath.set(dbPath, db);
   log.info(`[cache] Opened DB for: ${folderPath}`);
   return db;
+}
+
+function openDb(folderPath, cacheOptions) {
+  const dbPath = resolveCachePath(folderPath, cacheOptions);
+  return getConnectionManager().openUnleased(dbPath, () => openPhysicalDb(folderPath, cacheOptions));
 }
 
 function ensureVideoSchemaColumns(db) {
@@ -391,51 +401,33 @@ function ensureFingerprintSchemaColumns(db) {
 }
 
 function closeDbPath(dbPath, options = {}) {
-  if (!options.force && (_dbLeaseCountByPath.get(dbPath) ?? 0) > 0) return false;
-  if (options.force) _dbLeaseCountByPath.delete(dbPath);
-  const db = _dbByPath.get(dbPath);
-  if (!db) return false;
-  try { db.close(); } catch { /* ignore */ }
-  _dbByPath.delete(dbPath);
-  return true;
+  return getConnectionManager().close(dbPath, options);
 }
 
 function closeDbForFolder(folderPath, cacheOptions, options = {}) {
   return closeDbPath(resolveCachePath(folderPath, cacheOptions), options);
 }
 
-function acquireDb(folderPath, cacheOptions) {
+function acquireDb(folderPath, cacheOptions, options = {}) {
   const dbPath = resolveCachePath(folderPath, cacheOptions);
-  _dbLeaseCountByPath.set(dbPath, (_dbLeaseCountByPath.get(dbPath) ?? 0) + 1);
-  try {
-    return openDb(folderPath, cacheOptions);
-  } catch (err) {
-    const remaining = (_dbLeaseCountByPath.get(dbPath) ?? 1) - 1;
-    if (remaining > 0) _dbLeaseCountByPath.set(dbPath, remaining);
-    else _dbLeaseCountByPath.delete(dbPath);
-    throw err;
-  }
+  return getConnectionManager().acquire(
+    dbPath,
+    () => openPhysicalDb(folderPath, cacheOptions),
+    options.priority,
+  );
 }
 
 function releaseDb(folderPath, cacheOptions) {
-  const dbPath = resolveCachePath(folderPath, cacheOptions);
-  const leaseCount = _dbLeaseCountByPath.get(dbPath) ?? 0;
-  if (leaseCount === 0) return false;
-  const remaining = leaseCount - 1;
-  if (remaining > 0) {
-    _dbLeaseCountByPath.set(dbPath, remaining);
-    return false;
-  }
-  _dbLeaseCountByPath.delete(dbPath);
-  return closeDbPath(dbPath);
+  return getConnectionManager().release(resolveCachePath(folderPath, cacheOptions));
 }
 
 /** Close all open DB connections. Call on app quit or before broad migrations. */
 function closeDb() {
-  _dbLeaseCountByPath.clear();
-  for (const dbPath of Array.from(_dbByPath.keys())) {
-    closeDbPath(dbPath, { force: true });
-  }
+  getConnectionManager().closeAll();
+}
+
+function getDbConnectionStats() {
+  return getConnectionManager().getStats();
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────
@@ -494,6 +486,9 @@ function hydrateCachedVideos(rows, thumbRows) {
       width: row.width ?? null,
       height: row.height ?? null,
       osThumbnail: row.os_thumbnail_path ?? null,
+      fileSignatureQuick: row.file_signature_quick ?? null,
+      fileSignatureFull: row.file_signature_full ?? null,
+      signatureUpdatedAt: row.signature_updated_at ?? null,
     });
   }
   return Array.from(map.values());
@@ -550,6 +545,26 @@ function createPathConflictResolver(db) {
 
 // ── Write ─────────────────────────────────────────────────────────────────
 
+function findChangedVideoIds(db, videos, existingVideos = null) {
+  if (videos.length === 0) return new Set();
+  const existingById = existingVideos ?? new Map(batchSelectIn(
+    db,
+    'SELECT id, size_bytes, file_date FROM videos WHERE id IN (__IN__)',
+    videos.map((video) => video.id),
+  ).map((row) => [row.id, row]));
+  const changedIds = new Set();
+  for (const video of videos) {
+    const existing = existingById.get(video.id);
+    if (!existing) continue;
+    const existingSize = existing.size_bytes ?? existing.sizeBytes ?? null;
+    const existingDate = existing.file_date ?? existing.date ?? null;
+    if (existingSize !== (video.sizeBytes ?? null) || existingDate !== (video.date ?? null)) {
+      changedIds.add(video.id);
+    }
+  }
+  return changedIds;
+}
+
 /**
  * Upsert all videos in a single transaction.
  * Used for status changes and bookmark updates — no progress IPC needed.
@@ -558,6 +573,7 @@ function saveCache(db, videos, options = {}) {
   const resolvePathConflict = createPathConflictResolver(db);
   const updatedAt = Number.isFinite(options.updatedAt) ? options.updatedAt : Date.now();
   const stats = { thumbnailRowsWritten: 0, thumbnailRowsSkipped: 0 };
+  const changedFingerprintIds = findChangedVideoIds(db, videos, options.existingVideos);
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
@@ -613,6 +629,14 @@ function saveCache(db, videos, options = {}) {
         WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
         ELSE signature_updated_at
       END,
+      fingerprint_failed_at = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE fingerprint_failed_at
+      END,
+      fingerprint_failure_key = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE fingerprint_failure_key
+      END,
       bookmarks   = excluded.bookmarks,
       os_thumbnail_path = COALESCE(excluded.os_thumbnail_path, os_thumbnail_path),
       duplicate_hash = excluded.duplicate_hash,
@@ -623,10 +647,12 @@ function saveCache(db, videos, options = {}) {
   const insertThumb = db.prepare(
     'INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)'
   );
+  const deleteFingerprints = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
 
   const upsertAll = db.transaction((vids) => {
     for (const v of vids) {
       resolvePathConflict(v);
+      if (changedFingerprintIds.has(v.id)) deleteFingerprints.run(v.id);
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
@@ -747,6 +773,100 @@ function updateVideoMetadataBatch(db, updates) {
   writeAll(updates);
 }
 
+function updateVideoReviewStateBatch(db, updates) {
+  if (!Array.isArray(updates) || updates.length === 0) return;
+
+  const allowedColumns = {
+    status: 'status',
+    rating: 'rating',
+    favorite: 'favorite',
+    bookmarks: 'bookmarks',
+  };
+  const statements = new Map();
+  const now = Date.now();
+  const writeAll = db.transaction((batch) => {
+    for (const item of batch) {
+      if (!item?.id || !item.changes) continue;
+      const fields = Object.keys(item.changes).filter((field) => allowedColumns[field]).sort();
+      if (fields.length === 0) continue;
+      const key = fields.join(',');
+      let statement = statements.get(key);
+      if (!statement) {
+        const assignments = fields.map((field) => `${allowedColumns[field]} = ?`).join(', ');
+        statement = db.prepare(`UPDATE videos SET ${assignments}, updated_at = ? WHERE id = ?`);
+        statements.set(key, statement);
+      }
+      const values = fields.map((field) => {
+        const value = item.changes[field];
+        if (field === 'favorite') return value ? 1 : 0;
+        if (field === 'bookmarks') return JSON.stringify(value);
+        return value;
+      });
+      const result = statement.run(...values, now, item.id);
+      if (result.changes !== 1) {
+        const error = new Error(`Cached video not found while saving review state: ${item.id}`);
+        error.code = 'CACHE_VIDEO_NOT_FOUND';
+        throw error;
+      }
+    }
+  });
+
+  writeAll(updates);
+}
+
+function updateVideoThumbnailMetadataBatch(db, updates) {
+  if (!Array.isArray(updates) || updates.length === 0) return;
+
+  const now = Date.now();
+  const updateVideo = db.prepare(`
+    UPDATE videos SET
+      metadata_date = COALESCE(?, metadata_date),
+      duration_secs = COALESCE(?, duration_secs),
+      fps = COALESCE(?, fps),
+      video_codec = COALESCE(?, video_codec),
+      audio_codec = COALESCE(?, audio_codec),
+      video_bitrate = COALESCE(?, video_bitrate),
+      audio_bitrate = COALESCE(?, audio_bitrate),
+      total_bitrate = COALESCE(?, total_bitrate),
+      container_format = COALESCE(?, container_format),
+      width = COALESCE(?, width),
+      height = COALESCE(?, height),
+      compatible = COALESCE(?, compatible),
+      updated_at = ?
+    WHERE id = ?
+  `);
+  const selectThumbs = db.prepare('SELECT file_path FROM thumbnails WHERE video_id = ? ORDER BY idx');
+  const deleteThumbs = db.prepare('DELETE FROM thumbnails WHERE video_id = ?');
+  const insertThumb = db.prepare('INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)');
+
+  const writeAll = db.transaction((batch) => {
+    for (const item of batch) {
+      if (!item?.videoId) continue;
+      updateVideo.run(
+        item.metadataDate ?? null,
+        item.durationSecs ?? null,
+        item.fps ?? null,
+        item.videoCodec ?? null,
+        item.audioCodec ?? null,
+        item.videoBitrate ?? null,
+        item.audioBitrate ?? null,
+        item.totalBitrate ?? null,
+        item.containerFormat ?? null,
+        item.width ?? null,
+        item.height ?? null,
+        item.compatible == null ? null : (item.compatible ? 1 : 0),
+        now,
+        item.videoId,
+      );
+      if (Array.isArray(item.thumbnails)) {
+        writeThumbnailRowsIfChanged(selectThumbs, deleteThumbs, insertThumb, item.videoId, item.thumbnails);
+      }
+    }
+  });
+
+  writeAll(updates);
+}
+
 /**
  * Chunked upsert with optional progress callback.
  * Use for bulk operations (initial scan, JSON migration) where IPC progress
@@ -757,6 +877,7 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
   const resolvePathConflict = createPathConflictResolver(db);
   const updatedAt = Number.isFinite(options.updatedAt) ? options.updatedAt : Date.now();
   const stats = { thumbnailRowsWritten: 0, thumbnailRowsSkipped: 0 };
+  const changedFingerprintIds = findChangedVideoIds(db, videos, options.existingVideos);
   const upsertVideo = db.prepare(`
     INSERT INTO videos
       (id, filename, path, size_bytes, file_date, metadata_date,
@@ -810,6 +931,14 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
         WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
         ELSE signature_updated_at
       END,
+      fingerprint_failed_at = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE fingerprint_failed_at
+      END,
+      fingerprint_failure_key = CASE
+        WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
+        ELSE fingerprint_failure_key
+      END,
       bookmarks   = excluded.bookmarks,
       os_thumbnail_path = COALESCE(excluded.os_thumbnail_path, os_thumbnail_path),
       duplicate_hash = excluded.duplicate_hash,
@@ -820,12 +949,14 @@ async function saveCacheChunked(db, videos, onProgress, options = {}) {
   const insertThumb = db.prepare(
     'INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)'
   );
+  const deleteFingerprints = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
 
   const CHUNK_SIZE = 500;
 
   const insertChunk = db.transaction((chunk) => {
     for (const v of chunk) {
       resolvePathConflict(v);
+      if (changedFingerprintIds.has(v.id)) deleteFingerprints.run(v.id);
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
@@ -1123,7 +1254,7 @@ function updateVideoSignatures(db, videoId, signatures) {
 
 function loadSignatureRows(db, videoIds) {
   if (!videoIds.length) return [];
-  return batchSelectIn(db, 'SELECT id, file_signature_quick, file_signature_full, signature_updated_at FROM videos WHERE id IN (__IN__)', videoIds);
+  return batchSelectIn(db, 'SELECT id, size_bytes, file_date, file_signature_quick, file_signature_full, signature_updated_at FROM videos WHERE id IN (__IN__)', videoIds);
 }
 
 // ── JSON migration ────────────────────────────────────────────────────────
@@ -1210,7 +1341,6 @@ function deleteDb(folderPath, cacheOptions, options = {}) {
   }
 
   const dbPath = resolveCachePath(folderPath, cacheOptions);
-  _dbLeaseCountByPath.delete(dbPath);
   closeDbPath(dbPath, { force: true });
   try {
     fsSync.unlinkSync(dbPath);
@@ -1233,6 +1363,7 @@ module.exports = {
   releaseDb,
   closeDbForFolder,
   closeDb,
+  getDbConnectionStats,
   loadCacheVideos,
   loadCacheMap,
   saveCache,
@@ -1247,6 +1378,8 @@ module.exports = {
   loadRecentMetadataFailureIds,
   updateVideoMetadata,
   updateVideoMetadataBatch,
+  updateVideoReviewStateBatch,
+  updateVideoThumbnailMetadataBatch,
   loadPHashRows,
   loadGraySamples,
   loadGraySampleRows,

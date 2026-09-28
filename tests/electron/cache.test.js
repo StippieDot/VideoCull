@@ -4,24 +4,13 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const test = globalThis.test || nodeTest;
-let cache = null;
-let cacheLoadError = null;
+const cache = require('../../electron/cache');
+const log = require('../../electron/logger');
 
-try {
-  cache = require('../../electron/cache');
-} catch (err) {
-  cacheLoadError = err;
-}
+log.transports.console.level = false;
+log.transports.file.level = false;
 
-function skipIfCacheUnavailable(t, err = cacheLoadError) {
-  if (!err) return false;
-  t.skip(`better-sqlite3 is unavailable in plain node test mode: ${err.message}`);
-  return true;
-}
-
-async function openTempCacheDb(t) {
-  if (skipIfCacheUnavailable(t)) return null;
-
+async function openTempCacheDb() {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-cache-'));
   const folderPath = path.join(tempRoot, 'library');
   await fs.mkdir(folderPath, { recursive: true });
@@ -31,9 +20,6 @@ async function openTempCacheDb(t) {
     return { tempRoot, folderPath, db };
   } catch (err) {
     await fs.rm(tempRoot, { recursive: true, force: true });
-    if (skipIfCacheUnavailable(t, err?.code === 'ERR_DLOPEN_FAILED' ? err : null)) {
-      return null;
-    }
     throw err;
   }
 }
@@ -121,8 +107,8 @@ test('database leases prevent overlapping operations from closing a shared conne
   const cacheOptions = { mode: 'centralised', centralCachePath: tempRoot };
 
   try {
-    const firstLease = cache.acquireDb(folderPath, cacheOptions);
-    const secondLease = cache.acquireDb(folderPath, cacheOptions);
+    const firstLease = await cache.acquireDb(folderPath, cacheOptions);
+    const secondLease = await cache.acquireDb(folderPath, cacheOptions);
     assert.equal(firstLease, db);
     assert.equal(secondLease, db);
 
@@ -131,7 +117,11 @@ test('database leases prevent overlapping operations from closing a shared conne
     assert.equal(cache.releaseDb(folderPath, cacheOptions), false);
     assert.equal(db.open, true);
     assert.equal(cache.releaseDb(folderPath, cacheOptions), true);
-    assert.equal(db.open, false);
+    assert.equal(db.open, true);
+
+    const reused = await cache.acquireDb(folderPath, cacheOptions);
+    assert.equal(reused, db);
+    cache.releaseDb(folderPath, cacheOptions);
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });
@@ -265,6 +255,41 @@ test('saveCacheChunked replaces stale rows when the same path gets a new id', as
     assert.deepEqual(rows, [{ id: 'new-id', path: filePath, size_bytes: 84 }]);
     assert.deepEqual(fingerprints, []);
     assert.deepEqual(thumbnails, [{ video_id: 'new-id' }]);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('cache saves invalidate duplicate data when the same video id refers to a changed file', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    const syncVideo = buildCachedVideo('sync-id', path.join(folderPath, 'sync.mp4'), { sizeBytes: 10, date: 100 });
+    const chunkedVideo = buildCachedVideo('chunked-id', path.join(folderPath, 'chunked.mp4'), { sizeBytes: 20, date: 200 });
+    cache.saveCache(db, [syncVideo, chunkedVideo]);
+    for (const video of [syncVideo, chunkedVideo]) {
+      insertFingerprint(db, video.id, 0);
+      cache.updateVideoSignatures(db, video.id, { quick: `${video.id}-quick` });
+      cache.markFingerprintFailure(db, video.id, { fingerprintKey: 'settings-a' });
+    }
+
+    cache.saveCache(db, [{ ...syncVideo, date: 101 }]);
+    await cache.saveCacheChunked(db, [{ ...chunkedVideo, date: 201 }]);
+
+    assert.deepEqual(db.prepare('SELECT video_id FROM video_fingerprints').all(), []);
+    assert.deepEqual(
+      db.prepare(`
+        SELECT id, file_signature_quick, signature_updated_at, fingerprint_failed_at, fingerprint_failure_key
+        FROM videos ORDER BY id
+      `).all(),
+      [
+        { id: 'chunked-id', file_signature_quick: null, signature_updated_at: null, fingerprint_failed_at: null, fingerprint_failure_key: null },
+        { id: 'sync-id', file_signature_quick: null, signature_updated_at: null, fingerprint_failed_at: null, fingerprint_failure_key: null },
+      ],
+    );
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });
@@ -518,6 +543,98 @@ test('updateVideoMetadataBatch applies metadata updates transactionally for mult
     assert.equal(rows[1].metadata_checked_at, 4000);
     assert.equal(rows[1].metadata_version, 2);
     assert.equal(rows[1].video_codec, 'hevc');
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('updateVideoThumbnailMetadataBatch changes only generated media fields', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    cache.saveCache(db, [buildCachedVideo('a', path.join(folderPath, 'a.mp4'), {
+      status: 'keep',
+      rating: 4,
+      thumbnails: ['thumbs/a/old.jpg'],
+    })]);
+
+    cache.updateVideoThumbnailMetadataBatch(db, [{
+      videoId: 'a',
+      thumbnails: ['thumbs/a/new-1.jpg', 'thumbs/a/new-2.jpg'],
+      durationSecs: 15,
+      videoCodec: 'h264',
+      compatible: true,
+    }]);
+
+    const video = db.prepare('SELECT status, rating, duration_secs, video_codec, compatible FROM videos WHERE id = ?').get('a');
+    const thumbnails = db.prepare('SELECT file_path FROM thumbnails WHERE video_id = ? ORDER BY idx').all('a');
+    assert.deepEqual(video, { status: 'keep', rating: 4, duration_secs: 15, video_codec: 'h264', compatible: 1 });
+    assert.deepEqual(thumbnails, [
+      { file_path: 'thumbs/a/new-1.jpg' },
+      { file_path: 'thumbs/a/new-2.jpg' },
+    ]);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('updateVideoReviewStateBatch changes only requested review fields', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    cache.saveCache(db, [buildCachedVideo('a', path.join(folderPath, 'a.mp4'), {
+      status: 'pending',
+      rating: 1,
+      favorite: false,
+      bookmarks: [2],
+      durationSecs: 15,
+    })]);
+
+    cache.updateVideoReviewStateBatch(db, [
+      { id: 'a', changes: { status: 'keep', favorite: true } },
+      { id: 'a', changes: { bookmarks: [2, 4.5] } },
+    ]);
+
+    const video = db.prepare('SELECT status, rating, favorite, bookmarks, duration_secs FROM videos WHERE id = ?').get('a');
+    assert.deepEqual(video, {
+      status: 'keep',
+      rating: 1,
+      favorite: 1,
+      bookmarks: '[2,4.5]',
+      duration_secs: 15,
+    });
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('updateVideoReviewStateBatch rejects missing rows without partially saving the batch', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    cache.saveCache(db, [buildCachedVideo('a', path.join(folderPath, 'a.mp4'), {
+      status: 'pending',
+    })]);
+
+    assert.throws(
+      () => cache.updateVideoReviewStateBatch(db, [
+        { id: 'a', changes: { status: 'keep' } },
+        { id: 'missing', changes: { status: 'delete' } },
+      ]),
+      (error) => error.code === 'CACHE_VIDEO_NOT_FOUND',
+    );
+
+    const video = db.prepare('SELECT status FROM videos WHERE id = ?').get('a');
+    assert.deepEqual(video, { status: 'pending' });
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });
