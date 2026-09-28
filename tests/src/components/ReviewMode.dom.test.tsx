@@ -46,6 +46,7 @@ function installElectronApiMock() {
   const electronAPI = {
     openVideo: vi.fn().mockResolvedValue(true),
     openInExplorer: vi.fn().mockResolvedValue(true),
+    saveReviewState: vi.fn().mockResolvedValue(true),
     setVideoFullscreen: vi.fn().mockResolvedValue(true),
   };
   Object.assign(window, { electronAPI });
