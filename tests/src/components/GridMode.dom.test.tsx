@@ -82,6 +82,7 @@ describe('GridMode search', () => {
       electronAPI: {
         saveConfig: vi.fn().mockResolvedValue(true),
         saveCacheAtomic: vi.fn().mockResolvedValue(true),
+        saveReviewState: vi.fn().mockResolvedValue(true),
         openVideo: vi.fn().mockResolvedValue(true),
         openInExplorer: vi.fn().mockResolvedValue(true),
       },

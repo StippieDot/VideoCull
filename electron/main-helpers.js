@@ -42,6 +42,60 @@ function detectCompatibility(containerFormat, videoCodec, filePath) {
   return false;
 }
 
+function mergeScannedVideoWithCache(video, cached) {
+  if (!cached) {
+    return {
+      ...video,
+      status: 'pending',
+      thumbnails: [],
+      metadataDate: null,
+      bookmarks: [],
+      rating: 0,
+      favorite: false,
+      compatible: detectCompatibility(null, null, video.path),
+      videoCodec: null,
+      audioCodec: null,
+      videoBitrate: null,
+      audioBitrate: null,
+      totalBitrate: null,
+      metadataCheckedAt: null,
+      metadataVersion: null,
+      metadataFailedAt: null,
+      metadataFailureReason: null,
+      containerFormat: null,
+      width: null,
+      height: null,
+      fps: null,
+    };
+  }
+
+  return {
+    ...video,
+    status: cached.status,
+    durationSecs: cached.durationSecs ?? video.durationSecs,
+    thumbnails: cached.thumbnails,
+    duplicateHash: cached.duplicateHash || video.duplicateHash,
+    metadataDate: cached.metadataDate ?? null,
+    bookmarks: cached.bookmarks,
+    rating: cached.rating ?? 0,
+    favorite: Boolean(cached.favorite),
+    videoCodec: cached.videoCodec ?? null,
+    audioCodec: cached.audioCodec ?? null,
+    videoBitrate: cached.videoBitrate ?? null,
+    audioBitrate: cached.audioBitrate ?? null,
+    totalBitrate: cached.totalBitrate ?? null,
+    metadataCheckedAt: cached.metadataCheckedAt ?? null,
+    metadataVersion: cached.metadataVersion ?? null,
+    metadataFailedAt: cached.metadataFailedAt ?? null,
+    metadataFailureReason: cached.metadataFailureReason ?? null,
+    containerFormat: cached.containerFormat ?? null,
+    width: cached.width ?? null,
+    height: cached.height ?? null,
+    fps: cached.fps ?? null,
+    compatible: detectCompatibility(cached.containerFormat ?? null, cached.videoCodec ?? null, video.path),
+  };
+}
+
 async function canServeThumbPath({
   filePath,
   activeCacheRoots,
@@ -421,6 +475,7 @@ module.exports = {
   isSqliteCorruptionError,
   listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
+  mergeScannedVideoWithCache,
   normalizeReportRoots,
   normalizeReviewStateChanges,
   removeEmptyDeletedVideoFolders,

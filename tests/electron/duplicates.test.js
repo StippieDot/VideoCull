@@ -2,7 +2,6 @@ const assert = require('node:assert/strict');
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
-const cache = require('../../electron/cache');
 const { clearDuplicateSessionCache, DuplicateCancelledError, __test__ } = require('../../electron/duplicates');
 const { normalizeDuplicateSettings } = require('../../electron/duplicate-utils');
 
@@ -24,23 +23,27 @@ test('duplicate cache state is reused within the library session', async () => {
   const videos = [video('a')];
   const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', sampleCount: 1 });
   let opens = 0;
-  vi.spyOn(cache, 'getFingerprintCounts').mockReturnValue(new Map([['a', true]]));
-  vi.spyOn(cache, 'loadFingerprintFailureIds').mockReturnValue([]);
-  vi.spyOn(cache, 'loadPHashRows').mockReturnValue([{ video_id: 'a', sample_index: 0, phash_hex: 'abc' }]);
-  vi.spyOn(cache, 'loadSignatureRows').mockReturnValue([{ id: 'a', file_signature_quick: 'quick' }]);
-  const withDb = async (_folderPath, operation) => {
-    opens++;
-    return operation({});
+  const cacheAccess = {
+    loadDuplicateFolderState: async () => {
+      opens++;
+      return {
+        videoIds: ['a'],
+        signatureRows: [{ id: 'a', file_signature_quick: 'quick' }],
+        completeEntries: [['a', true]],
+        failedIds: [],
+        mode: 'phash',
+        comparisonRows: [{ video_id: 'a', sample_index: 0, phash_hex: 'abc' }],
+      };
+    },
   };
 
   try {
     clearDuplicateSessionCache();
-    await __test__.loadDuplicateCacheState(videos, settings, { cancelled: false }, withDb);
-    await __test__.loadDuplicateCacheState(videos, settings, { cancelled: false }, withDb);
+    await __test__.loadDuplicateCacheState(videos, settings, { cancelled: false }, cacheAccess, {});
+    await __test__.loadDuplicateCacheState(videos, settings, { cancelled: false }, cacheAccess, {});
     assert.equal(opens, 1);
   } finally {
     clearDuplicateSessionCache();
-    vi.restoreAllMocks();
   }
 });
 
@@ -272,9 +275,7 @@ test('exact duplicate pass skips hashing same-size videos outside duration toler
     readAttempts++;
     return await vi.importActual('fs/promises').then((mod) => mod.readFile(...args));
   });
-  vi.spyOn(cache, 'updateVideoSignatures').mockImplementation(() => {
-    writeAttempts++;
-  });
+  const cacheAccess = { updateVideoSignatures: async () => { writeAttempts++; } };
 
   try {
     const exactGroups = await __test__.findExactGroups(
@@ -283,7 +284,8 @@ test('exact duplicate pass skips hashing same-size videos outside duration toler
       settings,
       { cancelled: false },
       () => {},
-      async (_folderPath, operation) => operation({}),
+      cacheAccess,
+      {},
     );
     assert.deepEqual(exactGroups, []);
     assert.equal(readAttempts, 0);
@@ -322,9 +324,7 @@ test('exact duplicate pass stops before cache writes after cancellation', async 
   ];
 
   let writeAttempts = 0;
-  vi.spyOn(cache, 'updateVideoSignatures').mockImplementation(() => {
-    writeAttempts++;
-  });
+  const cacheAccess = { updateVideoSignatures: async () => { writeAttempts++; } };
 
   const run = { cancelled: false };
   setImmediate(() => {
@@ -339,13 +339,13 @@ test('exact duplicate pass stops before cache writes after cancellation', async 
         normalizeDuplicateSettings({}),
         run,
         () => {},
-        async (_folderPath, operation) => operation({}),
+        cacheAccess,
+        {},
       ),
       (err) => err instanceof DuplicateCancelledError,
     );
     assert.equal(writeAttempts, 0);
   } finally {
-    vi.restoreAllMocks();
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
