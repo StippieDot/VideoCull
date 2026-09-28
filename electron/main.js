@@ -676,7 +676,7 @@ app.on('before-quit', (event) => {
     clearInterval(interval);
   }
   activeBatchIntervals.clear();
-  void cacheService.closeAll();
+  void cacheService.shutdown();
 });
 
 // â”€â”€ Cache constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

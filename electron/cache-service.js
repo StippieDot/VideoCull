@@ -1,186 +1,146 @@
-const cache = require('./cache');
-const { createKeyedOperationQueue } = require('./keyed-operation-queue');
-const log = require('./logger');
-const {
-  isSqliteCorruptionError,
-  mergeScannedVideoWithCache,
-  thumbAbsolute,
-  videoForDb,
-} = require('./main-helpers');
+const path = require('node:path');
+const { Worker } = require('node:worker_threads');
 
-function createCacheService() {
-  const operationQueue = createKeyedOperationQueue();
+function createCacheService({ WorkerClass = Worker, workerPath = path.join(__dirname, 'cache-worker.js') } = {}) {
+  let worker = null;
+  let nextRequestId = 1;
+  const pending = new Map();
 
-  async function run(folderPath, cacheOptions, operation, priority = 'foreground') {
-    const dbPath = cache.resolveCachePath(folderPath, cacheOptions);
-    return operationQueue.run(dbPath, async () => {
-      const db = await cache.acquireDb(folderPath, cacheOptions, { priority });
-      try {
-        return await operation(db);
-      } finally {
-        cache.releaseDb(folderPath, cacheOptions);
+  function rejectPending(error) {
+    for (const request of pending.values()) request.reject(error);
+    pending.clear();
+  }
+
+  function ensureWorker() {
+    if (worker) return worker;
+    const nextWorker = new WorkerClass(workerPath);
+    nextWorker.unref?.();
+    nextWorker.on('message', (message) => {
+      const request = pending.get(message.id);
+      if (!request) return;
+      pending.delete(message.id);
+      if (!message.error) {
+        request.resolve(message.result);
+        return;
       }
-    }, priority);
+      const error = new Error(message.error.message);
+      error.name = message.error.name || 'Error';
+      error.stack = message.error.stack || error.stack;
+      if (message.error.code) error.code = message.error.code;
+      request.reject(error);
+    });
+    nextWorker.on('error', (error) => {
+      if (worker === nextWorker) worker = null;
+      rejectPending(error);
+    });
+    nextWorker.on('exit', (code) => {
+      if (worker === nextWorker) worker = null;
+      if (pending.size > 0) rejectPending(new Error(`Cache worker exited with code ${code}`));
+    });
+    worker = nextWorker;
+    return worker;
+  }
+
+  function request(operation, args = {}, priority = 'foreground') {
+    const id = nextRequestId++;
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      try {
+        ensureWorker().postMessage({ id, operation, args, priority });
+      } catch (error) {
+        pending.delete(id);
+        reject(error);
+      }
+    });
+  }
+
+  async function shutdown() {
+    const activeWorker = worker;
+    if (!activeWorker) return;
+    try {
+      await request('closeAll', {}, 'interactive');
+    } finally {
+      if (worker === activeWorker) worker = null;
+      await activeWorker.terminate?.();
+    }
   }
 
   return {
-    closeAll: () => cache.closeDb(),
-    closeFolder: (folderPath, cacheOptions, options) => cache.closeDbForFolder(folderPath, cacheOptions, options),
-    deleteDb: (folderPath, cacheOptions, options) => cache.deleteDb(folderPath, cacheOptions, options),
-    getStats: () => cache.getDbConnectionStats(),
-
-    ensureFolder: (folderPath, cacheOptions) => run(folderPath, cacheOptions, () => true),
-    migrateJson: (folderPath, cacheOptions) => run(
-      folderPath,
-      cacheOptions,
-      (db) => cache.migrateJsonIfNeeded(folderPath, db),
+    closeAll: () => worker ? request('closeAll', {}, 'interactive') : Promise.resolve(true),
+    shutdown,
+    closeFolder: (folderPath, cacheOptions, options) => request(
+      'closeFolder',
+      { folderPath, cacheOptions, options },
+      'interactive',
     ),
-    loadVideos: (folderPath, cacheOptions, videoIds = null) => run(
-      folderPath,
-      cacheOptions,
-      (db) => cache.loadCacheVideos(db, videoIds),
+    deleteDb: (folderPath, cacheOptions, options) => request(
+      'deleteDb',
+      { folderPath, cacheOptions, options },
+      'interactive',
     ),
-    saveVideos: (folderPath, cacheOptions, videos, options = {}) => run(
-      folderPath,
-      cacheOptions,
-      async (db) => {
-        const writeStats = options.atomic && videos.length <= options.atomicLimit
-          ? cache.saveCache(db, videos, { updatedAt: options.updatedAt })
-          : await cache.saveCacheChunked(db, videos, null, { updatedAt: options.updatedAt });
-        const staleVideos = Number.isFinite(options.pruneBefore)
-          ? cache.pruneStaleVideosBefore(db, options.pruneBefore, { details: true })
-          : [];
-        return { writeStats, staleVideos };
-      },
+    getStats: () => request('getStats'),
+    ensureFolder: (folderPath, cacheOptions) => request('ensureFolder', { folderPath, cacheOptions }),
+    migrateJson: (folderPath, cacheOptions) => request('migrateJson', { folderPath, cacheOptions }),
+    loadVideos: (folderPath, cacheOptions, videoIds = null) => request(
+      'loadVideos',
+      { folderPath, cacheOptions, videoIds },
+    ),
+    saveVideos: (folderPath, cacheOptions, videos, options = {}) => request(
+      'saveVideos',
+      { folderPath, cacheOptions, videos, options, priority: options.priority },
       options.priority,
     ),
-    reconcileScannedFolder: (folderPath, cacheOptions, videos, options) => run(
-      folderPath,
-      cacheOptions,
-      async (db) => {
-        const loadStartedAt = performance.now();
-        const cachedMap = cache.loadCacheMap(db, videos.map((video) => video.id));
-        for (const cached of cachedMap.values()) {
-          cached.thumbnails = cached.thumbnails.map((thumb) => thumbAbsolute(thumb, options.cacheRootDir));
-        }
-        const mergedVideos = videos.map((video) => mergeScannedVideoWithCache(video, cachedMap.get(video.id)));
-        const loadDurationMs = performance.now() - loadStartedAt;
-        const saveStartedAt = performance.now();
-        const payload = mergedVideos.map((video) => videoForDb(video, options.cacheRootDir));
-        const writeStats = await cache.saveCacheChunked(db, payload, null, { updatedAt: options.updatedAt });
-        const signatureRows = cache.loadSignatureRows(db, videos.map((video) => video.id));
-        const staleVideos = options.prune
-          ? cache.pruneStaleVideosBefore(db, options.updatedAt, { details: true })
-          : [];
-        return {
-          mergedVideos,
-          staleVideos,
-          signatureRows,
-          writeStats,
-          loadedVideoCount: cachedMap.size,
-          loadedThumbnailCount: Array.from(cachedMap.values()).reduce(
-            (sum, video) => sum + video.thumbnails.length,
-            0,
-          ),
-          loadDurationMs,
-          saveDurationMs: performance.now() - saveStartedAt,
-        };
-      },
+    reconcileScannedFolder: (folderPath, cacheOptions, videos, options) => request(
+      'reconcileScannedFolder',
+      { folderPath, cacheOptions, videos, options },
     ),
-    pruneStale: (folderPath, cacheOptions, updatedAt) => run(
-      folderPath,
-      cacheOptions,
-      (db) => cache.pruneStaleVideosBefore(db, updatedAt, { details: true }),
+    pruneStale: (folderPath, cacheOptions, updatedAt) => request(
+      'pruneStale',
+      { folderPath, cacheOptions, updatedAt },
     ),
-    updateReviewState: (folderPath, cacheOptions, updates) => run(
-      folderPath,
-      cacheOptions,
-      (db) => cache.updateVideoReviewStateBatch(db, updates),
+    updateReviewState: (folderPath, cacheOptions, updates) => request(
+      'updateReviewState',
+      { folderPath, cacheOptions, updates },
       'interactive',
     ),
-    deleteVideos: (folderPath, cacheOptions, videoIds) => run(
-      folderPath,
-      cacheOptions,
-      (db) => cache.deleteVideosByIds(db, videoIds),
+    deleteVideos: (folderPath, cacheOptions, videoIds) => request(
+      'deleteVideos',
+      { folderPath, cacheOptions, videoIds },
       'interactive',
     ),
-    moveVideos: (parentFolder, targetFolder, cacheOptions, targetVideos, parentVideoIds) => run(
-      parentFolder,
-      cacheOptions,
-      (parentDb) => run(targetFolder, cacheOptions, (targetDb) => {
-        cache.saveCache(targetDb, targetVideos);
-        cache.deleteVideosByIds(parentDb, parentVideoIds);
-      }),
+    moveVideos: (parentFolder, targetFolder, cacheOptions, targetVideos, parentVideoIds) => request(
+      'moveVideos',
+      { parentFolder, targetFolder, cacheOptions, targetVideos, parentVideoIds },
     ),
-    loadRecentMetadataFailureIds: (folderPath, cacheOptions, videoIds, retryAfterMs) => run(
-      folderPath,
-      cacheOptions,
-      (db) => Array.from(cache.loadRecentMetadataFailureIds(db, videoIds, retryAfterMs)),
+    loadRecentMetadataFailureIds: (folderPath, cacheOptions, videoIds, retryAfterMs) => request(
+      'loadRecentMetadataFailureIds',
+      { folderPath, cacheOptions, videoIds, retryAfterMs },
     ),
-    saveMetadata: (folderPath, cacheOptions, successes, failures) => run(
-      folderPath,
-      cacheOptions,
-      (db) => {
-        try {
-          if (successes.length > 0) cache.updateVideoMetadataBatch(db, successes);
-          if (failures.length > 0) cache.markMetadataFailuresBatch(db, failures);
-        } catch (err) {
-          if (isSqliteCorruptionError(err)) throw err;
-          log.warn('[cache] Metadata batch write failed; retrying row-by-row', {
-            folderPath,
-            successes: successes.length,
-            failures: failures.length,
-            error: err?.message || String(err),
-          });
-          for (const metadata of successes) cache.updateVideoMetadata(db, metadata.videoId, metadata);
-          for (const failure of failures) cache.markMetadataFailure(db, failure.videoId, failure.reason);
-        }
-      },
+    saveMetadata: (folderPath, cacheOptions, successes, failures) => request(
+      'saveMetadata',
+      { folderPath, cacheOptions, successes, failures },
       'background',
     ),
-    saveThumbnails: (folderPath, cacheOptions, updates) => run(
-      folderPath,
-      cacheOptions,
-      (db) => cache.updateVideoThumbnailMetadataBatch(db, updates),
+    saveThumbnails: (folderPath, cacheOptions, updates) => request(
+      'saveThumbnails',
+      { folderPath, cacheOptions, updates },
       'background',
     ),
-    loadDuplicateFolderState: (folderPath, cacheOptions, videoIds, settings) => run(
-      folderPath,
-      cacheOptions,
-      (db) => {
-        const fingerprintKey = settings.fingerprintKey;
-        return {
-          videoIds,
-          signatureRows: cache.loadSignatureRows(db, videoIds),
-          completeEntries: Array.from(cache.getFingerprintCounts(db, videoIds, settings.sampleCount, {
-            requireFlipped: settings.compareFlipped,
-            fingerprintKey,
-          })),
-          failedIds: cache.loadFingerprintFailureIds(db, videoIds, { fingerprintKey }),
-          mode: settings.comparisonMode,
-          comparisonRows: settings.comparisonMode === 'phash'
-            ? cache.loadPHashRows(db, videoIds, settings.sampleCount, { fingerprintKey })
-            : cache.loadGraySampleRows(db, videoIds, settings.sampleCount, { fingerprintKey }),
-        };
-      },
+    loadDuplicateFolderState: (folderPath, cacheOptions, videoIds, settings) => request(
+      'loadDuplicateFolderState',
+      { folderPath, cacheOptions, videoIds, settings },
     ),
-    updateVideoSignatures: (folderPath, cacheOptions, videoId, signatures) => run(
-      folderPath,
-      cacheOptions,
-      (db) => cache.updateVideoSignatures(db, videoId, signatures),
-      'foreground',
+    updateVideoSignatures: (folderPath, cacheOptions, videoId, signatures) => request(
+      'updateVideoSignatures',
+      { folderPath, cacheOptions, videoId, signatures },
     ),
-    saveVideoFingerprints: (folderPath, cacheOptions, videoId, fingerprints, fingerprintKey) => run(
-      folderPath,
-      cacheOptions,
-      (db) => cache.saveVideoFingerprints(db, videoId, fingerprints, { fingerprintKey }),
-      'background',
+    saveVideoFingerprints: (folderPath, cacheOptions, videoId, fingerprints, fingerprintKey) => request(
+      'saveVideoFingerprints',
+      { folderPath, cacheOptions, videoId, fingerprints, fingerprintKey },
     ),
-    markFingerprintFailure: (folderPath, cacheOptions, videoId, fingerprintKey) => run(
-      folderPath,
-      cacheOptions,
-      (db) => cache.markFingerprintFailure(db, videoId, { fingerprintKey }),
-      'background',
+    markFingerprintFailure: (folderPath, cacheOptions, videoId, fingerprintKey) => request(
+      'markFingerprintFailure',
+      { folderPath, cacheOptions, videoId, fingerprintKey },
     ),
   };
 }

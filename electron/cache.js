@@ -7,7 +7,18 @@ const perfMetrics = require('./perf-metrics');
 const { createCacheConnectionManager } = require('./cache-connection-manager');
 
 // better-sqlite3 is a native module unpacked from asar — require it directly.
-const Database = require('better-sqlite3');
+let Database = null;
+let connectionManager = null;
+
+function getDatabaseConstructor() {
+  Database ??= require('better-sqlite3');
+  return Database;
+}
+
+function getConnectionManager() {
+  connectionManager ??= createCacheConnectionManager();
+  return connectionManager;
+}
 
 const OLD_CACHE_FILE = '.video-cull-cache.json';
 const MAX_SQLITE_DB_PATH_LENGTH = 240;
@@ -346,8 +357,6 @@ const FINGERPRINT_SCHEMA_COLUMNS = {
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
 
-const connectionManager = createCacheConnectionManager();
-
 /**
  * Open (or reuse) the SQLite database for a folder.
  * Creates the cache directory and schema if they don't exist.
@@ -357,7 +366,8 @@ const connectionManager = createCacheConnectionManager();
 function openPhysicalDb(folderPath, cacheOptions) {
   const dbPath = resolveCachePath(folderPath, cacheOptions);
   fsSync.mkdirSync(path.dirname(dbPath), { recursive: true });
-  const db = new Database(dbPath);
+  const DatabaseConstructor = getDatabaseConstructor();
+  const db = new DatabaseConstructor(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
@@ -371,7 +381,7 @@ function openPhysicalDb(folderPath, cacheOptions) {
 
 function openDb(folderPath, cacheOptions) {
   const dbPath = resolveCachePath(folderPath, cacheOptions);
-  return connectionManager.openUnleased(dbPath, () => openPhysicalDb(folderPath, cacheOptions));
+  return getConnectionManager().openUnleased(dbPath, () => openPhysicalDb(folderPath, cacheOptions));
 }
 
 function ensureVideoSchemaColumns(db) {
@@ -391,7 +401,7 @@ function ensureFingerprintSchemaColumns(db) {
 }
 
 function closeDbPath(dbPath, options = {}) {
-  return connectionManager.close(dbPath, options);
+  return getConnectionManager().close(dbPath, options);
 }
 
 function closeDbForFolder(folderPath, cacheOptions, options = {}) {
@@ -400,7 +410,7 @@ function closeDbForFolder(folderPath, cacheOptions, options = {}) {
 
 function acquireDb(folderPath, cacheOptions, options = {}) {
   const dbPath = resolveCachePath(folderPath, cacheOptions);
-  return connectionManager.acquire(
+  return getConnectionManager().acquire(
     dbPath,
     () => openPhysicalDb(folderPath, cacheOptions),
     options.priority,
@@ -408,16 +418,16 @@ function acquireDb(folderPath, cacheOptions, options = {}) {
 }
 
 function releaseDb(folderPath, cacheOptions) {
-  return connectionManager.release(resolveCachePath(folderPath, cacheOptions));
+  return getConnectionManager().release(resolveCachePath(folderPath, cacheOptions));
 }
 
 /** Close all open DB connections. Call on app quit or before broad migrations. */
 function closeDb() {
-  connectionManager.closeAll();
+  getConnectionManager().closeAll();
 }
 
 function getDbConnectionStats() {
-  return connectionManager.getStats();
+  return getConnectionManager().getStats();
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────
