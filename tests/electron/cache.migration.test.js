@@ -99,6 +99,9 @@ test('migrateJsonIfNeeded imports legacy JSON review decisions and deletes the o
       width: null,
       height: null,
       osThumbnail: null,
+      fileSignatureQuick: null,
+      fileSignatureFull: null,
+      signatureUpdatedAt: null,
     });
     await assert.rejects(fs.access(jsonPath));
   } finally {
