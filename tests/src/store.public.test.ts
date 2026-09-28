@@ -228,6 +228,27 @@ describe('useStore public behavior', () => {
     expect(state.undoStack).toHaveLength(0);
   });
 
+  test('retries review-state persistence after a worker request rejects', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    electronAPI.saveReviewState
+      .mockRejectedValueOnce(new Error('cache worker failed'))
+      .mockResolvedValueOnce(true);
+    useStore.getState().setDirectory('D:\\Media');
+    useStore.getState().setVideos([makeVideo('a', { path: 'D:\\Media\\a.mp4' })]);
+
+    useStore.getState().setVideoStatus('a', 'keep');
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(750);
+
+    expect(electronAPI.saveReviewState).toHaveBeenCalledTimes(2);
+    expect(electronAPI.saveReviewState).toHaveBeenLastCalledWith(
+      'D:\\Media',
+      [{ id: 'a', path: 'D:\\Media\\a.mp4', changes: { status: 'keep' } }]
+    );
+    vi.useRealTimers();
+  });
+
   test('public filter actions change the visible review list and reset the review cursor', () => {
     useStore.getState().setVideos([
       makeVideo('a', { favorite: true, rating: 5 }),

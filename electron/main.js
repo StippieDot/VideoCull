@@ -7,6 +7,7 @@ const { scanDirectory } = require('./scanner');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
 const { createCacheService } = require('./cache-service');
+const { createGracefulShutdown } = require('./graceful-shutdown');
 const {
   clearDuplicateSessionCache,
   createDuplicateRun,
@@ -95,7 +96,9 @@ let updateReadyToInstall = false;
 let downloadedUpdateVersion = null;
 let updateInstallOnQuitScheduled = false;
 let updateInstallInProgress = false;
+let pendingUpdateInstallOptions = null;
 let activeDuplicateRun = null;
+const activeCacheProducers = new Set();
 let lastEventLoopUtilization = typeof nodePerformance.eventLoopUtilization === 'function'
   ? nodePerformance.eventLoopUtilization()
   : null;
@@ -118,6 +121,19 @@ const knownVideoPaths = new Set();
 const knownVideoIdsByPath = new Map();
 // Valid video ID format: 16 hex characters (MD5-derived from path+size in scanner.js)
 const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
+
+function trackCacheProducer(operation) {
+  const promise = Promise.resolve().then(operation);
+  activeCacheProducers.add(promise);
+  void promise.finally(() => activeCacheProducers.delete(promise)).catch(() => {});
+  return promise;
+}
+
+async function drainCacheProducers() {
+  while (activeCacheProducers.size > 0) {
+    await Promise.allSettled(Array.from(activeCacheProducers));
+  }
+}
 
 // Mirrors detectVideoCompatibility in src/utils.ts — kept in sync manually.
 // Used in scan-directory to re-evaluate compatibility from cached codec/format data,
@@ -653,30 +669,45 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+const gracefulShutdown = createGracefulShutdown({
+  prepare: () => {
+    isQuitting = true;
+    scanGeneration += 1;
+    cancelProcessing();
+    if (activeDuplicateRun) {
+      activeDuplicateRun.cancel();
+      activeDuplicateRun = null;
+    }
+    for (const interval of activeBatchIntervals) clearInterval(interval);
+    activeBatchIntervals.clear();
+  },
+  drain: drainCacheProducers,
+  closeCache: () => cacheService.shutdown(),
+  quit: () => app.quit(),
+  installUpdate: ({ isSilent, isForceRunAfter }) => {
+    updateInstallInProgress = true;
+    try {
+      getAutoUpdater().quitAndInstall(isSilent, isForceRunAfter);
+    } catch (err) {
+      log.error('[auto-updater] Failed to install update during shutdown:', err);
+      app.quit();
+    }
+  },
+  onError: (err) => log.error('[shutdown] Graceful shutdown failed:', err),
+});
+
 app.on('before-quit', (event) => {
-  if (shouldInstallUpdateOnQuit({
+  const installOptions = shouldInstallUpdateOnQuit({
     scheduled: updateInstallOnQuitScheduled,
     ready: updateReadyToInstall,
     installInProgress: updateInstallInProgress,
-  })) {
-    event.preventDefault();
+  })
+    ? (pendingUpdateInstallOptions ?? { isSilent: true, isForceRunAfter: false })
+    : null;
+  if (installOptions) {
     updateInstallOnQuitScheduled = false;
-    updateInstallInProgress = true;
-    getAutoUpdater().quitAndInstall(true, false);
-    return;
   }
-
-  isQuitting = true;
-  cancelProcessing();
-  if (activeDuplicateRun) {
-    activeDuplicateRun.cancel();
-    activeDuplicateRun = null;
-  }
-  for (const interval of activeBatchIntervals) {
-    clearInterval(interval);
-  }
-  activeBatchIntervals.clear();
-  void cacheService.shutdown();
+  if (!gracefulShutdown.request({ installOptions })) event.preventDefault();
 });
 
 // â”€â”€ Cache constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -938,6 +969,7 @@ async function quarantineCorruptCacheDb(folderPath, cacheOptions, reason) {
       log.warn(`[cache] Failed to quarantine corrupt cache file ${sourcePath}:`, err);
     }
   }
+  cacheService.allowFolder(folderPath, cacheOptions);
 
   sendToRenderer('app-notification', {
     title: `Cache rebuilt: ${folderDisplayName(folderPath)}`,
@@ -982,7 +1014,6 @@ async function migrateOneCache(folderPath, fromOptions, toOptions) {
       if (await pathExists(move.source)) existingMoves.push(move);
     }
 
-    await cacheService.closeAll();
     const promoted = await copyPromoteThenRemoveSources(existingMoves);
     result.movedDb = promoted.some((move) => move.kind === 'db');
     result.movedThumbs = promoted.some((move) => move.kind === 'thumbs');
@@ -1130,6 +1161,7 @@ function publishScanCacheRoots(cacheRoots) {
 }
 
 async function prepareCacheFolder(folderPath, cacheOptions, { publish = true, cacheRoots = null } = {}) {
+  cacheService.allowFolder(folderPath, cacheOptions);
   const cachePaths = getCachePaths(folderPath, cacheOptions);
   if (publish) activeCacheRoots.add(cachePaths.cacheRootDir);
   else cacheRoots?.add(cachePaths.cacheRootDir);
@@ -1733,14 +1765,21 @@ ipcMain.handle('validate-dropped-path', async (_event, droppedPath) => {
 ipcMain.handle('reset-loaded-directories', async () => {
   scanGeneration += 1;
   cancelProcessing();
-  currentScanDir = null;
-  currentScanDirs = new Set();
-  activeCacheRoots = new Set();
-  knownVideoPaths.clear();
-  knownVideoIdsByPath.clear();
-  clearDuplicateSessionCache();
-  await cacheService.closeAll();
-  return true;
+  const cacheOptions = await getCacheOptions();
+  const cacheFolders = await getKnownCacheFolders(Array.from(currentScanDirs));
+  for (const folderPath of cacheFolders) cacheService.blockFolder(folderPath, cacheOptions);
+  await cacheService.beginTransition();
+  try {
+    currentScanDir = null;
+    currentScanDirs = new Set();
+    activeCacheRoots = new Set();
+    knownVideoPaths.clear();
+    knownVideoIdsByPath.clear();
+    clearDuplicateSessionCache();
+    return true;
+  } finally {
+    cacheService.endTransition();
+  }
 });
 
 // 2. Scan directory for video files
@@ -1943,7 +1982,8 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
 });
 
 // 3. Probe metadata for videos that are missing or stale.
-ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {}) => {
+ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => trackCacheProducer(async () => {
+  if (isQuitting) return false;
   if (!Array.isArray(videos)) {
     log.warn('[process-metadata] videos must be an array, rejecting');
     return false;
@@ -2167,10 +2207,11 @@ ipcMain.handle('process-metadata', async (_event, videos, dirPath, options = {})
   });
 
   return true;
-});
+}));
 
 // 4. Generate thumbnails for videos that don't have them
-ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = {}) => {
+ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) => trackCacheProducer(async () => {
+  if (isQuitting) return false;
   if (!Array.isArray(videos)) {
     log.warn('[generate-thumbnails] videos must be an array, rejecting');
     return false;
@@ -2387,7 +2428,7 @@ ipcMain.handle('generate-thumbnails', async (_event, videos, dirPath, options = 
     });
   }
   return !thumbnailPersistenceFailed;
-});
+}));
 
 ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
   if (activeDuplicateRun) {
@@ -2575,6 +2616,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   }
 
   cancelProcessing();
+  scanGeneration += 1;
   clearDuplicateSessionCache();
 
   const cacheOptions = await getCacheOptions();
@@ -2583,6 +2625,8 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
     dirPath,
     ...knownCacheFolders.filter((folderPath) => isFolderInsideSync(folderPath, dirPath)),
   ]));
+  for (const folderPath of cacheFoldersToClear) cacheService.blockFolder(folderPath, cacheOptions);
+  await cacheService.beginTransition();
   try {
     for (const folderPath of cacheFoldersToClear) {
       const cachePaths = getCachePaths(folderPath, cacheOptions);
@@ -2592,12 +2636,14 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
 
     // Also clean up any legacy .video-cull-thumbs in the video folder
     const legacyThumbDir = path.join(dirPath, THUMB_DIR);
-    fs.rm(legacyThumbDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
+    await fs.rm(legacyThumbDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
 
     return true;
   } catch (err) {
     log.error('[clear-cache] Error clearing thumbs:', err);
     return false;
+  } finally {
+    cacheService.endTransition();
   }
 });
 
@@ -2804,42 +2850,48 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
     return { status: 'cancelled', migrated: 0, errors: [] };
   }
 
+  scanGeneration += 1;
+  cancelProcessing();
   clearDuplicateSessionCache();
-  await cacheService.closeAll();
-
-  if (response === 1) {
-    for (const folderPath of knownFolders) {
-      const fromPaths = cache.resolveCachePaths(folderPath, fromOptions);
-      await cacheService.deleteDb(folderPath, fromOptions);
-      await fs.rm(fromPaths.thumbRootDir, { recursive: true, force: true }).catch(() => {});
+  for (const folderPath of knownFolders) cacheService.blockFolder(folderPath, fromOptions);
+  await cacheService.beginTransition();
+  try {
+    if (response === 1) {
+      for (const folderPath of knownFolders) {
+        const fromPaths = cache.resolveCachePaths(folderPath, fromOptions);
+        await cacheService.deleteDb(folderPath, fromOptions);
+        await fs.rm(fromPaths.thumbRootDir, { recursive: true, force: true }).catch(() => {});
+      }
+      if (toOptions.mode === 'distributed') {
+        await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: knownFolders });
+      } else {
+        await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
+      }
+      await writeJsonFile(CACHE_INDEX_FILE, { knownFolders });
+      return { status: 'fresh', migrated: 0, errors: [] };
     }
+
+    const results = [];
+    for (const folderPath of knownFolders) {
+      results.push(await migrateOneCache(folderPath, fromOptions, toOptions));
+    }
+    const errors = results.filter((result) => result.error).map((result) => `${result.folderPath}: ${result.error}`);
+
     if (toOptions.mode === 'distributed') {
       await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: knownFolders });
     } else {
       await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
     }
     await writeJsonFile(CACHE_INDEX_FILE, { knownFolders });
-    return { status: 'fresh', migrated: 0, errors: [] };
-  }
 
-  const results = [];
-  for (const folderPath of knownFolders) {
-    results.push(await migrateOneCache(folderPath, fromOptions, toOptions));
+    return {
+      status: errors.length > 0 ? 'partial' : 'migrated',
+      migrated: results.filter((result) => result.movedDb || result.movedThumbs).length,
+      errors,
+    };
+  } finally {
+    cacheService.endTransition();
   }
-  const errors = results.filter((result) => result.error).map((result) => `${result.folderPath}: ${result.error}`);
-
-  if (toOptions.mode === 'distributed') {
-    await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: knownFolders });
-  } else {
-    await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
-  }
-  await writeJsonFile(CACHE_INDEX_FILE, { knownFolders });
-
-  return {
-    status: errors.length > 0 ? 'partial' : 'migrated',
-    migrated: results.filter((result) => result.movedDb || result.movedThumbs).length,
-    errors,
-  };
 });
 
 
@@ -2961,6 +3013,7 @@ ipcMain.handle('check-for-updates', async () => {
     downloadedUpdateVersion = null;
     updateInstallOnQuitScheduled = false;
     updateInstallInProgress = false;
+    pendingUpdateInstallOptions = null;
     await autoUpdater.checkForUpdates();
     return { ok: true, status: 'checking' };
   } catch (err) {
@@ -2975,10 +3028,9 @@ ipcMain.handle('install-update', () => {
     log.warn('[auto-updater] install-update rejected because no downloaded update is ready');
     return false;
   }
-  const autoUpdater = getAutoUpdater();
-  updateInstallOnQuitScheduled = false;
-  updateInstallInProgress = true;
-  autoUpdater.quitAndInstall(false, true);
+  updateInstallOnQuitScheduled = true;
+  pendingUpdateInstallOptions = { isSilent: false, isForceRunAfter: true };
+  app.quit();
   return true;
 });
 
@@ -2988,6 +3040,7 @@ ipcMain.handle('schedule-update-on-exit', () => {
     return false;
   }
   updateInstallOnQuitScheduled = true;
+  pendingUpdateInstallOptions = { isSilent: true, isForceRunAfter: false };
   sendToRenderer('update-status', { status: 'scheduled', version: downloadedUpdateVersion ?? undefined });
   return true;
 });
@@ -2998,6 +3051,7 @@ ipcMain.handle('defer-update', () => {
     return false;
   }
   updateInstallOnQuitScheduled = false;
+  pendingUpdateInstallOptions = null;
   sendToRenderer('update-status', { status: 'deferred', version: downloadedUpdateVersion ?? undefined });
   return true;
 });
