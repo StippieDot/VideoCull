@@ -1,3 +1,22 @@
+function createProducerTracker() {
+  const active = new Set();
+
+  function track(operation) {
+    const promise = Promise.resolve().then(operation);
+    active.add(promise);
+    void promise.finally(() => active.delete(promise)).catch(() => {});
+    return promise;
+  }
+
+  async function drain() {
+    while (active.size > 0) {
+      await Promise.allSettled(Array.from(active));
+    }
+  }
+
+  return { track, drain };
+}
+
 function createGracefulShutdown({ prepare, drain, closeCache, quit, installUpdate, onError }) {
   let phase = 'idle';
   let completion = null;
@@ -29,4 +48,4 @@ function createGracefulShutdown({ prepare, drain, closeCache, quit, installUpdat
   };
 }
 
-module.exports = { createGracefulShutdown };
+module.exports = { createGracefulShutdown, createProducerTracker };

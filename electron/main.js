@@ -7,7 +7,7 @@ const { scanDirectory } = require('./scanner');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
 const { createCacheService } = require('./cache-service');
-const { createGracefulShutdown } = require('./graceful-shutdown');
+const { createGracefulShutdown, createProducerTracker } = require('./graceful-shutdown');
 const {
   clearDuplicateSessionCache,
   createDuplicateRun,
@@ -99,7 +99,7 @@ let updateInstallOnQuitScheduled = false;
 let updateInstallInProgress = false;
 let pendingUpdateInstallOptions = null;
 let activeDuplicateRun = null;
-const activeCacheProducers = new Set();
+const { track: trackCacheProducer, drain: drainCacheProducers } = createProducerTracker();
 let lastEventLoopUtilization = typeof nodePerformance.eventLoopUtilization === 'function'
   ? nodePerformance.eventLoopUtilization()
   : null;
@@ -123,19 +123,6 @@ const knownVideoIdsByPath = new Map();
 const knownVideoIdentitiesByPath = new Map();
 // Valid video ID format: 16 hex characters (MD5-derived from path+size in scanner.js)
 const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
-
-function trackCacheProducer(operation) {
-  const promise = Promise.resolve().then(operation);
-  activeCacheProducers.add(promise);
-  void promise.finally(() => activeCacheProducers.delete(promise)).catch(() => {});
-  return promise;
-}
-
-async function drainCacheProducers() {
-  while (activeCacheProducers.size > 0) {
-    await Promise.allSettled(Array.from(activeCacheProducers));
-  }
-}
 
 // Mirrors detectVideoCompatibility in src/utils.ts — kept in sync manually.
 // Used in scan-directory to re-evaluate compatibility from cached codec/format data,
@@ -2578,26 +2565,29 @@ ipcMain.handle('save-cache', async (event, dirPath, videos) => {
   }
 });
 
-ipcMain.handle('save-review-state', async (_event, dirPath, updates) => {
-  if (!dirPath || typeof dirPath !== 'string') return false;
-  try {
-    const safeUpdates = await validateCacheSavePayload(dirPath, updates);
-    const normalizedUpdates = safeUpdates.flatMap((update) => {
-      const changes = normalizeReviewStateChanges(update.changes);
-      if (!changes) {
-        log.warn(`[save-review-state] Rejected invalid changes for video ${update.id}`);
-        return [];
-      }
-      return [{ id: update.id, path: update.path, changes }];
-    });
-    if (normalizedUpdates.length === 0) return false;
-    const cacheOptions = await getCacheOptions();
-    await saveReviewStateByParentFolder(normalizedUpdates, cacheOptions);
-    return true;
-  } catch (err) {
-    log.error('[save-review-state] Error saving cache:', err);
-    return false;
-  }
+ipcMain.handle('save-review-state', (_event, dirPath, updates) => {
+  if (isQuitting) return false;
+  return trackCacheProducer(async () => {
+    if (!dirPath || typeof dirPath !== 'string') return false;
+    try {
+      const safeUpdates = await validateCacheSavePayload(dirPath, updates);
+      const normalizedUpdates = safeUpdates.flatMap((update) => {
+        const changes = normalizeReviewStateChanges(update.changes);
+        if (!changes) {
+          log.warn(`[save-review-state] Rejected invalid changes for video ${update.id}`);
+          return [];
+        }
+        return [{ id: update.id, path: update.path, changes }];
+      });
+      if (normalizedUpdates.length === 0) return false;
+      const cacheOptions = await getCacheOptions();
+      await saveReviewStateByParentFolder(normalizedUpdates, cacheOptions);
+      return true;
+    } catch (err) {
+      log.error('[save-review-state] Error saving cache:', err);
+      return false;
+    }
+  });
 });
 
 ipcMain.handle('save-cache-atomic', async (_event, dirPath, videos) => {

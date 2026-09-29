@@ -1,13 +1,55 @@
 const assert = require('node:assert/strict');
 const { test: nodeTest } = require('node:test');
 const test = globalThis.test || nodeTest;
-const { createGracefulShutdown } = require('../../electron/graceful-shutdown');
+const { createGracefulShutdown, createProducerTracker } = require('../../electron/graceful-shutdown');
 
 function deferred() {
   let resolve;
   const promise = new Promise((done) => { resolve = done; });
   return { promise, resolve };
 }
+
+test('an accepted review-state operation drains before cache close', async () => {
+  const reviewWrite = deferred();
+  const producers = createProducerTracker();
+  const events = [];
+  let isQuitting = false;
+
+  const saveReviewState = () => {
+    if (isQuitting) return Promise.resolve(false);
+    return producers.track(async () => {
+      events.push('review:start');
+      await reviewWrite.promise;
+      events.push('review:end');
+      return true;
+    });
+  };
+  const shutdown = createGracefulShutdown({
+    prepare: () => {
+      isQuitting = true;
+      events.push('prepare');
+    },
+    drain: async () => {
+      events.push('drain');
+      await producers.drain();
+    },
+    closeCache: () => events.push('cache'),
+    quit: () => events.push('quit'),
+    installUpdate: () => events.push('install'),
+    onError: (error) => events.push(`error:${error.message}`),
+  });
+
+  const acceptedSave = saveReviewState();
+  assert.equal(shutdown.request(), false);
+  assert.equal(await saveReviewState(), false);
+  await Promise.resolve();
+  assert.deepEqual(events, ['prepare', 'review:start', 'drain']);
+
+  reviewWrite.resolve();
+  assert.equal(await acceptedSave, true);
+  await shutdown.completion();
+  assert.deepEqual(events, ['prepare', 'review:start', 'drain', 'review:end', 'cache', 'quit']);
+});
 
 test('graceful shutdown drains producers and cache before allowing recursive quit', async () => {
   const producer = deferred();
