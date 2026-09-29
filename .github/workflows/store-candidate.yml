@@ -38,7 +38,7 @@ jobs:
         run: Get-FileHash release/VideoCull.Store.*.x64.appx -Algorithm SHA256 | Format-List Hash,Path | Out-File release/VideoCull.Store.SHA256.txt
 
       - name: Upload non-official candidate artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: UNSIGNED-NON-OFFICIAL-VideoCull-Store-${{ github.run_number }}
           if-no-files-found: error
