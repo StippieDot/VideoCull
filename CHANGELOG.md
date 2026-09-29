@@ -2,6 +2,26 @@
 
 All notable changes to VideoCull will be documented here.
 
+## [2.3.1] - 2026-09-29
+
+### Changed
+- Reworked cache database handling to remove the slowdowns introduced in 2.3.0 on libraries spread across many folders. VideoCull 2.3.0 closed each folder's cache database as soon as it was no longer in use, so scans, metadata and review saves, duplicate runs, and deletions kept reopening the same databases.
+  - Recently used cache databases now stay open within limits based on the computer's installed memory. Up to 128 idle databases stay open on systems with 8 GB of RAM or less, 256 with up to 16 GB, and 512 with more.
+  - After five minutes without cache activity, idle databases above that number are closed gradually. Hard caps of 256, 512, or 1,024 idle and 512, 1,024, or 2,048 total open databases close the least recently used idle databases first when a library needs more.
+  - Cache database work now runs on a background worker instead of VideoCull's main process. Queued cache work is finished before the app closes.
+  - Scans now load and update each folder's cache in a single pass instead of reopening its database in every scan phase. Metadata and thumbnail results are saved in batches, and review decisions update only the fields that changed.
+  - Duplicate detection keeps fingerprint data in memory for the rest of the session and reuses it on later runs. Visual comparison samples kept this way are limited to 64, 128, or 256 MB, depending on installed memory.
+  - Generated thumbnails of deleted videos are now removed directly instead of being sent to the Recycle Bin.
+  - Existing caches are used as they are; no migration is needed.
+- Duplicate detection now uses pHash by default because it produces far fewer false positives. Existing settings switch to pHash once; visual similarity remains available in Settings.
+- Each duplicate group now shows its weakest match instead of the average, which is the same value the Similarity setting tests; the average is shown on hover. With **Require every sample to meet similarity** on, a match is scored by its weakest sample. The minimum-similarity filter hides groups whose weakest match is below the chosen value.
+
+### Fixed
+- Deleting now refuses files that were replaced or modified since the last scan. Rescanning resets review state and cached details for replaced files, and duplicate detection no longer reuses fingerprints from changed files.
+- Changing the cache location no longer switches to the new location after a partly failed move. The previous caches stay in place and in use until every cache has moved.
+- Clearing the cache now reports a failure when a cache database cannot be deleted, for example because it is locked, instead of reporting success.
+- When several folders are loaded, a failed review save in one folder no longer discards pending retries for the other folders.
+
 ## [2.3.0] - 2026-09-20
 
 ### Added
