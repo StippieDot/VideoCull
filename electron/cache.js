@@ -1332,7 +1332,15 @@ async function migrateJsonIfNeeded(folderPath, db) {
  * Delete the SQLite DB file for a folder (used by clear-cache).
  * Closes the connection first if it's the active DB.
  */
-function deleteDb(folderPath, cacheOptions, options = {}) {
+function unlinkIfExists(filePath, unlinkSync) {
+  try {
+    unlinkSync(filePath);
+  } catch (err) {
+    if (err?.code !== 'ENOENT') throw err;
+  }
+}
+
+function deleteDb(folderPath, cacheOptions, options = {}, unlinkSync = fsSync.unlinkSync) {
   if (options.quiet) {
     log.info(`[cache] Removing cache DB for: ${folderPath}`);
   } else {
@@ -1342,15 +1350,11 @@ function deleteDb(folderPath, cacheOptions, options = {}) {
 
   const dbPath = resolveCachePath(folderPath, cacheOptions);
   closeDbPath(dbPath, { force: true });
-  try {
-    fsSync.unlinkSync(dbPath);
-  } catch {
-    // Already gone — fine
-  }
+  unlinkIfExists(dbPath, unlinkSync);
 
   // Also remove WAL sidecar files if present
   for (const ext of ['-wal', '-shm']) {
-    try { fsSync.unlinkSync(dbPath + ext); } catch { /* ignore */ }
+    unlinkIfExists(dbPath + ext, unlinkSync);
   }
 }
 

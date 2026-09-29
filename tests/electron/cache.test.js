@@ -827,3 +827,38 @@ test('resolveCachePaths keeps distributed cache paths independent of central cac
     await fs.rm(folderPath, { recursive: true, force: true });
   }
 });
+
+test('deleteDb suppresses missing files but propagates real unlink failures', () => {
+  const folderPath = 'D:\\Media';
+  const cacheOptions = { mode: 'centralised', defaultCentralRoot: 'D:\\Cache' };
+  const missingPaths = [];
+
+  assert.doesNotThrow(() => cache.deleteDb(folderPath, cacheOptions, { quiet: true }, (filePath) => {
+    missingPaths.push(filePath);
+    const error = new Error('already gone');
+    error.code = 'ENOENT';
+    throw error;
+  }));
+  assert.equal(missingPaths.length, 3);
+
+  assert.throws(
+    () => cache.deleteDb(folderPath, cacheOptions, { quiet: true }, () => {
+      const error = new Error('cache is locked');
+      error.code = 'EPERM';
+      throw error;
+    }),
+    (error) => error.code === 'EPERM' && error.message === 'cache is locked'
+  );
+
+  let unlinkCount = 0;
+  assert.throws(
+    () => cache.deleteDb(folderPath, cacheOptions, { quiet: true }, () => {
+      unlinkCount += 1;
+      if (unlinkCount !== 2) return;
+      const error = new Error('WAL is locked');
+      error.code = 'EACCES';
+      throw error;
+    }),
+    (error) => error.code === 'EACCES' && error.message === 'WAL is locked'
+  );
+});

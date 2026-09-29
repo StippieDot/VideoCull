@@ -1404,15 +1404,24 @@ async function pruneMissingDescendantCaches(rootFolder, cacheOptions, includeSub
     return [];
   }
 
+  const prunedFolders = [];
   for (const folderPath of missingFolders) {
     const cachePaths = getCachePaths(folderPath, cacheOptions);
-    await cacheService.deleteDb(folderPath, cacheOptions, { quiet: true });
+    try {
+      await cacheService.deleteDb(folderPath, cacheOptions, { quiet: true });
+    } catch (err) {
+      // Keep the folder registered so a later scan can retry; don't fail this scan.
+      log.warn(`[cache] Could not prune cache for missing folder ${folderPath}:`, err);
+      continue;
+    }
     await fs.rm(cachePaths.thumbRootDir, { recursive: true, force: true }).catch(() => {});
+    prunedFolders.push(folderPath);
   }
+  if (prunedFolders.length === 0) return [];
 
-  await unregisterCacheFolders(missingFolders);
-  log.info(`[cache] Auto-pruned ${missingFolders.length} missing descendant cache folder(s) under ${rootFolder}`);
-  return missingFolders;
+  await unregisterCacheFolders(prunedFolders);
+  log.info(`[cache] Auto-pruned ${prunedFolders.length} missing descendant cache folder(s) under ${rootFolder}`);
+  return prunedFolders;
 }
 
 async function splitDescendantRowsFromParentDb(parentFolder, cacheOptions, parentCacheRootDir, scanToken = null, scanCacheRoots = null) {
