@@ -555,11 +555,14 @@ type RetryQueueEntry = {
   token: number;
 };
 
-let retryDirectory: string | null = null;
-let retryAttempts = 0;
-let retryQueueByField = new Map<string, RetryQueueEntry>();
-let retryTimer: ReturnType<typeof setTimeout> | null = null;
-let retryFlushInFlight = false;
+type RetryState = {
+  attempts: number;
+  queueByField: Map<string, RetryQueueEntry>;
+  timer: ReturnType<typeof setTimeout> | null;
+  flushInFlight: boolean;
+};
+
+const retryStatesByDirectory = new Map<string, RetryState>();
 let retryTokenCounter = 0;
 
 function nextRetryToken() {
@@ -567,18 +570,28 @@ function nextRetryToken() {
   return retryTokenCounter;
 }
 
-function clearRetryTimer() {
-  if (retryTimer) {
-    clearTimeout(retryTimer);
-    retryTimer = null;
+function getRetryState(directory: string) {
+  let state = retryStatesByDirectory.get(directory);
+  if (!state) {
+    state = {
+      attempts: 0,
+      queueByField: new Map<string, RetryQueueEntry>(),
+      timer: null,
+      flushInFlight: false,
+    };
+    retryStatesByDirectory.set(directory, state);
   }
+  return state;
 }
 
-function resetRetryQueue() {
-  clearRetryTimer();
-  retryDirectory = null;
-  retryAttempts = 0;
-  retryQueueByField = new Map<string, RetryQueueEntry>();
+function resetRetryQueue(directory: string) {
+  const state = retryStatesByDirectory.get(directory);
+  if (state?.timer) clearTimeout(state.timer);
+  retryStatesByDirectory.delete(directory);
+}
+
+function resetAllRetryQueues() {
+  for (const directory of retryStatesByDirectory.keys()) resetRetryQueue(directory);
 }
 
 function retryKey(videoId: string, field: ReviewStateField) {
@@ -586,9 +599,10 @@ function retryKey(videoId: string, field: ReviewStateField) {
 }
 
 function acknowledgeSavedTokens(directory: string, savedTokenByKey: Map<string, number>) {
-  if (retryDirectory !== directory || savedTokenByKey.size === 0 || retryQueueByField.size === 0) return;
+  const state = retryStatesByDirectory.get(directory);
+  if (!state || savedTokenByKey.size === 0 || state.queueByField.size === 0) return;
 
-  const nextQueue = new Map(retryQueueByField);
+  const nextQueue = new Map(state.queueByField);
   for (const [key, savedToken] of savedTokenByKey) {
     const queued = nextQueue.get(key);
     if (!queued) continue;
@@ -598,33 +612,27 @@ function acknowledgeSavedTokens(directory: string, savedTokenByKey: Map<string, 
       nextQueue.delete(key);
     }
   }
-  retryQueueByField = nextQueue;
+  state.queueByField = nextQueue;
 
-  if (retryQueueByField.size === 0 && !retryFlushInFlight) {
-    clearRetryTimer();
-    retryDirectory = null;
-    retryAttempts = 0;
+  if (state.queueByField.size === 0 && !state.flushInFlight) {
+    resetRetryQueue(directory);
   }
 }
 
-function scheduleRetryFlush() {
-  if (!retryDirectory || retryQueueByField.size === 0 || retryTimer || retryFlushInFlight) return;
-  retryTimer = setTimeout(() => {
-    retryTimer = null;
-    flushRetryQueue();
+function scheduleRetryFlush(directory: string) {
+  const state = retryStatesByDirectory.get(directory);
+  if (!state || state.queueByField.size === 0 || state.timer || state.flushInFlight) return;
+  state.timer = setTimeout(() => {
+    state.timer = null;
+    flushRetryQueue(directory);
   }, SAVE_RETRY_DELAY_MS);
 }
 
 function enqueueRetryUpdates(directory: string, updates: VideoReviewUpdate[], token: number) {
   if (updates.length === 0) return;
 
-  if (retryDirectory && retryDirectory !== directory) {
-    // Directory changed; drop stale retry payloads from previous directory.
-    resetRetryQueue();
-  }
-
-  retryDirectory = directory;
-  const nextQueue = new Map(retryQueueByField);
+  const state = getRetryState(directory);
+  const nextQueue = new Map(state.queueByField);
   for (const update of updates) {
     for (const field of Object.keys(update.changes) as ReviewStateField[]) {
       const key = retryKey(update.id, field);
@@ -638,15 +646,15 @@ function enqueueRetryUpdates(directory: string, updates: VideoReviewUpdate[], to
       }
     }
   }
-  retryQueueByField = nextQueue;
-  scheduleRetryFlush();
+  state.queueByField = nextQueue;
+  scheduleRetryFlush(directory);
 }
 
-function flushRetryQueue() {
-  if (!retryDirectory || retryQueueByField.size === 0 || !window.electronAPI || retryFlushInFlight) return;
+function flushRetryQueue(directory: string) {
+  const state = retryStatesByDirectory.get(directory);
+  if (!state || state.queueByField.size === 0 || !window.electronAPI || state.flushInFlight) return;
 
-  const directory = retryDirectory;
-  const retryEntries = Array.from(retryQueueByField.entries());
+  const retryEntries = Array.from(state.queueByField.entries());
   const updatesByVideoId = new Map<string, VideoReviewUpdate>();
   const sentTokenByKey = new Map<string, number>();
   for (const [key, entry] of retryEntries) {
@@ -657,37 +665,32 @@ function flushRetryQueue() {
     sentTokenByKey.set(key, entry.token);
   }
   const retryPayload = Array.from(updatesByVideoId.values());
-  retryFlushInFlight = true;
+  state.flushInFlight = true;
 
   void window.electronAPI.saveReviewState(directory, retryPayload)
     .then((ok) => {
-      retryFlushInFlight = false;
+      if (retryStatesByDirectory.get(directory) !== state) return;
+      state.flushInFlight = false;
 
-      if (retryDirectory !== directory) {
-        scheduleRetryFlush();
-        return;
-      }
-
-      if (retryQueueByField.size === 0) {
-        retryDirectory = null;
-        retryAttempts = 0;
+      if (state.queueByField.size === 0) {
+        resetRetryQueue(directory);
         return;
       }
 
       if (ok) {
-        retryAttempts = 0;
+        state.attempts = 0;
         // Remove only queue entries that match the successful payload version.
         acknowledgeSavedTokens(directory, sentTokenByKey);
-        if (retryQueueByField.size > 0) {
-          scheduleRetryFlush();
+        if (retryStatesByDirectory.get(directory)?.queueByField.size) {
+          scheduleRetryFlush(directory);
         }
         return;
       }
 
-      retryAttempts += 1;
-      if (retryAttempts >= MAX_SAVE_RETRY_ATTEMPTS) {
+      state.attempts += 1;
+      if (state.attempts >= MAX_SAVE_RETRY_ATTEMPTS) {
         console.error('[store] saveReviewState retry exhausted', {
-          attempts: retryAttempts,
+          attempts: state.attempts,
           count: retryPayload.length,
         });
         notify({
@@ -696,15 +699,15 @@ function flushRetryQueue() {
           kind: 'error',
           dedupeKey: `save-exhausted:${directory}`,
         });
-        resetRetryQueue();
+        resetRetryQueue(directory);
         return;
       }
 
       console.warn('[store] saveReviewState retry scheduled after false result', {
-        attempt: retryAttempts,
+        attempt: state.attempts,
         count: retryPayload.length,
       });
-      if (retryAttempts === 1) {
+      if (state.attempts === 1) {
         notify({
           title: 'Saving decisions delayed',
           detail: `Retrying ${plural(retryPayload.length, 'change')} for "${folderLabel(directory)}".`,
@@ -712,24 +715,19 @@ function flushRetryQueue() {
           dedupeKey: `save-delayed:${directory}`,
         });
       }
-      scheduleRetryFlush();
+      scheduleRetryFlush(directory);
     })
     .catch((err) => {
-      retryFlushInFlight = false;
+      if (retryStatesByDirectory.get(directory) !== state) return;
+      state.flushInFlight = false;
 
-      if (retryDirectory !== directory) {
-        scheduleRetryFlush();
+      if (state.queueByField.size === 0) {
+        resetRetryQueue(directory);
         return;
       }
 
-      if (retryQueueByField.size === 0) {
-        retryDirectory = null;
-        retryAttempts = 0;
-        return;
-      }
-
-      retryAttempts += 1;
-      if (retryAttempts >= MAX_SAVE_RETRY_ATTEMPTS) {
+      state.attempts += 1;
+      if (state.attempts >= MAX_SAVE_RETRY_ATTEMPTS) {
         console.error('[store] saveReviewState retry failed permanently', err);
         notify({
           title: 'Decisions not saved',
@@ -737,15 +735,15 @@ function flushRetryQueue() {
           kind: 'error',
           dedupeKey: `save-exhausted:${directory}`,
         });
-        resetRetryQueue();
+        resetRetryQueue(directory);
         return;
       }
 
       console.warn('[store] saveReviewState retry scheduled after error', {
-        attempt: retryAttempts,
+        attempt: state.attempts,
         count: retryPayload.length,
       });
-      if (retryAttempts === 1) {
+      if (state.attempts === 1) {
         notify({
           title: 'Saving decisions delayed',
           detail: `Retrying ${plural(retryPayload.length, 'change')} for "${folderLabel(directory)}".`,
@@ -753,7 +751,7 @@ function flushRetryQueue() {
           dedupeKey: `save-delayed:${directory}`,
         });
       }
-      scheduleRetryFlush();
+      scheduleRetryFlush(directory);
     });
 }
 
@@ -784,7 +782,8 @@ function persistReviewState(
     void window.electronAPI.saveReviewState(root, rootUpdates)
       .then((ok) => {
         if (ok) {
-          const queueSizeBeforeAck = retryQueueByField.size;
+          const retryState = retryStatesByDirectory.get(root);
+          const queueSizeBeforeAck = retryState?.queueByField.size ?? 0;
           const savedTokenByKey = new Map<string, number>();
           for (const update of rootUpdates) {
             for (const field of Object.keys(update.changes) as ReviewStateField[]) {
@@ -792,8 +791,9 @@ function persistReviewState(
             }
           }
           acknowledgeSavedTokens(root, savedTokenByKey);
-          if (retryDirectory === root && retryQueueByField.size < queueSizeBeforeAck) {
-            retryAttempts = 0;
+          const queueSizeAfterAck = retryStatesByDirectory.get(root)?.queueByField.size ?? 0;
+          if (retryState && queueSizeAfterAck < queueSizeBeforeAck) {
+            retryState.attempts = 0;
           }
           return;
         }
@@ -917,6 +917,7 @@ const useStore = create<VideoStore>((set, get) => ({
 
   // ── Actions ──
   setDirectory: (dir: string | null) => {
+    resetAllRetryQueues();
     if (dir !== null) {
       const { settings } = get();
       const existing = settings.recentDirectories.filter((d) => d !== dir);
@@ -1017,6 +1018,7 @@ const useStore = create<VideoStore>((set, get) => ({
   },
 
   setDirectories: (dirs: string[]) => {
+    resetAllRetryQueues();
     const nextDirs = uniqueDirectories(dirs);
     set({
       directory: nextDirs[0] ?? null,

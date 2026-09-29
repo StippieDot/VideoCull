@@ -249,6 +249,36 @@ describe('useStore public behavior', () => {
     vi.useRealTimers();
   });
 
+  test('retries failed review-state saves independently for multiple roots', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    electronAPI.saveReviewState
+      .mockRejectedValueOnce(new Error('first cache worker failed'))
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    useStore.getState().setDirectories(['D:\\Media', 'E:\\Clips']);
+    useStore.getState().setVideos([
+      makeVideo('a', { path: 'D:\\Media\\a.mp4' }),
+      makeVideo('b', { path: 'E:\\Clips\\b.mp4' }),
+    ]);
+
+    useStore.getState().setVideoStatusesBatch(['a', 'b'], 'keep');
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(750);
+
+    expect(electronAPI.saveReviewState.mock.calls.slice(0, 2)).toEqual([
+      ['D:\\Media', [{ id: 'a', path: 'D:\\Media\\a.mp4', changes: { status: 'keep' } }]],
+      ['E:\\Clips', [{ id: 'b', path: 'E:\\Clips\\b.mp4', changes: { status: 'keep' } }]],
+    ]);
+    expect(electronAPI.saveReviewState.mock.calls.slice(2)).toEqual(expect.arrayContaining([
+      ['D:\\Media', [{ id: 'a', path: 'D:\\Media\\a.mp4', changes: { status: 'keep' } }]],
+      ['E:\\Clips', [{ id: 'b', path: 'E:\\Clips\\b.mp4', changes: { status: 'keep' } }]],
+    ]));
+    expect(electronAPI.saveReviewState).toHaveBeenCalledTimes(4);
+    vi.useRealTimers();
+  });
+
   test('public filter actions change the visible review list and reset the review cursor', () => {
     useStore.getState().setVideos([
       makeVideo('a', { favorite: true, rating: 5 }),
