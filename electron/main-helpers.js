@@ -78,8 +78,11 @@ function detectCompatibility(containerFormat, videoCodec, filePath) {
 }
 
 function mergeScannedVideoWithCache(video, cached) {
+  // Rows imported from the legacy JSON cache or older schemas have no size/date;
+  // treat unknown values as unchanged instead of wiping their review state.
   const identityChanged = cached && (
-    cached.sizeBytes !== video.sizeBytes || cached.date !== video.date
+    (cached.sizeBytes > 0 && cached.sizeBytes !== video.sizeBytes) ||
+    (cached.date != null && cached.date !== video.date)
   );
   if (!cached || identityChanged) {
     return {

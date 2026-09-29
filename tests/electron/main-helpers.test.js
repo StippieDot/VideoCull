@@ -82,6 +82,30 @@ test('changed file identity does not inherit cached review or media state', () =
   assert.equal(merged.width, null);
 });
 
+test('scan merge keeps review state for cache rows without a recorded size or date', () => {
+  const video = {
+    id: 'abcdef0123456789',
+    path: 'C:\\Videos\\clip.mp4',
+    sizeBytes: 200,
+    date: 20,
+    duplicateHash: 'fresh-hash',
+  };
+  // Legacy JSON imports and pre-column databases store neither size nor date.
+  const cached = {
+    id: video.id,
+    sizeBytes: 0,
+    date: null,
+    status: 'delete',
+    bookmarks: [12],
+    thumbnails: [],
+  };
+
+  const merged = mergeScannedVideoWithCache(video, cached);
+
+  assert.equal(merged.status, 'delete');
+  assert.deepEqual(merged.bookmarks, [12]);
+});
+
 test('deletion identity check rejects changed and missing files', async () => {
   const expectedIdentity = {
     sizeBytes: 100,
