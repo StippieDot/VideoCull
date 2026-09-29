@@ -24,8 +24,8 @@ Exact-file checks are part of the run. The selected comparison method controls t
 
 | Method | Best use | Tradeoff |
 | --- | --- | --- |
+| pHash (default) | Most libraries; strict image-signature comparison with few false positives | Can miss transformations that visual similarity still recognizes. |
 | Visual similarity | Alternate encodes, resized copies, and near-identical footage | Broader matching can produce more false positives. |
-| pHash | Stricter image-signature comparison | Can miss transformations that visual similarity still recognizes. |
 
 The methods can find different results. Run them separately when coverage matters more than processing time.
 
@@ -33,13 +33,15 @@ The methods can find different results. Run them separately when coverage matter
 
 Similarity is the minimum score required to create a match. Raise it when unrelated videos appear together; lower it when known alternate encodes are missed. Visual results below roughly 95 percent deserve especially careful review.
 
+The score shown for a group is its weakest match, which is the same value the Similarity setting tests. A group shown at 91 percent therefore appears in any run at 91 percent or lower, and lowering the setting only adds matches that score below the previous value. Hover a group's score to also see the average of its matches.
+
 Sample count controls how many points in each video contribute evidence. More samples take longer but reduce the chance that one common frame, intro, or title card creates a false match.
 
 Advanced controls handle harder libraries:
 
 - Sampling windows can avoid repeated intros and outros, including a custom percentage range.
 - Duration tolerance limits how different runtimes may be before comparison.
-- Requiring every sample is stricter than allowing the average to pass.
+- Requiring every sample scores each match by its weakest sample; turning it off scores and tests the average of all samples.
 - Black- or white-pixel ignoring can reduce the effect of fades, letterboxing, and flashes.
 - Flipped comparison checks horizontally mirrored copies.
 - Maximum sampling duration limits work on long files; `0` uses the full duration.
@@ -51,7 +53,7 @@ Change one matching control at a time, then run detection again. Existing groups
 
 Switch between compact rows and thumbnail gallery cards from the duplicate sidebar. Both show group boundaries, exact or potential-match badges, similarity, status, selected keeper, and useful quality metadata.
 
-Duplicate-list filters are independent from the main grid filters. Search duplicate paths or filenames, set a minimum similarity, and sort groups by similarity, group size, or total size. **Reset duplicate filters** returns to all groups sorted by highest similarity.
+Duplicate-list filters are independent from the main grid filters. Search duplicate paths or filenames, set a minimum similarity to hide groups whose weakest match scores lower, and sort groups by similarity, group size, or total size. **Reset duplicate filters** returns to all groups sorted by highest similarity.
 
 Play any result to open Review at that video with only its duplicate group as the navigation scope. Returning restores the duplicate-list scroll position.
 

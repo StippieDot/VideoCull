@@ -8,6 +8,7 @@ const {
   pHashSimilarity,
   rawGraySimilarity,
   average,
+  combineSampleScores,
   normalizeDuplicateSettings,
   getDuplicateFingerprintKey,
   durationsWithinTolerance,
@@ -43,7 +44,7 @@ test('default settings follow the simplified VDF-style model', () => {
   const settings = normalizeDuplicateSettings({});
   assert.equal(settings.finalSimilarityThreshold, 95);
   assert.equal(settings.sampleCount, 3);
-  assert.equal(settings.comparisonMode, 'visual');
+  assert.equal(settings.comparisonMode, 'phash');
   assert.equal(settings.durationTolerancePercent, 20);
   assert.equal(settings.checkpointIntervalMinutes, 5);
   assert.equal(settings.requireEverySample, true);
@@ -92,6 +93,11 @@ test('fingerprint cache key changes only when extraction settings change', () =>
 
 test('average ignores non-finite values', () => {
   assert.equal(average([100, Number.NaN, 90]), 95);
+});
+
+test('pair score is the weakest sample when every sample must pass, otherwise the average', () => {
+  assert.equal(combineSampleScores([96.9, 93.8, 89.1], { requireEverySample: true }), 89.1);
+  assert.equal(combineSampleScores([96, 94, 92], { requireEverySample: false }), 94);
 });
 
 test('flipGrayBytes mirrors rows horizontally', () => {

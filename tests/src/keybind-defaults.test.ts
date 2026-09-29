@@ -93,6 +93,20 @@ describe('migrateSettings', () => {
     expect(migrateSettings({ removeEmptyFoldersAfterDelete: false }).removeEmptyFoldersAfterDelete).toBe(false);
   });
 
+  test('switches existing visual duplicate settings to pHash once', () => {
+    const migrated = migrateSettings({ duplicates: { comparisonMode: 'visual', finalSimilarityThreshold: 92 } });
+
+    expect(migrated.duplicates?.comparisonMode).toBe('phash');
+    expect(migrated.duplicates?.finalSimilarityThreshold).toBe(92);
+    expect(migrated.duplicates?.phashDefaultApplied).toBe(true);
+  });
+
+  test('keeps visual comparison chosen after the pHash default was applied', () => {
+    const migrated = migrateSettings({ duplicates: { comparisonMode: 'visual', phashDefaultApplied: true } });
+
+    expect(migrated.duplicates?.comparisonMode).toBe('visual');
+  });
+
   test('normalizes invalid duplicate-detection settings back to supported values', () => {
     const migrated = migrateSettings({
       duplicates: {

@@ -60,7 +60,7 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
 export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   enabled: true,
   runAfterScan: false,
-  comparisonMode: 'visual',
+  comparisonMode: 'phash',
   sampleCount: 3,
   defaultScope: 'all',
   protectKeep: true,
@@ -79,6 +79,7 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,
   ignoredDuplicatePairs: [],
+  phashDefaultApplied: true,
 };
 
 const KEEPER_RULES = new Set(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
@@ -158,6 +159,12 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
       ...DEFAULT_DUPLICATE_SETTINGS,
       ...(result.duplicates as Record<string, unknown>),
     };
+    // pHash became the default because it produces far fewer false positives; move
+    // existing installs over once, then respect whatever the user picks afterwards.
+    if ((result.duplicates as Record<string, unknown>).phashDefaultApplied !== true) {
+      migratedDuplicates.comparisonMode = 'phash';
+      migratedDuplicates.phashDefaultApplied = true;
+    }
     if (!['phash', 'visual'].includes(String(migratedDuplicates.comparisonMode))) {
       migratedDuplicates.comparisonMode = DEFAULT_DUPLICATE_SETTINGS.comparisonMode;
     }

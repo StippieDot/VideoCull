@@ -3,6 +3,7 @@ const {
   normalizeDuplicateSettings,
   rawGraySimilarity,
   flipGrayBytes,
+  combineSampleScores,
   durationsWithinTolerance,
 } = require('./duplicate-utils');
 
@@ -103,7 +104,7 @@ function compareSamples(a, b, settings) {
 
   if (scores.length === 0) return null;
   if (settings.sampleCount > 1 && scores.length < 2) return null;
-  const similarity = 100 - (diffSum / scores.length);
+  const similarity = combineSampleScores(scores, settings);
   if (similarity < settings.finalSimilarityThreshold) return null;
   return {
     similarity,

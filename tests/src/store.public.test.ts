@@ -454,7 +454,7 @@ describe('useStore public behavior', () => {
     expect(settings.removeEmptyFoldersAfterDelete).toBe(false);
     expect(settings.recentDirectories).toEqual(['D:\\Keep']);
     expect(settings.recentDirectoryTimestamps).toEqual({ 'D:\\Keep': 111 });
-    expect(settings.duplicates.comparisonMode).toBe('visual');
+    expect(settings.duplicates.comparisonMode).toBe('phash');
     expect(settings.duplicates.sampleCount).toBe(3);
     expect(settings.duplicates.ignoredDuplicatePairs).toEqual(['abcdefabcdefabcd|0011223344556677']);
     expect(electronAPI.validateDroppedPath).toHaveBeenCalledTimes(2);

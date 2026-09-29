@@ -191,12 +191,15 @@ export interface DuplicateSettings {
   retryFailedFingerprintExtraction: boolean;
   checkpointIntervalMinutes: number;
   ignoredDuplicatePairs: string[];
+  phashDefaultApplied?: boolean;
 }
 
 export interface DuplicateGroup {
   id: string;
   videoIds: string[];
+  /** Weakest matched pair in the group; the value the similarity threshold tests. */
   similarity: number;
+  averageSimilarity?: number;
   matchType: Exclude<DuplicateMatchType, null>;
   suggestedKeeperId: string | null;
   manualSuggestedKeeperId?: string | null;

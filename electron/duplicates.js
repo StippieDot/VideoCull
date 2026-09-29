@@ -14,6 +14,7 @@ const {
   flipGrayBytes,
   frameDarkRatio,
   average,
+  combineSampleScores,
   chooseSuggestedKeeper,
   durationsWithinTolerance,
   pHashSimilarity,
@@ -609,14 +610,13 @@ function recomputePHashSimilarity(samplesA, samplesB, settings, options = {}) {
 
   if (sampleScores.length < minimumUsableSamples(settings.sampleCount)) return null;
   if (settings.requireEverySample && sampleScores.some((score) => score < settings.finalSimilarityThreshold)) return null;
-  const similarity = average(sampleScores);
+  const similarity = combineSampleScores(sampleScores, settings);
   if (options.enforceThreshold === false) return similarity;
   return similarity >= settings.finalSimilarityThreshold ? similarity : null;
 }
 
 function recomputeVisualSimilarity(samplesA, samplesB, settings, options = {}) {
   const scores = [];
-  let diffSum = 0;
   for (let i = 0; i < settings.sampleCount; i++) {
     const sampleA = samplesA[i];
     const sampleB = samplesB[i];
@@ -629,11 +629,10 @@ function recomputeVisualSimilarity(samplesA, samplesB, settings, options = {}) {
     const bestScore = Math.max(normalScore, flippedScore);
     if (settings.requireEverySample && bestScore < settings.finalSimilarityThreshold) return null;
     scores.push(bestScore);
-    diffSum += 100 - bestScore;
   }
 
   if (scores.length < minimumUsableSamples(settings.sampleCount)) return null;
-  const similarity = 100 - (diffSum / scores.length);
+  const similarity = combineSampleScores(scores, settings);
   if (options.enforceThreshold === false) return similarity;
   return similarity >= settings.finalSimilarityThreshold ? similarity : null;
 }
@@ -1136,11 +1135,16 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       }
     }
     const matchType = hasExact && fuzzyMatchType ? 'mixed' : hasExact ? 'exact' : fuzzyMatchType || settings.comparisonMode;
-    const comparisonLabel = matchType === 'phash' ? 'pHash average' : 'visual average';
+    const comparisonLabel = matchType === 'phash' ? 'pHash' : 'Visual';
     groups.push({
       id: stableDuplicateGroupId(ids),
       videoIds: ids,
-      similarity: Math.round(average(similarities) * 10) / 10,
+      // The weakest matched pair, rounded down, so filtering groups by this score
+      // behaves like scanning at that threshold.
+      similarity: similarities.length > 0
+        ? Math.floor(similarities.reduce((min, value) => Math.min(min, value), Infinity) * 10 + 1e-9) / 10
+        : 0,
+      averageSimilarity: Math.round(average(similarities) * 10) / 10,
       matchType,
       suggestedKeeperId: keeper?.id ?? null,
       exactVideoIds: Array.from(exactVideoIds),
@@ -1148,7 +1152,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
         ? 'Exact file match'
         : matchType === 'mixed'
           ? 'Exact and similarity matches in one group'
-          : `Whole-video ${comparisonLabel} >= ${settings.finalSimilarityThreshold}%`,
+          : `${comparisonLabel}: every matched pair >= ${settings.finalSimilarityThreshold}%`,
     });
   }
 

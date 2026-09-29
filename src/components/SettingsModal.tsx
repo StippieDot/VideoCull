@@ -577,8 +577,8 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                           </div>
                           <span className="help-text">
                             {localSettings.duplicates.comparisonMode === 'visual'
-                              ? 'Minimum score needed to group videos as duplicates. Visual results below 95% need more review.'
-                              : 'Minimum score needed to group videos as duplicates. pHash is usually stricter at the same percentage.'}
+                              ? 'Minimum score for a match. A group shows its weakest match, so every result meets this value. Visual results below 95% need more review.'
+                              : 'Minimum score for a match. A group shows its weakest match, so every result meets this value.'}
                           </span>
                         </div>
                         <div className="form-group">
@@ -750,7 +750,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                             <input type="checkbox" checked={localSettings.duplicates.requireEverySample} onChange={(e) => handleDuplicateChange('requireEverySample', e.target.checked)} />
                             Require every sample to meet similarity
                           </label>
-                          <span className="help-text">Every sample must pass, not just the average.</span>
+                          <span className="help-text">On: a match is scored by its weakest sample, so every sample must pass. Off: a match is scored by the average of all samples.</span>
                         </div>
                         <div className="form-group checkbox-group duplicates-toggle-row">
                           <label>

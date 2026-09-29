@@ -370,7 +370,13 @@ const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
           >
             {groupView.group.matchType === 'exact' ? 'Exact matches' : 'Potential duplicates'}
           </span>
-          <strong>{groupView.group.similarity.toFixed(1)}%</strong>
+          <strong
+            title={groupView.group.averageSimilarity != null
+              ? `Weakest match ${groupView.group.similarity.toFixed(1)}% · average ${groupView.group.averageSimilarity.toFixed(1)}%`
+              : undefined}
+          >
+            {groupView.group.similarity.toFixed(1)}%
+          </strong>
           <em>{groupView.groupSize} videos</em>
           <em>{formatSize(groupView.totalSize)}</em>
           <em>{groupView.group.reason}</em>

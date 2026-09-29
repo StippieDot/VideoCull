@@ -3,7 +3,7 @@ const {
   normalizeDuplicateSettings,
   parsePHashHex,
   pHashSimilarity,
-  average,
+  combineSampleScores,
   durationsWithinTolerance,
 } = require('./duplicate-utils');
 
@@ -126,7 +126,7 @@ function comparePHashes() {
     }
     if (sampleScores.length === 0) return;
     if (settings.sampleCount > 1 && sampleScores.length < 2) return;
-    const similarity = average(sampleScores);
+    const similarity = combineSampleScores(sampleScores, settings);
     const samplesMeetThreshold = !settings.requireEverySample || sampleScores.every((score) => score >= settings.finalSimilarityThreshold);
     if (similarity >= settings.finalSimilarityThreshold && samplesMeetThreshold) {
       pairs.push({

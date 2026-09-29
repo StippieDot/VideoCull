@@ -149,7 +149,26 @@ test('daisy-chain cleanup uses recomputed similarity for retained group scores',
 
   assert.equal(groups.length, 1);
   assert.deepEqual(groups[0].videoIds.toSorted(), ['a', 'b', 'c']);
-  assert.equal(groups[0].similarity, 95.3);
+  assert.equal(groups[0].similarity, 94);
+  assert.equal(groups[0].averageSimilarity, 95.3);
+});
+
+test('group score is the weakest matched pair so it never exceeds any member pair', () => {
+  const videos = ['a', 'b', 'c'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 90, comparisonMode: 'phash' });
+  const matchedPairs = [
+    { aId: 'a', bId: 'b', similarity: 97, matchType: 'phash' },
+    { aId: 'a', bId: 'c', similarity: 96, matchType: 'phash' },
+    { aId: 'b', bId: 'c', similarity: 91.06, matchType: 'phash' },
+  ];
+
+  const groups = __test__.buildGroups([], matchedPairs, videosById, settings);
+
+  assert.equal(groups.length, 1);
+  // Rounded down so the displayed score stays a true lower bound.
+  assert.equal(groups[0].similarity, 91);
+  assert.equal(groups[0].averageSimilarity, 94.7);
 });
 
 test('multi-frame extraction args reuse one ffmpeg command for all timestamps', () => {

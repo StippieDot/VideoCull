@@ -4,7 +4,7 @@
 const DEFAULT_DUPLICATE_SETTINGS = {
   enabled: true,
   runAfterScan: false,
-  comparisonMode: 'visual',
+  comparisonMode: 'phash',
   sampleCount: 3,
   defaultScope: 'all',
   protectKeep: true,
@@ -23,6 +23,7 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,
   ignoredDuplicatePairs: [],
+  phashDefaultApplied: true,
 };
 
 const SAMPLE_COUNT_OPTIONS = new Set([1, 2, 3, 4, 5, 7, 9]);
@@ -233,6 +234,13 @@ function average(values) {
   return valid.reduce((sum, value) => sum + value, 0) / valid.length;
 }
 
+// The pair score must be the value the threshold actually tests, so a pair shown as
+// X% is exactly what a scan at X% would find. With every-sample matching that is the
+// weakest sample; otherwise it is the average.
+function combineSampleScores(scores, settings) {
+  return settings.requireEverySample ? Math.min(...scores) : average(scores);
+}
+
 function durationsWithinTolerance(a, b, settings) {
   const durationA = Number(a.durationSecs ?? 0);
   const durationB = Number(b.durationSecs ?? 0);
@@ -293,6 +301,7 @@ module.exports = {
   rawGraySimilarity,
   frameDarkRatio,
   average,
+  combineSampleScores,
   durationsWithinTolerance,
   chooseSuggestedKeeper,
   compareKeeperCandidates,
