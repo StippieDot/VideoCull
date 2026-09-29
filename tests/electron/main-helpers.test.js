@@ -22,6 +22,8 @@ const {
   isSqliteCorruptionError,
   listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
+  matchesFileIdentityAtPath,
+  mergeScannedVideoWithCache,
   normalizeReportRoots,
   normalizeReviewStateChanges,
   removeEmptyDeletedVideoFolders,
@@ -30,6 +32,93 @@ const {
   thumbRelative,
   videoForDb,
 } = require('../../electron/main-helpers');
+
+test('changed file identity does not inherit cached review or media state', () => {
+  const video = {
+    id: '0123456789abcdef',
+    filename: 'clip.mp4',
+    path: 'D:\\Media\\clip.mp4',
+    sizeBytes: 100,
+    date: 200,
+    durationSecs: null,
+    duplicateHash: 'fresh-hash',
+  };
+  const cached = {
+    ...video,
+    date: 100,
+    status: 'delete',
+    durationSecs: 60,
+    thumbnails: ['old-thumb.jpg'],
+    duplicateHash: 'old-hash',
+    metadataDate: 99,
+    bookmarks: [12],
+    rating: 5,
+    favorite: true,
+    videoCodec: 'h264',
+    audioCodec: 'aac',
+    videoBitrate: 1_000,
+    audioBitrate: 128,
+    totalBitrate: 1_128,
+    metadataCheckedAt: 99,
+    metadataVersion: 1,
+    metadataFailedAt: null,
+    metadataFailureReason: null,
+    containerFormat: 'mp4',
+    width: 1920,
+    height: 1080,
+    fps: 30,
+  };
+
+  const merged = mergeScannedVideoWithCache(video, cached);
+
+  assert.equal(merged.status, 'pending');
+  assert.deepEqual(merged.thumbnails, []);
+  assert.deepEqual(merged.bookmarks, []);
+  assert.equal(merged.rating, 0);
+  assert.equal(merged.favorite, false);
+  assert.equal(merged.durationSecs, null);
+  assert.equal(merged.duplicateHash, 'fresh-hash');
+  assert.equal(merged.videoCodec, null);
+  assert.equal(merged.width, null);
+});
+
+test('deletion identity check rejects changed and missing files', async () => {
+  const expectedIdentity = {
+    sizeBytes: 100,
+    mtimeMs: 200,
+    birthtimeMs: 50,
+    dev: 1,
+    ino: 9,
+  };
+
+  assert.equal(await matchesFileIdentityAtPath({
+    filePath: 'D:\\Media\\clip.mp4',
+    expectedIdentity,
+    statPath: async () => ({ size: 100, mtimeMs: 200, birthtimeMs: 50, dev: 1, ino: 9 }),
+  }), true);
+
+  assert.equal(await matchesFileIdentityAtPath({
+    filePath: 'D:\\Media\\clip.mp4',
+    expectedIdentity,
+    statPath: async () => ({ size: 100, mtimeMs: 201, birthtimeMs: 50, dev: 1, ino: 9 }),
+  }), false);
+
+  assert.equal(await matchesFileIdentityAtPath({
+    filePath: 'D:\\Media\\clip.mp4',
+    expectedIdentity,
+    statPath: async () => ({ size: 100, mtimeMs: 200, birthtimeMs: 50, dev: 1, ino: 10 }),
+  }), false);
+
+  assert.equal(await matchesFileIdentityAtPath({
+    filePath: 'D:\\Media\\clip.mp4',
+    expectedIdentity,
+    statPath: async () => {
+      const error = new Error('missing');
+      error.code = 'ENOENT';
+      throw error;
+    },
+  }), false);
+});
 
 test('review state validation accepts only bounded allowlisted fields', () => {
   assert.deepEqual(normalizeReviewStateChanges({ status: 'keep', rating: 5, favorite: true, bookmarks: [1.2] }), {

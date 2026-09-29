@@ -19,6 +19,41 @@ const COMPAT_SUPPORTED_FORMATS = ['mp4', 'mov', 'matroska', 'webm', 'ogg', '3gp'
 const COMPAT_WEB_EXTS = ['.mp4', '.webm', '.ogg', '.ogv', '.mov', '.mkv', '.m4v'];
 const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
 
+function createFileIdentity(stats) {
+  return {
+    sizeBytes: Number(stats?.size),
+    mtimeMs: Number(stats?.mtimeMs),
+    birthtimeMs: Number.isFinite(Number(stats?.birthtimeMs)) ? Number(stats.birthtimeMs) : null,
+    dev: stats?.dev == null ? null : String(stats.dev),
+    ino: stats?.ino == null ? null : String(stats.ino),
+  };
+}
+
+function matchesFileIdentity(expectedIdentity, stats) {
+  if (!expectedIdentity || !stats) return false;
+  const currentIdentity = createFileIdentity(stats);
+  if (
+    expectedIdentity.sizeBytes !== currentIdentity.sizeBytes ||
+    expectedIdentity.mtimeMs !== currentIdentity.mtimeMs
+  ) return false;
+
+  for (const field of ['birthtimeMs', 'dev', 'ino']) {
+    if (expectedIdentity[field] != null && String(expectedIdentity[field]) !== String(currentIdentity[field])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function matchesFileIdentityAtPath({ filePath, expectedIdentity, statPath }) {
+  if (!filePath || !expectedIdentity || typeof statPath !== 'function') return false;
+  try {
+    return matchesFileIdentity(expectedIdentity, await statPath(filePath));
+  } catch {
+    return false;
+  }
+}
+
 function hasAnyCompatFormat(containerFormat, tokens) {
   const parts = (containerFormat || '').toLowerCase().split(',').map((part) => part.trim());
   return tokens.some((token) => parts.includes(token));
@@ -43,7 +78,10 @@ function detectCompatibility(containerFormat, videoCodec, filePath) {
 }
 
 function mergeScannedVideoWithCache(video, cached) {
-  if (!cached) {
+  const identityChanged = cached && (
+    cached.sizeBytes !== video.sizeBytes || cached.date !== video.date
+  );
+  if (!cached || identityChanged) {
     return {
       ...video,
       status: 'pending',
@@ -460,6 +498,7 @@ module.exports = {
   filterValidCacheSaveVideos,
   isKnownLoadedFilePath,
   cacheRelevantSettingsChanged,
+  createFileIdentity,
   detectCompatibility,
   escapeHtml,
   formatBytes,
@@ -475,6 +514,7 @@ module.exports = {
   isSqliteCorruptionError,
   listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
+  matchesFileIdentityAtPath,
   mergeScannedVideoWithCache,
   normalizeReportRoots,
   normalizeReviewStateChanges,

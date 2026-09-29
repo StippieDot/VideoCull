@@ -29,7 +29,7 @@ test('statVideoEntries preserves input order and skips stat failures', async () 
     await new Promise((resolve) => setTimeout(resolve, delaysByPath.get(fullPath) ?? 0));
     const size = sizesByPath.get(fullPath);
     if (!size) throw new Error('missing');
-    return { size, mtimeMs: size * 10 };
+    return { size, mtimeMs: size * 10, birthtimeMs: size * 5, dev: 1, ino: size + 1 };
   });
 
   assert.deepEqual(
@@ -38,6 +38,13 @@ test('statVideoEntries preserves input order and skips stat failures', async () 
   );
   assert.equal(results[0]?.sizeBytes, 100);
   assert.equal(results[2]?.sizeBytes, 300);
+  assert.deepEqual(results[0]?.fileIdentity, {
+    sizeBytes: 100,
+    mtimeMs: 1000,
+    birthtimeMs: 500,
+    dev: '1',
+    ino: '101',
+  });
 });
 
 test('scanDirectory skips internal cache directories', async () => {

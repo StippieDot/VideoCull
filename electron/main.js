@@ -58,6 +58,7 @@ const {
   isSqliteCorruptionError,
   listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
+  matchesFileIdentityAtPath,
   mergeScannedVideoWithCache,
   normalizeReportRoots,
   normalizeReviewStateChanges,
@@ -119,6 +120,7 @@ const ALLOWED_EXTERNAL_HTTPS_HOSTS = new Set(['docs.videocull.app']);
 // All IPC handlers that accept file paths validate against this set.
 const knownVideoPaths = new Set();
 const knownVideoIdsByPath = new Map();
+const knownVideoIdentitiesByPath = new Map();
 // Valid video ID format: 16 hex characters (MD5-derived from path+size in scanner.js)
 const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
 
@@ -1775,6 +1777,7 @@ ipcMain.handle('reset-loaded-directories', async () => {
     activeCacheRoots = new Set();
     knownVideoPaths.clear();
     knownVideoIdsByPath.clear();
+    knownVideoIdentitiesByPath.clear();
     clearDuplicateSessionCache();
     return true;
   } finally {
@@ -1938,6 +1941,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
   merged.forEach((v) => {
     knownVideoPaths.add(v.path);
     knownVideoIdsByPath.set(v.path, v.id);
+    knownVideoIdentitiesByPath.set(v.path, v.fileIdentity);
   });
 
   const scanSnapshot = perfMetrics.finishRun(perfRun, {
@@ -2656,6 +2660,7 @@ async function finalizeDeletedFiles(results, cacheTargets) {
   for (const filePath of successfulPaths) {
     knownVideoPaths.delete(filePath);
     knownVideoIdsByPath.delete(filePath);
+    knownVideoIdentitiesByPath.delete(filePath);
   }
   const removedFolders = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successfulPaths));
   if (removedFolders.size === 0) return results;
@@ -2682,6 +2687,14 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
   const cacheTargets = await collectDeletionCacheTargets(validPaths);
 
   const trashResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
+    const identityMatches = await matchesFileIdentityAtPath({
+      filePath,
+      expectedIdentity: knownVideoIdentitiesByPath.get(filePath),
+      statPath: fs.stat,
+    });
+    if (!identityMatches) {
+      return { path: filePath, success: false, error: 'File changed since it was scanned. Scan again before deleting.', method: 'trash' };
+    }
     try {
       await shell.trashItem(filePath);
       return { path: filePath, success: true, method: 'trash' };
@@ -2712,6 +2725,14 @@ ipcMain.handle('permanently-delete', async (_event, filePaths) => {
   if (validPaths.length === 0) return results;
   const cacheTargets = await collectDeletionCacheTargets(validPaths);
   const permanentResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
+    const identityMatches = await matchesFileIdentityAtPath({
+      filePath,
+      expectedIdentity: knownVideoIdentitiesByPath.get(filePath),
+      statPath: fs.stat,
+    });
+    if (!identityMatches) {
+      return { path: filePath, success: false, error: 'File changed since it was scanned. Scan again before deleting.', method: 'permanent' };
+    }
     try {
       await fs.unlink(filePath);
       return { path: filePath, success: true, method: 'permanent' };

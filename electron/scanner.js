@@ -1,6 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
+const { createFileIdentity } = require('./main-helpers');
 
 const VIDEO_EXTENSIONS = new Set([
   '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm', '.flv', '.m4v', '.ts', '.mts', '.mpg', '.mpeg',
@@ -60,6 +61,7 @@ async function statVideoEntries(entries, statPath = fs.stat) {
           path: fullPath,
           sizeBytes: stat.size,
           date: stat.mtimeMs,
+          fileIdentity: createFileIdentity(stat),
           durationSecs: null,
           duplicateHash: makeDuplicateHash(stat.size, null),
           status: 'pending',
