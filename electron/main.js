@@ -2811,6 +2811,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
   clearDuplicateSessionCache();
   for (const folderPath of knownFolders) cacheService.blockFolder(folderPath, fromOptions);
   let transitionStarted = false;
+  let switchedLocation = false;
   try {
     await cacheService.beginTransition();
     transitionStarted = true;
@@ -2834,6 +2835,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
         await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
       }
       await writeJsonFile(CACHE_INDEX_FILE, { knownFolders });
+      switchedLocation = true;
       return { status: 'fresh', migrated: 0, errors: [] };
     }
 
@@ -2854,6 +2856,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
       },
     });
 
+    switchedLocation = true;
     return {
       status: 'migrated',
       migrated: new Set(promoted.map((move) => move.folderPath)).size,
@@ -2864,6 +2867,10 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
     return { status: 'error', migrated: 0, errors: [error?.message || String(error)] };
   } finally {
     if (transitionStarted) cacheService.endTransition();
+    // Settings still point at the old location, so its caches must stay writable.
+    if (!switchedLocation) {
+      for (const folderPath of knownFolders) cacheService.allowFolder(folderPath, fromOptions);
+    }
   }
 });
 
