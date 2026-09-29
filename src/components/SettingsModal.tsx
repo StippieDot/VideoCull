@@ -255,11 +255,12 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
       }
       if (result.status === 'partial') {
         setCacheMessage(`Cache migration partially completed. ${result.errors.length} item(s) need attention.`);
-        cacheToast = {
+        pushToast({
           title: 'Cache migration partial',
           detail: `${result.migrated} moved, ${result.errors.length} ${result.errors.length === 1 ? 'issue' : 'issues'} left.`,
           kind: 'warning',
-        };
+        });
+        return;
       } else if (result.status === 'migrated') {
         cacheToast = {
           title: 'Cache migrated',

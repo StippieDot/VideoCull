@@ -6,6 +6,7 @@ const { performance: nodePerformance } = require('perf_hooks');
 const { scanDirectory } = require('./scanner');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
+const { migrateCacheMoves } = require('./cache-migration');
 const { createCacheService } = require('./cache-service');
 const { createGracefulShutdown, createProducerTracker } = require('./graceful-shutdown');
 const {
@@ -56,7 +57,6 @@ const {
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,
-  listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
   matchesFileIdentityAtPath,
   mergeScannedVideoWithCache,
@@ -888,53 +888,6 @@ async function testWritableDirectory(dirPath) {
   }
 }
 
-async function pathExists(filePath) {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function copyPathToTemp(source, target) {
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  const stats = await fs.stat(source);
-  if (stats.isDirectory()) {
-    await fs.cp(source, target, { recursive: true, force: false, errorOnExist: true });
-  } else {
-    await fs.copyFile(source, target);
-  }
-}
-
-async function copyPromoteThenRemoveSources(moves) {
-  if (moves.length === 0) return [];
-  const tempRoot = path.join(path.dirname(moves[0].target), `.videocull-migration-${Date.now()}-${process.pid}`);
-  const staged = moves.map((move, index) => ({
-    ...move,
-    temp: path.join(tempRoot, `${index}-${path.basename(move.target)}`),
-  }));
-  const promoted = [];
-  try {
-    for (const move of staged) await copyPathToTemp(move.source, move.temp);
-    for (const move of staged) {
-      await fs.mkdir(path.dirname(move.target), { recursive: true });
-      await fs.rename(move.temp, move.target);
-      promoted.push(move);
-    }
-    for (const move of staged) {
-      await fs.rm(move.source, { recursive: true, force: true })
-        .catch((err) => log.warn(`[cache] Migrated cache copied but source cleanup failed for ${move.source}:`, err));
-    }
-    return promoted;
-  } catch (err) {
-    await Promise.all(promoted.map((move) => fs.rm(move.target, { recursive: true, force: true }).catch(() => {})));
-    throw err;
-  } finally {
-    await fs.rm(tempRoot, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
 async function quarantineCorruptCacheDb(folderPath, cacheOptions, reason) {
   const cachePaths = getCachePaths(folderPath, cacheOptions);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -973,43 +926,32 @@ function collectCacheSidecars(dbPath) {
   return [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
 }
 
-async function migrateOneCache(folderPath, fromOptions, toOptions) {
+function getCacheMigrationMoves(folderPath, fromOptions, toOptions) {
   const fromPaths = cache.resolveCachePaths(folderPath, fromOptions);
   const toPaths = cache.resolveCachePaths(folderPath, toOptions);
-  const result = { folderPath, movedDb: false, movedThumbs: false, skipped: false, error: null };
 
   if (path.resolve(fromPaths.dbPath) === path.resolve(toPaths.dbPath)) {
-    result.skipped = true;
-    return result;
+    return [];
   }
 
-  try {
-    const dbMoves = collectCacheSidecars(fromPaths.dbPath).map((sourceDbPath) => {
-      const suffix = sourceDbPath.slice(fromPaths.dbPath.length);
-      return { source: sourceDbPath, target: `${toPaths.dbPath}${suffix}`, kind: 'db' };
-    });
-    const moves = [
-      ...dbMoves,
-      { source: fromPaths.thumbRootDir, target: toPaths.thumbRootDir, kind: 'thumbs' },
-    ];
-    const conflicts = await listExistingMigrationTargets({ moves, pathExists });
-    if (conflicts.length > 0) {
-      result.error = `Target cache already exists: ${conflicts.map((item) => item.target).join(', ')}`;
-      return result;
-    }
-
-    const existingMoves = [];
-    for (const move of moves) {
-      if (await pathExists(move.source)) existingMoves.push(move);
-    }
-
-    const promoted = await copyPromoteThenRemoveSources(existingMoves);
-    result.movedDb = promoted.some((move) => move.kind === 'db');
-    result.movedThumbs = promoted.some((move) => move.kind === 'thumbs');
-  } catch (err) {
-    result.error = err.message;
-  }
-  return result;
+  const dbMoves = collectCacheSidecars(fromPaths.dbPath).map((sourceDbPath) => {
+    const suffix = sourceDbPath.slice(fromPaths.dbPath.length);
+    return {
+      source: sourceDbPath,
+      target: `${toPaths.dbPath}${suffix}`,
+      folderPath,
+      kind: 'db',
+    };
+  });
+  return [
+    ...dbMoves,
+    {
+      source: fromPaths.thumbRootDir,
+      target: toPaths.thumbRootDir,
+      folderPath,
+      kind: 'thumbs',
+    },
+  ];
 }
 
 async function getKnownCacheFolders(loadedDirs = []) {
@@ -2848,12 +2790,6 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
   const fromOptions = normalizeCacheSettings(persistedSettings);
   const toOptions = normalizeCacheSettings(newSettings);
   const targetRoots = new Set(knownFolders.map((folderPath) => cache.resolveCachePaths(folderPath, toOptions).cacheRootDir));
-  for (const targetRoot of targetRoots) {
-    const writable = await testWritableDirectory(targetRoot);
-    if (!writable.ok) {
-      return { status: 'error', migrated: 0, errors: [`Cannot write to ${targetRoot}: ${writable.error}`] };
-    }
-  }
 
   const { response } = await dialog.showMessageBox(mainWindow, {
     type: 'question',
@@ -2874,13 +2810,23 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
   cancelProcessing();
   clearDuplicateSessionCache();
   for (const folderPath of knownFolders) cacheService.blockFolder(folderPath, fromOptions);
-  await cacheService.beginTransition();
+  let transitionStarted = false;
   try {
+    await cacheService.beginTransition();
+    transitionStarted = true;
+
+    for (const targetRoot of targetRoots) {
+      const writable = await testWritableDirectory(targetRoot);
+      if (!writable.ok) {
+        return { status: 'error', migrated: 0, errors: [`Cannot write to ${targetRoot}: ${writable.error}`] };
+      }
+    }
+
     if (response === 1) {
       for (const folderPath of knownFolders) {
         const fromPaths = cache.resolveCachePaths(folderPath, fromOptions);
         await cacheService.deleteDb(folderPath, fromOptions);
-        await fs.rm(fromPaths.thumbRootDir, { recursive: true, force: true }).catch(() => {});
+        await fs.rm(fromPaths.thumbRootDir, { recursive: true, force: true });
       }
       if (toOptions.mode === 'distributed') {
         await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: knownFolders });
@@ -2891,26 +2837,33 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
       return { status: 'fresh', migrated: 0, errors: [] };
     }
 
-    const results = [];
-    for (const folderPath of knownFolders) {
-      results.push(await migrateOneCache(folderPath, fromOptions, toOptions));
-    }
-    const errors = results.filter((result) => result.error).map((result) => `${result.folderPath}: ${result.error}`);
-
-    if (toOptions.mode === 'distributed') {
-      await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: knownFolders });
-    } else {
-      await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
-    }
-    await writeJsonFile(CACHE_INDEX_FILE, { knownFolders });
+    const moves = knownFolders.flatMap((folderPath) => (
+      getCacheMigrationMoves(folderPath, fromOptions, toOptions)
+    ));
+    const { promoted } = await migrateCacheMoves(moves, {
+      beforeSourceCleanup: async () => {
+        if (toOptions.mode === 'distributed') {
+          await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: knownFolders });
+        } else {
+          await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
+        }
+        await writeJsonFile(CACHE_INDEX_FILE, { knownFolders });
+      },
+      onCleanupError: (error, move) => {
+        log.warn(`[cache] Migrated cache copied but source cleanup failed for ${move.source}:`, error);
+      },
+    });
 
     return {
-      status: errors.length > 0 ? 'partial' : 'migrated',
-      migrated: results.filter((result) => result.movedDb || result.movedThumbs).length,
-      errors,
+      status: 'migrated',
+      migrated: new Set(promoted.map((move) => move.folderPath)).size,
+      errors: [],
     };
+  } catch (error) {
+    log.error('[cache] Cache settings migration failed:', error);
+    return { status: 'error', migrated: 0, errors: [error?.message || String(error)] };
   } finally {
-    cacheService.endTransition();
+    if (transitionStarted) cacheService.endTransition();
   }
 });
 

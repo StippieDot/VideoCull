@@ -120,6 +120,25 @@ describe('SettingsModal integration behavior', () => {
     expect(useStore.getState().isSettingsModalOpen).toBe(true);
   });
 
+  test('does not save settings when an older migration reports partial success', async () => {
+    electronAPI.migrateCacheSettings.mockResolvedValue({
+      status: 'partial',
+      migrated: 1,
+      errors: ['E:\\Clips: copy failed'],
+    });
+    const originalCacheLocation = useStore.getState().settings.cacheLocation;
+    render(<SettingsModal initialTab="cache" />);
+
+    const [cacheStorageSelect] = screen.getAllByRole('combobox');
+    await userEvent.selectOptions(cacheStorageSelect, 'per-drive');
+    await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
+
+    expect(await screen.findByText(/Cache migration partially completed/)).toBeTruthy();
+    expect(electronAPI.saveConfig).not.toHaveBeenCalled();
+    expect(useStore.getState().settings.cacheLocation).toBe(originalCacheLocation);
+    expect(useStore.getState().isSettingsModalOpen).toBe(true);
+  });
+
   test('saves update-setting changes through the store and closes the modal', async () => {
     render(<SettingsModal initialTab="updates" />);
 
