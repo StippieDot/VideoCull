@@ -2,6 +2,11 @@
 
 All notable changes to VideoCull will be documented here.
 
+## [2.3.2] - 2026-09-30
+
+### Fixed
+- Rescanning a library no longer fails when a subfolder still has cache data but no longer contains any videos, for example after all of its videos were deleted or moved.
+
 ## [2.3.1] - 2026-09-29
 
 ### Changed
