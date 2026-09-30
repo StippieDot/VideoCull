@@ -1295,6 +1295,8 @@ async function reconcileScannedVideosByFolder(videos, cacheOptions, {
       const cachePaths = getCachePaths(folderPath, cacheOptions);
       const hasDb = await fs.stat(cachePaths.dbPath).then(() => true).catch(() => false);
       if (!hasDb) return null;
+      assertScanCurrent(scanToken);
+      cacheService.allowFolder(folderPath, cacheOptions);
       const staleVideos = await cacheService.pruneStale(folderPath, cacheOptions, updatedAt);
       await removeStaleThumbnailDirectories(cachePaths, staleVideos);
       assertScanCurrent(scanToken);
