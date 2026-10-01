@@ -153,6 +153,8 @@
   -webkit-backdrop-filter: var(--blur-md);
   transition: max-width var(--spring), box-shadow var(--spring), transform var(--spring);
   --media-border-radius: var(--radius-lg);
+  --media-border-color: transparent; /* .review-thumbs draws the border */
+  --media-accent-color: var(--accent);
   transform: translateZ(0); /* Hardware accel */
 }
 
