@@ -38,12 +38,11 @@ npm run dev
 | `npm run package:store` | Build and validate the unsigned x64 Store APPX candidate |
 | `npm run validate:store-package` | Validate the generated APPX identity, manifest, contents, and version |
 | `npm run verify:store-installed` | Verify an installed Store package and its shared/package-specific paths |
-| `npm run rebuild` | Rebuild native modules against Electron |
 
 ## Notes
 
 - `npm run test:ci` is the normal local verification path.
-- `npm run test:cache-native` is mainly intended for CI and clean Node-only installs.
+- `npm run test:cache-native` runs the cache tests inside Electron. better-sqlite3 ships prebuilt Node-API binaries, so no native rebuild or C++ build tools are needed.
 - Development Electron sessions use a separate `userData` folder so local settings and cache do not mix with the packaged app.
 - E2E runs use their own temporary `userData` directory and do not touch your normal app data.
 - The Store APPX disables filesystem write virtualization so it can share the normal VideoCull profile and user-selected AppData cache locations with the direct edition. This requires Microsoft's restricted `unvirtualizedResources` capability.

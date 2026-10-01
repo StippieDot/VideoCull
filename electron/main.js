@@ -1686,9 +1686,24 @@ function buildReportHtml(videos, dirPaths) {
 // â”€â”€ IPC Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // 1. Select directory via OS dialog
+// Electron 43+ opens dialogs in Downloads without a defaultPath, so start in the most recent folder.
+async function getDirectoryPickerDefaultPath() {
+  const { recentDirectories } = await readJsonFile(CONFIG_FILE, {});
+  for (const dir of Array.isArray(recentDirectories) ? recentDirectories : []) {
+    if (typeof dir !== 'string') continue;
+    try {
+      if ((await fs.stat(dir)).isDirectory()) return dir;
+    } catch {
+      // Folder is gone or offline; try the next one.
+    }
+  }
+  return undefined;
+}
+
 ipcMain.handle('select-directory', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
+    defaultPath: await getDirectoryPickerDefaultPath(),
   });
   if (result.canceled) return null;
   return result.filePaths[0];
@@ -2900,8 +2915,13 @@ ipcMain.handle('copy-cache-path', async (_event, requestedPath) => {
   const info = await getCurrentCacheLocationInfo();
   const allowed = info.locations.find((item) => item.path.toLowerCase() === String(requestedPath || '').toLowerCase());
   if (!allowed) return false;
-  clipboard.writeText(allowed.path);
-  return true;
+  try {
+    await clipboard.writeText(allowed.path);
+    return true;
+  } catch (error) {
+    log.warn('[cache-location] Could not copy cache path', error);
+    return false;
+  }
 });
 
 ipcMain.handle('get-legacy-install-status', () => getLegacyTransitionStatus());

@@ -6,21 +6,22 @@ const path = require('node:path');
 
 const resourcesPath = path.resolve(process.argv[2] || '');
 const packagedModulePath = path.join(resourcesPath, 'app.asar', 'node_modules', 'better-sqlite3');
-const expectedNativePath = path.join(packagedModulePath, 'build', 'Release', 'better_sqlite3.node');
+// better-sqlite3 ships one Node-API binary per platform, so no Electron-specific rebuild is involved.
+const nativeFileName = `${process.platform}-${process.arch}.node`;
+const expectedNativePath = path.join(packagedModulePath, 'prebuilds', nativeFileName);
 const physicalNativePath = path.join(
   resourcesPath,
   'app.asar.unpacked',
   'node_modules',
   'better-sqlite3',
-  'build',
-  'Release',
-  'better_sqlite3.node',
+  'prebuilds',
+  nativeFileName,
 );
 const packagedCacheServicePath = path.join(resourcesPath, 'app.asar', 'electron', 'cache-service.js');
 
 assert.ok(process.versions.electron, 'Smoke test must run under the packaged Electron executable.');
 assert.ok(fs.existsSync(path.join(resourcesPath, 'app.asar')), 'Packaged app.asar was not found.');
-assert.ok(fs.existsSync(physicalNativePath), 'Packaged better_sqlite3.node was not found in app.asar.unpacked.');
+assert.ok(fs.existsSync(physicalNativePath), `Packaged better-sqlite3 ${nativeFileName} was not found in app.asar.unpacked.`);
 assert.ok(fs.existsSync(packagedCacheServicePath), 'Packaged cache worker service was not found in app.asar.');
 
 let loadedNativePath = null;

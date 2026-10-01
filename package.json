@@ -19,7 +19,7 @@
     "test": "vitest run",
     "test:renderer": "vitest run -c vitest.renderer.config.ts",
     "test:watch": "vitest",
-    "test:cache-native": "npm run rebuild && node scripts/run-electron-node-tests.js tests/electron/cache.test.js tests/electron/cache.migration.test.js",
+    "test:cache-native": "node scripts/run-electron-node-tests.js tests/electron/cache.test.js tests/electron/cache.migration.test.js",
     "test:packaging": "node --test tests/electron/build-hooks.test.js",
     "coverage": "vitest run --coverage",
     "test:profile": "node --test tests/electron/profile-bootstrap.test.js tests/electron/storage-compatibility.test.js",
@@ -30,14 +30,13 @@
     "stress:cache-overcap": "node scripts/cache-overcap-smoke.js",
     "cleanup:cache": "node scripts/cleanup-cache-clutter.js",
     "package": "vite build && electron-builder --win --publish never",
-    "package:store": "node scripts/package-store.js",
-    "rebuild": "electron-rebuild -f -w better-sqlite3"
+    "package:store": "node scripts/package-store.js"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@videojs/react": "10.0.0-rc.4",
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "^13.0.3",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.3",
     "fluent-ffmpeg": "^2.1.3",
@@ -48,7 +47,6 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.4",
     "@playwright/test": "^1.60.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -56,7 +54,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "@vitest/coverage-v8": "^4.1.11",
-    "electron": "^41.10.7",
+    "electron": "^44.5.1",
     "electron-builder": "^26.8.1",
     "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
@@ -79,7 +77,9 @@
       "node_modules/@ffmpeg-installer/**/*",
       "node_modules/@ffprobe-installer/**/*",
       "node_modules/fluent-ffmpeg/**/*",
-      "node_modules/better-sqlite3/**/*"
+      "node_modules/better-sqlite3/**/*",
+      "!node_modules/better-sqlite3/prebuilds/{darwin,linux,linuxmusl}-*.node",
+      "!node_modules/better-sqlite3/prebuilds/win32-arm64.node"
     ],
     "extraResources": [
       {
@@ -93,8 +93,7 @@
       "node_modules/@ffprobe-installer/**/*",
       "node_modules/better-sqlite3/**/*"
     ],
-    "npmRebuild": true,
-    "beforeBuild": "./scripts/electron-builder-hooks.js",
+    "npmRebuild": false,
     "afterPack": "./scripts/electron-builder-hooks.js",
     "win": {
       "target": "nsis",
