@@ -1178,19 +1178,6 @@ function loadPHashRows(db, videoIds, sampleCount, options = {}) {
   return selectCompleteSampleRows(rows, sampleCount);
 }
 
-function loadGraySamples(db, videoId, sampleCount, options = {}) {
-  if (!videoId) return [];
-  const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
-  return db.prepare(`
-    SELECT sample_index, timestamp_secs, gray_bytes, frame_dark_ratio
-    FROM video_fingerprints
-    WHERE video_id = ?
-      ${fingerprintFilter}
-    ORDER BY sample_index
-    LIMIT ?
-  `).all(videoId, ...(options.fingerprintKey ? [options.fingerprintKey] : []), sampleCount);
-}
-
 function loadGraySampleRows(db, videoIds, sampleCount, options = {}) {
   if (!videoIds.length) return [];
   const rows = [];
@@ -1385,7 +1372,6 @@ module.exports = {
   updateVideoReviewStateBatch,
   updateVideoThumbnailMetadataBatch,
   loadPHashRows,
-  loadGraySamples,
   loadGraySampleRows,
   markMetadataFailuresBatch,
   updateVideoSignatures,
