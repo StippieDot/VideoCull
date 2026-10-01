@@ -3,11 +3,15 @@
 [![License](https://img.shields.io/github/license/StippieDot/VideoCull?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge)](https://github.com/StippieDot/VideoCull/releases)
 [![Docs](https://img.shields.io/badge/docs-videocull.app-1f2937?style=for-the-badge&logo=readthedocs&logoColor=white)](https://docs.videocull.app)
+<a href="https://alternativeto.net/software/videocull/about/?utm_source=badge&amp;utm_medium=referral"><img src="https://alternativeto.net/static/badges/badge-compact-color.svg" alt="VideoCull | AlternativeTo" height="28" /></a>
+
 > See what is inside a video folder before deciding what stays.
 
-VideoCull is a Windows desktop app for folders that are too large or messy to review file by file. It samples several frames from every video and lays them out in a grid, so you can identify clips without opening each one.
+**[Website](https://videocull.app/) · [Documentation](https://docs.videocull.app/) · [Download](#download)**
 
-Make Keep, Delete, and Skip decisions from the grid or work through a focused keyboard queue. Play and scrub uncertain clips inside the app, add ratings or favorites, and review likely duplicates as separate comparison groups.
+VideoCull is a free, open-source Windows app for local video collections that are too large or messy to review file by file: downloaded videos, old archives and backups, external drives, screen recordings, and camera footage. It samples several frames from every video and lays them out in a grid, so you can identify clips without opening each one.
+
+Make Keep, Delete, and Skip decisions from the grid or work through a focused keyboard queue. Play and scrub uncertain clips inside the app, add ratings or favorites, and find exact copies and visually similar videos as separate comparison groups.
 
 The workflow stays local. Marking Delete only changes the review state. Files move to the Windows Recycle Bin when possible after you inspect and confirm the complete batch.
 
@@ -40,16 +44,8 @@ For a direct installation, download `VideoCull.Setup.<version>.exe` from [GitHub
 
 The direct-download edition checks GitHub Releases for updates. Both editions share `%APPDATA%\VideoCull`, including settings, review decisions, databases, and the default thumbnail cache. Run only one edition at a time and keep both updated before switching. After confirming the Store edition works, you can uninstall the direct edition without deleting the shared profile or cache.
 
-### Updating from v2.2.0
-
-VideoCull v2.2.1 renames the verified v2.2.0 profile at `%APPDATA%\video-cull` to `%APPDATA%\VideoCull` without copying its thumbnail cache. If Windows cannot perform the rename, the app leaves the old profile untouched, uses it for that launch, and tries again next time.
-
-If both folders already exist, VideoCull does not merge or overwrite them. It uses `%APPDATA%\VideoCull`, keeps both folders, and shows which one is active. Existing installations stay in their current install directory. Windows may require you to re-pin the renamed app on the taskbar.
-
 > [!IMPORTANT]
 > **Official links:** Use [videocull.app](https://videocull.app/) for the product website, [docs.videocull.app](https://docs.videocull.app/) for documentation, and this GitHub repository for source and releases.
-> 
-> *Please beware of third-party domains (such as `.com` variants) offering downloads. They are NOT affiliated with this project and may contain modified or unsafe binaries.*
 
 ---
 
@@ -90,13 +86,18 @@ Fullscreen, one at a time, keyboard first.
 
 Find likely duplicates across all loaded videos or just the current filtered view, then work through them with suggested keepers instead of starting from scratch.
 
-- Two comparison methods: pHash and visual similarity
-- Adjustable similarity threshold and sample count
+- Exact-copy detection with full-file SHA-256 hashing, whatever the filenames say
+- Two visual comparison methods: pHash (strict, few false positives) and visual similarity (catches more alternate encodes and resized copies, with more false positives)
+- Adjustable similarity threshold and sample count; results below roughly 95% deserve careful review
+- Optional mirrored-copy comparison
 - Suggested keeper priority based on resolution, bitrate, duration, FPS, and file size
 - Protection rules for videos already marked Keep or Skip
 - Manual keeper overrides and "Not a match" ignored-pair handling that survives reruns
 - Right-click actions for duplicate rows and groups, including keeper selection, exclusion, and group dismissal
 - Optional "run after scan" mode for duplicate detection
+- Never deletes automatically: selected copies are marked Delete and wait for the normal confirmed delete action
+
+Frames are compared at matching points in each file, so trimmed versions and clips cut from a longer video are not detected.
 
 ### Thumbnail Generation
 
@@ -117,10 +118,6 @@ Progress lives in SQLite databases under the configured cache location.
 - Cache location changes can migrate existing cache data instead of forcing a fresh start
 - Cache and thumbnail files for deleted videos are cleaned up with the delete action
 - Stale-cache cleanup and empty-folder cleanup are opt-in maintenance actions
-
-### Known Issues
-
-- Initial scanning can be very slow on some cloud-mounted drives, confirmed on mounted Google Drive setups. See [issue #2](https://github.com/StippieDot/VideoCull/issues/2).
 
 ### Export
 
@@ -199,6 +196,16 @@ The built-in player is intended for compatible web-playable media such as `.mp4`
 
 ---
 
+## Known Issues and Feedback
+
+- Initial scanning can be very slow on some cloud-mounted drives, confirmed on mounted Google Drive setups. See [issue #2](https://github.com/StippieDot/VideoCull/issues/2).
+- Duplicate review does not detect clips cut from a longer video or trimmed versions of the same file.
+- VideoCull is Windows-only.
+
+Found a bug or something that is not obvious in the workflow? [Open an issue](https://github.com/StippieDot/VideoCull/issues). Reports from large, messy collections are especially useful.
+
+---
+
 ## Building from Source
 
 Requires Node.js 24 LTS. FFmpeg and FFprobe are bundled with the app dependencies.
@@ -213,33 +220,11 @@ npm run dev
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Vite + Electron with hot reload |
-| `npm test` | Run the Vitest suite once |
-| `npm run test:renderer` | Run the App-level jsdom renderer integration tests |
-| `npm run test:watch` | Run Vitest in watch mode |
-| `npm run coverage` | Generate terminal, HTML, and summary coverage reports |
 | `npm run test:ci` | IPC contract check, test TS compile, and full coverage run |
 | `npm run test:e2e` | Build the renderer and run the Electron Playwright regression flows |
-| `npm run test:cache-native` | Optional native cache regression lane for clean Node installs; mainly intended for CI because `better-sqlite3` ABI rebuilds conflict with normal Electron-local workflows |
-| `npm run build` | Renderer-only production build |
-| `npm run check:installer` | Validate Windows installer config and bundled installer artwork |
-| `npm run check:store` | Validate Microsoft Store configuration without enforcing a version increase |
-| `npm run check:store:strict` | Require the Store candidate version to exceed the submitted baseline |
-| `npm run check:ipc` | Validate preload/type IPC contract coverage |
-| `npm run test:profile` | Run profile bootstrap and storage compatibility tests |
-| `npm run test:store` | Run Microsoft Store packaging and cross-edition regression tests |
-| `npm run cleanup:cache` | Clean old cache/thumb clutter from earlier builds |
 | `npm run package` | Full build + Windows installer (NSIS) |
-| `npm run package:store` | Build and validate the unsigned x64 Store APPX candidate |
-| `npm run validate:store-package` | Validate the generated APPX package |
-| `npm run verify:store-installed` | Verify an installed Store package and its storage paths |
-| `npm run rebuild` | Rebuild native modules against Electron |
 
-Notes:
-- `npm run test:ci` is the normal local verification path.
-- `npm run test:cache-native` is kept separate on purpose. It is useful in clean Node-only installs and CI, but can skip locally after `better-sqlite3` has been rebuilt for Electron packaging.
-- If you run `npm run rebuild` to package or launch Electron with a freshly rebuilt native module, that does not mean the plain Node native-cache lane will also be runnable in the same `node_modules` tree.
-- Production Electron sessions use `%APPDATA%\VideoCull`. Development sessions use `%APPDATA%\VideoCull-dev`, so local settings and cache do not mix with the packaged app.
-- E2E runs use their own temporary `userData` directory and do not touch your normal app data.
+Development sessions use `%APPDATA%\VideoCull-dev`, so local settings and cache do not mix with the packaged app. See [Building from source](https://docs.videocull.app/reference/building-from-source) for Store packaging, native-module rebuilds, and the full command list.
 
 ---
 

@@ -12,6 +12,13 @@
       "canonical": "https://docs.videocull.app",
       "robots": "index, follow",
       "googlebot": "index, follow"
+    },
+    "organization": {
+      "url": "https://videocull.app",
+      "sameAs": [
+        "https://github.com/StippieDot/VideoCull",
+        "https://apps.microsoft.com/detail/9NG9Z0CL73PC"
+      ]
     }
   },
 

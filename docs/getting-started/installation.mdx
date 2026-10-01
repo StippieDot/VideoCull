@@ -46,6 +46,7 @@ Open VideoCull from the Store badge and follow the installation prompt. Microsof
 - Both editions use `%APPDATA%\VideoCull` for settings, review decisions, databases, and the default thumbnail cache.
 - Only run one edition at a time. VideoCull blocks a second packaged edition from opening the shared profile concurrently.
 - Keep both editions updated before switching between them. After confirming the Store edition works, you can remove the direct installation without deleting the shared profile or cache.
+- Updating from v2.2.0 renames the old `%APPDATA%\video-cull` profile to `%APPDATA%\VideoCull`. If Windows cannot rename it, VideoCull uses the old profile for that launch and tries again next time. If both folders already exist, VideoCull uses `%APPDATA%\VideoCull` and leaves both untouched. You may need to re-pin the renamed app on the taskbar.
 
 The direct installer creates Start Menu and Desktop shortcuts named **VideoCull**. The Store edition uses the shortcuts managed by Windows.
 
