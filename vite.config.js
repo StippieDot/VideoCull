@@ -16,5 +16,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Large local-only folders stall the dev server's first responses while the watcher indexes them.
+    watch: {
+      ignored: ['**/testspace/**', '**/website/**', '**/release/**', '**/coverage/**'],
+    },
   },
 });

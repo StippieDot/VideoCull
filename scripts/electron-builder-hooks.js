@@ -1,23 +1,7 @@
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
-const root = path.resolve(__dirname, '..');
 const smokeScript = path.join(__dirname, 'packaged-sqlite-smoke.js');
-
-async function beforeBuild(context, dependencies = {}) {
-  const rebuild = dependencies.rebuild ?? (await import('@electron/rebuild')).rebuild;
-  await rebuild({
-    buildPath: context.appDir,
-    electronVersion: context.electronVersion,
-    arch: context.arch,
-    force: true,
-    onlyModules: ['better-sqlite3'],
-  });
-
-  // Keep electron-builder's production dependency collector enabled. Its following
-  // rebuild pass sees the ABI marker just written above and does no duplicate work.
-  return true;
-}
 
 function runPackagedSqliteSmoke(executablePath, resourcesPath, spawn = spawnSync) {
   const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
@@ -47,6 +31,5 @@ async function afterPack(context, dependencies = {}) {
 
 module.exports = {
   afterPack,
-  beforeBuild,
   runPackagedSqliteSmoke,
 };

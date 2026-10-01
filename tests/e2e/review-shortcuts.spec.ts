@@ -49,7 +49,7 @@ test('player shortcuts work before and after focus while app shortcuts and dialo
 
     await video.focus();
     await page.keyboard.press('m');
-    await expect(page.getByRole('button', { name: 'Unmute in-app playback', exact: true })).toBeVisible();
+    await expect(page.locator('button.app-global-mute[aria-label="Unmute in-app playback"]')).toBeVisible();
     expect(await video.evaluate((el: HTMLVideoElement) => el.muted)).toBe(true);
     await page.keyboard.press('k');
     await expect(page.locator('.review-filename')).toHaveText('beta.mp4');
@@ -80,7 +80,7 @@ test('custom app bindings override player bindings and release the unused defaul
     await video.evaluate((el: HTMLVideoElement) => { el.pause(); el.currentTime = 0; });
 
     await page.keyboard.press('5');
-    await expect(page.getByRole('button', { name: 'Unmute in-app playback', exact: true })).toBeVisible();
+    await expect(page.locator('button.app-global-mute[aria-label="Unmute in-app playback"]')).toBeVisible();
     expect(await video.evaluate((el: HTMLVideoElement) => el.currentTime)).toBe(0);
     await page.keyboard.press('m');
     await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.muted)).toBe(false);

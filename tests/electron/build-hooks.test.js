@@ -3,30 +3,9 @@ const path = require('node:path');
 const { test: nodeTest } = require('node:test');
 const {
   afterPack,
-  beforeBuild,
   runPackagedSqliteSmoke,
 } = require('../../scripts/electron-builder-hooks');
 const test = globalThis.test || nodeTest;
-
-test('beforeBuild force-rebuilds better-sqlite3 for the exact Electron target and preserves dependency collection', async () => {
-  let rebuildOptions = null;
-  const result = await beforeBuild({
-    appDir: 'D:\\VideoCull',
-    electronVersion: '41.10.7',
-    arch: 'x64',
-  }, {
-    rebuild: async (options) => { rebuildOptions = options; },
-  });
-
-  assert.deepEqual(rebuildOptions, {
-    buildPath: 'D:\\VideoCull',
-    electronVersion: '41.10.7',
-    arch: 'x64',
-    force: true,
-    onlyModules: ['better-sqlite3'],
-  });
-  assert.equal(result, true);
-});
 
 test('afterPack validates the Windows executable and resources from appOutDir', async () => {
   let received = null;
