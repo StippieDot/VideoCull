@@ -122,7 +122,6 @@ $path = "**literal**"
     expect(keyboardShortcuts?.nodes.filter((node) => node.type === 'shortcut-table')).toEqual([
       { type: 'shortcut-table', group: 'Global' },
       { type: 'shortcut-table', group: 'Review mode' },
-      { type: 'shortcut-table', group: 'Preview' },
     ]);
   });
 

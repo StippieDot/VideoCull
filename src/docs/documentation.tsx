@@ -49,7 +49,7 @@ export type DocumentationNode =
   | { type: 'code'; language: string; content: string }
   | { type: 'list'; ordered: boolean; items: string[] }
   | { type: 'table'; headers: string[]; rows: string[][] }
-  | { type: 'shortcut-table'; group: 'Review mode' | 'Preview' | 'Global' }
+  | { type: 'shortcut-table'; group: 'Review mode' | 'Global' }
   | { type: 'image'; alt: string; src: string }
   | { type: 'callout'; variant: 'warning' | 'tip' | 'note' | 'info' | 'check'; nodes: DocumentationNode[] }
   | { type: 'steps'; items: Array<{ title: string; nodes: DocumentationNode[] }> }
@@ -218,7 +218,7 @@ function parseBlocks(source: string): DocumentationNode[] {
       continue;
     }
 
-    const shortcutTableMatch = trimmed.match(/^(?:<!--\s*in-app-shortcuts:(Review mode|Preview|Global)\s*-->|\{\/\*\s*in-app-shortcuts:(Review mode|Preview|Global)\s*\*\/\})$/);
+    const shortcutTableMatch = trimmed.match(/^(?:<!--\s*in-app-shortcuts:(Review mode|Global)\s*-->|\{\/\*\s*in-app-shortcuts:(Review mode|Global)\s*\*\/\})$/);
     if (shortcutTableMatch) {
       flush();
       const shortcutGroup = shortcutTableMatch[1] ?? shortcutTableMatch[2];
@@ -234,7 +234,7 @@ function parseBlocks(source: string): DocumentationNode[] {
       }
       nodes.push({
         type: 'shortcut-table',
-        group: shortcutGroup as 'Review mode' | 'Preview' | 'Global',
+        group: shortcutGroup as 'Review mode' | 'Global',
       });
       continue;
     }

@@ -283,9 +283,6 @@ export interface AppSettings {
   keySpeedDown: Keybind;
   keySpeedUp: Keybind;
   keyBookmark: Keybind;
-  // Preview modal
-  keyPreviewSeekBack: Keybind;
-  keyPreviewSeekForward: Keybind;
   // Global
   keyShowHelp: Keybind;
   keyGlobalMute: Keybind;

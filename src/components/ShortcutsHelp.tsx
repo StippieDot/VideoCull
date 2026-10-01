@@ -8,7 +8,7 @@ interface Props {
   onClose: () => void;
 }
 
-const GROUPS: ShortcutGroup[] = ['Review mode', 'Preview', 'Global'];
+const GROUPS: ShortcutGroup[] = ['Review mode', 'Global'];
 
 export default function ShortcutsHelp({ onClose }: Props) {
   const settings = useStore((s) => s.settings);

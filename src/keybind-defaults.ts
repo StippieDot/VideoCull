@@ -50,8 +50,6 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keyGlobalMute:         kb('m'),
   keyToggleTheme:        kb('l', { ctrl: true, shift: true }),
   keySearch:             kb('f', { ctrl: true }),
-  keyPreviewSeekBack:    kb('arrowleft'),
-  keyPreviewSeekForward: kb('arrowright'),
 };
 
 // SYNC NOTE: These defaults are duplicated in electron/duplicate-utils.js (DEFAULT_DUPLICATE_SETTINGS).
@@ -190,6 +188,8 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
   delete result.appMode;
   delete result.hasSeenAppModeIntro;
   delete result.keyToggleAppMode;
+  delete result.keyPreviewSeekBack;
+  delete result.keyPreviewSeekForward;
 
   if (typeof result.defaultGroupByFolder !== 'boolean') {
     result.defaultGroupByFolder = true;
