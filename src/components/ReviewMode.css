@@ -776,13 +776,17 @@
 }
 
 /* Keep playback controls visible when the Review preference is enabled. */
-.review-mode.review-playing.review-controls-persistent .media-minimal-skin--video .media-controls:not([data-visible]) {
+.review-mode.review-playing.review-controls-persistent .review-video-skin .video-controls-content:not([data-visible]) {
   pointer-events: auto;
   opacity: 1;
   filter: none;
   translate: none;
 }
 
-.review-mode.review-playing.review-controls-persistent .media-minimal-skin--video:has(.media-controls:not([data-visible])) {
+.review-mode.review-playing.review-controls-persistent .review-video-skin .video-controls-backdrop:not([data-visible]) {
+  opacity: 1;
+}
+
+.review-mode.review-playing.review-controls-persistent .review-video-skin:not([data-controls-visible]) {
   cursor: auto;
 }

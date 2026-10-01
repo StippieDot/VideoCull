@@ -7,8 +7,7 @@ import {
   ChevronLeft, ChevronRight, HardDrive, Clock, Calendar, Bookmark, RotateCcw, Heart, Star
 } from 'lucide-react';
 import '@videojs/react/video/minimal-skin.css';
-import { createPlayer, videoFeatures } from '@videojs/react';
-import { MinimalVideoSkin, Video } from '@videojs/react/video';
+import { MinimalVideoSkin, Video, VideoPlayer as VideoJsPlayer } from '@videojs/react/video';
 import { isWebSupported } from '../utils';
 import { matchesKeybind, formatKeybind } from '../keybinds';
 import { beginDevInteraction, completeDevInteractionOnNextPaint, recordDevCounter } from '../perf-dev';
@@ -16,7 +15,6 @@ import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildReviewVideoMenu } from './contextMenuBuilders';
 import './ReviewMode.css';
 
-const { Player } = createPlayer({ features: videoFeatures });
 const REVIEW_MAX_MEDIA_WIDTH = 1950;
 const REVIEW_ASPECT_RATIO = 16 / 9;
 
@@ -111,8 +109,8 @@ const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   muted: boolean;
 }) => (
-  <Player>
-    <MinimalVideoSkin>
+  <VideoJsPlayer>
+    <MinimalVideoSkin className="review-video-skin">
       <Video
         ref={videoRef}
         className="video-player"
@@ -123,12 +121,12 @@ const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       />
     </MinimalVideoSkin>
-  </Player>
-), (prev, next) => prev.videoUrl === next.videoUrl && prev.videoRef === next.videoRef);
+  </VideoJsPlayer>
+),(prev, next) => prev.videoUrl === next.videoUrl && prev.videoRef === next.videoRef);
 
 function isFocusableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement) || target === document.body) return false;
-  if (target.closest('.media-minimal-skin')) return false;
+  if (target.closest('.review-video-skin')) return false;
   return Boolean(target.closest('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'));
 }
 

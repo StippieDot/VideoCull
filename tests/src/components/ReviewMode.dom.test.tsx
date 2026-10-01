@@ -11,17 +11,11 @@ import { makeVideo } from '../../helpers/videoFactory';
 
 const videoSkinTogglePlayback = vi.hoisted(() => vi.fn());
 
-vi.mock('@videojs/react', () => ({
-  createPlayer: () => ({
-    Player: ({ children }: { children: ReactNode }) => children,
-  }),
-  videoFeatures: {},
-}));
-
 vi.mock('@videojs/react/video', () => ({
-  MinimalVideoSkin: ({ children }: { children: ReactNode }) => (
+  VideoPlayer: ({ children }: { children: ReactNode }) => children,
+  MinimalVideoSkin: ({ children, className }: { children: ReactNode; className?: string }) => (
     <div
-      className="media-minimal-skin"
+      className={className}
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.key.toLowerCase() === 'k' && !event.defaultPrevented) {
@@ -250,7 +244,7 @@ describe('ReviewMode behavior', () => {
     const { container } = render(<ReviewMode />);
     await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
 
-    const player = container.querySelector<HTMLElement>('.media-minimal-skin')!;
+    const player = container.querySelector<HTMLElement>('.review-video-skin')!;
     player.focus();
     fireEvent.keyDown(player, { key: 'k' });
 
