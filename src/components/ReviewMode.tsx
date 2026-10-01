@@ -16,7 +16,7 @@ import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildReviewVideoMenu } from './contextMenuBuilders';
 import './ReviewMode.css';
 
-const Player = createPlayer({ features: videoFeatures });
+const { Player } = createPlayer({ features: videoFeatures });
 const REVIEW_MAX_MEDIA_WIDTH = 1950;
 const REVIEW_ASPECT_RATIO = 16 / 9;
 
@@ -111,7 +111,7 @@ const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   muted: boolean;
 }) => (
-  <Player.Provider>
+  <Player>
     <MinimalVideoSkin>
       <Video
         ref={videoRef}
@@ -123,7 +123,7 @@ const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       />
     </MinimalVideoSkin>
-  </Player.Provider>
+  </Player>
 ), (prev, next) => prev.videoUrl === next.videoUrl && prev.videoRef === next.videoRef);
 
 function isFocusableKeyboardTarget(target: EventTarget | null): boolean {

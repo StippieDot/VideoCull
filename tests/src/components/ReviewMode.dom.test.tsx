@@ -13,7 +13,7 @@ const videoSkinTogglePlayback = vi.hoisted(() => vi.fn());
 
 vi.mock('@videojs/react', () => ({
   createPlayer: () => ({
-    Provider: ({ children }: { children: ReactNode }) => children,
+    Player: ({ children }: { children: ReactNode }) => children,
   }),
   videoFeatures: {},
 }));
