@@ -119,7 +119,9 @@ const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
         muted={muted}
         playsInline
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
-      />
+      >
+        <track kind="chapters" label="Bookmarks" default />
+      </Video>
     </MinimalVideoSkin>
   </VideoJsPlayer>
 ),(prev, next) => prev.videoUrl === next.videoUrl && prev.videoRef === next.videoRef);
@@ -287,6 +289,37 @@ export default function ReviewMode() {
       videoRef.current.muted = effectiveGlobalMute;
     }
   }, [effectiveGlobalMute]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const el = videoRef.current;
+    const track = el?.querySelector<HTMLTrackElement>('track[kind="chapters"]')?.track;
+    if (!el || !track) return;
+
+    const syncBookmarks = () => {
+      track.mode = 'hidden';
+      for (const cue of Array.from(track.cues ?? [])) track.removeCue(cue);
+      const duration = el.duration;
+      if (Number.isFinite(duration) && duration > 0) {
+        const times = [...new Set(video?.bookmarks ?? [])]
+          .filter((time) => Number.isFinite(time) && time >= 0 && time < duration)
+          .sort((a, b) => a - b);
+        times.forEach((time, index) => {
+          track.addCue(new VTTCue(time, times[index + 1] ?? duration, `Bookmark at ${formatDuration(time)}`));
+        });
+      }
+      // Video.js listens to the track list, rather than individual cue edits.
+      el.textTracks.dispatchEvent(new Event('change'));
+    };
+
+    syncBookmarks();
+    el.addEventListener('loadedmetadata', syncBookmarks);
+    el.addEventListener('durationchange', syncBookmarks);
+    return () => {
+      el.removeEventListener('loadedmetadata', syncBookmarks);
+      el.removeEventListener('durationchange', syncBookmarks);
+    };
+  }, [isPlaying, videoUrl, video?.bookmarks]);
 
   // Show an overlay when Chromium can't decode the audio stream (AC3/EAC3/DTS etc.)
   // Muting doesn't prevent decoding — only an external player can handle these codecs.

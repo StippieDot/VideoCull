@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { vi } from 'vitest';
 import ReviewMode from '../../../src/components/ReviewMode';
 import useStore from '../../../src/store';
@@ -10,9 +10,13 @@ import { resetPerfDevMock } from '../../helpers/perfDevMock';
 import { makeVideo } from '../../helpers/videoFactory';
 
 const videoSkinTogglePlayback = vi.hoisted(() => vi.fn());
+const videoSkinRender = vi.hoisted(() => vi.fn());
 
 vi.mock('@videojs/react/video', () => ({
-  VideoPlayer: ({ children }: { children: ReactNode }) => children,
+  VideoPlayer: ({ children }: { children: ReactNode }) => {
+    videoSkinRender();
+    return children;
+  },
   MinimalVideoSkin: ({ children, className }: { children: ReactNode; className?: string }) => (
     <div
       className={className}
@@ -27,7 +31,7 @@ vi.mock('@videojs/react/video', () => ({
       {children}
     </div>
   ),
-  Video: () => null,
+  Video: (props: ComponentProps<'video'>) => <video {...props} />,
 }));
 
 vi.mock('../../../src/components/ThumbnailStrip', () => ({
@@ -56,6 +60,7 @@ function getStoreApi() {
 describe('ReviewMode behavior', () => {
   beforeEach(() => {
     videoSkinTogglePlayback.mockReset();
+    videoSkinRender.mockReset();
     installElectronApiMock();
     resetPerfDevMock();
     const store = getStoreApi();
@@ -253,6 +258,30 @@ describe('ReviewMode behavior', () => {
       expect(screen.getByText('beta.mp4')).toBeTruthy();
     });
     expect(videoSkinTogglePlayback).not.toHaveBeenCalled();
+  });
+
+  test('updates bookmarks without rerendering the active player', async () => {
+    const alpha = makeVideo('alpha');
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewScopeIds: ['alpha'],
+    });
+    const { container } = render(<ReviewMode />);
+    await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    const video = container.querySelector('video')!;
+    const initialRenders = videoSkinRender.mock.calls.length;
+
+    video.currentTime = 3;
+    fireEvent.timeUpdate(video);
+    await userEvent.click(screen.getByTitle('Bookmark current position (B)'));
+    expect(useStore.getState().videos[0].bookmarks).toEqual([3]);
+    expect(container.querySelector('video')).toBe(video);
+    expect(videoSkinRender).toHaveBeenCalledTimes(initialRenders);
+
+    await userEvent.click(screen.getByTitle('Remove bookmark'));
+    expect(useStore.getState().videos[0].bookmarks).toEqual([]);
+    expect(videoSkinRender).toHaveBeenCalledTimes(initialRenders);
   });
 
   test.each([
