@@ -11,6 +11,9 @@ import { makeVideo } from '../../helpers/videoFactory';
 
 const videoSkinTogglePlayback = vi.hoisted(() => vi.fn());
 const videoSkinRender = vi.hoisted(() => vi.fn());
+const playerHotkeyRender = vi.hoisted(() => vi.fn((_props: { disabled?: boolean }) => null));
+
+vi.mock('@videojs/react', () => ({ Hotkey: playerHotkeyRender }));
 
 vi.mock('@videojs/react/video', () => ({
   VideoPlayer: ({ children }: { children: ReactNode }) => {
@@ -61,6 +64,7 @@ describe('ReviewMode behavior', () => {
   beforeEach(() => {
     videoSkinTogglePlayback.mockReset();
     videoSkinRender.mockReset();
+    playerHotkeyRender.mockClear();
     installElectronApiMock();
     resetPerfDevMock();
     const store = getStoreApi();
@@ -267,7 +271,7 @@ describe('ReviewMode behavior', () => {
       filteredVideos: [alpha],
       reviewScopeIds: ['alpha'],
     });
-    const { container } = render(<ReviewMode />);
+    const { container, rerender } = render(<ReviewMode />);
     await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
     const video = container.querySelector('video')!;
     const initialRenders = videoSkinRender.mock.calls.length;
@@ -281,6 +285,14 @@ describe('ReviewMode behavior', () => {
 
     await userEvent.click(screen.getByTitle('Remove bookmark'));
     expect(useStore.getState().videos[0].bookmarks).toEqual([]);
+    expect(videoSkinRender).toHaveBeenCalledTimes(initialRenders);
+
+    rerender(<ReviewMode keyboardBlocked />);
+    expect(playerHotkeyRender.mock.lastCall?.[0].disabled).toBe(true);
+    expect(videoSkinRender).toHaveBeenCalledTimes(initialRenders);
+    expect(container.querySelector('video')).toBe(video);
+    rerender(<ReviewMode />);
+    expect(playerHotkeyRender.mock.lastCall?.[0].disabled).toBe(false);
     expect(videoSkinRender).toHaveBeenCalledTimes(initialRenders);
   });
 
