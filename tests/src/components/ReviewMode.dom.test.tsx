@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { vi } from 'vitest';
 import ReviewMode from '../../../src/components/ReviewMode';
 import useStore from '../../../src/store';
@@ -10,18 +10,19 @@ import { resetPerfDevMock } from '../../helpers/perfDevMock';
 import { makeVideo } from '../../helpers/videoFactory';
 
 const videoSkinTogglePlayback = vi.hoisted(() => vi.fn());
+const videoSkinRender = vi.hoisted(() => vi.fn());
+const playerHotkeyRender = vi.hoisted(() => vi.fn((_props: { disabled?: boolean }) => null));
 
-vi.mock('@videojs/react', () => ({
-  createPlayer: () => ({
-    Provider: ({ children }: { children: ReactNode }) => children,
-  }),
-  videoFeatures: {},
-}));
+vi.mock('@videojs/react', () => ({ Hotkey: playerHotkeyRender }));
 
 vi.mock('@videojs/react/video', () => ({
-  MinimalVideoSkin: ({ children }: { children: ReactNode }) => (
+  VideoPlayer: ({ children }: { children: ReactNode }) => {
+    videoSkinRender();
+    return children;
+  },
+  MinimalVideoSkin: ({ children, className }: { children: ReactNode; className?: string }) => (
     <div
-      className="media-minimal-skin"
+      className={className}
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.key.toLowerCase() === 'k' && !event.defaultPrevented) {
@@ -33,7 +34,7 @@ vi.mock('@videojs/react/video', () => ({
       {children}
     </div>
   ),
-  Video: () => null,
+  Video: (props: ComponentProps<'video'>) => <video {...props} />,
 }));
 
 vi.mock('../../../src/components/ThumbnailStrip', () => ({
@@ -62,6 +63,8 @@ function getStoreApi() {
 describe('ReviewMode behavior', () => {
   beforeEach(() => {
     videoSkinTogglePlayback.mockReset();
+    videoSkinRender.mockReset();
+    playerHotkeyRender.mockClear();
     installElectronApiMock();
     resetPerfDevMock();
     const store = getStoreApi();
@@ -250,7 +253,7 @@ describe('ReviewMode behavior', () => {
     const { container } = render(<ReviewMode />);
     await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
 
-    const player = container.querySelector<HTMLElement>('.media-minimal-skin')!;
+    const player = container.querySelector<HTMLElement>('.review-video-skin')!;
     player.focus();
     fireEvent.keyDown(player, { key: 'k' });
 
@@ -259,6 +262,38 @@ describe('ReviewMode behavior', () => {
       expect(screen.getByText('beta.mp4')).toBeTruthy();
     });
     expect(videoSkinTogglePlayback).not.toHaveBeenCalled();
+  });
+
+  test('updates bookmarks without rerendering the active player', async () => {
+    const alpha = makeVideo('alpha');
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewScopeIds: ['alpha'],
+    });
+    const { container, rerender } = render(<ReviewMode />);
+    await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    const video = container.querySelector('video')!;
+    const initialRenders = videoSkinRender.mock.calls.length;
+
+    video.currentTime = 3;
+    fireEvent.timeUpdate(video);
+    await userEvent.click(screen.getByTitle('Bookmark current position (B)'));
+    expect(useStore.getState().videos[0].bookmarks).toEqual([3]);
+    expect(container.querySelector('video')).toBe(video);
+    expect(videoSkinRender).toHaveBeenCalledTimes(initialRenders);
+
+    await userEvent.click(screen.getByTitle('Remove bookmark'));
+    expect(useStore.getState().videos[0].bookmarks).toEqual([]);
+    expect(videoSkinRender).toHaveBeenCalledTimes(initialRenders);
+
+    rerender(<ReviewMode keyboardBlocked />);
+    expect(playerHotkeyRender.mock.lastCall?.[0].disabled).toBe(true);
+    expect(videoSkinRender).toHaveBeenCalledTimes(initialRenders);
+    expect(container.querySelector('video')).toBe(video);
+    rerender(<ReviewMode />);
+    expect(playerHotkeyRender.mock.lastCall?.[0].disabled).toBe(false);
+    expect(videoSkinRender).toHaveBeenCalledTimes(initialRenders);
   });
 
   test.each([

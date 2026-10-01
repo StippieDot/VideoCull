@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useRef, useMemo, memo, type CSSProperties } from 'react';
+import { createContext, useContext, useEffect, useCallback, useState, useRef, useMemo, memo, type CSSProperties } from 'react';
 import useStore from '../store';
 import ThumbnailStrip from './ThumbnailStrip';
 import { formatSize, formatDuration, formatDate, calcThumbGrid, formatCodecLabel, formatFps, formatResolutionLabel } from '../utils';
@@ -7,8 +7,8 @@ import {
   ChevronLeft, ChevronRight, HardDrive, Clock, Calendar, Bookmark, RotateCcw, Heart, Star
 } from 'lucide-react';
 import '@videojs/react/video/minimal-skin.css';
-import { createPlayer, videoFeatures } from '@videojs/react';
-import { MinimalVideoSkin, Video } from '@videojs/react/video';
+import { MinimalVideoSkin, Video, VideoPlayer as VideoJsPlayer } from '@videojs/react/video';
+import { Hotkey, type HotkeyProps } from '@videojs/react';
 import { isWebSupported } from '../utils';
 import { matchesKeybind, formatKeybind } from '../keybinds';
 import { beginDevInteraction, completeDevInteractionOnNextPaint, recordDevCounter } from '../perf-dev';
@@ -16,9 +16,35 @@ import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildReviewVideoMenu } from './contextMenuBuilders';
 import './ReviewMode.css';
 
-const Player = createPlayer({ features: videoFeatures });
 const REVIEW_MAX_MEDIA_WIDTH = 1950;
 const REVIEW_ASPECT_RATIO = 16 / 9;
+const ReviewShortcutsBlocked = createContext(false);
+const PLAYER_HOTKEYS = [
+  { keys: 'Space', action: 'togglePaused' },
+  { keys: 'k', action: 'togglePaused' },
+  { keys: 'm', action: 'toggleMuted' },
+  { keys: 'ArrowRight', action: 'seekStep' },
+  { keys: 'ArrowLeft', action: 'seekStep' },
+  { keys: 'l', action: 'seekStep' },
+  { keys: 'j', action: 'seekStep' },
+  { keys: 'ArrowUp', action: 'volumeStep' },
+  { keys: 'ArrowDown', action: 'volumeStep' },
+  { keys: '0-9', action: 'seekToPercent' },
+  { keys: 'Home', action: 'seekToPercent', value: 0 },
+  { keys: 'End', action: 'seekToPercent', value: 100 },
+  { keys: '>', action: 'speedUp' },
+  { keys: '<', action: 'speedDown' },
+  { keys: 'f', action: 'toggleFullscreen' },
+  { keys: 'c', action: 'toggleSubtitles' },
+  { keys: 'i', action: 'togglePictureInPicture' },
+] satisfies HotkeyProps[];
+
+function PlayerHotkeys() {
+  const blocked = useContext(ReviewShortcutsBlocked);
+  return PLAYER_HOTKEYS.map((props) => (
+    <Hotkey key={props.keys} {...props} target="document" disabled={blocked} />
+  ));
+}
 
 function getReviewMediaWidth(viewportWidth: number, viewportHeight: number, isPlaying: boolean): number {
   const horizontalReserve = viewportWidth >= 1600 ? 280 : 160;
@@ -111,8 +137,8 @@ const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   muted: boolean;
 }) => (
-  <Player.Provider>
-    <MinimalVideoSkin>
+  <VideoJsPlayer>
+    <MinimalVideoSkin className="review-video-skin">
       <Video
         ref={videoRef}
         className="video-player"
@@ -121,18 +147,21 @@ const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
         muted={muted}
         playsInline
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
-      />
+      >
+        <track kind="chapters" label="Bookmarks" default />
+      </Video>
+      <PlayerHotkeys />
     </MinimalVideoSkin>
-  </Player.Provider>
-), (prev, next) => prev.videoUrl === next.videoUrl && prev.videoRef === next.videoRef);
+  </VideoJsPlayer>
+),(prev, next) => prev.videoUrl === next.videoUrl && prev.videoRef === next.videoRef);
 
 function isFocusableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement) || target === document.body) return false;
-  if (target.closest('.media-minimal-skin')) return false;
+  if (target.closest('.review-video-skin')) return false;
   return Boolean(target.closest('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'));
 }
 
-export default function ReviewMode() {
+export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocked?: boolean }) {
   const allVideos = useStore((s) => s.videos);
   const reviewIndex = useStore((s) => s.reviewIndex);
   const reviewScopeIds = useStore((s) => s.reviewScopeIds);
@@ -157,8 +186,10 @@ export default function ReviewMode() {
   const toggleFavorite = useStore((s) => s.toggleFavorite);
   const features = useStore((s) => s.settings.features);
   const pushToast = useStore((s) => s.pushToast);
+  const isSettingsModalOpen = useStore((s) => s.isSettingsModalOpen);
   const effectiveGlobalMute = features.globalMute && globalMute;
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const shortcutsBlocked = keyboardBlocked || isSettingsModalOpen || contextMenu !== null;
 
   const scopeIdsRef = useRef<string[] | null>(null);
   if (scopeIdsRef.current === null) {
@@ -290,6 +321,37 @@ export default function ReviewMode() {
     }
   }, [effectiveGlobalMute]);
 
+  useEffect(() => {
+    if (!isPlaying) return;
+    const el = videoRef.current;
+    const track = el?.querySelector<HTMLTrackElement>('track[kind="chapters"]')?.track;
+    if (!el || !track) return;
+
+    const syncBookmarks = () => {
+      track.mode = 'hidden';
+      for (const cue of Array.from(track.cues ?? [])) track.removeCue(cue);
+      const duration = el.duration;
+      if (Number.isFinite(duration) && duration > 0) {
+        const times = [...new Set(video?.bookmarks ?? [])]
+          .filter((time) => Number.isFinite(time) && time >= 0 && time < duration)
+          .sort((a, b) => a - b);
+        times.forEach((time, index) => {
+          track.addCue(new VTTCue(time, times[index + 1] ?? duration, `Bookmark at ${formatDuration(time)}`));
+        });
+      }
+      // Video.js listens to the track list, rather than individual cue edits.
+      el.textTracks.dispatchEvent(new Event('change'));
+    };
+
+    syncBookmarks();
+    el.addEventListener('loadedmetadata', syncBookmarks);
+    el.addEventListener('durationchange', syncBookmarks);
+    return () => {
+      el.removeEventListener('loadedmetadata', syncBookmarks);
+      el.removeEventListener('durationchange', syncBookmarks);
+    };
+  }, [isPlaying, videoUrl, video?.bookmarks]);
+
   // Show an overlay when Chromium can't decode the audio stream (AC3/EAC3/DTS etc.)
   // Muting doesn't prevent decoding — only an external player can handle these codecs.
   useEffect(() => {
@@ -407,6 +469,7 @@ export default function ReviewMode() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
+      if (shortcutsBlocked) return;
       if (document.querySelector('.settings-overlay, .shortcuts-overlay')) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       // Stand down while the keybind recorder is capturing
@@ -490,7 +553,7 @@ export default function ReviewMode() {
     // cannot be consumed by the player's own keyboard bindings first.
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [markKeep, markDelete, skip, resetStatus, handleUndo, close, goBack, advance, handlePlay, isPlaying, video, addBookmarkNow, jumpToNextUndecided]);
+  }, [markKeep, markDelete, skip, resetStatus, handleUndo, close, goBack, advance, handlePlay, isPlaying, video, addBookmarkNow, jumpToNextUndecided, shortcutsBlocked]);
 
   if (!video) {
     return (
@@ -583,11 +646,13 @@ export default function ReviewMode() {
           >
             {isPlaying ? (
               <>
-                <VideoPlayer
-                  videoUrl={videoUrl}
-                  videoRef={videoRef}
-                  muted={effectiveGlobalMute}
-                />
+                <ReviewShortcutsBlocked.Provider value={shortcutsBlocked}>
+                  <VideoPlayer
+                    videoUrl={videoUrl}
+                    videoRef={videoRef}
+                    muted={effectiveGlobalMute}
+                  />
+                </ReviewShortcutsBlocked.Provider>
                 {playbackSpeed !== 1 && (
                   <div className="review-speed-badge">{playbackSpeed}x</div>
                 )}

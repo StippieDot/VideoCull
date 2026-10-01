@@ -9,7 +9,7 @@ import KeybindInput from './KeybindInput';
 import { PRODUCT } from '../product';
 import './SettingsModal.css';
 
-const KEYBIND_GROUPS: ShortcutGroup[] = ['Review mode', 'Preview', 'Global'];
+const KEYBIND_GROUPS: ShortcutGroup[] = ['Review mode', 'Global'];
 
 type SettingsTab = 'interface' | 'features' | 'duplicates' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about';
 

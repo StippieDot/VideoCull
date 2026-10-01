@@ -7,7 +7,7 @@ export interface Keybind {
 }
 
 // ── Shortcut group / context ───────────────────────────────────────
-export type ShortcutGroup = 'Review mode' | 'Preview' | 'Global';
+export type ShortcutGroup = 'Review mode' | 'Global';
 
 // 'playing' / 'not-playing' disambiguates context-dependent keys
 // (e.g. ArrowLeft = prev video when not playing, seek -5s when playing)
@@ -26,8 +26,7 @@ export type KeybindSettingKey =
   | 'keyNextUndecided'
   | 'keySeekBack' | 'keySeekForward' | 'keySpeedDown' | 'keySpeedUp'
   | 'keyBookmark' | 'keyShowHelp'
-  | 'keyGlobalMute' | 'keyToggleTheme' | 'keySearch'
-  | 'keyPreviewSeekBack' | 'keyPreviewSeekForward';
+  | 'keyGlobalMute' | 'keyToggleTheme' | 'keySearch';
 
 export const ALL_SHORTCUTS: ShortcutDef[] = [
   // Navigation (only fires when not playing)
@@ -50,9 +49,6 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   { id: 'keySpeedDown',          description: 'Decrease speed',            group: 'Review mode', context: 'playing' },
   { id: 'keySpeedUp',            description: 'Increase speed',            group: 'Review mode', context: 'playing' },
   { id: 'keyBookmark',           description: 'Bookmark current position', group: 'Review mode', context: 'playing' },
-  // Preview modal
-  { id: 'keyPreviewSeekBack',    description: 'Rewind 5s',                 group: 'Preview' },
-  { id: 'keyPreviewSeekForward', description: 'Forward 5s',                group: 'Preview' },
   // Global
   { id: 'keyShowHelp',           description: 'Show keyboard shortcuts',   group: 'Global' },
   { id: 'keyGlobalMute',         description: 'Toggle global mute',        group: 'Global' },
@@ -69,7 +65,6 @@ export interface FixedShortcut {
 
 export const FIXED_SHORTCUTS: FixedShortcut[] = [
   { keys: ['Esc'], description: 'Stop playing / Exit review', group: 'Review mode' },
-  { keys: ['Esc'], description: 'Close preview',              group: 'Preview' },
   { keys: ['Ctrl+,'],          description: 'Open settings',         group: 'Global' },
   { keys: ['Ctrl+O'],          description: 'Open folder',           group: 'Global' },
   { keys: ['F5'],              description: 'Rescan directory',      group: 'Global' },

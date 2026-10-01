@@ -153,6 +153,8 @@
   -webkit-backdrop-filter: var(--blur-md);
   transition: max-width var(--spring), box-shadow var(--spring), transform var(--spring);
   --media-border-radius: var(--radius-lg);
+  --media-border-color: transparent; /* .review-thumbs draws the border */
+  --media-accent-color: var(--accent);
   transform: translateZ(0); /* Hardware accel */
 }
 
@@ -176,9 +178,7 @@
 }
 
 :fullscreen .video-player,
-:-webkit-full-screen .video-player,
-.vjs-fullscreen .vjs-tech,
-.vjs-fullscreen .video-player {
+:-webkit-full-screen .video-player {
   max-height: none !important;
   max-width: none !important;
   height: 100% !important;
@@ -776,13 +776,17 @@
 }
 
 /* Keep playback controls visible when the Review preference is enabled. */
-.review-mode.review-playing.review-controls-persistent .media-minimal-skin--video .media-controls:not([data-visible]) {
+.review-mode.review-playing.review-controls-persistent .review-video-skin .video-controls-content:not([data-visible]) {
   pointer-events: auto;
   opacity: 1;
   filter: none;
   translate: none;
 }
 
-.review-mode.review-playing.review-controls-persistent .media-minimal-skin--video:has(.media-controls:not([data-visible])) {
+.review-mode.review-playing.review-controls-persistent .review-video-skin .video-controls-backdrop:not([data-visible]) {
+  opacity: 1;
+}
+
+.review-mode.review-playing.review-controls-persistent .review-video-skin:not([data-controls-visible]) {
   cursor: auto;
 }

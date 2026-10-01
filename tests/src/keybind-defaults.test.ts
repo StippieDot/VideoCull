@@ -138,6 +138,8 @@ describe('migrateSettings', () => {
       appMode: 'legacy',
       hasSeenAppModeIntro: true,
       keyToggleAppMode: { key: 'm', ctrl: false, shift: false, alt: false },
+      keyPreviewSeekBack: { key: 'arrowleft', ctrl: false, shift: false, alt: false },
+      keyPreviewSeekForward: { key: 'arrowright', ctrl: false, shift: false, alt: false },
     });
 
     expect('phashCandidateThreshold' in (migrated.duplicates ?? {})).toBe(false);
@@ -148,6 +150,8 @@ describe('migrateSettings', () => {
     expect('appMode' in migrated).toBe(false);
     expect('hasSeenAppModeIntro' in migrated).toBe(false);
     expect('keyToggleAppMode' in migrated).toBe(false);
+    expect('keyPreviewSeekBack' in migrated).toBe(false);
+    expect('keyPreviewSeekForward' in migrated).toBe(false);
   });
 });
 

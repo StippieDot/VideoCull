@@ -895,6 +895,7 @@ export default function App() {
         e.stopPropagation();
         return;
       }
+      if (e.defaultPrevented) return;
 
       if (
         e.target instanceof HTMLInputElement ||
@@ -921,7 +922,8 @@ export default function App() {
         setShowDocumentation(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
+    // Global app shortcuts run before the player's container/document hotkeys.
+    window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('click', blurPointerActivatedButton, true);
 
     return () => {
@@ -933,7 +935,7 @@ export default function App() {
       unsubNotifications();
       unsubDuplicates();
       unsub4();
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('click', blurPointerActivatedButton, true);
     };
   }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, requestPermanentDelete, toggleGlobalMute, toggleTheme, handleExportReport]);
@@ -1198,7 +1200,7 @@ export default function App() {
           )}
           {reviewMode && (
             <Profiler id="ReviewMode" onRender={handleMainProfiler}>
-              <ReviewMode />
+              <ReviewMode keyboardBlocked={showShortcutsHelp || showDocumentation || isPrivate || dropModalPath !== null || permanentDeletePaths.length > 0} />
             </Profiler>
           )}
           {isScanning && videoCount === 0 && (
