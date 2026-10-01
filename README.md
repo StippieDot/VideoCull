@@ -208,7 +208,7 @@ Found a bug or something that is not obvious in the workflow? [Open an issue](ht
 
 ## Building from Source
 
-Requires Node.js 24 LTS. FFmpeg and FFprobe are bundled with the app dependencies.
+Requires Node.js 24 LTS and npm 11.19.0 or newer. FFmpeg and FFprobe are bundled with the app dependencies.
 
 ```bash
 git clone https://github.com/StippieDot/VideoCull.git

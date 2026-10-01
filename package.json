@@ -33,6 +33,16 @@
     "package": "vite build && electron-builder --win --publish never",
     "package:store": "node scripts/package-store.js"
   },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": ">=11.19.0"
+    }
+  },
+  "allowScripts": {
+    "better-sqlite3": false,
+    "electron-winstaller@5.4.0": true
+  },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",

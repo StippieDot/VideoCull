@@ -42,5 +42,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check installed runtimes
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
+            throw 'npm ci did not install the Electron runtime.'
+          }
+          if (Test-Path -LiteralPath 'node_modules/better-sqlite3/build') {
+            throw 'better-sqlite3 must use its bundled binary without a native rebuild.'
+          }
+
       - name: Run native cache regression tests
         run: npm run test:cache-native

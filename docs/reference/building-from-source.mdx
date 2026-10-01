@@ -5,7 +5,7 @@ description: Run VideoCull locally, execute the test suite, and package the Wind
 
 Building from source is useful when you want to test changes locally or work on the app itself.
 
-Requires Node.js 24 LTS. FFmpeg and FFprobe are bundled with the app dependencies.
+Requires Node.js 24 LTS and npm 11.19.0 or newer. FFmpeg and FFprobe are bundled with the app dependencies.
 
 ```bash
 git clone https://github.com/StippieDot/VideoCull.git
@@ -42,6 +42,7 @@ npm run dev
 ## Notes
 
 - `npm run test:ci` is the normal local verification path.
+- `npm ci` installs the Electron runtime. Dependency install scripts are disabled for better-sqlite3 to avoid npm's implicit native rebuild; its bundled binary is used instead.
 - `npm run test:cache-native` runs the cache tests inside Electron. better-sqlite3 ships prebuilt Node-API binaries, so no native rebuild or C++ build tools are needed.
 - Development Electron sessions use a separate `userData` folder so local settings and cache do not mix with the packaged app.
 - E2E runs use their own temporary `userData` directory and do not touch your normal app data.
