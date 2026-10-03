@@ -1,6 +1,5 @@
 const ffmpeg = require('fluent-ffmpeg');
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path.replace('app.asar', 'app.asar.unpacked');
-const ffprobePath = require('@ffprobe-installer/ffprobe').path.replace('app.asar', 'app.asar.unpacked');
+const { ffmpegPath, ffprobePath } = require('./media-tools');
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 
@@ -552,6 +551,7 @@ module.exports = {
   METADATA_SCHEMA_VERSION,
   __test: {
     toFfmpegInputPath,
+    getVideoMetadata,
     parseFpsRational,
     parseBitrate,
     calculateTimestamps,
