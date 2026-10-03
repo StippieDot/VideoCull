@@ -92,6 +92,7 @@ const electronAPI = {
   setExportReportAvailable: (enabled) => ipcRenderer.send('set-export-report-available', enabled),
   openVideo: (filePath) => ipcRenderer.invoke('open-video', filePath),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  openLegalFile: (name) => ipcRenderer.invoke('open-legal-file', name),
   setVideoFullscreen: (fullscreen) => ipcRenderer.invoke('set-video-fullscreen', fullscreen),
 
   // Menu events

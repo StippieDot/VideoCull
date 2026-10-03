@@ -94,6 +94,10 @@
       {
         "from": "build/videocull.ico",
         "to": "videocull.ico"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
       }
     ],
     "asarUnpack": [

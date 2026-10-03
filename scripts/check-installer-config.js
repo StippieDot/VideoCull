@@ -39,6 +39,10 @@ assert.ok(
   packageJson.build?.extraResources?.some((resource) => resource.from === appIcon && resource.to === `${identity.technicalName}.ico`),
   `packaged resources must include the ${identity.displayName} icon for the native window`,
 );
+assert.ok(
+  packageJson.build?.extraResources?.some((resource) => resource.from === 'LICENSE' && resource.to === 'LICENSE.txt'),
+  'packaged resources must include the application license as LICENSE.txt',
+);
 assert.equal(nsis.installerHeader, 'build/installerHeader.bmp', 'custom installer header must be configured');
 
 function assertBitmap(relativePath, expectedWidth, expectedHeight) {

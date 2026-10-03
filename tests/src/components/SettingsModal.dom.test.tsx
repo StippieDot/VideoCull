@@ -9,6 +9,7 @@ import type { UpdateInfo } from '../../../src/types';
 
 type ElectronApiMock = {
   openExternalUrl: ReturnType<typeof vi.fn>;
+  openLegalFile: ReturnType<typeof vi.fn>;
   getAppVersion: ReturnType<typeof vi.fn>;
   getAutoConcurrency: ReturnType<typeof vi.fn>;
   onUpdateStatus: ReturnType<typeof vi.fn>;
@@ -37,6 +38,7 @@ function installElectronApiMock(): ElectronApiMock {
   let updateStatusHandler: ((info: UpdateInfo) => void) | null = null;
   const electronAPI = {
     openExternalUrl: vi.fn().mockResolvedValue(true),
+    openLegalFile: vi.fn().mockResolvedValue(true),
     getAppVersion: vi.fn().mockResolvedValue('2.0.0-test'),
     getAutoConcurrency: vi.fn().mockResolvedValue(4),
     onUpdateStatus: vi.fn((callback: (info: UpdateInfo) => void) => {
@@ -335,6 +337,22 @@ describe('SettingsModal integration behavior', () => {
     const button = await screen.findByRole('button', { name: /remove videocull 2.2.1/i });
     await userEvent.click(button);
     expect(electronAPI.uninstallLegacyInstall).toHaveBeenCalledTimes(1);
+  });
+
+  test('shows the license notice and opens the bundled legal files and versioned source', async () => {
+    render(<SettingsModal initialTab="about" />);
+
+    expect(await screen.findByText(/free software under the GNU Affero General Public License v3\.0/i)).toBeTruthy();
+    expect(screen.getByText(/without any warranty/i)).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: /view license/i }));
+    await userEvent.click(screen.getByRole('button', { name: /third-party notices/i }));
+    await userEvent.click(screen.getByRole('button', { name: /source code for this version/i }));
+
+    expect(electronAPI.openLegalFile.mock.calls).toEqual([['license'], ['notices']]);
+    expect(electronAPI.openExternalUrl).toHaveBeenCalledWith(
+      expect.stringMatching(/^https:\/\/github\.com\/StippieDot\/VideoCull\/tree\/v\d+\.\d+\.\d+/),
+    );
   });
 
   test('warns in About when the installed direct edition is older', async () => {

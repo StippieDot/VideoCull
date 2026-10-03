@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import useStore from '../store';
-import { ArrowDown, ArrowUp, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake, FolderOpen, Copy, Trash2 } from 'lucide-react';
-import type { AppSettings, CacheLocationInfo, DistributionInfo, LegacyInstallStatus, ToastInput, UpdateInfo } from '../types';
+import { ArrowDown, ArrowUp, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake, FolderOpen, Copy, Trash2, FileText } from 'lucide-react';
+import type { AppSettings, CacheLocationInfo, DistributionInfo, LegacyInstallStatus, LegalFileName, ToastInput, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
@@ -20,6 +20,9 @@ const ABOUT_LINKS = {
   sponsors: `https://github.com/sponsors/${PRODUCT.publisher}`,
   paypal: 'https://paypal.me/stippiedot',
 } as const;
+
+// Must match the source-code URL main allows in open-external-url (legal-files.js).
+const sourceCodeUrl = (version: string) => `${PRODUCT.repository.url}/tree/v${version}`;
 
 const FEATURE_TOGGLES = [
   { key: 'ratings', label: '5-star rating', description: 'Show rating controls on video cards and in review mode.' },
@@ -76,6 +79,14 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const openExternal = (url: string) => {
     void window.electronAPI?.openExternalUrl(url).catch((err) => {
       console.warn('[settings] Failed to open external URL:', err);
+    });
+  };
+
+  const openLegalFile = (name: LegalFileName) => {
+    void window.electronAPI?.openLegalFile(name).then((opened) => {
+      if (!opened) console.warn(`[settings] Bundled ${name} file is not available.`);
+    }).catch((err) => {
+      console.warn('[settings] Failed to open bundled legal file:', err);
     });
   };
 
@@ -1190,6 +1201,30 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     <HeartHandshake size={15} />
                     PayPal
                   </button>
+                </div>
+
+                <div className="form-group settings-section-divider about-license">
+                  <label>License</label>
+                  <span className="help-text">
+                    © 2026 {PRODUCT.publisher}. {PRODUCT.displayName} is free software under the GNU Affero General
+                    Public License v3.0, provided without any warranty. It includes third-party components, such as
+                    FFmpeg, under their own licenses.
+                  </span>
+                  <div className="about-link-grid">
+                    <button className="about-link-btn" onClick={() => openLegalFile('license')}>
+                      <FileText size={16} />
+                      <span>View license</span>
+                    </button>
+                    <button className="about-link-btn" onClick={() => openLegalFile('notices')}>
+                      <FileText size={16} />
+                      <span>Third-party notices</span>
+                    </button>
+                    <button className="about-link-btn" onClick={() => openExternal(sourceCodeUrl(appVersionLabel))}>
+                      <Code2 size={16} />
+                      <span>Source code for this version</span>
+                      <ExternalLink size={13} />
+                    </button>
+                  </div>
                 </div>
                 {legacyInstall?.eligible && (
                   <div className="form-group settings-section-divider">

@@ -573,6 +573,9 @@ export interface IdleDiagnosticsSnapshot {
   renderer: RendererIdleDiagnosticsSnapshot;
 }
 
+/** Bundled legal documents the About panel can open. */
+export type LegalFileName = 'license' | 'notices';
+
 // ── Electron API (exposed via preload) ─────────────────────────────
 export interface ElectronAPI {
   initialTheme: ColorTheme;
@@ -608,6 +611,7 @@ export interface ElectronAPI {
   setExportReportAvailable: (enabled: boolean) => void;
   openVideo: (filePath: string) => Promise<void>;
   openExternalUrl: (url: string) => Promise<boolean>;
+  openLegalFile: (name: LegalFileName) => Promise<boolean>;
   setVideoFullscreen: (fullscreen: boolean) => Promise<boolean>;
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;

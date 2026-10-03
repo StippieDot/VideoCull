@@ -21,6 +21,8 @@ const { processingPause } = require('./processing-pause');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
+const { openLegalFile, sourceCodeUrlForVersion } = require('./legal-files');
+const product = require('../product.json');
 const { getDistributionChannel, shouldEnableUpdates } = require('./distribution');
 const {
   createLegacyPromptKey,
@@ -113,6 +115,7 @@ const ALLOWED_EXTERNAL_URLS = new Set([
   'https://github.com/sponsors/StippieDot',
   'https://paypal.me/stippiedot',
   'https://videocull.app/support/',
+  sourceCodeUrlForVersion(product.repository.url, app.getVersion()),
 ]);
 const ALLOWED_EXTERNAL_HTTPS_HOSTS = new Set(['docs.videocull.app']);
 
@@ -2996,6 +2999,12 @@ ipcMain.handle('open-in-explorer', async (_event, filePath) => {
 
 // 11. App version
 ipcMain.handle('get-app-version', () => app.getVersion());
+
+ipcMain.handle('open-legal-file', (_event, name) => openLegalFile(name, {
+  isPackaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  appRoot: path.join(__dirname, '..'),
+}, { openPath: (filePath) => shell.openPath(filePath), exists: (filePath) => require('fs').existsSync(filePath) }));
 
 ipcMain.handle('open-external-url', async (_event, url) => {
   if (!isAllowedExternalUrl(url, ALLOWED_EXTERNAL_URLS, ALLOWED_EXTERNAL_HTTPS_HOSTS)) return false;
