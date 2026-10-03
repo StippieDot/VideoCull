@@ -205,9 +205,19 @@ Mostly invisible to users; ships with the licence notices the bundled binaries a
   `avformat` 21.9, `swscale` 12.3, `avdevice` 4.7, `avutil` 2.9, `swresample` 0.7; `ffmpeg.exe` 0.5 MB,
   `ffprobe.exe` 0.2 MB. Total without `ffplay.exe`: **192 MB**. Includes `libdav1d`, native `av1`,
   `libx264` and `h264_nvenc`.
-- **9.0.2:** the shared GPL zip is 82 MB (8.1 was 85 MB). Unpacked size still needs measuring.
+- **9.0.2:** the shared GPL zip is 82 MB (8.1 was 85 MB). Unpacked (checked 2026-10-03, `autobuild-2026-10-01-13-06`):
+  `avcodec-63` 119.1 MB, `avfilter-12` 37.0, `avformat-63` 23.0, `avdevice-63` 4.9, `avutil-61` 3.0, `swscale-10`
+  2.3, `swresample-7` 0.7; `ffmpeg.exe` 0.5, `ffprobe.exe` 0.2. Total without `ffplay.exe`: **190.9 MB** (+52 MB).
+- **BtbN's `n9.0` builds are the release branch, not the tag:** the asset is
+  `ffmpeg-n9.0.2-22-g46d8f462ee-win64-gpl-shared-9.0.zip` (9.0.2 + 22 commits). Pinning exactly `n9.0.2`
+  needs our own build (0.5 Default A) or accepting the branch build and naming it as such.
+- The current frame (`-vframes 1`, `-hwaccel auto`) and probe (`-print_format json`) argument lists run
+  without errors or deprecation warnings on that build.
 - **Today:** ffmpeg 61.5 MB + ffprobe 77.2 MB = **139 MB**. A static GPL build would ship two full-size
   exes, about 360 MB (estimated), which is why we use shared.
+- **fluent-ffmpeg probed with FFprobe's default text output** (`-show_streams -show_format`, parsed
+  line by line), not JSON. 0.2 switched to `-print_format json`; the fields `getVideoMetadata` reads are
+  the same.
 - **fluent-ffmpeg is used only in `processor.js`:** binary paths (`:4-5`), metadata via `ffmpeg.ffprobe`
   (`:47`), frame extraction via `seekInput().frames(1)` + `-q:v 5`, `-threads 1`, `scale=320:-1`,
   `-hwaccel auto` (`:231`), cancellation via `activeCommands` (`:136`, `:523`). `duplicates.js` already
@@ -1189,7 +1199,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 
 | Phase | Status | Version | Merged |
 |---|---|---|---|
-| P0 — Media toolchain & licence compliance | ⬜ Not started | `2.4.0` | — |
+| P0 — Media toolchain & licence compliance | 🔄 In progress | `2.4.0` | — |
 | P1 — Quick wins | ⬜ Not started | `2.5.0` | — |
 | P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.6.0` | — |
 | P3 — Reliable settings & tags | ⬜ Not started | `2.7.0` | — |
