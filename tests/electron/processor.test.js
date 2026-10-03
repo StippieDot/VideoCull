@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const ffmpeg = require('fluent-ffmpeg');
+const mediaProcess = require('../../electron/media-process');
 
 const { processVideos, processMetadata, cancelMetadata, cancelThumbnails, __test } = require('../../electron/processor');
 const { processingPause } = require('../../electron/processing-pause');
@@ -57,15 +57,13 @@ test('metadata cancellation suppresses callbacks after an in-flight probe finish
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-metadata-cancel-'));
   const videoPath = path.join(tempDir, 'clip.mp4');
   await fs.writeFile(videoPath, 'not a real video');
-  const originalFfprobe = ffmpeg.ffprobe;
+  const originalProbe = mediaProcess.probe;
 
   try {
-    ffmpeg.ffprobe = (_filePath, callback) => {
-      setTimeout(() => callback(null, {
-        format: { duration: 12, bit_rate: '1200', tags: {} },
-        streams: [{ codec_type: 'video', codec_name: 'h264', width: 320, height: 240, avg_frame_rate: '25/1' }],
-      }), 20);
-    };
+    mediaProcess.probe = () => new Promise((resolve) => setTimeout(() => resolve({
+      format: { duration: 12, bit_rate: '1200', tags: {} },
+      streams: [{ codec_type: 'video', codec_name: 'h264', width: 320, height: 240, avg_frame_rate: '25/1' }],
+    }), 20));
 
     let progressCount = 0;
     let readyCount = 0;
@@ -82,7 +80,7 @@ test('metadata cancellation suppresses callbacks after an in-flight probe finish
     assert.equal(progressCount, 0);
     assert.equal(readyCount, 0);
   } finally {
-    ffmpeg.ffprobe = originalFfprobe;
+    mediaProcess.probe = originalProbe;
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 });
@@ -91,13 +89,13 @@ test('metadata pause blocks new probes and resumes the queue once', async () => 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-metadata-pause-'));
   const videoPath = path.join(tempDir, 'clip.mp4');
   await fs.writeFile(videoPath, 'not a real video');
-  const originalFfprobe = ffmpeg.ffprobe;
+  const originalProbe = mediaProcess.probe;
   let probeCount = 0;
 
   try {
-    ffmpeg.ffprobe = (_filePath, callback) => {
+    mediaProcess.probe = async () => {
       probeCount += 1;
-      callback(null, { format: { duration: 12, tags: {} }, streams: [] });
+      return { format: { duration: 12, tags: {} }, streams: [] };
     };
     processingPause.pause();
     const run = processMetadata([
@@ -112,7 +110,7 @@ test('metadata pause blocks new probes and resumes the queue once', async () => 
     assert.equal(probeCount, 1);
   } finally {
     processingPause.resume();
-    ffmpeg.ffprobe = originalFfprobe;
+    mediaProcess.probe = originalProbe;
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 });
@@ -121,10 +119,10 @@ test('metadata probe failures are reported so the retry backoff can be recorded'
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-metadata-failure-'));
   const videoPath = path.join(tempDir, 'broken.mp4');
   await fs.writeFile(videoPath, 'not a real video');
-  const originalFfprobe = ffmpeg.ffprobe;
+  const originalProbe = mediaProcess.probe;
 
   try {
-    ffmpeg.ffprobe = (_filePath, callback) => callback(new Error('ffprobe failed'));
+    mediaProcess.probe = async () => { throw new Error('ffprobe failed'); };
 
     const readyIds = [];
     const failed = [];
@@ -139,7 +137,7 @@ test('metadata probe failures are reported so the retry backoff can be recorded'
     assert.deepEqual(readyIds, []);
     assert.deepEqual(failed, [{ videoId: 'broken', message: 'ffprobe failed' }]);
   } finally {
-    ffmpeg.ffprobe = originalFfprobe;
+    mediaProcess.probe = originalProbe;
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 });

@@ -8,7 +8,7 @@ const path = require('node:path');
 const { promisify } = require('node:util');
 
 const { ffmpegPath } = require('../../electron/media-tools');
-const { __test } = require('../../electron/processor');
+const { processVideos, __test } = require('../../electron/processor');
 
 const execFileAsync = promisify(execFile);
 let tempDir;
@@ -83,4 +83,27 @@ test('rejects a file that is not a video', async () => {
   await fs.writeFile(bogus, 'not a real video');
 
   await assert.rejects(() => __test.getVideoMetadata(bogus));
+});
+
+test('extracts every thumbnail slot from a real clip', async () => {
+  const clip = await makeClip('thumbs.mp4', [
+    '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=25',
+    '-t', '12', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+  ]);
+  const thumbRoot = path.join(tempDir, 'thumbs');
+  const ready = [];
+
+  await processVideos(
+    [{ id: 'clip', path: clip, filename: 'thumbs.mp4', thumbnails: [], durationSecs: 12 }],
+    thumbRoot,
+    { thumbsPerVideo: 6, skipIntroDelaySecs: 1, maxConcurrent: 1 },
+    null,
+    (id, thumbnails) => ready.push({ id, thumbnails }),
+  );
+
+  assert.equal(ready.length, 1);
+  assert.equal(ready[0].thumbnails.length, 6);
+  for (const thumbnail of ready[0].thumbnails) {
+    assert.ok((await fs.stat(thumbnail)).size > 0, thumbnail);
+  }
 });
