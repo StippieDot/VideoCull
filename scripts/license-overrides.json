@@ -1,0 +1,30 @@
+{
+  "lazy-val": {
+    "licenseFile": "build/licenses/lazy-val.txt",
+    "reason": "Declares MIT but ships no license file and its repository has none; text uses the package author as copyright holder."
+  },
+  "react-compiler-runtime": {
+    "licenseFile": "build/licenses/react-compiler-runtime.txt",
+    "reason": "Declares MIT but ships no license file; the text is the React repository license it is published from."
+  },
+  "@ffmpeg-installer/ffmpeg": {
+    "license": "LGPL-2.1",
+    "licenseFile": "build/licenses/LGPL-2.1.txt",
+    "reason": "Path-lookup wrapper without a bundled license file."
+  },
+  "@ffmpeg-installer/win32-x64": {
+    "license": "GPL-3.0-or-later",
+    "licenseFile": "build/licenses/GPL-3.0.txt",
+    "reason": "Contains an FFmpeg binary built with --enable-gpl --enable-version3; package metadata says GPLv3 without a license file."
+  },
+  "@ffprobe-installer/ffprobe": {
+    "license": "LGPL-2.1",
+    "licenseFile": "build/licenses/LGPL-2.1.txt",
+    "reason": "Path-lookup wrapper without a bundled license file."
+  },
+  "@ffprobe-installer/win32-x64": {
+    "license": "GPL-3.0-or-later",
+    "licenseFile": "build/licenses/GPL-3.0.txt",
+    "reason": "Contains an FFprobe binary built with --enable-gpl --enable-version3; no license file is bundled."
+  }
+}

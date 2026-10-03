@@ -37,6 +37,7 @@ build/*
 !build/installer.nsh
 !build/appx/
 !build/appx/*.png
+!build/licenses/
 release/
 testspace/
 

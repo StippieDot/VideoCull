@@ -3,24 +3,42 @@ const path = require('node:path');
 const { test: nodeTest } = require('node:test');
 const {
   afterPack,
+  assertLegalFilesPresent,
   runPackagedSqliteSmoke,
 } = require('../../scripts/electron-builder-hooks');
 const test = globalThis.test || nodeTest;
 
-test('afterPack validates the Windows executable and resources from appOutDir', async () => {
-  let received = null;
+test('afterPack writes notices, checks legal files, then smoke-tests the executable from appOutDir', async () => {
+  const calls = [];
   await afterPack({
     electronPlatformName: 'win32',
     appOutDir: 'D:\\release\\win-unpacked',
     packager: { appInfo: { productFilename: 'VideoCull' } },
   }, {
-    runSmoke: (executablePath, resourcesPath) => { received = { executablePath, resourcesPath }; },
+    writeNotices: (resourcesPath) => calls.push(['notices', resourcesPath]),
+    checkLegalFiles: (resourcesPath) => calls.push(['legal', resourcesPath]),
+    runSmoke: (executablePath, resourcesPath) => calls.push(['smoke', executablePath, resourcesPath]),
   });
 
-  assert.deepEqual(received, {
-    executablePath: path.join('D:\\release\\win-unpacked', 'VideoCull.exe'),
-    resourcesPath: path.join('D:\\release\\win-unpacked', 'resources'),
-  });
+  const resourcesPath = path.join('D:\\release\\win-unpacked', 'resources');
+  assert.deepEqual(calls, [
+    ['notices', resourcesPath],
+    ['legal', resourcesPath],
+    ['smoke', path.join('D:\\release\\win-unpacked', 'VideoCull.exe'), resourcesPath],
+  ]);
+});
+
+test('packaging fails when a legal file is missing from resources', () => {
+  const resourcesPath = 'D:\\release\\resources';
+  const present = new Set([
+    path.join(resourcesPath, 'LICENSE.txt'),
+    path.join(resourcesPath, 'THIRD_PARTY_NOTICES.txt'),
+  ]);
+  assert.doesNotThrow(() => assertLegalFilesPresent(resourcesPath, (filePath) => present.has(filePath)));
+  assert.throws(
+    () => assertLegalFilesPresent(resourcesPath, (filePath) => filePath.endsWith('LICENSE.txt')),
+    /missing legal files: THIRD_PARTY_NOTICES\.txt/,
+  );
 });
 
 test('packaged smoke runner isolates module resolution and fails the build on a non-zero result', () => {

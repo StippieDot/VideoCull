@@ -21,7 +21,7 @@
     "test:renderer": "vitest run -c vitest.renderer.config.ts",
     "test:watch": "vitest",
     "test:cache-native": "node scripts/run-electron-node-tests.js tests/electron/cache.test.js tests/electron/cache.migration.test.js",
-    "test:packaging": "node --test tests/electron/build-hooks.test.js",
+    "test:packaging": "node --test tests/electron/build-hooks.test.js tests/electron/generate-notices.test.js",
     "coverage": "vitest run --coverage",
     "test:profile": "node --test tests/electron/profile-bootstrap.test.js tests/electron/storage-compatibility.test.js",
     "test:store": "node --test tests/electron/store-*.test.js",
@@ -57,6 +57,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "@playwright/test": "^1.60.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

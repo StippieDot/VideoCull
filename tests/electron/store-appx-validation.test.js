@@ -26,6 +26,11 @@ function createFixture(manifest) {
       fs.writeFileSync(path.join(assets, `Square44x44Logo.targetsize-${targetSize}_altform-${altForm}.png`), 'fixture');
     }
   }
+  const resources = path.join(stage, 'app', 'resources');
+  fs.mkdirSync(resources, { recursive: true });
+  for (const legalFile of ['LICENSE.txt', 'THIRD_PARTY_NOTICES.txt']) {
+    fs.writeFileSync(path.join(resources, legalFile), 'fixture');
+  }
 
   fs.writeFileSync(archiveScript, [
     'param([string]$Source, [string]$Destination)',
