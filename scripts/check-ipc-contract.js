@@ -21,7 +21,7 @@ function extractElectronApiMethods(typesSource) {
 }
 
 function extractPreloadMethods(preloadSource) {
-  const match = /contextBridge\.exposeInMainWorld\('electronAPI',\s*\{([\s\S]*?)\n\}\);/m.exec(preloadSource);
+  const match = /const electronAPI = \{([\s\S]*?)\n\};/m.exec(preloadSource);
   if (!match) throw new Error('Could not find electronAPI preload bridge');
   return new Set(Array.from(match[1].matchAll(/^\s{2}([A-Za-z0-9_]+):/gm), (item) => item[1]));
 }

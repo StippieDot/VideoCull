@@ -25,7 +25,7 @@ npm run dev
 | `npm run test:renderer` | Run the renderer integration tests |
 | `npm run test:watch` | Run Vitest in watch mode |
 | `npm run coverage` | Generate coverage reports |
-| `npm run test:ci` | IPC contract check, test TypeScript compile, and full coverage run |
+| `npm run test:ci` | IPC contract check, backend and test TypeScript checks, and full coverage run |
 | `npm run test:e2e` | Build the renderer and run the Electron Playwright flows |
 | `npm run test:cache-native` | Optional native cache regression lane |
 | `npm run build` | Renderer-only production build |
@@ -44,6 +44,7 @@ npm run dev
 ## Notes
 
 - `npm run test:ci` is the normal local verification path.
+- Backend files under `electron/` stay plain JavaScript with no build step. A file opts into type checking with `// @ts-check` and JSDoc types imported from `src/types.ts`; `tsconfig.electron.json` checks them.
 - `npm ci` installs the Electron runtime. Dependency install scripts are disabled for better-sqlite3 to avoid npm's implicit native rebuild; its bundled binary is used instead.
 - `npm run test:cache-native` runs the cache tests inside Electron. better-sqlite3 ships prebuilt Node-API binaries, so no native rebuild or C++ build tools are needed.
 - Development Electron sessions use a separate `userData` folder so local settings and cache do not mix with the packaged app.
