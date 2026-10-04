@@ -28,8 +28,8 @@ try {
   }
 
   $desktopDependency = @($manifest.Package.Dependencies.ChildNodes) | Where-Object { $_.Name -eq 'Windows.Desktop' } | Select-Object -First 1
-  if (-not $desktopDependency -or $desktopDependency.MinVersion -cne '10.0.19041.0') {
-    throw 'The AppX must target Windows.Desktop with minimum version 10.0.19041.0.'
+  if (-not $desktopDependency -or $desktopDependency.MinVersion -cne '10.0.19045.0') {
+    throw 'The AppX must target Windows.Desktop with minimum version 10.0.19045.0.'
   }
   $capabilities = @($manifest.Package.Capabilities.ChildNodes | ForEach-Object { $_.GetAttribute('Name') } | Sort-Object)
   $expectedCapabilities = @('runFullTrust', 'unvirtualizedResources') | Sort-Object

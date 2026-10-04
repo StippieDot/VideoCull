@@ -129,7 +129,7 @@
         "unvirtualizedResources"
       ],
       "customManifestPath": "appx/AppxManifest.xml",
-      "minVersion": "10.0.19041.0",
+      "minVersion": "10.0.19045.0",
       "maxVersionTested": "10.0.26100.0",
       "setBuildNumber": false,
       "artifactName": "VideoCull.Store.${version}.x64.${ext}",

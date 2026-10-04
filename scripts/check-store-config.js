@@ -27,7 +27,7 @@ assert.equal(
   'appx/AppxManifest.xml',
   'Store package must use the validated AppX manifest template',
 );
-assert.equal(appx.minVersion, '10.0.19041.0', 'Store package must support Windows 10 2004 or newer');
+assert.equal(appx.minVersion, '10.0.19045.0', 'Store package must require Windows 10 22H2 or newer');
 assert.equal(appx.setBuildNumber, false, 'Store revision must remain zero');
 assert.equal(appx.artifactName, 'VideoCull.Store.${version}.x64.${ext}', 'Store artifact name must identify x64 AppX');
 
