@@ -190,3 +190,22 @@ test('a timed-out frame stops every further extraction attempt for that video', 
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test('an epoch-zero creation date is treated as no camera date', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-metadata-epoch-'));
+  const videoPath = path.join(tempDir, 'old.wmv');
+  await fs.writeFile(videoPath, 'not a real video');
+  const originalProbe = mediaProcess.probe;
+  try {
+    const probeWithDate = (creation_time) => async () => ({ format: { duration: 5, tags: { creation_time } }, streams: [] });
+
+    mediaProcess.probe = probeWithDate('1970-01-01T00:00:00.000000Z');
+    assert.equal((await __test.getVideoMetadata(videoPath)).creationTime, null);
+
+    mediaProcess.probe = probeWithDate('2024-01-02T03:04:05.000000Z');
+    assert.equal((await __test.getVideoMetadata(videoPath)).creationTime, Date.parse('2024-01-02T03:04:05Z'));
+  } finally {
+    mediaProcess.probe = originalProbe;
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
