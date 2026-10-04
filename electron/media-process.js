@@ -72,7 +72,7 @@ function runProcess(binaryPath, args, token, options = {}) {
       try { child.kill('SIGKILL'); } catch { /* already exited */ }
     };
     const timer = timeoutMs > 0
-      ? setTimeout(() => fail(new Error(`${name} timed out after ${timeoutMs} ms`)), timeoutMs)
+      ? setTimeout(() => fail(Object.assign(new Error(`${name} timed out after ${timeoutMs} ms`), { code: 'ETIMEDOUT' })), timeoutMs)
       : null;
 
     child.stdout.on('data', (/** @type {Buffer} */ chunk) => {

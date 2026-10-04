@@ -3,15 +3,16 @@ const fs = require('fs/promises');
 const os = require('os');
 const { processingPause } = require('./processing-pause');
 const mediaProcess = require('./media-process');
-const { createRunToken, cancelRun, toFfmpegInputPath, runFfmpeg } = mediaProcess;
+const { createRunToken, cancelRun, toFfmpegInputPath } = mediaProcess;
 
 let thumbToken = null;
 let metadataToken = null;
 const METADATA_SCHEMA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
-// A single-frame seek normally takes well under a second; this only stops a hung decoder from
-// holding a worker slot for the rest of the run.
+// A single-frame seek normally takes well under a second. These limits only stop a hung decoder,
+// or a file on a very slow share, from holding a worker slot for the rest of the run.
 const FRAME_EXTRACTION_TIMEOUT_MS = 120_000;
+const VIDEO_EXTRACTION_BUDGET_MS = 300_000;
 
 function parseFpsRational(value) {
   if (!value || value === '0/0') return null;
@@ -211,9 +212,19 @@ function buildFrameArgs(videoPath, seekTime, outputPath, config) {
 }
 
 /**
- * Extract a single frame from a video at a given timestamp, retrying at nearby offsets.
+ * Shared by every frame attempt of one video (slots, retries and the t=0 fallback), so one
+ * troublesome file holds a worker for at most this long.
  */
-async function extractFrame(videoPath, timestamp, outputPath, config, token) {
+function createExtractionBudget(now = Date.now()) {
+  return { deadline: now + VIDEO_EXTRACTION_BUDGET_MS, timedOut: false };
+}
+
+/**
+ * Extract a single frame from a video at a given timestamp, retrying at nearby offsets.
+ * After any attempt times out, no further attempts are made for this video: a decoder that hung
+ * once on a file usually hangs again at the next offset.
+ */
+async function extractFrame(videoPath, timestamp, outputPath, config, token, budget) {
   const attempts = Array.from(new Set([
     timestamp,
     Math.max(0, timestamp + 0.25),
@@ -224,15 +235,21 @@ async function extractFrame(videoPath, timestamp, outputPath, config, token) {
 
   for (let attemptIndex = 0; ; attemptIndex++) {
     if (token.cancelled) throw new Error('Cancelled');
+    const remainingMs = budget.deadline - Date.now();
+    if (budget.timedOut || remainingMs <= 0) {
+      budget.timedOut = true;
+      throw new Error('Frame extraction stopped for this video after a timeout');
+    }
     try {
-      await runFfmpeg(
+      await mediaProcess.runFfmpeg(
         buildFrameArgs(videoPath, attempts[attemptIndex], outputPath, config),
         token,
-        { timeoutMs: FRAME_EXTRACTION_TIMEOUT_MS },
+        { timeoutMs: Math.min(FRAME_EXTRACTION_TIMEOUT_MS, remainingMs) },
       );
       return outputPath;
     } catch (err) {
-      if (attemptIndex >= attempts.length - 1 || token.cancelled) throw err;
+      if (err?.code === 'ETIMEDOUT') budget.timedOut = true;
+      if (budget.timedOut || attemptIndex >= attempts.length - 1 || token.cancelled) throw err;
     }
   }
 }
@@ -291,6 +308,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
 
   const timestamps = calculateTimestamps(duration, THUMB_COUNT, skipDelay);
   const thumbnails = [];
+  const budget = createExtractionBudget();
 
   // Extract frames sequentially within each video. Overall parallelism is handled
   // by processVideos(), so maxConcurrent now maps to active FFmpeg commands.
@@ -299,7 +317,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     if (token.cancelled) throw new Error('Cancelled');
     const outputPath = path.join(videoThumbDir, `thumb_${String(i + 1).padStart(2, '0')}.jpg`);
     try {
-      await runProcessingActivity(token, () => extractFrame(video.path, timestamp, outputPath, config, token));
+      await runProcessingActivity(token, () => extractFrame(video.path, timestamp, outputPath, config, token, budget));
       if (await isNonemptyFile(outputPath)) {
         thumbnails.push({ index: i, path: outputPath });
       }
@@ -318,7 +336,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
   if (finalPaths.length === 0) {
     const fallbackPath = path.join(videoThumbDir, 'thumb_01.jpg');
     try {
-      await runProcessingActivity(token, () => extractFrame(video.path, 0, fallbackPath, config, token));
+      await runProcessingActivity(token, () => extractFrame(video.path, 0, fallbackPath, config, token, budget));
       if (await isNonemptyFile(fallbackPath)) {
         finalPaths.push(fallbackPath);
       }

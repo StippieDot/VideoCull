@@ -85,7 +85,7 @@ describe('runProcess', () => {
   test('kills a process that exceeds its timeout', async () => {
     await assert.rejects(
       runProcess(node, ['-e', 'setTimeout(() => {}, 60000)'], createRunToken(), { timeoutMs: 200 }),
-      /timed out after 200 ms/,
+      (error) => error.code === 'ETIMEDOUT' && /timed out after 200 ms/.test(error.message),
     );
   });
 
