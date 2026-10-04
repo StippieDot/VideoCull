@@ -43,9 +43,10 @@ function isPermissive(license) {
  * @param {ShippedPackage[]} packages
  * @param {Record<string, LicenseOverride>} overrides
  * @param {(relativePath: string) => string} readRepoFile
+ * @param {string[]} [bundledSections] sections for bundled non-npm components, such as FFmpeg
  * @returns {string}
  */
-function buildNotices(packages, overrides, readRepoFile) {
+function buildNotices(packages, overrides, readRepoFile, bundledSections = []) {
   /** @type {string[]} */
   const errors = [];
   const unique = new Map(packages.map((pkg) => [`${pkg.name}@${pkg.version}`, pkg]));
@@ -90,6 +91,7 @@ function buildNotices(packages, overrides, readRepoFile) {
     'Electron and Chromium are covered by LICENSE.electron.txt and LICENSES.chromium.html in the',
     'installation folder.',
     '',
+    ...bundledSections,
     ...sections,
   ].join('\n');
 }
@@ -127,6 +129,36 @@ function readShippedPackages(resourcesPath) {
   });
 }
 
+/**
+ * The FFmpeg runtime folder ships its own README (version, build commit, where its corresponding
+ * source is published), the GPL text and the licences of everything compiled into it.
+ * @param {string} ffmpegDir
+ * @returns {string}
+ */
+function buildFfmpegSection(ffmpegDir) {
+  const read = (/** @type {string} */ name) => fs.readFileSync(path.join(ffmpegDir, name), 'utf8');
+  for (const required of ['README.txt', 'LICENSE.txt']) {
+    if (!fs.existsSync(path.join(ffmpegDir, required))) {
+      throw new Error(`Third-party notices check failed: bundled FFmpeg lacks ${required}`);
+    }
+  }
+  const licenseDir = path.join(ffmpegDir, 'licenses');
+  const componentLicenses = fs.existsSync(licenseDir) ? fs.readdirSync(licenseDir).sort() : [];
+  if (!componentLicenses.length) throw new Error('Third-party notices check failed: bundled FFmpeg lists no component licenses');
+  return [
+    '-'.repeat(79),
+    'FFmpeg and FFprobe (ffmpeg folder)',
+    'License: GPL-3.0-or-later (full text in ffmpeg/LICENSE.txt)',
+    '',
+    tidy(read('README.txt')),
+    '',
+    'Components compiled into these binaries:',
+    '',
+    ...componentLicenses.map((name) => `== ${path.basename(name, '.txt')} ==\n\n${tidy(read(path.join('licenses', name)))}\n`),
+    '',
+  ].join('\n');
+}
+
 /** @param {string} resourcesPath @returns {string} the written file */
 function writeThirdPartyNotices(resourcesPath) {
   const overrides = JSON.parse(fs.readFileSync(path.join(__dirname, 'license-overrides.json'), 'utf8'));
@@ -134,6 +166,7 @@ function writeThirdPartyNotices(resourcesPath) {
     readShippedPackages(resourcesPath),
     overrides,
     (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8'),
+    [buildFfmpegSection(path.join(resourcesPath, 'ffmpeg'))],
   );
   const target = path.join(resourcesPath, NOTICES_FILE);
   fs.writeFileSync(target, notices, 'utf8');
@@ -142,6 +175,7 @@ function writeThirdPartyNotices(resourcesPath) {
 
 module.exports = {
   NOTICES_FILE,
+  buildFfmpegSection,
   buildNotices,
   declaredLicense,
   readShippedPackages,

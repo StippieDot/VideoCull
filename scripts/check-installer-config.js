@@ -43,6 +43,10 @@ assert.ok(
   packageJson.build?.extraResources?.some((resource) => resource.from === 'LICENSE' && resource.to === 'LICENSE.txt'),
   'packaged resources must include the application license as LICENSE.txt',
 );
+assert.ok(
+  packageJson.build?.extraResources?.some((resource) => resource.from === 'vendor/ffmpeg' && resource.to === 'ffmpeg'),
+  'packaged resources must include the bundled FFmpeg runtime folder',
+);
 assert.equal(nsis.installerHeader, 'build/installerHeader.bmp', 'custom installer header must be configured');
 
 function assertBitmap(relativePath, expectedWidth, expectedHeight) {

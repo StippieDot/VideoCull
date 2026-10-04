@@ -22,6 +22,7 @@ const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
 const { openLegalFile, sourceCodeUrlForVersion } = require('./legal-files');
+const { checkMediaTools } = require('./media-tools');
 const product = require('../product.json');
 const { getDistributionChannel, shouldEnableUpdates } = require('./distribution');
 const {
@@ -392,6 +393,7 @@ app.whenReady().then(async () => {
     });
   }
   defaultCentralCacheRoot = profileBootstrap?.defaultCentralCacheRoot ?? path.join(app.getPath('userData'), 'video-cache');
+  void checkMediaTools(log);
 
   protocol.handle('thumb', async (request) => {
     let filePath = getFilePathFromProtocolRequest(request, 'thumb');

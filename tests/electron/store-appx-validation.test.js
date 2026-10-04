@@ -28,8 +28,9 @@ function createFixture(manifest) {
   }
   const resources = path.join(stage, 'app', 'resources');
   fs.mkdirSync(resources, { recursive: true });
-  for (const legalFile of ['LICENSE.txt', 'THIRD_PARTY_NOTICES.txt']) {
-    fs.writeFileSync(path.join(resources, legalFile), 'fixture');
+  fs.mkdirSync(path.join(resources, 'ffmpeg'));
+  for (const requiredFile of ['LICENSE.txt', 'THIRD_PARTY_NOTICES.txt', 'ffmpeg/ffmpeg.exe', 'ffmpeg/ffprobe.exe', 'ffmpeg/LICENSE.txt']) {
+    fs.writeFileSync(path.join(resources, requiredFile), 'fixture');
   }
 
   fs.writeFileSync(archiveScript, [

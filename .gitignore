@@ -39,6 +39,7 @@ build/*
 !build/appx/*.png
 !build/licenses/
 release/
+vendor/
 testspace/
 
 # Agentic Coding local config

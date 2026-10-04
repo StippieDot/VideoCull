@@ -8,7 +8,7 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 const electronPath = require('electron') as string;
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+const { ffmpegPath } = require('../../electron/media-tools') as { ffmpegPath: string };
 
 export async function createUserDataDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), 'videocull-e2e-userdata-'));

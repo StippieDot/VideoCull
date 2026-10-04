@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const { test: nodeTest } = require('node:test');
-const { buildNotices, declaredLicense } = require('../../scripts/generate-notices');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { buildFfmpegSection, buildNotices, declaredLicense } = require('../../scripts/generate-notices');
 const test = globalThis.test || nodeTest;
 
 function pkg(name, license, { version = '1.0.0', licenseTexts = [`${license} text for ${name}`], noticeTexts = [] } = {}) {
@@ -75,4 +78,28 @@ test('reads both modern and legacy license fields from package.json', () => {
   assert.equal(declaredLicense({ license: { type: 'ISC' } }), 'ISC');
   assert.equal(declaredLicense({ licenses: [{ type: 'MIT', url: 'https://example.invalid' }] }), 'MIT');
   assert.equal(declaredLicense({}), null);
+});
+
+test('the FFmpeg section carries the runtime README and every bundled component license', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'videocull-notices-ffmpeg-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'README.txt'), 'FFmpeg 9.0.2 built for VideoCull; source at https://example.invalid/source\n');
+    fs.writeFileSync(path.join(dir, 'LICENSE.txt'), 'GPL text');
+    assert.throws(() => buildFfmpegSection(dir), /no component licenses/);
+
+    fs.mkdirSync(path.join(dir, 'licenses'));
+    fs.writeFileSync(path.join(dir, 'licenses', 'dav1d.txt'), 'BSD 2-Clause text');
+    fs.writeFileSync(path.join(dir, 'licenses', 'x264.txt'), 'GPL 2 text');
+    const section = buildFfmpegSection(dir);
+
+    assert.match(section, /License: GPL-3\.0-or-later \(full text in ffmpeg\/LICENSE\.txt\)/);
+    assert.match(section, /source at https:\/\/example\.invalid\/source/);
+    assert.match(section, /== dav1d ==\n\nBSD 2-Clause text/);
+    assert.match(section, /== x264 ==\n\nGPL 2 text/);
+
+    fs.rmSync(path.join(dir, 'README.txt'));
+    assert.throws(() => buildFfmpegSection(dir), /lacks README\.txt/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -22,7 +22,7 @@ function runPackagedSqliteSmoke(executablePath, resourcesPath, spawn = spawnSync
   }
 }
 
-const REQUIRED_LEGAL_FILES = ['LICENSE.txt', NOTICES_FILE];
+const REQUIRED_LEGAL_FILES = ['LICENSE.txt', NOTICES_FILE, path.join('ffmpeg', 'LICENSE.txt')];
 
 function assertLegalFilesPresent(resourcesPath, exists = fs.existsSync) {
   const missing = REQUIRED_LEGAL_FILES.filter((name) => !exists(path.join(resourcesPath, name)));

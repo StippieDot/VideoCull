@@ -5,7 +5,7 @@ description: Run VideoCull locally, execute the test suite, and package the Wind
 
 Building from source is useful when you want to test changes locally or work on the app itself.
 
-Requires Node.js 24 LTS and npm 11.19.0 or newer. FFmpeg and FFprobe are bundled with the app dependencies.
+Requires Node.js 24 LTS and npm 11.19.0 or newer. `npm install` also downloads the pinned FFmpeg and FFprobe build into `vendor/ffmpeg` and checks its SHA-256; it is built from source in [VideoCull-FFmpeg](https://github.com/StippieDot/VideoCull-FFmpeg), which also publishes its complete corresponding source.
 
 If `npm --version` is below 11.19.0, run `npm install --global npm@11.19.0` before `npm ci`.
 
@@ -27,6 +27,7 @@ npm run dev
 | `npm run coverage` | Generate coverage reports |
 | `npm run test:ci` | IPC contract check, backend and test TypeScript checks, and full coverage run |
 | `npm run test:e2e` | Build the renderer and run the Electron Playwright flows |
+| `npm run fetch:ffmpeg` | Download and verify the pinned FFmpeg build into `vendor/ffmpeg` (also runs on install) |
 | `npm run test:cache-native` | Optional native cache regression lane |
 | `npm run build` | Renderer-only production build |
 | `npm run check:installer` | Validate Windows installer config and artwork |

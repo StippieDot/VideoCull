@@ -33,11 +33,12 @@ test('packaging fails when a legal file is missing from resources', () => {
   const present = new Set([
     path.join(resourcesPath, 'LICENSE.txt'),
     path.join(resourcesPath, 'THIRD_PARTY_NOTICES.txt'),
+    path.join(resourcesPath, 'ffmpeg', 'LICENSE.txt'),
   ]);
   assert.doesNotThrow(() => assertLegalFilesPresent(resourcesPath, (filePath) => present.has(filePath)));
   assert.throws(
-    () => assertLegalFilesPresent(resourcesPath, (filePath) => filePath.endsWith('LICENSE.txt')),
-    /missing legal files: THIRD_PARTY_NOTICES\.txt/,
+    () => assertLegalFilesPresent(resourcesPath, (filePath) => !filePath.includes('ffmpeg')),
+    /missing legal files: ffmpeg[\\/]LICENSE\.txt/,
   );
 });
 
