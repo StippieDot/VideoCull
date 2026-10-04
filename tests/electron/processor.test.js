@@ -53,32 +53,48 @@ test('thumbnail reuse requires the exact expected filenames and nonempty files',
   }
 });
 
-test('metadata cancellation suppresses callbacks after an in-flight probe finishes', async () => {
+test('cancelling metadata during a running probe cancels that probe and suppresses its callbacks', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-metadata-cancel-'));
   const videoPath = path.join(tempDir, 'clip.mp4');
   await fs.writeFile(videoPath, 'not a real video');
   const originalProbe = mediaProcess.probe;
 
   try {
-    mediaProcess.probe = () => new Promise((resolve) => setTimeout(() => resolve({
-      format: { duration: 12, bit_rate: '1200', tags: {} },
-      streams: [{ codec_type: 'video', codec_name: 'h264', width: 320, height: 240, avg_frame_rate: '25/1' }],
-    }), 20));
+    let probeToken = null;
+    let finishProbe;
+    let signalProbeStarted;
+    const probeStarted = new Promise((resolve) => { signalProbeStarted = resolve; });
+    mediaProcess.probe = (_filePath, token) => {
+      probeToken = token;
+      signalProbeStarted();
+      return new Promise((resolve) => { finishProbe = resolve; });
+    };
 
     let progressCount = 0;
     let readyCount = 0;
+    let failedCount = 0;
     const run = processMetadata([
       { id: 'a', path: videoPath, filename: 'clip.mp4', thumbnails: [], durationSecs: null },
     ], {}, () => {
       progressCount += 1;
     }, () => {
       readyCount += 1;
+    }, () => {
+      failedCount += 1;
     });
+    await probeStarted;
+    assert.equal(probeToken.cancelled, false);
+
     cancelMetadata();
+    assert.equal(probeToken.cancelled, true, 'the running probe receives the cancellation');
+
+    // A probe that still completes after cancellation must not be reported.
+    finishProbe({ format: { duration: 12, tags: {} }, streams: [] });
     await run;
 
     assert.equal(progressCount, 0);
     assert.equal(readyCount, 0);
+    assert.equal(failedCount, 0);
   } finally {
     mediaProcess.probe = originalProbe;
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -138,6 +154,39 @@ test('metadata probe failures are reported so the retry backoff can be recorded'
     assert.deepEqual(failed, [{ videoId: 'broken', message: 'ffprobe failed' }]);
   } finally {
     mediaProcess.probe = originalProbe;
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('a timed-out frame stops every further extraction attempt for that video', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-thumb-timeout-'));
+  const originalRunFfmpeg = mediaProcess.runFfmpeg;
+  const timeouts = [];
+
+  try {
+    mediaProcess.runFfmpeg = async (_args, _token, options) => {
+      timeouts.push(options.timeoutMs);
+      throw Object.assign(new Error('ffmpeg.exe timed out'), { code: 'ETIMEDOUT' });
+    };
+    const ready = [];
+    const progress = [];
+
+    await processVideos(
+      [{ id: 'hung', path: path.join(tempDir, 'hung.mp4'), filename: 'hung.mp4', thumbnails: [], durationSecs: 120 }],
+      tempDir,
+      { thumbsPerVideo: 6, maxConcurrent: 1 },
+      (data) => progress.push(data),
+      (id, thumbnails) => ready.push({ id, thumbnails }),
+    );
+
+    // One attempt only: no offset retries, no remaining slots, no t=0 fallback.
+    assert.equal(timeouts.length, 1);
+    assert.ok(timeouts[0] > 0 && timeouts[0] <= 120_000);
+    // The video still completes (without thumbnails) so the run moves on.
+    assert.deepEqual(ready, [{ id: 'hung', thumbnails: [] }]);
+    assert.deepEqual(progress, [{ current: 1, total: 1 }]);
+  } finally {
+    mediaProcess.runFfmpeg = originalRunFfmpeg;
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 });
