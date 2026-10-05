@@ -899,6 +899,7 @@ const useStore = create<VideoStore>((set, get) => ({
     cpuThreadsLimited: true,
     skipIntroDelaySecs: 3,
     hardwareAccel: false,
+    keepAwakeWhileProcessing: true,
     recentDirectories: [],
     recentDirectoryTimestamps: {},
     autoUpdates: true,

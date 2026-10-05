@@ -258,6 +258,7 @@ export interface AppSettings {
   cpuThreadsLimited: boolean;
   skipIntroDelaySecs: number;
   hardwareAccel: boolean;
+  keepAwakeWhileProcessing: boolean;
   recentDirectories: string[];
   recentDirectoryTimestamps: Record<string, number>;
   autoUpdates: boolean;

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, nativeTheme, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, nativeTheme, clipboard, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
@@ -18,6 +18,7 @@ const {
   DuplicateCancelledError,
 } = require('./duplicates');
 const { processingPause } = require('./processing-pause');
+const { createPowerManager } = require('./power-manager');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
@@ -512,6 +513,7 @@ app.whenReady().then(async () => {
   });
 
   const initialConfig = await readJsonFile(CONFIG_FILE, {});
+  powerManager.setKeepAwake(initialConfig.keepAwakeWhileProcessing !== false);
   createWindow(initialConfig.theme);
   setApplicationMenu();
   checkDistributedIndexAvailability().catch((err) => log.warn('[cache] Failed to check distributed cache locations:', err));
@@ -1073,7 +1075,14 @@ function logSlowCacheFolderDiagnostics(diagnostics) {
   });
 }
 
+const powerManager = createPowerManager({
+  startBlocker: () => powerSaveBlocker.start('prevent-app-suspension'),
+  stopBlocker: (id) => powerSaveBlocker.stop(id),
+  isPaused: () => processingPause.getState().status === 'paused',
+});
+
 processingPause.subscribe((state) => {
+  powerManager.pauseChanged();
   sendToRenderer('processing-pause-state', state);
 });
 
@@ -1747,7 +1756,7 @@ ipcMain.handle('reset-loaded-directories', async () => {
 });
 
 // 2. Scan directory for video files
-ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
+ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerManager.trackWork(async () => {
   const scanToken = ++scanGeneration;
   const scanCacheRoots = new Set();
   log.info(`[scan-directory] called for: ${dirPath}`);
@@ -1944,10 +1953,10 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     });
     throw err;
   }
-});
+}));
 
 // 3. Probe metadata for videos that are missing or stale.
-ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => trackCacheProducer(async () => {
+ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => trackCacheProducer(() => powerManager.trackWork(async () => {
   if (isQuitting) return false;
   if (!Array.isArray(videos)) {
     log.warn('[process-metadata] videos must be an array, rejecting');
@@ -2174,10 +2183,10 @@ ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => tr
   });
 
   return true;
-}));
+})));
 
 // 4. Generate thumbnails for videos that don't have them
-ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) => trackCacheProducer(async () => {
+ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) => trackCacheProducer(() => powerManager.trackWork(async () => {
   if (isQuitting) return false;
   if (!Array.isArray(videos)) {
     log.warn('[generate-thumbnails] videos must be an array, rejecting');
@@ -2395,9 +2404,9 @@ ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) =>
     });
   }
   return !thumbnailPersistenceFailed;
-}));
+})));
 
-ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
+ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager.trackWork(async () => {
   if (activeDuplicateRun) {
     activeDuplicateRun.cancel();
     activeDuplicateRun = null;
@@ -2469,7 +2478,7 @@ ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
     });
     return { status: 'error', error: err.message || String(err) };
   }
-});
+}));
 
 ipcMain.handle('cancel-duplicate-detection', async () => {
   if (!activeDuplicateRun) return false;
@@ -2983,6 +2992,7 @@ ipcMain.handle('save-config', async (_event, config) => {
     const configPath = path.join(app.getPath('userData'), CONFIG_FILE);
     await fs.writeFile(configPath, JSON.stringify(normalizedConfig, null, 2), 'utf8');
     applyNativeTheme(theme);
+    powerManager.setKeepAwake(normalizedConfig.keepAwakeWhileProcessing !== false);
     return true;
   } catch (e) {
     log.error('[save-config] Error saving config:', e);

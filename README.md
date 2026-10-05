@@ -178,6 +178,7 @@ Review shortcuts are customizable in Settings.
 | Limit each FFmpeg process to 1 CPU thread | On / Off | On |
 | Intro skip delay | 0 - 60 seconds | 3s |
 | Hardware acceleration | On / Off | Off |
+| Keep the PC awake while processing | On / Off | On |
 | Auto-clean stale cache after scan | On / Off | Off |
 | Remove empty folders after deleting videos | On / Off | Off |
 | Auto updates | On / Off | On |
