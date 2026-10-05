@@ -1,0 +1,10 @@
+{
+  "lazy-val": {
+    "licenseFile": "build/licenses/lazy-val.txt",
+    "reason": "Declares MIT but ships no license file and its repository has none; text uses the package author as copyright holder."
+  },
+  "react-compiler-runtime": {
+    "licenseFile": "build/licenses/react-compiler-runtime.txt",
+    "reason": "Declares MIT but ships no license file; the text is the React repository license it is published from."
+  }
+}

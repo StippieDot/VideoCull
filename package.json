@@ -6,7 +6,8 @@
   "license": "AGPL-3.0-only",
   "main": "electron/bootstrap.js",
   "scripts": {
-    "postinstall": "install-electron",
+    "postinstall": "install-electron && node scripts/fetch-ffmpeg.js",
+    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.js",
     "dev:vite": "vite",
     "dev": "node scripts/dev.js",
     "build": "vite build",
@@ -21,11 +22,11 @@
     "test:renderer": "vitest run -c vitest.renderer.config.ts",
     "test:watch": "vitest",
     "test:cache-native": "node scripts/run-electron-node-tests.js tests/electron/cache.test.js tests/electron/cache.migration.test.js",
-    "test:packaging": "node --test tests/electron/build-hooks.test.js",
+    "test:packaging": "node --test tests/electron/build-hooks.test.js tests/electron/generate-notices.test.js tests/electron/fetch-ffmpeg.test.js",
     "coverage": "vitest run --coverage",
     "test:profile": "node --test tests/electron/profile-bootstrap.test.js tests/electron/storage-compatibility.test.js",
     "test:store": "node --test tests/electron/store-*.test.js",
-    "test:ci": "npm run check:ipc && npm run check:installer && npm run check:store && npm run check:brand && npm run test:packaging && npm run test:profile && npm run test:store && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
+    "test:ci": "npm run check:ipc && npx tsc -p tsconfig.electron.json && npm run check:installer && npm run check:store && npm run check:brand && npm run test:packaging && npm run test:profile && npm run test:store && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
     "test:e2e": "npm run build && playwright test",
     "test:duplicates": "vitest run tests/electron/duplicate-utils.test.js tests/electron/duplicates.test.js tests/electron/duplicate-worker.test.js tests/electron/visual-worker.test.js",
     "stress:cache-overcap": "node scripts/cache-overcap-smoke.js",
@@ -44,13 +45,10 @@
     "electron-winstaller@5.4.0": true
   },
   "dependencies": {
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@videojs/react": "10.0.0-rc.4",
     "better-sqlite3": "^13.0.3",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.3",
-    "fluent-ffmpeg": "^2.1.3",
     "lucide-react": "^1.17.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -58,6 +56,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "@playwright/test": "^1.60.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -85,9 +84,6 @@
       "dist/**/*",
       "electron/**/*",
       "product.json",
-      "node_modules/@ffmpeg-installer/**/*",
-      "node_modules/@ffprobe-installer/**/*",
-      "node_modules/fluent-ffmpeg/**/*",
       "node_modules/better-sqlite3/**/*",
       "!node_modules/better-sqlite3/prebuilds/{darwin,linux,linuxmusl}-*.node",
       "!node_modules/better-sqlite3/prebuilds/win32-arm64.node"
@@ -96,12 +92,22 @@
       {
         "from": "build/videocull.ico",
         "to": "videocull.ico"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "vendor/ffmpeg",
+        "to": "ffmpeg",
+        "filter": [
+          "**/*",
+          "!.toolchain-sha256"
+        ]
       }
     ],
     "asarUnpack": [
       "**/*.{exe,dll,dylib,so,node}",
-      "node_modules/@ffmpeg-installer/**/*",
-      "node_modules/@ffprobe-installer/**/*",
       "node_modules/better-sqlite3/**/*"
     ],
     "npmRebuild": false,
@@ -126,7 +132,7 @@
         "unvirtualizedResources"
       ],
       "customManifestPath": "appx/AppxManifest.xml",
-      "minVersion": "10.0.19041.0",
+      "minVersion": "10.0.19045.0",
       "maxVersionTested": "10.0.26100.0",
       "setBuildNumber": false,
       "artifactName": "VideoCull.Store.${version}.x64.${ext}",

@@ -1,27 +1,18 @@
-const ffmpeg = require('fluent-ffmpeg');
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path.replace('app.asar', 'app.asar.unpacked');
-const ffprobePath = require('@ffprobe-installer/ffprobe').path.replace('app.asar', 'app.asar.unpacked');
-ffmpeg.setFfmpegPath(ffmpegPath);
-ffmpeg.setFfprobePath(ffprobePath);
-
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
 const { processingPause } = require('./processing-pause');
+const mediaProcess = require('./media-process');
+const { createRunToken, cancelRun, toFfmpegInputPath } = mediaProcess;
 
 let thumbToken = null;
 let metadataToken = null;
 const METADATA_SCHEMA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
-
-function toFfmpegInputPath(filePath) {
-  if (process.platform !== 'win32') return filePath;
-  const resolved = path.resolve(filePath);
-  if (resolved.startsWith('\\\\?\\')) return resolved;
-  if (resolved.length < 240) return resolved;
-  if (resolved.startsWith('\\\\')) return `\\\\?\\UNC\\${resolved.slice(2)}`;
-  return `\\\\?\\${resolved}`;
-}
+// A single-frame seek normally takes well under a second. These limits only stop a hung decoder,
+// or a file on a very slow share, from holding a worker slot for the rest of the run.
+const FRAME_EXTRACTION_TIMEOUT_MS = 120_000;
+const VIDEO_EXTRACTION_BUDGET_MS = 300_000;
 
 function parseFpsRational(value) {
   if (!value || value === '0/0') return null;
@@ -40,61 +31,55 @@ function parseBitrate(value) {
 /**
  * Get duration, creation_time, codec, resolution, fps, and bitrate via ffprobe.
  */
-function getVideoMetadata(filePath) {
-  return new Promise((resolve, reject) => {
-    fs.stat(filePath)
-      .then((stat) => {
-        ffmpeg.ffprobe(toFfmpegInputPath(filePath), async (err, metadata) => {
-      if (err) return reject(err);
-      const duration = Number(metadata?.format?.duration) || 0;
-      const formatBitrate = parseBitrate(metadata?.format?.bit_rate);
-      const calculatedTotalBitrate = !formatBitrate && duration > 0 && stat?.size
-        ? Math.round((stat.size * 8) / duration)
-        : null;
-      const totalBitrate = formatBitrate ?? calculatedTotalBitrate;
-      // Try to extract creation_time from format tags (camera date)
-      let creationTime = null;
-      const tags = metadata?.format?.tags;
-      if (tags) {
-        const raw = tags.creation_time || tags.Creation_Time || tags.CREATION_TIME;
-        if (raw) {
-          const parsed = new Date(raw).getTime();
-          if (!isNaN(parsed)) creationTime = parsed;
-        }
-      }
+async function getVideoMetadata(filePath, token = createRunToken()) {
+  const stat = await fs.stat(filePath);
+  const metadata = await mediaProcess.probe(filePath, token);
+  const duration = Number(metadata.format.duration) || 0;
+  const formatBitrate = parseBitrate(metadata.format.bit_rate);
+  const calculatedTotalBitrate = !formatBitrate && duration > 0 && stat.size
+    ? Math.round((stat.size * 8) / duration)
+    : null;
+  const totalBitrate = formatBitrate ?? calculatedTotalBitrate;
+  // Try to extract creation_time from format tags (camera date)
+  let creationTime = null;
+  const tags = metadata.format.tags;
+  if (tags) {
+    const raw = tags.creation_time || tags.Creation_Time || tags.CREATION_TIME;
+    if (raw) {
+      const parsed = new Date(raw).getTime();
+      // FFmpeg 9 reports an unset ASF/WMV creation date as 1970-01-01; that is "no date", not a date.
+      if (!isNaN(parsed) && parsed > 0) creationTime = parsed;
+    }
+  }
 
-      const streams = metadata?.streams ?? [];
-      const videoStream = streams.find((stream) => stream.codec_type === 'video');
-      const audioStream = streams.find((stream) => stream.codec_type === 'audio');
-      const audioBitrate = parseBitrate(audioStream?.bit_rate);
-      const parsedVideoBitrate = parseBitrate(videoStream?.bit_rate);
-      const derivedVideoBitrate = !parsedVideoBitrate && totalBitrate && audioBitrate
-        ? Math.max(0, totalBitrate - audioBitrate)
-        : null;
-      const fps =
-        parseFpsRational(videoStream?.avg_frame_rate) ??
-        parseFpsRational(videoStream?.r_frame_rate) ??
-        null;
+  const streams = metadata.streams;
+  const videoStream = streams.find((stream) => stream.codec_type === 'video');
+  const audioStream = streams.find((stream) => stream.codec_type === 'audio');
+  const audioBitrate = parseBitrate(audioStream?.bit_rate);
+  const parsedVideoBitrate = parseBitrate(videoStream?.bit_rate);
+  const derivedVideoBitrate = !parsedVideoBitrate && totalBitrate && audioBitrate
+    ? Math.max(0, totalBitrate - audioBitrate)
+    : null;
+  const fps =
+    parseFpsRational(videoStream?.avg_frame_rate) ??
+    parseFpsRational(videoStream?.r_frame_rate) ??
+    null;
 
-      resolve({
-        duration,
-        creationTime,
-        videoCodec: videoStream?.codec_name ?? null,
-        audioCodec: audioStream?.codec_name ?? null,
-        videoBitrate: parsedVideoBitrate ?? derivedVideoBitrate,
-        audioBitrate,
-        totalBitrate,
-        containerFormat: metadata?.format?.format_name ?? null,
-        width: videoStream?.width ?? null,
-        height: videoStream?.height ?? null,
-        fps,
-        metadataVersion: METADATA_SCHEMA_VERSION,
-        metadataCheckedAt: Date.now(),
-      });
-        });
-      })
-      .catch(reject);
-  });
+  return {
+    duration,
+    creationTime,
+    videoCodec: videoStream?.codec_name ?? null,
+    audioCodec: audioStream?.codec_name ?? null,
+    videoBitrate: parsedVideoBitrate ?? derivedVideoBitrate,
+    audioBitrate,
+    totalBitrate,
+    containerFormat: metadata.format.format_name ?? null,
+    width: videoStream?.width ?? null,
+    height: videoStream?.height ?? null,
+    fps,
+    metadataVersion: METADATA_SCHEMA_VERSION,
+    metadataCheckedAt: Date.now(),
+  };
 }
 
 /**
@@ -132,8 +117,6 @@ function expectedThumbnailCount(duration, count, skipDelaySecs) {
   }
   return count;
 }
-
-const activeCommands = new Set();
 
 async function isNonemptyFile(filePath) {
   try {
@@ -216,56 +199,60 @@ function createQueueCursor(items) {
 }
 
 /**
- * Extract a single frame from a video at a given timestamp.
- * Uses fast seeking (-ss before -i) via fluent-ffmpeg's seekInput().
+ * Fast seeking (-ss before -i). Same arguments, in the same order, that the previous
+ * fluent-ffmpeg command builder produced.
  */
-function extractFrame(videoPath, timestamp, outputPath, config, token) {
-  return new Promise((resolve, reject) => {
-    const outOpts = ['-q:v', '5'];
-    // Limit CPU threads to prevent massive spikes when processing parallel
-    if (config.cpuThreadsLimited !== false) {
-      outOpts.push('-threads', '1');
+function buildFrameArgs(videoPath, seekTime, outputPath, config) {
+  const args = ['-ss', String(seekTime)];
+  if (config.hardwareAccel) args.push('-hwaccel', 'auto');
+  args.push('-i', toFfmpegInputPath(videoPath), '-y', '-vframes', '1', '-filter:v', 'scale=320:-1', '-q:v', '5');
+  // Limit CPU threads to prevent massive spikes when processing parallel
+  if (config.cpuThreadsLimited !== false) args.push('-threads', '1');
+  args.push(outputPath);
+  return args;
+}
+
+/**
+ * Shared by every frame attempt of one video (slots, retries and the t=0 fallback), so one
+ * troublesome file holds a worker for at most this long.
+ */
+function createExtractionBudget(now = Date.now()) {
+  return { deadline: now + VIDEO_EXTRACTION_BUDGET_MS, timedOut: false };
+}
+
+/**
+ * Extract a single frame from a video at a given timestamp, retrying at nearby offsets.
+ * After any attempt times out, no further attempts are made for this video: a decoder that hung
+ * once on a file usually hangs again at the next offset.
+ */
+async function extractFrame(videoPath, timestamp, outputPath, config, token, budget) {
+  const attempts = Array.from(new Set([
+    timestamp,
+    Math.max(0, timestamp + 0.25),
+    Math.max(0, timestamp - 0.25),
+    Math.max(0, timestamp + 0.75),
+    Math.max(0, timestamp - 0.75),
+  ]));
+
+  for (let attemptIndex = 0; ; attemptIndex++) {
+    if (token.cancelled) throw new Error('Cancelled');
+    const remainingMs = budget.deadline - Date.now();
+    if (budget.timedOut || remainingMs <= 0) {
+      budget.timedOut = true;
+      throw new Error('Frame extraction stopped for this video after a timeout');
     }
-
-    const createCommand = (seekTime) => {
-      let command = ffmpeg(toFfmpegInputPath(videoPath)).seekInput(seekTime).frames(1);
-      if (config.hardwareAccel) {
-        command = command.inputOptions(['-hwaccel', 'auto']);
-      }
-      return command.outputOptions(outOpts).videoFilters(`scale=320:-1`);
-    };
-
-    const attempts = Array.from(new Set([
-      timestamp,
-      Math.max(0, timestamp + 0.25),
-      Math.max(0, timestamp - 0.25),
-      Math.max(0, timestamp + 0.75),
-      Math.max(0, timestamp - 0.75),
-    ]));
-
-    const runCommand = (attemptIndex = 0) => {
-      if (token.cancelled) {
-        reject(new Error('Cancelled'));
-        return;
-      }
-      const seekTime = attempts[attemptIndex];
-      const cmd = createCommand(seekTime);
-      activeCommands.add(cmd);
-      cmd.output(outputPath)
-        .on('end', () => { activeCommands.delete(cmd); resolve(outputPath); })
-        .on('error', (err) => {
-          activeCommands.delete(cmd);
-          if (attemptIndex < attempts.length - 1 && !token.cancelled) {
-            runCommand(attemptIndex + 1);
-          } else {
-            reject(err);
-          }
-        })
-        .run();
-    };
-
-    runCommand();
-  });
+    try {
+      await mediaProcess.runFfmpeg(
+        buildFrameArgs(videoPath, attempts[attemptIndex], outputPath, config),
+        token,
+        { timeoutMs: Math.min(FRAME_EXTRACTION_TIMEOUT_MS, remainingMs) },
+      );
+      return outputPath;
+    } catch (err) {
+      if (err?.code === 'ETIMEDOUT') budget.timedOut = true;
+      if (budget.timedOut || attemptIndex >= attempts.length - 1 || token.cancelled) throw err;
+    }
+  }
 }
 
 /**
@@ -322,6 +309,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
 
   const timestamps = calculateTimestamps(duration, THUMB_COUNT, skipDelay);
   const thumbnails = [];
+  const budget = createExtractionBudget();
 
   // Extract frames sequentially within each video. Overall parallelism is handled
   // by processVideos(), so maxConcurrent now maps to active FFmpeg commands.
@@ -330,7 +318,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     if (token.cancelled) throw new Error('Cancelled');
     const outputPath = path.join(videoThumbDir, `thumb_${String(i + 1).padStart(2, '0')}.jpg`);
     try {
-      await runProcessingActivity(token, () => extractFrame(video.path, timestamp, outputPath, config, token));
+      await runProcessingActivity(token, () => extractFrame(video.path, timestamp, outputPath, config, token, budget));
       if (await isNonemptyFile(outputPath)) {
         thumbnails.push({ index: i, path: outputPath });
       }
@@ -349,7 +337,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
   if (finalPaths.length === 0) {
     const fallbackPath = path.join(videoThumbDir, 'thumb_01.jpg');
     try {
-      await runProcessingActivity(token, () => extractFrame(video.path, 0, fallbackPath, config, token));
+      await runProcessingActivity(token, () => extractFrame(video.path, 0, fallbackPath, config, token, budget));
       if (await isNonemptyFile(fallbackPath)) {
         finalPaths.push(fallbackPath);
       }
@@ -361,8 +349,8 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
   return { thumbnails: finalPaths, durationSecs: duration, creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps };
 }
 
-async function readMetadataForVideo(video) {
-  const meta = await getVideoMetadata(video.path);
+async function readMetadataForVideo(video, token) {
+  const meta = await getVideoMetadata(video.path, token);
 
   return {
     thumbnails: video.thumbnails ?? [],
@@ -402,7 +390,7 @@ function getConcurrentLimit(config = {}) {
 }
 
 async function processVideos(videos, thumbDir, config, onProgress, onVideoReady, options = {}) {
-  const token = { cancelled: false };
+  const token = createRunToken();
   thumbToken = token;
   const total = videos.length;
   let current = 0;
@@ -473,7 +461,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
 }
 
 async function processMetadata(videos, config, onProgress, onVideoReady, onVideoFailed) {
-  const token = { cancelled: false };
+  const token = createRunToken();
   metadataToken = token;
   const total = videos.length;
   let current = 0;
@@ -495,7 +483,7 @@ async function processMetadata(videos, config, onProgress, onVideoReady, onVideo
         const video = takeNextVideo();
         if (!video) break;
         try {
-          const result = await runProcessingActivity(token, () => readMetadataForVideo(video));
+          const result = await runProcessingActivity(token, () => readMetadataForVideo(video, token));
           if (token.cancelled) break;
           current++;
           if (onProgress) onProgress({ current, total });
@@ -518,20 +506,12 @@ async function processMetadata(videos, config, onProgress, onVideoReady, onVideo
 }
 
 function cancelThumbnails() {
-  if (thumbToken) thumbToken.cancelled = true;
+  cancelRun(thumbToken);
   processingPause.wake();
-  for (const cmd of activeCommands) {
-    try {
-      cmd.kill('SIGKILL');
-    } catch (e) {
-      // ignore
-    }
-  }
-  activeCommands.clear();
 }
 
 function cancelMetadata() {
-  if (metadataToken) metadataToken.cancelled = true;
+  cancelRun(metadataToken);
   processingPause.wake();
 }
 
@@ -552,6 +532,8 @@ module.exports = {
   METADATA_SCHEMA_VERSION,
   __test: {
     toFfmpegInputPath,
+    getVideoMetadata,
+    buildFrameArgs,
     parseFpsRational,
     parseBitrate,
     calculateTimestamps,

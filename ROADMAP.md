@@ -190,14 +190,16 @@ Mostly invisible to users; ships with the licence notices the bundled binaries a
 
 **Why first:**
 - **Age and security.** The bundled ffmpeg is N-92722 (December 2018), and ffprobe is a different build
-  (gyan.dev, February 2023). Both process untrusted user files.
-- **Weak AV1.** The 2018 ffmpeg decodes AV1 only through early libaom: no `dav1d`, no native `av1`, no
-  hardware AV1.
+  (gyan.dev, February 2023). Both process untrusted user files; FFmpeg's security page lists roughly 150
+  CVEs fixed since then, many in the H.264, HEVC, MOV and Matroska readers.
+- **Weak AV1, no VVC.** The 2018 ffmpeg decodes AV1 only through early libaom (a 4K 10-bit AV1
+  thumbnail takes 6.4 s vs 2.0 s with 9.0.2) and cannot decode H.266/VVC at all.
+- **Licence.** The bundled GPL binary ships without its corresponding source.
 - **Two versions.** Metadata comes from one FFmpeg version, thumbnails and fingerprints from another.
 - **Stale packages.** `@ffmpeg-installer` (2022) and `@ffprobe-installer` (2023) are unmaintained.
   `fluent-ffmpeg` is **deprecated on npm and its repository was archived in May 2025**.
-- **Later phases depend on it:** 4.2 (cropdetect), 5.3 (clip export, concat `inpoint`/`outpoint`) and
-  Phase 8.
+- **Not a reason:** 4.2 (`cropdetect`) and 5.3 (concat `inpoint`/`outpoint`) would also work with the
+  2018 build.
 
 **Facts (checked 2026-10-02):**
 - **Release tags:** `n9.0.2` is the newest stable; `n8.1.3` is the previous stable line.
@@ -205,9 +207,19 @@ Mostly invisible to users; ships with the licence notices the bundled binaries a
   `avformat` 21.9, `swscale` 12.3, `avdevice` 4.7, `avutil` 2.9, `swresample` 0.7; `ffmpeg.exe` 0.5 MB,
   `ffprobe.exe` 0.2 MB. Total without `ffplay.exe`: **192 MB**. Includes `libdav1d`, native `av1`,
   `libx264` and `h264_nvenc`.
-- **9.0.2:** the shared GPL zip is 82 MB (8.1 was 85 MB). Unpacked size still needs measuring.
+- **9.0.2:** the shared GPL zip is 82 MB (8.1 was 85 MB). Unpacked (checked 2026-10-03, `autobuild-2026-10-01-13-06`):
+  `avcodec-63` 119.1 MB, `avfilter-12` 37.0, `avformat-63` 23.0, `avdevice-63` 4.9, `avutil-61` 3.0, `swscale-10`
+  2.3, `swresample-7` 0.7; `ffmpeg.exe` 0.5, `ffprobe.exe` 0.2. Total without `ffplay.exe`: **190.9 MB** (+52 MB).
+- **BtbN's `n9.0` builds are the release branch, not the tag:** the asset is
+  `ffmpeg-n9.0.2-22-g46d8f462ee-win64-gpl-shared-9.0.zip` (9.0.2 + 22 commits). Pinning exactly `n9.0.2`
+  needs our own build (see 0.3).
+- The current frame (`-vframes 1`, `-hwaccel auto`) and probe (`-print_format json`) argument lists run
+  without errors or deprecation warnings on that build.
 - **Today:** ffmpeg 61.5 MB + ffprobe 77.2 MB = **139 MB**. A static GPL build would ship two full-size
   exes, about 360 MB (estimated), which is why we use shared.
+- **fluent-ffmpeg probed with FFprobe's default text output** (`-show_streams -show_format`, parsed
+  line by line), not JSON. 0.2 switched to `-print_format json`; the fields `getVideoMetadata` reads are
+  the same.
 - **fluent-ffmpeg is used only in `processor.js`:** binary paths (`:4-5`), metadata via `ffmpeg.ffprobe`
   (`:47`), frame extraction via `seekInput().frames(1)` + `-q:v 5`, `-threads 1`, `scale=320:-1`,
   `-hwaccel auto` (`:231`), cancellation via `activeCommands` (`:136`, `:523`). `duplicates.js` already
@@ -257,38 +269,55 @@ Mostly invisible to users; ships with the licence notices the bundled binaries a
 - **Done when:** nothing requires `fluent-ffmpeg`; argument and metadata snapshots match; cancel kills
   running processes (tested with a long-running fake).
 
-### 0.3 Pinned FFmpeg 9.0.2 Shared Build
+### 0.3 Our Own FFmpeg 9.0.2 Build
 
-**Decision:** **FFmpeg 9.0.2, BtbN `win64-gpl-shared`**, pinned to a dated release asset (not the rolling
-`latest` tag), with its **SHA-256 recorded in the repo**. Fallback if 9.0 causes trouble: `n8.1.3`, the
-same way.
+**Decision (2026-10-04):** VideoCull bundles **its own FFmpeg 9.0.2 build**, made in the separate public
+repository **`StippieDot/VideoCull-FFmpeg`** (GPL-3.0-or-later). Distributor builds were ruled out: BtbN and
+Gyan publish no matching corresponding source, and MSYS2's prebuilt set (115 files, 88 packages, about 1.2 GB
+of source archives) lacks the Rust crates built into three of its DLLs and changes on every update.
 
-**Implementation notes:**
-- **Keep the archive under our own control.** BtbN keeps only the last 14 daily builds and each month's
-  last build (for two years). The exact archive (or our own build, see 0.5) is uploaded **once** as an
-  asset of a GitHub release (`toolchain-ffmpeg-9.0.2`). The fetch script downloads only from there.
-  That release must never be picked up by the app updater, which reads GitHub releases (`publish.provider:
-  github`) and could treat it as a new VideoCull version. Host it in a separate toolchain repository,
-  or otherwise prove the updater ignores it.
-- **Windows minimum: decide.** BtbN only guarantees Windows 10 22H2 (build 19045). The Store manifest
-  declares `10.0.19041.0` (`check-store-config.js:30`). Either raise the minimum to 19045, or test the
-  build on 19041.
-- **DLL inventory:** list the DLL imports of `ffmpeg.exe`/`ffprobe.exe` and all 7 DLLs (`dumpbin
-  /dependents` or equivalent). Only system DLLs may remain outside the bundle. A cold-install test
-  without any CI cache must run.
-- **Fetching:** `scripts/fetch-ffmpeg.js` downloads the zip, checks the hash and extracts **only**
-  `ffmpeg.exe`, `ffprobe.exe` and the 7 DLLs to `vendor/ffmpeg/`. Runs in `postinstall` and CI.
-  `vendor/ffmpeg/` is git-ignored and cached in CI by version + hash.
-- **Packaging:** electron-builder `extraResources` copies `vendor/ffmpeg/` to `resources/ffmpeg/` for
-  **both** NSIS and the Store package. The DLLs sit next to the exes. Remove the `@ffmpeg-installer/**`
-  and `@ffprobe-installer/**` entries from `files`/`asarUnpack`, remove both packages, and update
-  `check-installer-config.js`, `check-store-config.js` and `validate-store-package.js`.
-- **Path resolution:** `electron/media-tools.js` (`@ts-check`) exports `ffmpegPath` and `ffprobePath`:
-  `process.resourcesPath/ffmpeg` when packaged, `vendor/ffmpeg` in dev, an env override for tests only.
-  At startup it checks both files exist and logs `-version` once. `processor.js` and `duplicates.js`
-  import from it; the `app.asar` → `app.asar.unpacked` string replacement goes away.
-- **Done when:** both editions run with the new binaries on a clean machine; Store package validation
-  passes; package size is measured and recorded (expected about +50 MB unpacked).
+**Why a separate repository:** a clean licence boundary (the app can later be dual-licensed; the
+toolchain stays GPL and needs no contributor agreement), and the app updater only reads the VideoCull
+repository's releases, so a toolchain release can never be mistaken for an app update.
+
+**The build (`VideoCull-FFmpeg`):**
+- **Inputs:** `sources.lock` pins every source archive by SHA-256: FFmpeg 9.0.2, dav1d, x264 (fixed
+  commit), zlib, bzip2, libvpl, nv-codec-headers 12.1 (NVENC from driver 531.61), AMF headers. Fixes to
+  upstream sources are patch files in `patches/`. `msys2.lock` pins the MSYS2 UCRT64 compiler packages.
+- **Configure:** shared, `--disable-autodetect` with every optional library listed explicitly,
+  `--disable-network`, no `ffplay` or `libavdevice`; hardware decoding (D3D11VA, D3D12VA, DXVA2,
+  NVDEC/CUVID, QSV) and encoding (NVENC, AMF, QSV, Media Foundation). The gcc runtime is linked
+  statically, so the runtime folder imports only Windows DLLs (checked in CI).
+- **Not included compared with the 2018 bundle:** x265, VP8/9, AV1, MP3, Opus, Vorbis, Theora, WebP and
+  Xvid **encoders**, subtitle rendering (libass/freetype), vidstab, zscale and network protocols.
+  VideoCull uses none of them; FFmpeg's own decoders cover every format VideoCull reads.
+- **CI:** builds on `windows-2025`, checks DLL imports, runs the commands VideoCull uses (probe,
+  thumbnails with and without `-hwaccel auto`, duplicate gray frames, `cropdetect`, concat joins, x264 +
+  AAC export, PCM audio) against HEVC/AV1/VP9/H.264/MPEG-4/WMV clips with only Windows on `PATH`, then
+  **rebuilds offline from the published source archive** and compares files and configuration
+  (rebuilds are not expected to be byte-identical).
+- **Release** `ffmpeg-<version>-r<revision>`, immutable once published: runtime zip (executables, DLLs,
+  GPL text, README naming the source location, licences of every compiled-in component), corresponding
+  source archive (recipe, every source archive, MSYS2 sources of the statically linked gcc runtime,
+  winpthreads and MinGW-w64 CRT), manifest (versions, configure line, hashes) and `SHA256SUMS`.
+
+**In VideoCull:**
+- `ffmpeg-toolchain.json` pins repository, tag, asset and SHA-256. `scripts/fetch-ffmpeg.js` (run from
+  `postinstall`) downloads that asset, refuses a hash mismatch, and installs it into `vendor/ffmpeg/`
+  (git-ignored) by extracting next to it and swapping.
+- electron-builder `extraResources` copies `vendor/ffmpeg/` to `resources/ffmpeg/` for both editions;
+  `@ffmpeg-installer/*` and `@ffprobe-installer/*` are removed. Installer and Store package checks require
+  `ffmpeg.exe`, `ffprobe.exe` and the GPL text there.
+- `electron/media-tools.js` resolves `resources/ffmpeg` when packaged, `vendor/ffmpeg` in development and
+  an env override for tests, and logs the FFmpeg version once at startup.
+- **Windows minimum:** raised to Windows 10 22H2 (build 19045) for both editions (decided 2026-10-04).
+- **Updates:** change a line in `sources.lock` (or delete `msys2.lock` to move the compiler), raise
+  `REVISION`, let CI build and verify, publish, then update `ffmpeg-toolchain.json` in VideoCull.
+- **Done when:** both editions run with the new binaries on a clean Windows 10 22H2 machine; Store
+  package validation passes; installed and download sizes are recorded here.
+- **Measured (2026-10-04, `ffmpeg-9.0.2-r1`):** runtime folder 41.2 MB (was 145.5 MB); installer
+  137.3 MB (2.3.2: 172.7 MB); Store package 196 MB. FFmpeg CI build about 20 minutes, the offline
+  rebuild from the source archive about as long.
 
 ### 0.4 Compatibility Check: Old Build vs New Build
 
@@ -311,6 +340,18 @@ same way.
 - **Timing:** thumbnail and fingerprint run times compared with the existing performance diagnostics.
 - Every argument list we use is run at least once against 9.0.2.
 - **Done when:** a short written report exists, with a decision on fingerprint invalidation.
+
+**Result (2026-10-04):** `scripts/compare-ffmpeg-builds.js` on 20 clips (H.264, HEVC 8/10-bit, AV1
+720p/4K 10-bit, VP9, VVC, DivX AVI, WMV, MPEG-2 TS, ProRes, portrait without audio, rotated, VFR,
+subtitled MKV, 0.6 s, 15 min, a truncated file and two real videos):
+- Every file the 2018 build read is still read; thumbnails work for all; VVC now works.
+- Metadata is the same except an unset WMV creation date, which 9.0.2 reports as 1970-01-01; that
+  value is now treated as missing.
+- **Fingerprints:** identical files fell to 62–94% pHash similarity on 4 of 20 clips (VFR, HEVC,
+  subtitled MKV, one real video), below the 95% threshold. The fingerprint key changes to
+  `gray32-v2`, so each video is fingerprinted once more on its next duplicate scan. Our build, MSYS2's
+  9.0.2 and BtbN's 9.0 give identical results on all 20 clips, so this is the version change.
+- **Timing:** 20 thumbnails took 7.5 s (2018) vs 4.6 s (our build).
 
 > **Investigation option (not committed): reusable duplicate benchmark.** The fixture set and expected
 > duplicate groups needed here could be built as a reusable, manifest-driven runner (corpus outside the
@@ -348,17 +389,12 @@ selling; the gaps are missing notices, licence texts and source, not incompatibi
    - Runs during packaging, **after the application is assembled and before the final distributable is
      produced** (e.g. electron-builder's `afterPack` hook), for both `package` and `package:store`.
      `test:ci` doesn't depend on a packaged app; it only unit-tests the generator against fixtures.
-2. **FFmpeg section** (written by the 0.3 fetch script into the notices file +
-   `resources/ffmpeg/LICENSE.txt`): version and tag, build source, configure flags (`-buildconf`), GPLv3
-   text, and **corresponding source**:
-   - The FFmpeg tag tarball + BtbN scripts is **not** complete corresponding source; a GPL build includes
-     x264, x265, dav1d and others at specific revisions.
-   - **Default A:** build FFmpeg ourselves once per version in CI with BtbN's scripts at a pinned commit,
-     and archive **every downloaded source** + scripts + logs next to the binaries in our toolchain
-     release. CI build duration **(unverified)**.
-   - **Alternative B:** a provider that publishes complete corresponding source **(unverified for BtbN
-     and gyan.dev)**.
-   - The same gap exists **today** for the bundled 2018 binary. Don't rely only on third-party links.
+2. **FFmpeg section** in the notices file, built from `resources/ffmpeg/`: the runtime README (version,
+   build commit, URL of the release that holds the **complete corresponding source**), a pointer to the
+   GPL text in `ffmpeg/LICENSE.txt`, and the licence of every component compiled into the binaries. The
+   corresponding source is the `-source.tar` asset of the pinned `VideoCull-FFmpeg` release (see 0.3),
+   kept permanently; GitHub's automatic "Source code" archives are not it.
+   - The bundled 2018 binary in 2.3.2 and earlier has no matching source we can provide.
 3. **Ship VideoCull's own `LICENSE`** (AGPL-3.0) via `extraResources` in both packages, next to the
    notices. `check-installer-config.js` and `validate-store-package.js` check both files are present.
 4. **Legal notice in About (AGPL §5d):** a small "Licence" section with "© \<year\> StippieDot",
@@ -368,8 +404,8 @@ selling; the gaps are missing notices, licence texts and source, not incompatibi
 5. **Microsoft Store listing:** Partner Center → Properties → **License terms** set to **custom terms =
    AGPL-3.0** + source link, instead of the Standard Application License Terms. The description mentions
    "Open source under AGPL-3.0". Manual check; record the result here.
-6. **Release checklist:** the release workflow fails if the tag's GitHub release lacks the FFmpeg source
-   asset; Store submissions use a build from a tagged commit.
+6. **Release checklist:** the pinned `VideoCull-FFmpeg` release exists and is published (immutable);
+   Store submissions use a build from a tagged commit.
 - **Contributors:** one outside contributor (1 commit). A future dual licence needs their permission (or
   a rewrite of that change) and a CLA for new contributions.
 - **Not legal advice.** Codec **patents** (H.264/HEVC encoding) are a separate, known and accepted risk.
@@ -1189,7 +1225,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 
 | Phase | Status | Version | Merged |
 |---|---|---|---|
-| P0 — Media toolchain & licence compliance | ⬜ Not started | `2.4.0` | — |
+| P0 — Media toolchain & licence compliance | 🔄 In progress | `2.4.0` | — |
 | P1 — Quick wins | ⬜ Not started | `2.5.0` | — |
 | P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.6.0` | — |
 | P3 — Reliable settings & tags | ⬜ Not started | `2.7.0` | — |

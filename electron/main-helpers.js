@@ -456,6 +456,12 @@ function summarizeMediaProbeError(err) {
   return finalLine.slice(0, 500);
 }
 
+// A timeout says the drive was slow or busy, not that the file is unreadable, so the video is
+// probed again on the next scan instead of being skipped as a recent failure.
+function shouldRememberMediaProbeFailure(err) {
+  return err?.code !== 'ETIMEDOUT';
+}
+
 function normalizeReportRoots(dirPaths) {
   return (Array.isArray(dirPaths) ? dirPaths : [dirPaths])
     .filter((dirPath) => typeof dirPath === 'string' && dirPath.length > 0)
@@ -494,6 +500,7 @@ function isAllowedExternalUrl(url, exactUrls, allowedHttpsHosts) {
 }
 
 module.exports = {
+  shouldRememberMediaProbeFailure,
   canServeThumbPath,
   canServeVideoPath,
   canRevealInExplorerPath,

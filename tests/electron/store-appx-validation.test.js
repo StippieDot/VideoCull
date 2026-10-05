@@ -26,6 +26,12 @@ function createFixture(manifest) {
       fs.writeFileSync(path.join(assets, `Square44x44Logo.targetsize-${targetSize}_altform-${altForm}.png`), 'fixture');
     }
   }
+  const resources = path.join(stage, 'app', 'resources');
+  fs.mkdirSync(resources, { recursive: true });
+  fs.mkdirSync(path.join(resources, 'ffmpeg'));
+  for (const requiredFile of ['LICENSE.txt', 'THIRD_PARTY_NOTICES.txt', 'ffmpeg/ffmpeg.exe', 'ffmpeg/ffprobe.exe', 'ffmpeg/LICENSE.txt']) {
+    fs.writeFileSync(path.join(resources, requiredFile), 'fixture');
+  }
 
   fs.writeFileSync(archiveScript, [
     'param([string]$Source, [string]$Destination)',
@@ -62,7 +68,7 @@ function validManifest(properties = '') {
     ${properties}
   </Properties>
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19045.0" MaxVersionTested="10.0.26100.0" />
   </Dependencies>
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />

@@ -21,6 +21,9 @@ const { processingPause } = require('./processing-pause');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
+const { openLegalFile, sourceCodeUrlForVersion } = require('./legal-files');
+const { checkMediaTools } = require('./media-tools');
+const product = require('../product.json');
 const { getDistributionChannel, shouldEnableUpdates } = require('./distribution');
 const {
   createLegacyPromptKey,
@@ -63,6 +66,7 @@ const {
   normalizeReportRoots,
   normalizeReviewStateChanges,
   removeEmptyDeletedVideoFolders,
+  shouldRememberMediaProbeFailure,
   summarizeMediaProbeError,
   thumbAbsolute,
   thumbRelative,
@@ -113,6 +117,7 @@ const ALLOWED_EXTERNAL_URLS = new Set([
   'https://github.com/sponsors/StippieDot',
   'https://paypal.me/stippiedot',
   'https://videocull.app/support/',
+  sourceCodeUrlForVersion(product.repository.url, app.getVersion()),
 ]);
 const ALLOWED_EXTERNAL_HTTPS_HOSTS = new Set(['docs.videocull.app']);
 
@@ -389,6 +394,7 @@ app.whenReady().then(async () => {
     });
   }
   defaultCentralCacheRoot = profileBootstrap?.defaultCentralCacheRoot ?? path.join(app.getPath('userData'), 'video-cache');
+  void checkMediaTools(log);
 
   protocol.handle('thumb', async (request) => {
     let filePath = getFilePathFromProtocolRequest(request, 'thumb');
@@ -2140,9 +2146,11 @@ ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => tr
       const videoFolder = getVideoFolderPath(video);
       failed++;
       deletePendingFolderWrite(pendingMetadataSuccesses, videoFolder, videoId);
-      appendPendingFolderWrite(pendingMetadataFailures, videoFolder, { videoId, reason });
-      if ((pendingMetadataFailures.get(videoFolder)?.size ?? 0) >= METADATA_DB_BATCH_SIZE) {
-        await flushMetadataFolderWrites(videoFolder);
+      if (shouldRememberMediaProbeFailure(err)) {
+        appendPendingFolderWrite(pendingMetadataFailures, videoFolder, { videoId, reason });
+        if ((pendingMetadataFailures.get(videoFolder)?.size ?? 0) >= METADATA_DB_BATCH_SIZE) {
+          await flushMetadataFolderWrites(videoFolder);
+        }
       }
       if (failureExamples.length < 8) {
         failureExamples.push({
@@ -2996,6 +3004,12 @@ ipcMain.handle('open-in-explorer', async (_event, filePath) => {
 
 // 11. App version
 ipcMain.handle('get-app-version', () => app.getVersion());
+
+ipcMain.handle('open-legal-file', (_event, name) => openLegalFile(name, {
+  isPackaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  appRoot: path.join(__dirname, '..'),
+}, { openPath: (filePath) => shell.openPath(filePath), exists: (filePath) => require('fs').existsSync(filePath) }));
 
 ipcMain.handle('open-external-url', async (_event, url) => {
   if (!isAllowedExternalUrl(url, ALLOWED_EXTERNAL_URLS, ALLOWED_EXTERNAL_HTTPS_HOSTS)) return false;

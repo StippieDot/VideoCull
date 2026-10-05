@@ -37,7 +37,9 @@ build/*
 !build/installer.nsh
 !build/appx/
 !build/appx/*.png
+!build/licenses/
 release/
+vendor/
 testspace/
 
 # Agentic Coding local config

@@ -28,8 +28,8 @@ try {
   }
 
   $desktopDependency = @($manifest.Package.Dependencies.ChildNodes) | Where-Object { $_.Name -eq 'Windows.Desktop' } | Select-Object -First 1
-  if (-not $desktopDependency -or $desktopDependency.MinVersion -cne '10.0.19041.0') {
-    throw 'The AppX must target Windows.Desktop with minimum version 10.0.19041.0.'
+  if (-not $desktopDependency -or $desktopDependency.MinVersion -cne '10.0.19045.0') {
+    throw 'The AppX must target Windows.Desktop with minimum version 10.0.19045.0.'
   }
   $capabilities = @($manifest.Package.Capabilities.ChildNodes | ForEach-Object { $_.GetAttribute('Name') } | Sort-Object)
   $expectedCapabilities = @('runFullTrust', 'unvirtualizedResources') | Sort-Object
@@ -58,6 +58,9 @@ try {
   $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/').ToLowerInvariant() })
   foreach ($asset in @('assets/storelogo.png', 'assets/square44x44logo.png', 'assets/square150x150logo.png', 'assets/wide310x150logo.png')) {
     if ($entryNames -notcontains $asset) { throw "Required AppX asset is missing: $asset" }
+  }
+  foreach ($legalFile in @('app/resources/license.txt', 'app/resources/third_party_notices.txt', 'app/resources/ffmpeg/ffmpeg.exe', 'app/resources/ffmpeg/ffprobe.exe', 'app/resources/ffmpeg/license.txt')) {
+    if ($entryNames -notcontains $legalFile) { throw "Required file is missing: $legalFile" }
   }
   foreach ($targetSize in @(16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)) {
     foreach ($altForm in @('unplated', 'lightunplated')) {

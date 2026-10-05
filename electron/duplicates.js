@@ -3,7 +3,7 @@ const fs = require('fs/promises');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { Worker } = require('worker_threads');
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path.replace('app.asar', 'app.asar.unpacked');
+const { ffmpegPath } = require('./media-tools');
 const { createDuplicateSessionCache } = require('./duplicate-session-cache');
 const { processingPause } = require('./processing-pause');
 const {

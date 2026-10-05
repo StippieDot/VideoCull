@@ -123,7 +123,10 @@ function getDuplicateFingerprintKey(input = {}) {
   const bounds = getSamplingBounds(settings);
   const maxDuration = Number(settings.maxSamplingDuration) > 0 ? Number(settings.maxSamplingDuration) : 0;
   return [
-    'gray32-v1',
+    // Bump when stored fingerprints stop being comparable with new ones. v2: the bundled FFmpeg
+    // moved from 2018 to 9.0.2, which decodes some frames differently (mixed old/new pHash fell to
+    // 62–94% similarity for identical files, checked with scripts/compare-ffmpeg-builds.js).
+    'gray32-v2',
     settings.sampleCount,
     bounds.start,
     bounds.end,

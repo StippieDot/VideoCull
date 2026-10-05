@@ -1,9 +1,24 @@
+// @ts-check
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const initialThemeArgument = process.argv.find((value) => value.startsWith('--video-cull-theme='));
 const initialTheme = initialThemeArgument?.slice('--video-cull-theme='.length) === 'light' ? 'light' : 'dark';
 
-contextBridge.exposeInMainWorld('electronAPI', {
+/**
+ * @template T
+ * @param {string} channel
+ * @param {(data: T) => void} callback
+ * @returns {() => void}
+ */
+function subscribe(channel, callback) {
+  /** @type {(event: unknown, data: T) => void} */
+  const handler = (_event, data) => callback(data);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+}
+
+/** @type {import('../src/types').ElectronAPI} */
+const electronAPI = {
   initialTheme: initialTheme,
 
   // Directory
@@ -16,11 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scanDirectory: (dirPath, includeSubfolders) =>
     ipcRenderer.invoke('scan-directory', dirPath, includeSubfolders),
   resetLoadedDirectories: () => ipcRenderer.invoke('reset-loaded-directories'),
-  onScanProgress: (callback) => {
-    const handler = (_event, data) => callback(data);
-    ipcRenderer.on('scan-progress', handler);
-    return () => ipcRenderer.removeListener('scan-progress', handler);
-  },
+  onScanProgress: (callback) => subscribe('scan-progress', callback),
 
   // Thumbnail generation
   processMetadata: (videos, dirPath, options) =>
@@ -30,40 +41,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelGeneration: () => ipcRenderer.invoke('cancel-generation'),
   getProcessingPauseState: () => ipcRenderer.invoke('get-processing-pause-state'),
   setProcessingPaused: (paused) => ipcRenderer.invoke('set-processing-paused', paused),
-  onProcessingPauseState: (callback) => {
-    const handler = (_event, data) => callback(data);
-    ipcRenderer.on('processing-pause-state', handler);
-    return () => ipcRenderer.removeListener('processing-pause-state', handler);
-  },
-  onMetadataProgress: (callback) => {
-    const handler = (_event, data) => callback(data);
-    ipcRenderer.on('metadata-progress', handler);
-    return () => ipcRenderer.removeListener('metadata-progress', handler);
-  },
-  onMetadataReadyBatch: (callback) => {
-    const handler = (_event, data) => callback(data);
-    ipcRenderer.on('metadata-ready-batch', handler);
-    return () => ipcRenderer.removeListener('metadata-ready-batch', handler);
-  },
-  onThumbProgress: (callback) => {
-    const handler = (_event, data) => callback(data);
-    ipcRenderer.on('thumb-progress', handler);
-    return () => ipcRenderer.removeListener('thumb-progress', handler);
-  },
-  onThumbReadyBatch: (callback) => {
-    const handler = (_event, data) => callback(data);
-    ipcRenderer.on('thumb-ready-batch', handler);
-    return () => ipcRenderer.removeListener('thumb-ready-batch', handler);
-  },
+  onProcessingPauseState: (callback) => subscribe('processing-pause-state', callback),
+  onMetadataProgress: (callback) => subscribe('metadata-progress', callback),
+  onMetadataReadyBatch: (callback) => subscribe('metadata-ready-batch', callback),
+  onThumbProgress: (callback) => subscribe('thumb-progress', callback),
+  onThumbReadyBatch: (callback) => subscribe('thumb-ready-batch', callback),
 
   // Duplicate detection
   findDuplicates: (videos, options) => ipcRenderer.invoke('find-duplicates', videos, options),
   cancelDuplicateDetection: () => ipcRenderer.invoke('cancel-duplicate-detection'),
-  onDuplicateProgress: (callback) => {
-    const handler = (_event, data) => callback(data);
-    ipcRenderer.on('duplicate-progress', handler);
-    return () => ipcRenderer.removeListener('duplicate-progress', handler);
-  },
+  onDuplicateProgress: (callback) => subscribe('duplicate-progress', callback),
 
   // Cache & Config
   saveCache: (dirPath, videos) => ipcRenderer.invoke('save-cache', dirPath, videos),
@@ -105,14 +92,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setExportReportAvailable: (enabled) => ipcRenderer.send('set-export-report-available', enabled),
   openVideo: (filePath) => ipcRenderer.invoke('open-video', filePath),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  openLegalFile: (name) => ipcRenderer.invoke('open-legal-file', name),
   setVideoFullscreen: (fullscreen) => ipcRenderer.invoke('set-video-fullscreen', fullscreen),
 
   // Menu events
-  onMenuAction: (callback) => {
-    const handler = (_event, action) => callback(action);
-    ipcRenderer.on('menu-action', handler);
-    return () => ipcRenderer.removeListener('menu-action', handler);
-  },
+  onMenuAction: (callback) => subscribe('menu-action', callback),
 
   // Updates
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
@@ -120,17 +104,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installUpdate: () => ipcRenderer.invoke('install-update'),
   scheduleUpdateOnExit: () => ipcRenderer.invoke('schedule-update-on-exit'),
   deferUpdate: () => ipcRenderer.invoke('defer-update'),
-  onUpdateStatus: (callback) => {
-    const handler = (_event, data) => callback(data);
-    ipcRenderer.on('update-status', handler);
-    return () => ipcRenderer.removeListener('update-status', handler);
-  },
+  onUpdateStatus: (callback) => subscribe('update-status', callback),
 
   // App notifications
   reportRendererError: (payload) => ipcRenderer.send('renderer-error', payload),
-  onAppNotification: (callback) => {
-    const handler = (_event, data) => callback(data);
-    ipcRenderer.on('app-notification', handler);
-    return () => ipcRenderer.removeListener('app-notification', handler);
-  },
-});
+  onAppNotification: (callback) => subscribe('app-notification', callback),
+};
+
+contextBridge.exposeInMainWorld('electronAPI', electronAPI);

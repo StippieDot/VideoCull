@@ -196,3 +196,8 @@ test('keeper ordering normalization removes legacy metadata and filename rules',
   });
   assert.deepEqual(settings.keeperOrder, ['size', 'fps', 'resolution', 'videoBitrate', 'duration']);
 });
+
+test('fingerprints made with the 2018 FFmpeg build are not reused', () => {
+  // Stored rows carry the key they were made with; only matching rows are loaded.
+  assert.match(getDuplicateFingerprintKey({}), /^gray32-v2\|/);
+});
