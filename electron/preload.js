@@ -43,7 +43,6 @@ const electronAPI = {
   setProcessingPaused: (paused) => ipcRenderer.invoke('set-processing-paused', paused),
   onProcessingPauseState: (callback) => subscribe('processing-pause-state', callback),
   getPowerState: () => ipcRenderer.invoke('get-power-state'),
-  setFinishAction: (action) => ipcRenderer.invoke('set-finish-action', action),
   cancelFinishAction: () => ipcRenderer.invoke('cancel-finish-action'),
   onPowerState: (callback) => subscribe('power-state', callback),
   onMetadataProgress: (callback) => subscribe('metadata-progress', callback),

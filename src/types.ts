@@ -605,7 +605,6 @@ export interface ElectronAPI {
   getProcessingPauseState: () => Promise<ProcessingPauseState>;
   setProcessingPaused: (paused: boolean) => Promise<ProcessingPauseState>;
   getPowerState: () => Promise<PowerState>;
-  setFinishAction: (action: FinishAction) => Promise<PowerState>;
   cancelFinishAction: () => Promise<PowerState>;
   onPowerState: (callback: (state: PowerState) => void) => () => void;
   onProcessingPauseState: (callback: (data: ProcessingPauseState) => void) => () => void;

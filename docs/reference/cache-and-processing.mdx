@@ -67,6 +67,16 @@ Intro skip delay moves the first sample away from fades and blank lead-ins. Incr
 - Lower concurrency for slow external, network, or cloud-mounted drives.
 - Leave **Keep the PC awake while processing** on for long runs. Windows then does not go to sleep on its own until processing finishes or is paused.
 
+## Sleep or shut down when processing finishes
+
+For long runs, such as the first scan of a large library or fingerprinting it for duplicates, choose **Actions > When Processing Finishes** in the menu bar while processing runs:
+
+- **Do Nothing** is the default.
+- **Sleep** puts the PC to sleep.
+- **Shut Down** closes VideoCull cleanly and shuts the PC down. Other apps with unsaved work are not forced to close, so Windows waits for them.
+
+The choice covers everything that is processing at that moment, including stages that start right after, such as thumbnails after video info. It applies to this run only: once it has run, or when you close the session, it resets to **Do Nothing**, so a later rescan never triggers it. When processing has finished, a 60-second countdown appears; select **Cancel** to stay awake. The menu is only available while processing runs.
+
 You can browse and review while thumbnails continue in the background. Metadata-dependent actions, including duplicate detection, may wait until the required metadata is ready.
 
 ## Regenerate thumbnails or clear cache

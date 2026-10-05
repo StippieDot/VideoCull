@@ -590,6 +590,17 @@ function setApplicationMenu() {
           label: 'Delete All Marked Videos',
           accelerator: 'CmdOrCtrl+Backspace',
           click: () => sendToRenderer('menu-action', 'delete-all')
+        },
+        { type: 'separator' },
+        {
+          label: 'When Processing Finishes',
+          id: 'finish-action',
+          enabled: false,
+          submenu: [
+            { label: 'Do Nothing', id: 'finish-action-none', type: 'radio', checked: true, click: () => powerManager.cancelFinishAction() },
+            { label: 'Sleep', id: 'finish-action-sleep', type: 'radio', click: () => powerManager.setFinishAction('sleep') },
+            { label: 'Shut Down', id: 'finish-action-shutdown', type: 'radio', click: () => powerManager.setFinishAction('shutdown') },
+          ]
         }
       ]
     },
@@ -647,6 +658,15 @@ function setApplicationMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+}
+
+/** Mirrors the power state in Actions > When Processing Finishes; it is only usable during processing. */
+function updateFinishActionMenu(state) {
+  const menu = Menu.getApplicationMenu();
+  const submenu = menu?.getMenuItemById('finish-action');
+  if (submenu) submenu.enabled = state.processing;
+  const checked = menu?.getMenuItemById(`finish-action-${state.finishAction}`);
+  if (checked) checked.checked = true;
 }
 
 function setExportReportEnabled(enabled) {
@@ -1090,7 +1110,10 @@ const powerManager = createPowerManager({
       runPowerCommand(action, (err) => log.error('[power] Could not put the PC to sleep:', err));
     }
   },
-  onStateChange: (state) => sendToRenderer('power-state', state),
+  onStateChange: (state) => {
+    updateFinishActionMenu(state);
+    sendToRenderer('power-state', state);
+  },
 });
 let shutdownAfterQuit = false;
 
@@ -1100,7 +1123,6 @@ app.on('will-quit', () => {
 });
 
 ipcMain.handle('get-power-state', () => powerManager.getState());
-ipcMain.handle('set-finish-action', (_event, action) => powerManager.setFinishAction(action));
 ipcMain.handle('cancel-finish-action', () => powerManager.cancelFinishAction());
 
 processingPause.subscribe((state) => {
