@@ -27,6 +27,7 @@ const {
   normalizeReportRoots,
   normalizeReviewStateChanges,
   removeEmptyDeletedVideoFolders,
+  shouldRememberMediaProbeFailure,
   summarizeMediaProbeError,
   thumbAbsolute,
   thumbRelative,
@@ -649,6 +650,12 @@ describe('ffprobe error summaries', () => {
       summarizeMediaProbeError(new Error('ffprobe failed\n\\\\?\\D:\\missing.mp4: No such file or directory')),
       'File not available to ffprobe: D:\\missing.mp4: No such file or directory'
     );
+  });
+
+  test('does not remember a timed-out probe as a failure, so the next scan retries it', () => {
+    const timeout = Object.assign(new Error('ffprobe.exe timed out after 120000 ms'), { code: 'ETIMEDOUT' });
+    assert.equal(shouldRememberMediaProbeFailure(timeout), false);
+    assert.equal(shouldRememberMediaProbeFailure(new Error('Invalid data found when processing input')), true);
   });
 
   test('labels permission failures clearly', () => {

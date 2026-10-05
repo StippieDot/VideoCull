@@ -3,7 +3,9 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { ffmpegPath, ffprobePath } = require('./media-tools');
 
-const PROBE_TIMEOUT_MS = 30_000;
+// Only catches a hung ffprobe. On network drives, many probes in parallel with thumbnail work can
+// each take well over 30 s while still making progress.
+const PROBE_TIMEOUT_MS = 120_000;
 const PROBE_MAX_STDOUT_BYTES = 8 * 1024 * 1024;
 const STDERR_TAIL_BYTES = 16 * 1024;
 

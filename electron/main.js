@@ -66,6 +66,7 @@ const {
   normalizeReportRoots,
   normalizeReviewStateChanges,
   removeEmptyDeletedVideoFolders,
+  shouldRememberMediaProbeFailure,
   summarizeMediaProbeError,
   thumbAbsolute,
   thumbRelative,
@@ -2145,9 +2146,11 @@ ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => tr
       const videoFolder = getVideoFolderPath(video);
       failed++;
       deletePendingFolderWrite(pendingMetadataSuccesses, videoFolder, videoId);
-      appendPendingFolderWrite(pendingMetadataFailures, videoFolder, { videoId, reason });
-      if ((pendingMetadataFailures.get(videoFolder)?.size ?? 0) >= METADATA_DB_BATCH_SIZE) {
-        await flushMetadataFolderWrites(videoFolder);
+      if (shouldRememberMediaProbeFailure(err)) {
+        appendPendingFolderWrite(pendingMetadataFailures, videoFolder, { videoId, reason });
+        if ((pendingMetadataFailures.get(videoFolder)?.size ?? 0) >= METADATA_DB_BATCH_SIZE) {
+          await flushMetadataFolderWrites(videoFolder);
+        }
       }
       if (failureExamples.length < 8) {
         failureExamples.push({
