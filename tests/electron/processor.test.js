@@ -230,6 +230,9 @@ test('an epoch-zero creation date is treated as no camera date', async () => {
 
     mediaProcess.probe = probeWithDate('2024-01-02T03:04:05.000000Z');
     assert.equal((await __test.getVideoMetadata(videoPath)).creationTime, Date.parse('2024-01-02T03:04:05Z'));
+
+    mediaProcess.probe = probeWithDate('1965-06-01T12:00:00.000000Z');
+    assert.equal((await __test.getVideoMetadata(videoPath)).creationTime, Date.parse('1965-06-01T12:00:00Z'));
   } finally {
     mediaProcess.probe = originalProbe;
     await fs.rm(tempDir, { recursive: true, force: true });

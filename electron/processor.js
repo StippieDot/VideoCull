@@ -47,8 +47,9 @@ async function getVideoMetadata(filePath, token = createRunToken()) {
     const raw = tags.creation_time || tags.Creation_Time || tags.CREATION_TIME;
     if (raw) {
       const parsed = new Date(raw).getTime();
-      // FFmpeg 9 reports an unset ASF/WMV creation date as 1970-01-01; that is "no date", not a date.
-      if (!isNaN(parsed) && parsed > 0) creationTime = parsed;
+      // FFmpeg 9 reports an unset ASF/WMV creation date as exactly 1970-01-01T00:00:00Z; that is
+      // "no date". Earlier dates are real (digitised footage) and stay.
+      if (!isNaN(parsed) && parsed !== 0) creationTime = parsed;
     }
   }
 
