@@ -19,6 +19,7 @@ const {
 } = require('./duplicates');
 const { processingPause } = require('./processing-pause');
 const { createPowerManager } = require('./power-manager');
+const { runPowerCommand } = require('./system-power');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
@@ -1079,7 +1080,28 @@ const powerManager = createPowerManager({
   startBlocker: () => powerSaveBlocker.start('prevent-app-suspension'),
   stopBlocker: (id) => powerSaveBlocker.stop(id),
   isPaused: () => processingPause.getState().status === 'paused',
+  performFinishAction: (action) => {
+    log.info(`[power] Processing finished; running the chosen action: ${action}`);
+    if (action === 'shutdown') {
+      // Close VideoCull cleanly first (cache writes drained and closed); will-quit starts the shutdown.
+      shutdownAfterQuit = true;
+      app.quit();
+    } else {
+      runPowerCommand(action, (err) => log.error('[power] Could not put the PC to sleep:', err));
+    }
+  },
+  onStateChange: (state) => sendToRenderer('power-state', state),
 });
+let shutdownAfterQuit = false;
+
+app.on('will-quit', () => {
+  if (!shutdownAfterQuit) return;
+  runPowerCommand('shutdown', (err) => log.error('[power] Could not shut down the PC:', err));
+});
+
+ipcMain.handle('get-power-state', () => powerManager.getState());
+ipcMain.handle('set-finish-action', (_event, action) => powerManager.setFinishAction(action));
+ipcMain.handle('cancel-finish-action', () => powerManager.cancelFinishAction());
 
 processingPause.subscribe((state) => {
   powerManager.pauseChanged();
