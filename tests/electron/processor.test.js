@@ -191,6 +191,32 @@ test('a timed-out frame stops every further extraction attempt for that video', 
   }
 });
 
+test('the extraction budget counts only time spent extracting, not pauses between frames', async () => {
+  const originalRunFfmpeg = mediaProcess.runFfmpeg;
+  const originalNow = Date.now;
+  let now = 1_000_000;
+  const timeouts = [];
+  try {
+    Date.now = () => now;
+    const budget = __test.createExtractionBudget();
+    // Ten minutes paused before the next frame.
+    now += 10 * 60_000;
+    mediaProcess.runFfmpeg = async (_args, _token, options) => {
+      timeouts.push(options.timeoutMs);
+      now += 200_000;
+      if (timeouts.length === 1) throw new Error('decode error');
+    };
+    const token = { cancelled: false };
+    assert.equal(await __test.extractFrame('a.mp4', 10, 'out.jpg', {}, token, budget), 'out.jpg');
+    // Full per-frame limit first, then what is left of the 5 minutes after one 200 s attempt.
+    assert.deepEqual(timeouts, [120_000, 100_000]);
+    assert.equal(budget.remainingMs, 300_000 - 400_000);
+  } finally {
+    Date.now = originalNow;
+    mediaProcess.runFfmpeg = originalRunFfmpeg;
+  }
+});
+
 test('an epoch-zero creation date is treated as no camera date', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-metadata-epoch-'));
   const videoPath = path.join(tempDir, 'old.wmv');

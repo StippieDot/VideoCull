@@ -214,10 +214,11 @@ function buildFrameArgs(videoPath, seekTime, outputPath, config) {
 
 /**
  * Shared by every frame attempt of one video (slots, retries and the t=0 fallback), so one
- * troublesome file holds a worker for at most this long.
+ * troublesome file holds a worker for at most this long. Only time spent inside attempts counts:
+ * a pause between frames must not use up the budget of a healthy video.
  */
-function createExtractionBudget(now = Date.now()) {
-  return { deadline: now + VIDEO_EXTRACTION_BUDGET_MS, timedOut: false };
+function createExtractionBudget() {
+  return { remainingMs: VIDEO_EXTRACTION_BUDGET_MS, timedOut: false };
 }
 
 /**
@@ -236,21 +237,23 @@ async function extractFrame(videoPath, timestamp, outputPath, config, token, bud
 
   for (let attemptIndex = 0; ; attemptIndex++) {
     if (token.cancelled) throw new Error('Cancelled');
-    const remainingMs = budget.deadline - Date.now();
-    if (budget.timedOut || remainingMs <= 0) {
+    if (budget.timedOut || budget.remainingMs <= 0) {
       budget.timedOut = true;
       throw new Error('Frame extraction stopped for this video after a timeout');
     }
+    const startedAt = Date.now();
     try {
       await mediaProcess.runFfmpeg(
         buildFrameArgs(videoPath, attempts[attemptIndex], outputPath, config),
         token,
-        { timeoutMs: Math.min(FRAME_EXTRACTION_TIMEOUT_MS, remainingMs) },
+        { timeoutMs: Math.min(FRAME_EXTRACTION_TIMEOUT_MS, budget.remainingMs) },
       );
       return outputPath;
     } catch (err) {
       if (err?.code === 'ETIMEDOUT') budget.timedOut = true;
       if (budget.timedOut || attemptIndex >= attempts.length - 1 || token.cancelled) throw err;
+    } finally {
+      budget.remainingMs -= Date.now() - startedAt;
     }
   }
 }
@@ -534,6 +537,8 @@ module.exports = {
     toFfmpegInputPath,
     getVideoMetadata,
     buildFrameArgs,
+    createExtractionBudget,
+    extractFrame,
     parseFpsRational,
     parseBitrate,
     calculateTimestamps,
