@@ -47,8 +47,9 @@ async function getVideoMetadata(filePath, token = createRunToken()) {
     const raw = tags.creation_time || tags.Creation_Time || tags.CREATION_TIME;
     if (raw) {
       const parsed = new Date(raw).getTime();
-      // FFmpeg 9 reports an unset ASF/WMV creation date as 1970-01-01; that is "no date", not a date.
-      if (!isNaN(parsed) && parsed > 0) creationTime = parsed;
+      // FFmpeg 9 reports an unset ASF/WMV creation date as exactly 1970-01-01T00:00:00Z; that is
+      // "no date". Earlier dates are real (digitised footage) and stay.
+      if (!isNaN(parsed) && parsed !== 0) creationTime = parsed;
     }
   }
 
@@ -214,10 +215,11 @@ function buildFrameArgs(videoPath, seekTime, outputPath, config) {
 
 /**
  * Shared by every frame attempt of one video (slots, retries and the t=0 fallback), so one
- * troublesome file holds a worker for at most this long.
+ * troublesome file holds a worker for at most this long. Only time spent inside attempts counts:
+ * a pause between frames must not use up the budget of a healthy video.
  */
-function createExtractionBudget(now = Date.now()) {
-  return { deadline: now + VIDEO_EXTRACTION_BUDGET_MS, timedOut: false };
+function createExtractionBudget() {
+  return { remainingMs: VIDEO_EXTRACTION_BUDGET_MS, timedOut: false };
 }
 
 /**
@@ -236,21 +238,23 @@ async function extractFrame(videoPath, timestamp, outputPath, config, token, bud
 
   for (let attemptIndex = 0; ; attemptIndex++) {
     if (token.cancelled) throw new Error('Cancelled');
-    const remainingMs = budget.deadline - Date.now();
-    if (budget.timedOut || remainingMs <= 0) {
+    if (budget.timedOut || budget.remainingMs <= 0) {
       budget.timedOut = true;
       throw new Error('Frame extraction stopped for this video after a timeout');
     }
+    const startedAt = Date.now();
     try {
       await mediaProcess.runFfmpeg(
         buildFrameArgs(videoPath, attempts[attemptIndex], outputPath, config),
         token,
-        { timeoutMs: Math.min(FRAME_EXTRACTION_TIMEOUT_MS, remainingMs) },
+        { timeoutMs: Math.min(FRAME_EXTRACTION_TIMEOUT_MS, budget.remainingMs) },
       );
       return outputPath;
     } catch (err) {
       if (err?.code === 'ETIMEDOUT') budget.timedOut = true;
       if (budget.timedOut || attemptIndex >= attempts.length - 1 || token.cancelled) throw err;
+    } finally {
+      budget.remainingMs -= Date.now() - startedAt;
     }
   }
 }
@@ -534,6 +538,8 @@ module.exports = {
     toFfmpegInputPath,
     getVideoMetadata,
     buildFrameArgs,
+    createExtractionBudget,
+    extractFrame,
     parseFpsRational,
     parseBitrate,
     calculateTimestamps,
