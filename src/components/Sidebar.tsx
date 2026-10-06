@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import type { ColorTheme, DuplicateSortField, ProcessingPauseState, StatusFilter, ToastInput, ToastKind } from '../types';
+import type { ColorTheme, DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '../types';
+import useProcessingPauseState from '../hooks/useProcessingPauseState';
 import type { SortField } from '../types';
 import useStore from '../store';
 import { beginDevInteraction } from '../perf-dev';
@@ -107,20 +108,7 @@ function SidebarProgressSection() {
   const genProgress = useStore((s) => s.genProgress);
   const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const duplicateProgress = useStore((s) => s.duplicateProgress);
-  const [pauseState, setPauseState] = useState<ProcessingPauseState>({ status: 'running' });
-
-  useEffect(() => {
-    if (!window.electronAPI?.onProcessingPauseState) return;
-    let receivedEvent = false;
-    const unsubscribe = window.electronAPI.onProcessingPauseState((state) => {
-      receivedEvent = true;
-      setPauseState(state);
-    });
-    void window.electronAPI.getProcessingPauseState().then((state) => {
-      if (!receivedEvent) setPauseState(state);
-    });
-    return unsubscribe;
-  }, []);
+  const pauseState = useProcessingPauseState();
 
   if (!isScanning && !isGenerating && !isFindingDuplicates) return null;
 

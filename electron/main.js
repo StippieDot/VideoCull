@@ -551,9 +551,15 @@ function setApplicationMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// Opens one of the app menus below its title bar button. Resolves when the menu closes.
-ipcMain.handle('open-app-menu', (_event, label, x, y) => new Promise((resolve) => {
-  const item = Menu.getApplicationMenu()?.items.find((entry) => entry.label === label);
+// Opens an app menu, or a submenu by its label path, at a window position (the title bar buttons).
+// Resolves when the menu closes.
+ipcMain.handle('open-app-menu', (_event, labels, x, y) => new Promise((resolve) => {
+  let item = null;
+  let items = Menu.getApplicationMenu()?.items ?? [];
+  for (const label of Array.isArray(labels) ? labels : []) {
+    item = items.find((entry) => entry.label === label) ?? null;
+    items = item?.submenu?.items ?? [];
+  }
   if (!item?.submenu || !mainWindow || mainWindow.isDestroyed() || !Number.isFinite(x) || !Number.isFinite(y)) {
     resolve(false);
     return;

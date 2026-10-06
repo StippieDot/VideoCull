@@ -1,5 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Moon, Power } from 'lucide-react';
 import useStore from '../store';
+import usePowerState from '../hooks/usePowerState';
+import useProcessingPauseState from '../hooks/useProcessingPauseState';
+import type { VideoStore } from '../types';
 import videoCullIcon from '../assets/videocull-icon.png';
 import { formatRecentPath } from '../utils';
 import './TitleBar.css';
@@ -14,6 +18,35 @@ const MENUS = [
 ] as const;
 
 type MenuLabel = typeof MENUS[number]['label'];
+
+const GENERATION_LABELS = { metadata: 'Reading video info', media: 'Media data', thumbnails: 'Thumbnails' } as const;
+
+/** What is processing right now, for the title bar; null when idle. */
+function selectProcessingStatus(state: VideoStore): { label: string; detail: string; fraction: number | null } | null {
+  const count = (current: number, total: number) => `${current.toLocaleString()} / ${total.toLocaleString()}`;
+  if (state.isGenerating) {
+    const { current, total, phase } = state.genProgress;
+    return {
+      label: GENERATION_LABELS[phase ?? 'thumbnails'],
+      detail: count(current, total),
+      fraction: total > 0 ? current / total : null,
+    };
+  }
+  if (state.isFindingDuplicates && state.duplicateProgress) {
+    const { stage, current, total } = state.duplicateProgress;
+    return { label: stage, detail: total > 0 ? count(current, total) : '', fraction: total > 0 ? current / total : null };
+  }
+  if (state.isScanning) {
+    return { label: 'Scanning', detail: `${state.scanProgress.found.toLocaleString()} found`, fraction: null };
+  }
+  return null;
+}
+
+const FINISH_ACTION_TITLES = {
+  none: 'When processing finishes: do nothing',
+  sleep: 'When processing finishes: sleep',
+  shutdown: 'When processing finishes: shut down',
+} as const;
 
 function MenuLabelText({ label, accessKey, showAccessKey }: { label: string; accessKey: string; showAccessKey: boolean }) {
   const index = label.toLowerCase().indexOf(accessKey);
@@ -34,6 +67,12 @@ function MenuLabelText({ label, accessKey, showAccessKey }: { label: string; acc
  */
 export default function TitleBar({ isPrivate }: { isPrivate: boolean }) {
   const directories = useStore((s) => s.directories);
+  // Serialised so the bar only re-renders when the shown status changes, not on every store update.
+  const statusJson = useStore((s) => JSON.stringify(selectProcessingStatus(s)));
+  const status = useMemo(() => JSON.parse(statusJson) as ReturnType<typeof selectProcessingStatus>, [statusJson]);
+  const power = usePowerState();
+  const paused = useProcessingPauseState().status !== 'running';
+  const finishButtonRef = useRef<HTMLButtonElement>(null);
   const [openMenu, setOpenMenu] = useState<MenuLabel | null>(null);
   const [altHeld, setAltHeld] = useState(false);
   const buttonRefs = useRef(new Map<MenuLabel, HTMLButtonElement>());
@@ -44,10 +83,16 @@ export default function TitleBar({ isPrivate }: { isPrivate: boolean }) {
     const rect = button.getBoundingClientRect();
     setOpenMenu(label);
     try {
-      await window.electronAPI.openAppMenu(label, rect.left, rect.bottom);
+      await window.electronAPI.openAppMenu([label], rect.left, rect.bottom);
     } finally {
       setOpenMenu(null);
     }
+  };
+
+  const openFinishActionMenu = () => {
+    const rect = finishButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    void window.electronAPI?.openAppMenu(['Actions', 'When Processing Finishes'], rect.left, rect.bottom);
   };
   const openRef = useRef(open);
   openRef.current = open;
@@ -108,7 +153,38 @@ export default function TitleBar({ isPrivate }: { isPrivate: boolean }) {
           </button>
         ))}
       </nav>
-      <div className="title-bar-title" title={isPrivate ? undefined : directories.join('\n')}>{sessionTitle}</div>
+      {status && !isPrivate ? (
+        <div className="title-bar-title title-bar-status" role="status">
+          <span className="title-bar-status-label">{status.label}</span>
+          {status.detail && <span>{status.detail}</span>}
+          {paused && <span className="title-bar-status-paused">Paused</span>}
+        </div>
+      ) : (
+        <div className="title-bar-title" title={isPrivate ? undefined : directories.join('\n')}>{sessionTitle}</div>
+      )}
+      {status && (
+        <div className="title-bar-progress" aria-hidden="true">
+          <div
+            className={`title-bar-progress-fill${status.fraction === null ? ' indeterminate' : ''}${paused ? ' paused' : ''}`}
+            style={status.fraction === null ? undefined : { width: `${Math.min(100, status.fraction * 100)}%` }}
+          />
+        </div>
+      )}
+      <div className="title-bar-actions">
+        {power.processing && !isPrivate && (
+          <button
+            ref={finishButtonRef}
+            type="button"
+            className={`title-bar-icon-button${power.finishAction !== 'none' ? ' active' : ''}`}
+            title={FINISH_ACTION_TITLES[power.finishAction]}
+            aria-label={FINISH_ACTION_TITLES[power.finishAction]}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={openFinishActionMenu}
+          >
+            {power.finishAction === 'shutdown' ? <Power size={14} /> : <Moon size={14} />}
+          </button>
+        )}
+      </div>
     </header>
   );
 }

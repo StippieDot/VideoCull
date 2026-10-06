@@ -73,3 +73,92 @@
   color: var(--text-tertiary);
   pointer-events: none;
 }
+
+.title-bar-status {
+  display: flex;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.title-bar-status-label {
+  color: var(--text-primary);
+}
+
+.title-bar-status-paused {
+  color: var(--color-skip);
+}
+
+/* Thin progress line along the bottom edge of the bar. */
+.title-bar-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.title-bar-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.title-bar-progress-fill.paused {
+  background: var(--color-skip);
+}
+
+.title-bar-progress-fill.indeterminate {
+  width: 30%;
+  animation: title-bar-progress-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes title-bar-progress-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-bar-progress-fill.indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/* Right-hand controls, kept clear of the window buttons Windows draws over the bar's right end. */
+.title-bar-actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.title-bar-icon-button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-icon-button:hover,
+.title-bar-icon-button:focus-visible {
+  background: var(--bg-control);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.title-bar-icon-button.active {
+  color: var(--accent);
+}

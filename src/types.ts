@@ -646,8 +646,8 @@ export interface ElectronAPI {
   exportReport: (videos: Video[], dirPaths: string[]) => Promise<'saved' | 'cancelled' | 'error'>;
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
   setMenuState: (state: AppMenuState) => void;
-  /** Opens a top-level app menu at the given window position; resolves when it closes. */
-  openAppMenu: (label: string, x: number, y: number) => Promise<boolean>;
+  /** Opens an app menu or submenu, given by its label path, at a window position; resolves when it closes. */
+  openAppMenu: (labels: string[], x: number, y: number) => Promise<boolean>;
   openVideo: (filePath: string) => Promise<void>;
   openExternalUrl: (url: string) => Promise<boolean>;
   openLegalFile: (name: LegalFileName) => Promise<boolean>;
