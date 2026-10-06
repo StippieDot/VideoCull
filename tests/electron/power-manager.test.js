@@ -101,6 +101,10 @@ test('a chosen finish action keeps the PC awake until it runs, even with the set
   manager.setKeepAwake(false);
   const end = manager.beginWork();
   assert.equal(awake, false);
+  manager.setFinishAction('sleep');
+  assert.equal(awake, true, 'awake during the remaining processing');
+  manager.cancelFinishAction();
+  assert.equal(awake, false, 'released again when the choice is cancelled');
   manager.setFinishAction('shutdown');
   end();
   assert.equal(awake, true, 'awake during the grace period');

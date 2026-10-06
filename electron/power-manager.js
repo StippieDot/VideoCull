@@ -77,11 +77,12 @@ function createPowerManager({
   }
 
   function updateBlocker() {
-    // A chosen finish action keeps the PC awake until it runs, even with the setting off: after a
-    // long unattended run Windows' idle timer has expired, so it would otherwise sleep during the
-    // grace period or countdown and a chosen shutdown would become sleep.
+    // A chosen finish action keeps the PC awake until it runs, even with the setting off: otherwise
+    // Windows could idle-sleep before processing ends, or during the grace period or countdown,
+    // and the chosen action would never run (or a shutdown would become sleep).
     const finishPending = graceTimer !== null || countdown !== null;
-    const wanted = finishPending || (keepAwake && activeWork > 0 && !isPaused());
+    const wantedForWork = activeWork > 0 && !isPaused() && (keepAwake || finishAction !== 'none');
+    const wanted = finishPending || wantedForWork;
     if (wanted && blockerId === null) {
       blockerId = startBlocker();
     } else if (!wanted && blockerId !== null) {
@@ -169,6 +170,7 @@ function createPowerManager({
     // Arming outside a run would make the next, possibly tiny, run trigger it.
     if (activeWork === 0) return getState();
     finishAction = /** @type {FinishAction} */ (action);
+    updateBlocker();
     emit();
     return getState();
   }
