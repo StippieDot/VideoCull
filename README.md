@@ -137,7 +137,6 @@ Generate an HTML report from Settings or the app menu, scoped to all loaded vide
 | `F5` | Rescan |
 | `Ctrl + Z` | Undo |
 | `Ctrl + Backspace` | Send marked videos to Recycle Bin |
-| `Ctrl + Shift + R` | Clear cache for loaded folders and reload (confirmed; cached progress is lost) |
 | `Ctrl + E` | Reveal in Explorer |
 | `Ctrl + +` / `Ctrl + -` | Zoom cards |
 | `F11` | Toggle fullscreen |

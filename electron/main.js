@@ -563,16 +563,17 @@ function setApplicationMenu() {
           click: () => sendToRenderer('menu-action', 'rescan-directory')
         },
         {
-          label: 'Clear Cache & Reload',
-          accelerator: 'CmdOrCtrl+Shift+R',
-          click: () => sendToRenderer('menu-action', 'clear-cache')
-        },
-        {
           label: 'Export Report...',
           id: 'export-report',
           enabled: false,
           accelerator: 'CmdOrCtrl+Shift+E',
           click: () => sendToRenderer('menu-action', 'export-report')
+        },
+        { type: 'separator' },
+        {
+          // No shortcut: it discards every review decision, and Ctrl+Shift+R is "hard refresh" muscle memory.
+          label: 'Clear Cache & Reload...',
+          click: () => sendToRenderer('menu-action', 'clear-cache')
         },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' }
@@ -624,9 +625,9 @@ function setApplicationMenu() {
           click: () => sendToRenderer('menu-action', 'zoom-out')
         },
         { type: 'separator' },
-        { role: 'reload' },
         { role: 'togglefullscreen' },
-        ...(isDev ? [{ role: 'toggledevtools' }] : [])
+        // Reloading drops the open session and review position, so it is a development tool only.
+        ...(isDev ? [{ role: 'reload' }, { role: 'toggledevtools' }] : [])
       ]
     },
     {
