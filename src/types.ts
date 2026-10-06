@@ -75,6 +75,22 @@ export interface ProcessingPauseState {
   status: 'running' | 'pausing' | 'paused';
 }
 
+/** What the app menu can act on; items that cannot do anything are disabled. */
+export interface AppMenuState {
+  hasSession: boolean;
+  videoCount: number;
+  markedCount: number;
+  canUndo: boolean;
+  canExport: boolean;
+  canFindDuplicates: boolean;
+  duplicatesEnabled: boolean;
+  view: 'grid' | 'review' | 'duplicates';
+  /** The open review video, or the single selected video in the grid. */
+  hasActiveVideo: boolean;
+  isPrivate: boolean;
+  recentFolders: string[];
+}
+
 /** What VideoCull does once the current processing has finished. Applies to one run only. */
 export type FinishAction = 'none' | 'sleep' | 'shutdown';
 
@@ -622,7 +638,7 @@ export interface ElectronAPI {
   permanentlyDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
   exportReport: (videos: Video[], dirPaths: string[]) => Promise<'saved' | 'cancelled' | 'error'>;
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
-  setExportReportAvailable: (enabled: boolean) => void;
+  setMenuState: (state: AppMenuState) => void;
   openVideo: (filePath: string) => Promise<void>;
   openExternalUrl: (url: string) => Promise<boolean>;
   openLegalFile: (name: LegalFileName) => Promise<boolean>;

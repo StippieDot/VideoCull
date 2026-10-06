@@ -20,6 +20,7 @@ const {
 const { processingPause } = require('./processing-pause');
 const { createPowerManager } = require('./power-manager');
 const { runPowerCommand } = require('./system-power');
+const { buildMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('./app-menu');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
@@ -525,162 +526,35 @@ app.whenReady().then(async () => {
   app.exit(1);
 });
 
+let rendererMenuState = EMPTY_RENDERER_MENU_STATE;
+
+/** The app menu is rebuilt whenever its state changes; the state changes rarely. */
 function setApplicationMenu() {
-  const isMac = process.platform === 'darwin';
-
-  const template = [
-    ...(isMac ? [{
-      label: app.name,
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    }] : []),
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'Settings...',
-          accelerator: 'CmdOrCtrl+,',
-          click: () => sendToRenderer('menu-action', 'open-settings')
-        },
-        { type: 'separator' },
-        {
-          label: 'Open Directory...',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => sendToRenderer('menu-action', 'open-directory')
-        },
-        {
-          label: 'Rescan Directory',
-          accelerator: 'F5',
-          click: () => sendToRenderer('menu-action', 'rescan-directory')
-        },
-        {
-          label: 'Export Report...',
-          id: 'export-report',
-          enabled: false,
-          accelerator: 'CmdOrCtrl+Shift+E',
-          click: () => sendToRenderer('menu-action', 'export-report')
-        },
-        { type: 'separator' },
-        {
-          // No shortcut: it discards every review decision, and Ctrl+Shift+R is "hard refresh" muscle memory.
-          label: 'Clear Cache & Reload...',
-          click: () => sendToRenderer('menu-action', 'clear-cache')
-        },
-        { type: 'separator' },
-        isMac ? { role: 'close' } : { role: 'quit' }
-      ]
+  const power = powerManager.getState();
+  const template = buildMenuTemplate({
+    ...rendererMenuState,
+    isDev,
+    updatesEnabled,
+    processing: power.processing,
+    paused: processingPause.getState().status !== 'running',
+    finishAction: power.finishAction,
+  }, {
+    send: (action) => sendToRenderer('menu-action', action),
+    setFinishAction: (action) => {
+      if (action === 'none') powerManager.cancelFinishAction();
+      else powerManager.setFinishAction(action);
     },
-    {
-      label: 'Actions',
-      submenu: [
-        {
-          label: 'Undo Last Action',
-          accelerator: 'CmdOrCtrl+Z',
-          click: () => sendToRenderer('menu-action', 'undo')
-        },
-        {
-          label: 'Delete All Marked Videos',
-          accelerator: 'CmdOrCtrl+Backspace',
-          click: () => sendToRenderer('menu-action', 'delete-all')
-        },
-        { type: 'separator' },
-        {
-          label: 'When Processing Finishes',
-          id: 'finish-action',
-          enabled: false,
-          submenu: [
-            { label: 'Do Nothing', id: 'finish-action-none', type: 'radio', checked: true, click: () => powerManager.cancelFinishAction() },
-            { label: 'Sleep', id: 'finish-action-sleep', type: 'radio', click: () => powerManager.setFinishAction('sleep') },
-            { label: 'Shut Down', id: 'finish-action-shutdown', type: 'radio', click: () => powerManager.setFinishAction('shutdown') },
-          ]
-        }
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        {
-          label: 'Zoom In',
-          accelerator: 'CmdOrCtrl+Plus',
-          click: () => sendToRenderer('menu-action', 'zoom-in')
-        },
-        {
-          label: 'Zoom In (Alt)',
-          accelerator: 'CmdOrCtrl+=',
-          visible: false,
-          click: () => sendToRenderer('menu-action', 'zoom-in')
-        },
-        {
-          label: 'Zoom Out',
-          accelerator: 'CmdOrCtrl+-',
-          click: () => sendToRenderer('menu-action', 'zoom-out')
-        },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-        // Reloading drops the open session and review position, so it is a development tool only.
-        ...(isDev ? [{ role: 'reload' }, { role: 'toggledevtools' }] : [])
-      ]
-    },
-    {
-      label: 'Video',
-      submenu: [
-        {
-          label: 'Reveal in Explorer',
-          accelerator: 'CmdOrCtrl+E',
-          click: () => sendToRenderer('menu-action', 'reveal-video')
-        },
-        {
-          label: 'Play Externally',
-          accelerator: 'CmdOrCtrl+P',
-          click: () => sendToRenderer('menu-action', 'play-external')
-        }
-      ]
-    },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'Documentation',
-          accelerator: 'F1',
-          click: () => sendToRenderer('menu-action', 'open-documentation')
-        }
-      ]
-    }
-  ];
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
+    setPaused: (paused) => (paused ? processingPause.pause() : processingPause.resume()),
+    openReleaseNotes: () => void shell.openExternal(`${product.repository.url}/releases`),
+    reportProblem: () => void shell.openExternal(`${product.repository.url}/issues`),
+    openLogFolder: () => void shell.openPath(path.dirname(log.transports.file.getFile().path)),
+  });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-/** Mirrors the power state in Actions > When Processing Finishes; it is only usable during processing. */
-function updateFinishActionMenu(state) {
-  const menu = Menu.getApplicationMenu();
-  const submenu = menu?.getMenuItemById('finish-action');
-  if (submenu) submenu.enabled = state.processing;
-  // Set every item: setting `checked` from code does not clear the other radio items.
-  for (const action of ['none', 'sleep', 'shutdown']) {
-    const item = menu?.getMenuItemById(`finish-action-${action}`);
-    if (item) item.checked = state.finishAction === action;
-  }
-}
-
-function setExportReportEnabled(enabled) {
-  const menu = Menu.getApplicationMenu();
-  const item = menu?.getMenuItemById('export-report');
-  if (item) item.enabled = enabled;
-}
-
-ipcMain.on('set-export-report-available', (_event, enabled) => {
-  setExportReportEnabled(Boolean(enabled));
+ipcMain.on('set-menu-state', (_event, state) => {
+  rendererMenuState = normalizeRendererMenuState(state);
+  setApplicationMenu();
 });
 
 ipcMain.handle('set-video-fullscreen', (_event, fullscreen) => {
@@ -1116,7 +990,7 @@ const powerManager = createPowerManager({
     }
   },
   onStateChange: (state) => {
-    updateFinishActionMenu(state);
+    setApplicationMenu();
     sendToRenderer('power-state', state);
   },
 });
@@ -1132,6 +1006,7 @@ ipcMain.handle('cancel-finish-action', () => powerManager.cancelFinishAction());
 
 processingPause.subscribe((state) => {
   powerManager.pauseChanged();
+  setApplicationMenu();
   sendToRenderer('processing-pause-state', state);
 });
 

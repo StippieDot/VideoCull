@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import useStore from './store';
 import { Profiler } from 'react';
 import { formatKeybind, matchesKeybind } from './keybinds';
@@ -13,6 +13,7 @@ import ShortcutsHelp from './components/ShortcutsHelp';
 import DocumentationModal from './components/DocumentationModal';
 import StoreTransition from './components/StoreTransition';
 import FinishActionCountdown from './components/FinishActionCountdown';
+import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
@@ -133,6 +134,13 @@ export default function App() {
   const genProgressTotalRef = useRef(0);
   const genProgressPhaseRef = useRef<'thumbnails' | 'metadata' | 'media'>('thumbnails');
   const isPrivateRef = useRef(false);
+  // The menu listener is set up once; handlers defined further down reach it through this ref.
+  const menuHandlersRef = useRef({
+    closeSession: () => {},
+    findDuplicates: async () => {},
+    addFolderToSession: (_folderPath: string) => {},
+    openRecent: async (_folderPath: string) => {},
+  });
   const showShortcutsHelpRef = useRef(false);
   const showDocumentationRef = useRef(false);
   const dragDepthRef = useRef(0);
@@ -766,9 +774,43 @@ export default function App() {
       : () => {};
 
     const unsub4 = window.electronAPI.onMenuAction(async (action) => {
+      if (action === 'toggle-privacy') {
+        setIsPrivate((v) => !v);
+        return;
+      }
       if (isPrivateRef.current) return;
       const state = useStore.getState();
+      if (action.startsWith('open-recent:')) {
+        await menuHandlersRef.current.openRecent(action.slice('open-recent:'.length));
+        return;
+      }
+      const activeVideoPath = state.reviewMode
+        ? state.activeReviewVideoPath
+        : state.gridSelectionIds.size === 1
+          ? state.videos.find((video) => state.gridSelectionIds.has(video.id))?.path ?? null
+          : null;
       switch (action) {
+        case 'add-folder': {
+          const dir = await window.electronAPI.selectDirectory();
+          if (dir) menuHandlersRef.current.addFolderToSession(dir);
+          break;
+        }
+        case 'close-session': { menuHandlersRef.current.closeSession(); break; }
+        case 'find-duplicates': { void menuHandlersRef.current.findDuplicates(); break; }
+        case 'view-grid': { state.setReviewMode(false); state.setDuplicateGroupsMode(false); break; }
+        case 'view-review': {
+          state.setDuplicateGroupsMode(false);
+          if (!state.reviewMode) {
+            state.setReviewIndex(0);
+            state.setReviewMode(true);
+          }
+          break;
+        }
+        case 'view-duplicates': { state.setReviewMode(false); state.setDuplicateGroupsMode(true); break; }
+        case 'toggle-theme': { toggleTheme(); break; }
+        case 'show-shortcuts': { setShowShortcutsHelp(true); break; }
+        case 'open-about': { openSettings('about'); break; }
+        case 'check-updates': { openSettings('updates'); break; }
         case 'open-settings': { openSettings('interface'); break; }
         case 'open-documentation': { setShowDocumentation(true); break; }
         case 'open-directory': {
@@ -868,13 +910,11 @@ export default function App() {
         case 'zoom-in': { state.setCardScale(Math.min(state.cardScale + 0.1, 1.5)); break; }
         case 'zoom-out': { state.setCardScale(Math.max(state.cardScale - 0.1, 0.5)); break; }
         case 'reveal-video': {
-          if (state.reviewMode && state.activeReviewVideoPath)
-            window.electronAPI.openInExplorer(state.activeReviewVideoPath);
+          if (activeVideoPath) window.electronAPI.openInExplorer(activeVideoPath);
           break;
         }
         case 'play-external': {
-          if (state.reviewMode && state.activeReviewVideoPath)
-            window.electronAPI.openVideo(state.activeReviewVideoPath);
+          if (activeVideoPath) window.electronAPI.openVideo(activeVideoPath);
           break;
         }
         case 'export-report': {
@@ -941,9 +981,7 @@ export default function App() {
     };
   }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, requestPermanentDelete, toggleGlobalMute, toggleTheme, handleExportReport]);
 
-  useEffect(() => {
-    window.electronAPI?.setExportReportAvailable(Boolean(directory && videoCount > 0 && !isScanning));
-  }, [directory, videoCount, isScanning]);
+  useAppMenuState(isPrivate);
 
   useEffect(() => {
     if (!isGenerating && !isFindingDuplicates) {
@@ -1035,29 +1073,33 @@ export default function App() {
     setDropModalPath(null);
   }, [dropModalPath]);
 
-  const handleDropModalAddSession = useCallback(() => {
-    if (!dropModalPath) return;
+  const addFolderToSession = useCallback((folderPath: string) => {
     const beforeDirs = useStore.getState().directories;
-    useStore.getState().addDirectory(dropModalPath);
+    useStore.getState().addDirectory(folderPath);
     const afterDirs = useStore.getState().directories;
     const changed = !sameStrings(beforeDirs, afterDirs);
-    setDropModalPath(null);
     setTimeout(() => {
       pushToast(changed
         ? {
           title: 'Folder added',
-          detail: formatRecentPath(dropModalPath),
+          detail: formatRecentPath(folderPath),
           kind: 'success',
-          dedupeKey: `folder-added:${dropModalPath}`,
+          dedupeKey: `folder-added:${folderPath}`,
         }
         : {
           title: 'Folder already covered',
-          detail: formatRecentPath(dropModalPath),
+          detail: formatRecentPath(folderPath),
           kind: 'info',
-          dedupeKey: `folder-covered:${dropModalPath}`,
+          dedupeKey: `folder-covered:${folderPath}`,
         });
     }, 50);
-  }, [dropModalPath, pushToast]);
+  }, [pushToast]);
+
+  const handleDropModalAddSession = useCallback(() => {
+    if (!dropModalPath) return;
+    setDropModalPath(null);
+    addFolderToSession(dropModalPath);
+  }, [dropModalPath, addFolderToSession]);
 
   const handleDropModalKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
@@ -1106,6 +1148,30 @@ export default function App() {
       kind: 'info',
     });
   }, [pushToast, setGenProgress, setIsGenerating, setIsScanning, setScanProgress]);
+
+  const openRecentFolder = useCallback(async (folderPath: string) => {
+    if (!useStore.getState().settings.recentDirectories.includes(folderPath)) return;
+    const result = await window.electronAPI?.validateDroppedPath(folderPath);
+    if (!result?.valid || !result.isDirectory) {
+      pushToast({
+        title: 'Folder unavailable',
+        detail: formatRecentPath(folderPath),
+        kind: 'warning',
+        dedupeKey: `recent-unavailable:${folderPath}`,
+      });
+      return;
+    }
+    handleDirectoryPicked(folderPath);
+  }, [handleDirectoryPicked, pushToast]);
+
+  useLayoutEffect(() => {
+    menuHandlersRef.current = {
+      closeSession: handleCloseSession,
+      findDuplicates: handleFindDuplicates,
+      addFolderToSession,
+      openRecent: openRecentFolder,
+    };
+  });
 
   return (
     <div

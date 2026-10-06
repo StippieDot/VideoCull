@@ -1,0 +1,241 @@
+// @ts-check
+
+/**
+ * What the renderer reports about the session, so menu items are only enabled when they do
+ * something. Comes from the renderer, so it is normalised before use.
+ * @typedef {{
+ *   hasSession: boolean,
+ *   videoCount: number,
+ *   markedCount: number,
+ *   canUndo: boolean,
+ *   canExport: boolean,
+ *   canFindDuplicates: boolean,
+ *   duplicatesEnabled: boolean,
+ *   view: 'grid' | 'review' | 'duplicates',
+ *   hasActiveVideo: boolean,
+ *   isPrivate: boolean,
+ *   recentFolders: string[],
+ * }} RendererMenuState
+ */
+
+/**
+ * @typedef {RendererMenuState & {
+ *   isDev: boolean,
+ *   updatesEnabled: boolean,
+ *   processing: boolean,
+ *   paused: boolean,
+ *   finishAction: 'none' | 'sleep' | 'shutdown',
+ * }} MenuState
+ */
+
+/**
+ * @typedef {{
+ *   send: (action: string) => void,
+ *   setFinishAction: (action: 'none' | 'sleep' | 'shutdown') => void,
+ *   setPaused: (paused: boolean) => void,
+ *   openReleaseNotes: () => void,
+ *   reportProblem: () => void,
+ *   openLogFolder: () => void,
+ * }} MenuActions
+ */
+
+/** @type {RendererMenuState} */
+const EMPTY_RENDERER_MENU_STATE = {
+  hasSession: false,
+  videoCount: 0,
+  markedCount: 0,
+  canUndo: false,
+  canExport: false,
+  canFindDuplicates: false,
+  duplicatesEnabled: false,
+  view: 'grid',
+  hasActiveVideo: false,
+  isPrivate: false,
+  recentFolders: [],
+};
+
+const MAX_RECENT_FOLDERS = 8;
+const VIEWS = new Set(['grid', 'review', 'duplicates']);
+
+/**
+ * @param {unknown} input
+ * @returns {RendererMenuState}
+ */
+function normalizeRendererMenuState(input) {
+  const raw = input && typeof input === 'object' ? /** @type {Record<string, unknown>} */ (input) : {};
+  const count = (/** @type {unknown} */ value) => (Number.isFinite(value) && Number(value) > 0 ? Math.floor(Number(value)) : 0);
+  return {
+    hasSession: raw.hasSession === true,
+    videoCount: count(raw.videoCount),
+    markedCount: count(raw.markedCount),
+    canUndo: raw.canUndo === true,
+    canExport: raw.canExport === true,
+    canFindDuplicates: raw.canFindDuplicates === true,
+    duplicatesEnabled: raw.duplicatesEnabled === true,
+    view: typeof raw.view === 'string' && VIEWS.has(raw.view) ? /** @type {RendererMenuState['view']} */ (raw.view) : 'grid',
+    hasActiveVideo: raw.hasActiveVideo === true,
+    isPrivate: raw.isPrivate === true,
+    recentFolders: Array.isArray(raw.recentFolders)
+      ? raw.recentFolders.filter((folder) => typeof folder === 'string' && folder.length > 0).slice(0, MAX_RECENT_FOLDERS)
+      : [],
+  };
+}
+
+/**
+ * Electron menu template for the app menu. Items that cannot do anything in the current state are
+ * disabled instead of silently doing nothing. Shortcuts the renderer already handles itself, or
+ * that the user can rebind, are not registered here.
+ *
+ * @param {MenuState} state
+ * @param {MenuActions} actions
+ * @returns {Electron.MenuItemConstructorOptions[]}
+ */
+function buildMenuTemplate(state, actions) {
+  const { send } = actions;
+  const hasVideos = state.hasSession && state.videoCount > 0;
+
+  /** @type {Electron.MenuItemConstructorOptions[]} */
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Open Folder...', accelerator: 'CmdOrCtrl+O', click: () => send('open-directory') },
+        { label: 'Add Folder to Session...', enabled: state.hasSession, click: () => send('add-folder') },
+        {
+          label: 'Open Recent',
+          enabled: state.recentFolders.length > 0,
+          submenu: state.recentFolders.length > 0
+            ? state.recentFolders.map((folder) => ({ label: escapeMenuLabel(folder), click: () => send(`open-recent:${folder}`) }))
+            : [{ label: 'No recent folders', enabled: false }],
+        },
+        { type: 'separator' },
+        { label: 'Rescan', accelerator: 'F5', enabled: state.hasSession, click: () => send('rescan-directory') },
+        { label: 'Close Session', enabled: state.hasSession, click: () => send('close-session') },
+        { type: 'separator' },
+        { label: 'Export Report...', accelerator: 'CmdOrCtrl+Shift+E', enabled: state.canExport, click: () => send('export-report') },
+        { type: 'separator' },
+        { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: () => send('open-settings') },
+        { type: 'separator' },
+        {
+          // No shortcut: it discards every review decision, and Ctrl+Shift+R is "hard refresh" muscle memory.
+          label: 'Clear Cache & Reload...',
+          enabled: state.hasSession,
+          click: () => send('clear-cache'),
+        },
+        { type: 'separator' },
+        { role: 'quit', label: 'Exit' },
+      ],
+    },
+    {
+      label: 'Actions',
+      submenu: [
+        { label: 'Undo', accelerator: 'CmdOrCtrl+Z', enabled: state.canUndo, click: () => send('undo') },
+        { type: 'separator' },
+        { label: 'Find Duplicates', enabled: state.canFindDuplicates, click: () => send('find-duplicates') },
+        {
+          label: 'Pause Processing',
+          type: 'checkbox',
+          checked: state.paused,
+          enabled: state.processing,
+          click: (item) => actions.setPaused(item.checked),
+        },
+        {
+          label: 'When Processing Finishes',
+          enabled: state.processing,
+          submenu: /** @type {const} */ ([['none', 'Do Nothing'], ['sleep', 'Sleep'], ['shutdown', 'Shut Down']]).map(([action, label]) => ({
+            label,
+            type: /** @type {const} */ ('radio'),
+            checked: state.finishAction === action,
+            click: () => actions.setFinishAction(action),
+          })),
+        },
+        { type: 'separator' },
+        {
+          label: state.markedCount > 0 ? `Delete Marked Videos (${state.markedCount})...` : 'Delete Marked Videos...',
+          accelerator: 'CmdOrCtrl+Backspace',
+          enabled: state.markedCount > 0,
+          click: () => send('delete-all'),
+        },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { label: 'Grid', type: 'radio', checked: state.view === 'grid', enabled: state.hasSession, click: () => send('view-grid') },
+        { label: 'Review', type: 'radio', checked: state.view === 'review', enabled: hasVideos, click: () => send('view-review') },
+        {
+          label: 'Duplicates',
+          type: 'radio',
+          checked: state.view === 'duplicates',
+          enabled: state.hasSession && state.duplicatesEnabled,
+          click: () => send('view-duplicates'),
+        },
+        { type: 'separator' },
+        { label: 'Larger Cards', accelerator: 'CmdOrCtrl+Plus', enabled: state.hasSession, click: () => send('zoom-in') },
+        { label: 'Larger Cards', accelerator: 'CmdOrCtrl+=', visible: false, click: () => send('zoom-in') },
+        { label: 'Smaller Cards', accelerator: 'CmdOrCtrl+-', enabled: state.hasSession, click: () => send('zoom-out') },
+        { type: 'separator' },
+        {
+          label: 'Privacy Screen',
+          type: 'checkbox',
+          checked: state.isPrivate,
+          // Shift+Esc is handled by the renderer, which also works while the privacy screen is up.
+          accelerator: 'Shift+Escape',
+          registerAccelerator: false,
+          click: () => send('toggle-privacy'),
+        },
+        { label: 'Toggle Dark / Light Theme', click: () => send('toggle-theme') },
+        { role: 'togglefullscreen', label: 'Full Screen' },
+        // Reloading drops the open session and review position, so it is a development tool only.
+        ...(state.isDev ? /** @type {Electron.MenuItemConstructorOptions[]} */ ([
+          { type: 'separator' },
+          { role: 'reload' },
+          { role: 'toggleDevTools' },
+        ]) : []),
+      ],
+    },
+    {
+      label: 'Video',
+      submenu: [
+        { label: 'Reveal in Explorer', accelerator: 'CmdOrCtrl+E', enabled: state.hasActiveVideo, click: () => send('reveal-video') },
+        { label: 'Play Externally', accelerator: 'CmdOrCtrl+P', enabled: state.hasActiveVideo, click: () => send('play-external') },
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        { label: 'Documentation', accelerator: 'F1', click: () => send('open-documentation') },
+        { label: 'Keyboard Shortcuts', click: () => send('show-shortcuts') },
+        { type: 'separator' },
+        { label: 'Release Notes', click: actions.openReleaseNotes },
+        { label: 'Report a Problem...', click: actions.reportProblem },
+        { label: 'Open Log Folder', click: actions.openLogFolder },
+        { type: 'separator' },
+        ...(state.updatesEnabled ? [{ label: 'Check for Updates...', click: () => send('check-updates') }] : []),
+        { label: 'About VideoCull', click: () => send('open-about') },
+      ],
+    },
+  ];
+
+  return state.isPrivate ? template.map(disableForPrivacy) : template;
+}
+
+/** Only the privacy screen itself, full screen and Exit stay usable behind the privacy screen. */
+function disableForPrivacy(/** @type {Electron.MenuItemConstructorOptions} */ item) {
+  /** @type {Electron.MenuItemConstructorOptions} */
+  const copy = { ...item };
+  if (Array.isArray(item.submenu)) {
+    copy.submenu = item.submenu.map(disableForPrivacy);
+    return copy;
+  }
+  const stays = item.type === 'separator' || item.label === 'Privacy Screen' || item.role === 'quit' || item.role === 'togglefullscreen';
+  if (!stays) copy.enabled = false;
+  return copy;
+}
+
+/** "&" marks an access key in Windows menu labels, so folder names show it doubled. */
+function escapeMenuLabel(/** @type {string} */ label) {
+  return label.replace(/&/g, '&&');
+}
+
+module.exports = { buildMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE };

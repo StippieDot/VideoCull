@@ -80,7 +80,7 @@ describe('preload electronAPI bridge', () => {
     await exposedApi.getCacheLocationInfo();
     await exposedApi.openCacheFolder('C:\\Cache');
     await exposedApi.copyCachePath('C:\\Cache');
-    exposedApi.setExportReportAvailable(true);
+    exposedApi.setMenuState({ hasSession: true });
     exposedApi.getPathForFile({ path: 'D:\\Media\\clip.mp4' });
 
     expect(invoke).toHaveBeenNthCalledWith(1, 'select-directory');
@@ -92,7 +92,7 @@ describe('preload electronAPI bridge', () => {
     expect(invoke).toHaveBeenNthCalledWith(7, 'get-cache-location-info');
     expect(invoke).toHaveBeenNthCalledWith(8, 'open-cache-folder', 'C:\\Cache');
     expect(invoke).toHaveBeenNthCalledWith(9, 'copy-cache-path', 'C:\\Cache');
-    expect(send).toHaveBeenCalledWith('set-export-report-available', true);
+    expect(send).toHaveBeenCalledWith('set-menu-state', { hasSession: true });
     expect(getPathForFile).toHaveBeenCalledWith({ path: 'D:\\Media\\clip.mp4' });
   });
 
