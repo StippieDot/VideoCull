@@ -8,7 +8,9 @@ const actions = {
   openReleaseNotes: () => {},
   reportProblem: () => {},
   openLogFolder: () => {},
-  openSupportPage: () => {},
+  openHelpWebsite: () => {},
+  openSponsors: () => {},
+  openPayPal: () => {},
 };
 
 function menu(overrides = {}) {

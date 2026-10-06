@@ -42,7 +42,9 @@
  *   openReleaseNotes: () => void,
  *   reportProblem: () => void,
  *   openLogFolder: () => void,
- *   openSupportPage: () => void,
+ *   openHelpWebsite: () => void,
+ *   openSponsors: () => void,
+ *   openPayPal: () => void,
  * }} MenuActions
  */
 
@@ -267,6 +269,7 @@ function buildMenuTemplate(state, actions) {
       label: 'Help',
       submenu: [
         { label: 'Documentation', accelerator: 'F1', click: () => send('open-documentation') },
+        { label: 'Online Help', click: actions.openHelpWebsite },
         { label: 'Keyboard Shortcuts', click: () => send('show-shortcuts') },
         { type: 'separator' },
         { label: 'Release Notes', click: actions.openReleaseNotes },
@@ -274,7 +277,13 @@ function buildMenuTemplate(state, actions) {
         { label: 'Open Log Folder', click: actions.openLogFolder },
         { type: 'separator' },
         ...(state.updatesEnabled ? [{ label: 'Check for Updates...', click: () => send('check-updates') }] : []),
-        { label: 'Support VideoCull', click: actions.openSupportPage },
+        {
+          label: 'Support VideoCull',
+          submenu: [
+            { label: 'GitHub Sponsors', click: actions.openSponsors },
+            { label: 'PayPal', click: actions.openPayPal },
+          ],
+        },
         { label: 'About VideoCull', click: () => send('open-about') },
       ],
     },

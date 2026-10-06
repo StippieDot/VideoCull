@@ -544,7 +544,9 @@ function setApplicationMenu() {
     openReleaseNotes: () => void shell.openExternal(`${product.repository.url}/releases`),
     reportProblem: () => void shell.openExternal(`${product.repository.url}/issues`),
     openLogFolder: () => void shell.openPath(path.dirname(log.transports.file.getFile().path)),
-    openSupportPage: () => void shell.openExternal('https://videocull.app/support/'),
+    openHelpWebsite: () => void shell.openExternal(`${product.website}/support/`),
+    openSponsors: () => void shell.openExternal(`https://github.com/sponsors/${product.publisher}`),
+    openPayPal: () => void shell.openExternal('https://paypal.me/stippiedot'),
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
