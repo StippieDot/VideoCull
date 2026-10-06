@@ -140,6 +140,15 @@ test('the finish action runs once after processing stays idle, then resets', () 
 });
 
 test('the finish action can only be chosen while processing runs', () => {
+  const states = [];
+  const rejecting = createPowerManager({
+    startBlocker: () => 1, stopBlocker: () => {}, isPaused: () => false,
+    onStateChange: (state) => states.push(state.finishAction),
+  });
+  rejecting.setFinishAction('sleep');
+  // The menu already shows Sleep checked; the emitted state puts it back on Do Nothing.
+  assert.deepEqual(states, ['none']);
+
   const { manager } = setupWithFinish();
   assert.equal(manager.setFinishAction('shutdown').finishAction, 'none');
   const end = manager.beginWork();

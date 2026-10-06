@@ -167,8 +167,12 @@ function createPowerManager({
   function setFinishAction(action) {
     if (typeof action !== 'string' || !FINISH_ACTIONS.has(action)) return getState();
     if (action === 'none') return cancelFinishAction();
-    // Arming outside a run would make the next, possibly tiny, run trigger it.
-    if (activeWork === 0) return getState();
+    // Arming outside a run would make the next, possibly tiny, run trigger it. Emitting resyncs the
+    // menu, whose radio item already moved to the rejected choice.
+    if (activeWork === 0) {
+      emit();
+      return getState();
+    }
     finishAction = /** @type {FinishAction} */ (action);
     updateBlocker();
     emit();

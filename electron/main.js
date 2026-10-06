@@ -665,8 +665,11 @@ function updateFinishActionMenu(state) {
   const menu = Menu.getApplicationMenu();
   const submenu = menu?.getMenuItemById('finish-action');
   if (submenu) submenu.enabled = state.processing;
-  const checked = menu?.getMenuItemById(`finish-action-${state.finishAction}`);
-  if (checked) checked.checked = true;
+  // Set every item: setting `checked` from code does not clear the other radio items.
+  for (const action of ['none', 'sleep', 'shutdown']) {
+    const item = menu?.getMenuItemById(`finish-action-${action}`);
+    if (item) item.checked = state.finishAction === action;
+  }
 }
 
 function setExportReportEnabled(enabled) {
