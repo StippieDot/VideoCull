@@ -181,26 +181,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivat
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => void openFolderMenu()}
           >
-            {status ? (
-              <span className="title-bar-status" role="status">
-                <span className="title-bar-status-label">{status.label}</span>
-                {status.detail && <span>{status.detail}</span>}
-                {paused && <span className="title-bar-status-paused">Paused</span>}
-              </span>
-            ) : sessionTitle}
-          </button>
-        )}
-        {status && !isPrivate && (
-          <button
-            type="button"
-            className={`title-bar-icon-button${paused ? ' paused' : ''}`}
-            title={pauseStatus === 'running' ? 'Pause processing' : pauseStatus === 'pausing' ? 'Pausing...' : 'Resume processing'}
-            aria-label={pauseStatus === 'running' ? 'Pause processing' : 'Resume processing'}
-            disabled={pauseStatus === 'pausing'}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => void window.electronAPI?.setProcessingPaused(pauseStatus === 'running')}
-          >
-            {pauseStatus === 'running' ? <Pause size={14} /> : <Play size={14} />}
+            {sessionTitle}
           </button>
         )}
       </div>
@@ -213,6 +194,26 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivat
         </div>
       )}
       <div className="title-bar-actions">
+        {status && !isPrivate && (
+          <div className="title-bar-status-pill">
+            <span className="title-bar-status" role="status">
+              <span className="title-bar-status-label">{status.label}</span>
+              {status.detail && <span>{status.detail}</span>}
+              {paused && <span className="title-bar-status-paused">Paused</span>}
+            </span>
+            <button
+              type="button"
+              className={`title-bar-icon-button${paused ? ' paused' : ''}`}
+              title={pauseStatus === 'running' ? 'Pause processing' : pauseStatus === 'pausing' ? 'Pausing...' : 'Resume processing'}
+              aria-label={pauseStatus === 'running' ? 'Pause processing' : 'Resume processing'}
+              disabled={pauseStatus === 'pausing'}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void window.electronAPI?.setProcessingPaused(pauseStatus === 'running')}
+            >
+              {pauseStatus === 'running' ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+          </div>
+        )}
         {!isPrivate && (
           <button
             type="button"

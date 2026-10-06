@@ -38,6 +38,8 @@ describe('TitleBar', () => {
     expect(screen.getByRole('status').textContent).toBe(`Thumbnails250 / ${(1000).toLocaleString()}`);
     await screen.findByText('Paused');
     expect(container.querySelector<HTMLElement>('.title-bar-progress-fill')?.style.width).toBe('25%');
+    // The folder stays in the centre while processing.
+    expect(screen.getByRole('button', { name: /Videos/ })).toBeTruthy();
   });
 
   test('offers resume while processing is paused', async () => {
