@@ -75,6 +75,16 @@ export interface ProcessingPauseState {
   status: 'running' | 'pausing' | 'paused';
 }
 
+/** What VideoCull does once the current processing has finished. Applies to one run only. */
+export type FinishAction = 'none' | 'sleep' | 'shutdown';
+
+export interface PowerState {
+  processing: boolean;
+  finishAction: FinishAction;
+  /** Set while the finish action counts down; endsAt is a Date.now() timestamp. */
+  countdown: { action: Exclude<FinishAction, 'none'>; endsAt: number } | null;
+}
+
 export interface ThumbReadyEvent {
   videoId: string;
   thumbnails?: string[];
@@ -258,6 +268,7 @@ export interface AppSettings {
   cpuThreadsLimited: boolean;
   skipIntroDelaySecs: number;
   hardwareAccel: boolean;
+  keepAwakeWhileProcessing: boolean;
   recentDirectories: string[];
   recentDirectoryTimestamps: Record<string, number>;
   autoUpdates: boolean;
@@ -593,6 +604,9 @@ export interface ElectronAPI {
   cancelGeneration: () => Promise<boolean>;
   getProcessingPauseState: () => Promise<ProcessingPauseState>;
   setProcessingPaused: (paused: boolean) => Promise<ProcessingPauseState>;
+  getPowerState: () => Promise<PowerState>;
+  cancelFinishAction: () => Promise<PowerState>;
+  onPowerState: (callback: (state: PowerState) => void) => () => void;
   onProcessingPauseState: (callback: (data: ProcessingPauseState) => void) => () => void;
   onThumbProgress: (callback: (data: ThumbProgress) => void) => () => void;
   onThumbReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;

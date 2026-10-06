@@ -38,7 +38,7 @@ Demo footage shown in these screenshots includes [Blender Open Movies](https://s
   </picture>
 </a>
 
-The Microsoft Store edition is installed and updated by Microsoft Store.
+VideoCull requires 64-bit Windows 10 version 22H2 (build 19045) or Windows 11. The Microsoft Store edition is installed and updated by Microsoft Store.
 
 For a direct installation, download `VideoCull.Setup.<version>.exe` from [GitHub Releases](https://github.com/StippieDot/VideoCull/releases). It installs for the current user without administrator rights and lets you choose the install location and shortcuts. Because the direct installer is not code-signed yet, Windows may show a SmartScreen prompt on first launch; click **More info**, then **Run anyway** if you downloaded it from the official repository.
 
@@ -106,6 +106,7 @@ Frames are compared at matching points in each file, so trimmed versions and cli
 - **Parallel processing**: RAM and CPU-aware auto-detect, or set manually up to 32 processes
 - **Cached**: already-processed videos are skipped on rescan when their thumbnail set is complete
 - **Hardware acceleration**: optional GPU decoding (beta)
+- **Unattended runs**: the PC stays awake while VideoCull processes, and **Actions › When Processing Finishes** can put it to sleep or shut it down once a long run is done
 - **Rebuild warning**: changing thumbnails per video warns when existing thumbnail sets may need to be rebuilt
 
 ### Cache
@@ -178,6 +179,7 @@ Review shortcuts are customizable in Settings.
 | Limit each FFmpeg process to 1 CPU thread | On / Off | On |
 | Intro skip delay | 0 - 60 seconds | 3s |
 | Hardware acceleration | On / Off | Off |
+| Keep the PC awake while processing | On / Off | On |
 | Auto-clean stale cache after scan | On / Off | Off |
 | Remove empty folders after deleting videos | On / Off | Off |
 | Auto updates | On / Off | On |
@@ -208,7 +210,7 @@ Found a bug or something that is not obvious in the workflow? [Open an issue](ht
 
 ## Building from Source
 
-Requires Node.js 24 LTS and npm 11.19.0 or newer. FFmpeg and FFprobe are bundled with the app dependencies.
+Requires Node.js 24 LTS and npm 11.19.0 or newer. `npm ci` also downloads the pinned FFmpeg and FFprobe build into `vendor/ffmpeg` and checks its SHA-256.
 
 If `npm --version` is below 11.19.0, run `npm install --global npm@11.19.0` before `npm ci`.
 
@@ -251,3 +253,5 @@ Development sessions use `%APPDATA%\VideoCull-dev`, so local settings and cache 
 ## License
 
 [GNU Affero General Public License v3.0](LICENSE)
+
+VideoCull bundles FFmpeg and FFprobe, licensed under the GNU GPL version 3 or later. They are built from source in [VideoCull-FFmpeg](https://github.com/StippieDot/VideoCull-FFmpeg), whose releases include the complete corresponding source. **Settings › About › Third-party notices** lists every bundled component and its license.

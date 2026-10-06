@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, nativeTheme, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, nativeTheme, clipboard, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
@@ -18,6 +18,8 @@ const {
   DuplicateCancelledError,
 } = require('./duplicates');
 const { processingPause } = require('./processing-pause');
+const { createPowerManager } = require('./power-manager');
+const { runPowerCommand } = require('./system-power');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
@@ -512,6 +514,7 @@ app.whenReady().then(async () => {
   });
 
   const initialConfig = await readJsonFile(CONFIG_FILE, {});
+  powerManager.setKeepAwake(initialConfig.keepAwakeWhileProcessing !== false);
   createWindow(initialConfig.theme);
   setApplicationMenu();
   checkDistributedIndexAvailability().catch((err) => log.warn('[cache] Failed to check distributed cache locations:', err));
@@ -587,6 +590,17 @@ function setApplicationMenu() {
           label: 'Delete All Marked Videos',
           accelerator: 'CmdOrCtrl+Backspace',
           click: () => sendToRenderer('menu-action', 'delete-all')
+        },
+        { type: 'separator' },
+        {
+          label: 'When Processing Finishes',
+          id: 'finish-action',
+          enabled: false,
+          submenu: [
+            { label: 'Do Nothing', id: 'finish-action-none', type: 'radio', checked: true, click: () => powerManager.cancelFinishAction() },
+            { label: 'Sleep', id: 'finish-action-sleep', type: 'radio', click: () => powerManager.setFinishAction('sleep') },
+            { label: 'Shut Down', id: 'finish-action-shutdown', type: 'radio', click: () => powerManager.setFinishAction('shutdown') },
+          ]
         }
       ]
     },
@@ -646,6 +660,18 @@ function setApplicationMenu() {
   Menu.setApplicationMenu(menu);
 }
 
+/** Mirrors the power state in Actions > When Processing Finishes; it is only usable during processing. */
+function updateFinishActionMenu(state) {
+  const menu = Menu.getApplicationMenu();
+  const submenu = menu?.getMenuItemById('finish-action');
+  if (submenu) submenu.enabled = state.processing;
+  // Set every item: setting `checked` from code does not clear the other radio items.
+  for (const action of ['none', 'sleep', 'shutdown']) {
+    const item = menu?.getMenuItemById(`finish-action-${action}`);
+    if (item) item.checked = state.finishAction === action;
+  }
+}
+
 function setExportReportEnabled(enabled) {
   const menu = Menu.getApplicationMenu();
   const item = menu?.getMenuItemById('export-report');
@@ -696,6 +722,7 @@ app.on('before-quit', (event) => {
     scheduled: updateInstallOnQuitScheduled,
     ready: updateReadyToInstall,
     installInProgress: updateInstallInProgress,
+    shuttingDownPc: shutdownAfterQuit,
   })
     ? (pendingUpdateInstallOptions ?? { isSilent: true, isForceRunAfter: false })
     : null;
@@ -1073,7 +1100,37 @@ function logSlowCacheFolderDiagnostics(diagnostics) {
   });
 }
 
+const powerManager = createPowerManager({
+  startBlocker: () => powerSaveBlocker.start('prevent-app-suspension'),
+  stopBlocker: (id) => powerSaveBlocker.stop(id),
+  isPaused: () => processingPause.getState().status === 'paused',
+  performFinishAction: (action) => {
+    log.info(`[power] Processing finished; running the chosen action: ${action}`);
+    if (action === 'shutdown') {
+      // Close VideoCull cleanly first (cache writes drained and closed); will-quit starts the shutdown.
+      shutdownAfterQuit = true;
+      app.quit();
+    } else {
+      runPowerCommand(action, (err) => log.error('[power] Could not put the PC to sleep:', err));
+    }
+  },
+  onStateChange: (state) => {
+    updateFinishActionMenu(state);
+    sendToRenderer('power-state', state);
+  },
+});
+let shutdownAfterQuit = false;
+
+app.on('will-quit', () => {
+  if (!shutdownAfterQuit) return;
+  runPowerCommand('shutdown', (err) => log.error('[power] Could not shut down the PC:', err));
+});
+
+ipcMain.handle('get-power-state', () => powerManager.getState());
+ipcMain.handle('cancel-finish-action', () => powerManager.cancelFinishAction());
+
 processingPause.subscribe((state) => {
+  powerManager.pauseChanged();
   sendToRenderer('processing-pause-state', state);
 });
 
@@ -1747,7 +1804,7 @@ ipcMain.handle('reset-loaded-directories', async () => {
 });
 
 // 2. Scan directory for video files
-ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
+ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerManager.trackWork(async () => {
   const scanToken = ++scanGeneration;
   const scanCacheRoots = new Set();
   log.info(`[scan-directory] called for: ${dirPath}`);
@@ -1944,10 +2001,10 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeSubfolders) => {
     });
     throw err;
   }
-});
+}));
 
 // 3. Probe metadata for videos that are missing or stale.
-ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => trackCacheProducer(async () => {
+ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => trackCacheProducer(() => powerManager.trackWork(async () => {
   if (isQuitting) return false;
   if (!Array.isArray(videos)) {
     log.warn('[process-metadata] videos must be an array, rejecting');
@@ -2174,10 +2231,10 @@ ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => tr
   });
 
   return true;
-}));
+})));
 
 // 4. Generate thumbnails for videos that don't have them
-ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) => trackCacheProducer(async () => {
+ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) => trackCacheProducer(() => powerManager.trackWork(async () => {
   if (isQuitting) return false;
   if (!Array.isArray(videos)) {
     log.warn('[generate-thumbnails] videos must be an array, rejecting');
@@ -2395,9 +2452,9 @@ ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) =>
     });
   }
   return !thumbnailPersistenceFailed;
-}));
+})));
 
-ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
+ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager.trackWork(async () => {
   if (activeDuplicateRun) {
     activeDuplicateRun.cancel();
     activeDuplicateRun = null;
@@ -2469,7 +2526,7 @@ ipcMain.handle('find-duplicates', async (_event, videos, options = {}) => {
     });
     return { status: 'error', error: err.message || String(err) };
   }
-});
+}));
 
 ipcMain.handle('cancel-duplicate-detection', async () => {
   if (!activeDuplicateRun) return false;
@@ -2557,21 +2614,26 @@ ipcMain.handle('save-review-state', (_event, dirPath, updates) => {
   });
 });
 
-ipcMain.handle('save-cache-atomic', async (_event, dirPath, videos) => {
-  if (!dirPath || typeof dirPath !== 'string') return false;
-  try {
-    const safeVideos = await validateCacheSavePayload(dirPath, videos);
-    if (safeVideos.length === 0) return false;
-    const cacheOptions = await getCacheOptions();
-    if (safeVideos.length > ATOMIC_SAVE_SYNC_LIMIT) {
-      log.warn(`[save-cache-atomic] ${safeVideos.length} videos exceeds sync transaction limit; using chunked save to keep UI responsive.`);
+// Part of the scan pipeline (between scanning and metadata), so it counts as processing: a chosen
+// sleep or shutdown must wait for it, and quitting drains it before the cache closes.
+ipcMain.handle('save-cache-atomic', (_event, dirPath, videos) => {
+  if (isQuitting) return false;
+  return trackCacheProducer(() => powerManager.trackWork(async () => {
+    if (!dirPath || typeof dirPath !== 'string') return false;
+    try {
+      const safeVideos = await validateCacheSavePayload(dirPath, videos);
+      if (safeVideos.length === 0) return false;
+      const cacheOptions = await getCacheOptions();
+      if (safeVideos.length > ATOMIC_SAVE_SYNC_LIMIT) {
+        log.warn(`[save-cache-atomic] ${safeVideos.length} videos exceeds sync transaction limit; using chunked save to keep UI responsive.`);
+      }
+      await saveVideosByParentFolder(safeVideos, cacheOptions, { atomic: true });
+      return true;
+    } catch (err) {
+      log.error('[save-cache-atomic] Error saving cache:', err);
+      return false;
     }
-    await saveVideosByParentFolder(safeVideos, cacheOptions, { atomic: true });
-    return true;
-  } catch (err) {
-    log.error('[save-cache-atomic] Error saving cache:', err);
-    return false;
-  }
+  }));
 });
 
 ipcMain.handle('clear-cache', async (event, dirPath) => {
@@ -2983,6 +3045,7 @@ ipcMain.handle('save-config', async (_event, config) => {
     const configPath = path.join(app.getPath('userData'), CONFIG_FILE);
     await fs.writeFile(configPath, JSON.stringify(normalizedConfig, null, 2), 'utf8');
     applyNativeTheme(theme);
+    powerManager.setKeepAwake(normalizedConfig.keepAwakeWhileProcessing !== false);
     return true;
   } catch (e) {
     log.error('[save-config] Error saving config:', e);

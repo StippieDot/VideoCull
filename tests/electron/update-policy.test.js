@@ -25,5 +25,6 @@ describe('update installation policy', () => {
     expect(shouldInstallUpdateOnQuit({ scheduled: true, ready: false, installInProgress: false })).toBe(false);
     expect(shouldInstallUpdateOnQuit({ scheduled: true, ready: true, installInProgress: true })).toBe(false);
     expect(shouldInstallUpdateOnQuit({ scheduled: true, ready: true, installInProgress: false })).toBe(true);
+    expect(shouldInstallUpdateOnQuit({ scheduled: true, ready: true, installInProgress: false, shuttingDownPc: true })).toBe(false);
   });
 });

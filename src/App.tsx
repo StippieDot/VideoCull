@@ -12,6 +12,7 @@ import DuplicateGroupsView from './components/DuplicateGroupsView';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import DocumentationModal from './components/DocumentationModal';
 import StoreTransition from './components/StoreTransition';
+import FinishActionCountdown from './components/FinishActionCountdown';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
@@ -1282,6 +1283,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <FinishActionCountdown />
 
       {/* Update-ready banner */}
       {updateInfo.status === 'ready' && !updateBannerDismissed && !isPrivate && (

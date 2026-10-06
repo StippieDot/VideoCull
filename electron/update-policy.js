@@ -3,8 +3,11 @@ function configureUpdatePolicy(autoUpdater) {
   autoUpdater.autoInstallOnAppQuit = false;
 }
 
-function shouldInstallUpdateOnQuit({ scheduled, ready, installInProgress }) {
-  return Boolean(scheduled && ready && !installInProgress);
+// A PC shutdown right after VideoCull quits would interrupt the installer, so a scheduled update
+// is skipped. The choice is not saved: the update stays downloaded and the next start offers it
+// again in the update banner.
+function shouldInstallUpdateOnQuit({ scheduled, ready, installInProgress, shuttingDownPc = false }) {
+  return Boolean(scheduled && ready && !installInProgress && !shuttingDownPc);
 }
 
 module.exports = {

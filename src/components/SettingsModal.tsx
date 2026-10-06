@@ -1008,6 +1008,14 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                   </label>
                   <span className="help-text">Attempts to route decoding through the GPU instead of CPU. May crash on legacy formats.</span>
                 </div>
+
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input type="checkbox" checked={localSettings.keepAwakeWhileProcessing} onChange={(e) => handleChange('keepAwakeWhileProcessing', e.target.checked)} />
+                    Keep the PC awake while processing
+                  </label>
+                  <span className="help-text">Stops Windows from going to sleep on its own while videos are scanned, read or fingerprinted, so long runs can finish unattended. Sleeping manually still works, and the screen can still turn off.</span>
+                </div>
               </div>
             )}
 

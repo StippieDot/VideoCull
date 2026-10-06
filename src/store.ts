@@ -899,6 +899,7 @@ const useStore = create<VideoStore>((set, get) => ({
     cpuThreadsLimited: true,
     skipIntroDelaySecs: 3,
     hardwareAccel: false,
+    keepAwakeWhileProcessing: true,
     recentDirectories: [],
     recentDirectoryTimestamps: {},
     autoUpdates: true,
@@ -918,6 +919,9 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── Actions ──
   setDirectory: (dir: string | null) => {
     resetAllRetryQueues();
+    // Replacing or closing the session ends the run a chosen sleep or shutdown belonged to; it must
+    // not carry over to the processing of the next folder.
+    void window.electronAPI?.cancelFinishAction?.();
     if (dir !== null) {
       const { settings } = get();
       const existing = settings.recentDirectories.filter((d) => d !== dir);

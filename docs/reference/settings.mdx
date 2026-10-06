@@ -138,6 +138,7 @@ Processing settings affect future scans, thumbnail runs, and metadata work. They
 | Parallel FFmpeg processes | Caps how many FFmpeg jobs run at once, or uses auto mode. | Leave it on `Auto` unless the machine becomes unresponsive. |
 | Limit each FFmpeg process to 1 CPU thread | Uses more small FFmpeg processes instead of fewer multi-threaded ones. | Leave it on. The app marks it as recommended for a reason. |
 | Enable hardware acceleration (beta) | Tries to route decoding through the GPU. | Leave it off unless CPU decode is the bottleneck and your footage behaves well with it. |
+| Keep the PC awake while processing | Stops Windows from going to sleep on its own while folders are scanned, video info and thumbnails are generated, or duplicates are fingerprinted. Choosing Sleep yourself still works, the screen can still turn off, and paused processing does not keep the PC awake. | Leave it on, especially for long runs on large folders. |
 
 ## Keybindings
 
