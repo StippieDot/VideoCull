@@ -30,7 +30,17 @@ function item(template, menuLabel, itemLabel) {
 test('the released app has no interface reload and no clear-cache shortcut', () => {
   assert.equal(item(menu(), 'View', 'reload'), undefined);
   assert.notEqual(item(menu({ isDev: true }), 'View', 'reload'), undefined);
-  assert.equal(item(menu({ hasSession: true }), 'File', 'Clear Cache & Reload...').accelerator, undefined);
+  assert.equal(item(menu({ hasSession: true }), 'File', 'Clear Cache and Reload...').accelerator, undefined);
+});
+
+test('no label contains a lone &, which Windows would turn into an underlined access key', () => {
+  const labels = [];
+  const collect = (items) => items.forEach((entry) => {
+    if (entry.label) labels.push(entry.label);
+    if (Array.isArray(entry.submenu)) collect(entry.submenu);
+  });
+  collect(menu({ hasSession: true, videoCount: 1, markedCount: 1, isDev: true }));
+  assert.deepEqual(labels.filter((label) => /(^|[^&])&([^&]|$)/.test(label)), []);
 });
 
 test('items that cannot do anything are disabled', () => {

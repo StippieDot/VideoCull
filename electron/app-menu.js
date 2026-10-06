@@ -118,7 +118,7 @@ function buildMenuTemplate(state, actions) {
         { type: 'separator' },
         {
           // No shortcut: it discards every review decision, and Ctrl+Shift+R is "hard refresh" muscle memory.
-          label: 'Clear Cache & Reload...',
+          label: 'Clear Cache and Reload...',
           enabled: state.hasSession,
           click: () => send('clear-cache'),
         },
