@@ -39,6 +39,7 @@ const {
   getThemeBackgroundColor,
   getTitleBarOverlay,
   normalizeColorTheme,
+  supportsMica,
 } = require('./theme-utils');
 const {
   configureUpdatePolicy,
@@ -295,12 +296,15 @@ function folderDisplayName(folderPath) {
 }
 
 // â”€â”€ Window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// The title bar shows the Windows 11 Mica material; the rest of the window stays opaque.
+const useMica = process.platform === 'win32' && supportsMica(require('os').release());
+
 function applyNativeTheme(value) {
   const theme = normalizeColorTheme(value);
   nativeTheme.themeSource = theme;
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setBackgroundColor(getThemeBackgroundColor(theme));
-    mainWindow.setTitleBarOverlay(getTitleBarOverlay(theme));
+    if (!useMica) mainWindow.setBackgroundColor(getThemeBackgroundColor(theme));
+    mainWindow.setTitleBarOverlay(getTitleBarOverlay(theme, useMica));
   }
   return theme;
 }
@@ -316,18 +320,20 @@ function createWindow(initialTheme = 'dark') {
     minWidth: 900,
     minHeight: 600,
     icon: appIconPath,
-    backgroundColor: getThemeBackgroundColor(theme),
+    // Mica only shows through a transparent window background; the page paints everything else.
+    backgroundColor: useMica ? '#00000000' : getThemeBackgroundColor(theme),
+    ...(useMica ? { backgroundMaterial: 'mica' } : {}),
     // The renderer draws the title bar with the menu (TitleBar.tsx); Windows still draws the
     // window buttons. The application menu stays set for its keyboard shortcuts.
     titleBarStyle: 'hidden',
-    titleBarOverlay: getTitleBarOverlay(theme),
+    titleBarOverlay: getTitleBarOverlay(theme, useMica),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false,
-      additionalArguments: [`${THEME_ARGUMENT_PREFIX}${theme}`],
+      additionalArguments: [`${THEME_ARGUMENT_PREFIX}${theme}`, ...(useMica ? ['--video-cull-mica'] : [])],
     },
   });
 

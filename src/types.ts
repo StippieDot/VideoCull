@@ -626,6 +626,8 @@ export type LegalFileName = 'license' | 'notices';
 // ── Electron API (exposed via preload) ─────────────────────────────
 export interface ElectronAPI {
   initialTheme: ColorTheme;
+  /** The window shows the Windows 11 Mica material behind the title bar. */
+  usesMica: boolean;
   selectDirectory: () => Promise<string | null>;
   getPathForFile: (file: File) => string;
   validateDroppedPath: (droppedPath: string) => Promise<{ valid: boolean; isDirectory: boolean }>;

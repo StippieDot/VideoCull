@@ -183,3 +183,14 @@
 .title-bar-icon-button.active {
   color: var(--accent);
 }
+
+/* Windows 11: the title bar shows the Mica material, which only shows through transparent page
+   backgrounds. Everything below the title bar keeps its opaque background (.app-layout). */
+:root.mica,
+:root.mica body {
+  background: transparent;
+}
+
+:root.mica .title-bar {
+  background: transparent;
+}

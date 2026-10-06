@@ -28,3 +28,12 @@ test('the window buttons blend into the title bar in both themes', () => {
   expect(getTitleBarOverlay('light').color).toBe(light);
   expect(getTitleBarOverlay('dark').height).toBe(32);
 });
+
+test('Mica is used from Windows 11 22H2 on, with transparent window buttons', () => {
+  const { supportsMica } = require('../../electron/theme-utils');
+  expect(supportsMica('10.0.19045')).toBe(false);
+  expect(supportsMica('10.0.22000')).toBe(false);
+  expect(supportsMica('10.0.22621')).toBe(true);
+  expect(supportsMica('10.0.26200')).toBe(true);
+  expect(getTitleBarOverlay('dark', true).color).toBe('#00000000');
+});

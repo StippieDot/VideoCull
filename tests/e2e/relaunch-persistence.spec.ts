@@ -64,7 +64,10 @@ test('relaunch starts with the saved light theme', async () => {
     const firstWindowBackground = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]?.getBackgroundColor().toLowerCase(),
     );
-    expect(firstWindowBackground).toBe('#e6e7ec');
+    // With Windows 11 Mica the window background is transparent and Mica follows nativeTheme,
+    // checked above; elsewhere the window itself must already be light.
+    const expectedBackground = await page.evaluate(() => (window.electronAPI.usesMica ? '#000000' : '#e6e7ec'));
+    expect(firstWindowBackground).toBe(expectedBackground);
 
     await app.close();
     app = await launchElectronApp(userDataDir);
@@ -79,7 +82,7 @@ test('relaunch starts with the saved light theme', async () => {
     const relaunchedWindowBackground = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]?.getBackgroundColor().toLowerCase(),
     );
-    expect(relaunchedWindowBackground).toBe('#e6e7ec');
+    expect(relaunchedWindowBackground).toBe(expectedBackground);
   } finally {
     if (app) await app.close();
     await removeDir(userDataDir);
