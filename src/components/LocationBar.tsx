@@ -241,6 +241,24 @@ export function LocationMenuPopup({ menu, left, top, onClose, onSwitchSegment }:
     setPosition({ left: Math.max(VIEWPORT_GUTTER, Math.min(left, window.innerWidth - rect.width - VIEWPORT_GUTTER)), top });
   }, [left, top]);
 
+  // A submenu opens to the right and down; flip or lift it where that would leave the window.
+  const submenuRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = submenuRef.current;
+    if (!element) return;
+    element.style.left = '';
+    element.style.right = '';
+    element.style.top = '';
+    const rect = element.getBoundingClientRect();
+    if (rect.right > window.innerWidth - VIEWPORT_GUTTER) {
+      element.style.left = 'auto';
+      element.style.right = 'calc(100% + 4px)';
+    }
+    const overflow = rect.bottom - (window.innerHeight - VIEWPORT_GUTTER);
+    const anchorTop = element.parentElement?.getBoundingClientRect().top ?? rect.top;
+    if (overflow > 0) element.style.top = `${Math.round(rect.top - anchorTop - overflow)}px`;
+  }, [submenuIndex]);
+
   useEffect(() => {
     const element = itemRefs.current.get(`${focus.index}:${focus.subIndex ?? ''}`);
     element?.focus();
@@ -352,7 +370,7 @@ export function LocationMenuPopup({ menu, left, top, onClose, onSwitchSegment }:
                 <ChevronRight size={14} aria-hidden="true" />
               </button>
               {open && (
-                <div className="app-context-menu location-menu location-menu-submenu" role="menu" aria-label={item.label}>
+                <div ref={submenuRef} className="app-context-menu location-menu location-menu-submenu" role="menu" aria-label={item.label}>
                   {item.items.map((entry, subIndex) => (
                     <button
                       key={entry.key}
