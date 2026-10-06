@@ -75,6 +75,17 @@ export interface ProcessingPauseState {
   status: 'running' | 'pausing' | 'paused';
 }
 
+/** One app menu item, as listed in the command palette. */
+export interface AppCommand {
+  id: string;
+  /** Menu path, such as ['View', 'Sort By', 'Size']. */
+  path: string[];
+  accelerator: string | null;
+  enabled: boolean;
+  /** For checkbox and radio items; null otherwise. */
+  checked: boolean | null;
+}
+
 /** What the app menu can act on; items that cannot do anything are disabled. */
 export interface AppMenuState {
   hasSession: boolean;
@@ -652,6 +663,8 @@ export interface ElectronAPI {
   openAppMenu: (labels: string[], x: number, y: number) => Promise<boolean>;
   /** Opens the menu of the folder name in the title bar; resolves when it closes. */
   openFolderMenu: (x: number, y: number) => Promise<boolean>;
+  getCommands: () => Promise<AppCommand[]>;
+  runCommand: (id: string) => Promise<boolean>;
   openVideo: (filePath: string) => Promise<void>;
   openExternalUrl: (url: string) => Promise<boolean>;
   openLegalFile: (name: LegalFileName) => Promise<boolean>;

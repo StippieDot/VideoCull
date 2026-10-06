@@ -20,7 +20,7 @@ const {
 const { processingPause } = require('./processing-pause');
 const { createPowerManager } = require('./power-manager');
 const { runPowerCommand } = require('./system-power');
-const { buildMenuTemplate, buildFolderMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('./app-menu');
+const { buildMenuTemplate, buildFolderMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('./app-menu');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
@@ -580,6 +580,16 @@ ipcMain.handle('open-folder-menu', (_event, x, y) => new Promise((resolve) => {
   );
   Menu.buildFromTemplate(template).popup({ window: mainWindow, x: Math.round(x), y: Math.round(y), callback: () => resolve(true) });
 }));
+
+// The command palette lists and runs the app menu's items, so both always offer the same commands.
+ipcMain.handle('get-commands', () => listCommands(Menu.getApplicationMenu()?.items ?? []));
+
+ipcMain.handle('run-command', (_event, id) => {
+  const item = typeof id === 'string' ? Menu.getApplicationMenu()?.getMenuItemById(id) : null;
+  if (!item || !item.enabled || !item.visible || item.submenu || !mainWindow || mainWindow.isDestroyed()) return false;
+  item.click(undefined, mainWindow, mainWindow.webContents);
+  return true;
+});
 
 ipcMain.on('set-menu-state', (_event, state) => {
   rendererMenuState = normalizeRendererMenuState(state);

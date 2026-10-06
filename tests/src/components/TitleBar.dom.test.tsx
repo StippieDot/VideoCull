@@ -32,7 +32,7 @@ describe('TitleBar', () => {
 
   test('shows what is processing, how far it is and that it is paused', async () => {
     installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
-    const { container } = render(<TitleBar isPrivate={false} />);
+    const { container } = render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} />);
 
     expect(screen.getByRole('status').textContent).toBe(`Thumbnails250 / ${(1000).toLocaleString()}`);
     await screen.findByText('Paused');
@@ -41,7 +41,7 @@ describe('TitleBar', () => {
 
   test('the moon button opens the When Processing Finishes menu and shows the choice', async () => {
     const api = installElectronApiMock({ processing: true, finishAction: 'sleep', countdown: null });
-    render(<TitleBar isPrivate={false} />);
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} />);
 
     const button = await screen.findByRole('button', { name: 'When processing finishes: sleep' });
     expect(button.classList.contains('active')).toBe(true);
@@ -52,7 +52,7 @@ describe('TitleBar', () => {
   test('the folder name opens the folder menu', async () => {
     const api = installElectronApiMock({ processing: false, finishAction: 'none', countdown: null });
     useStore.setState({ isGenerating: false });
-    render(<TitleBar isPrivate={false} />);
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} />);
 
     act(() => screen.getByRole('button', { name: /Videos/ }).click());
     expect(api.openFolderMenu).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
@@ -60,7 +60,7 @@ describe('TitleBar', () => {
 
   test('behind the privacy screen neither the folder nor the processing status is shown', async () => {
     installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
-    render(<TitleBar isPrivate />);
+    render(<TitleBar isPrivate onOpenCommandPalette={() => {}} />);
 
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.getByText('VideoCull')).toBeTruthy();

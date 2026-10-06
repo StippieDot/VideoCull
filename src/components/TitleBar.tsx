@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Moon, Power } from 'lucide-react';
+import { Moon, Power, Search } from 'lucide-react';
 import useStore from '../store';
 import usePowerState from '../hooks/usePowerState';
 import useProcessingPauseState from '../hooks/useProcessingPauseState';
@@ -65,7 +65,7 @@ function MenuLabelText({ label, accessKey, showAccessKey }: { label: string; acc
  * the matching application menu, so enabled states and shortcuts come from one place. Windows draws
  * the window buttons on the right (titleBarOverlay).
  */
-export default function TitleBar({ isPrivate }: { isPrivate: boolean }) {
+export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivate: boolean; onOpenCommandPalette: () => void }) {
   const directories = useStore((s) => s.directories);
   // Serialised so the bar only re-renders when the shown status changes, not on every store update.
   const statusJson = useStore((s) => JSON.stringify(selectProcessingStatus(s)));
@@ -197,6 +197,18 @@ export default function TitleBar({ isPrivate }: { isPrivate: boolean }) {
         </div>
       )}
       <div className="title-bar-actions">
+        {!isPrivate && (
+          <button
+            type="button"
+            className="title-bar-icon-button"
+            title="Search commands (Ctrl+K)"
+            aria-label="Search commands"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onOpenCommandPalette}
+          >
+            <Search size={14} />
+          </button>
+        )}
         {power.processing && !isPrivate && (
           <button
             ref={finishButtonRef}

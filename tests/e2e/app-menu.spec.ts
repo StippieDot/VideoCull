@@ -117,3 +117,26 @@ test('the menu follows the session and its new items act on it', async () => {
     await removeDir(rootDir);
   }
 });
+
+test('Ctrl+K opens the command palette, which runs menu commands', async () => {
+  const userDataDir = await createUserDataDir();
+  const { rootDir, mediaDir } = await createSessionFixture(['alpha.mp4', 'beta.mp4']);
+  await seedRecentDirectory(userDataDir, mediaDir);
+  let app: ElectronApplication | undefined;
+
+  try {
+    app = await launchElectronApp(userDataDir);
+    const page = await openSeededRecentFolder(app);
+    await pressWithControl(app, 'k');
+    const input = page.getByPlaceholder('Search commands');
+    await expect(input).toBeFocused();
+    await input.fill('close session');
+    await page.keyboard.press('Enter');
+    await expect(input).toHaveCount(0);
+    await expect.poll(() => menuItem(app!, ['File', 'Rescan'])).toMatchObject({ enabled: false });
+  } finally {
+    if (app) await app.close();
+    await removeDir(userDataDir);
+    await removeDir(rootDir);
+  }
+});

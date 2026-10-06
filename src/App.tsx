@@ -14,6 +14,7 @@ import DocumentationModal from './components/DocumentationModal';
 import StoreTransition from './components/StoreTransition';
 import FinishActionCountdown from './components/FinishActionCountdown';
 import TitleBar from './components/TitleBar';
+import CommandPalette from './components/CommandPalette';
 import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
@@ -159,6 +160,7 @@ export default function App() {
   });
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showDocumentation, setShowDocumentation] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -832,6 +834,7 @@ export default function App() {
         case 'find-duplicates': { void menuHandlersRef.current.findDuplicates(); break; }
         case 'toggle-theme': { toggleTheme(); break; }
         case 'show-shortcuts': { setShowShortcutsHelp(true); break; }
+        case 'open-command-palette': { setShowCommandPalette(true); break; }
         case 'open-about': { openSettings('about'); break; }
         case 'check-updates': { openSettings('updates'); break; }
         case 'open-settings': { openSettings('interface'); break; }
@@ -1205,7 +1208,8 @@ export default function App() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {window.electronAPI && <TitleBar isPrivate={isPrivate} />}
+      {window.electronAPI && <TitleBar isPrivate={isPrivate} onOpenCommandPalette={() => setShowCommandPalette(true)} />}
+      {showCommandPalette && !isPrivate && <CommandPalette onClose={() => setShowCommandPalette(false)} />}
       <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
       <StoreTransition />
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}

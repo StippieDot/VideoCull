@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { buildMenuTemplate, buildFolderMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('../../electron/app-menu');
+const { buildMenuTemplate, buildFolderMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('../../electron/app-menu');
 
 const actions = {
   send: () => {},
@@ -128,4 +128,34 @@ test('the title bar folder menu lists the loaded folders and reveals the chosen 
   const single = buildFolderMenuTemplate({ ...state, folders: ['D:\Clips'] }, (action) => sent.push(action));
   single.find((entry) => entry.label === 'Reveal in Explorer').click();
   assert.deepEqual(sent.at(-1), 'reveal-folder:D:\Clips');
+});
+
+test('menu items get ids from their path that survive changing counts', () => {
+  const marked = item(menu({ hasSession: true, markedCount: 3 }), 'Actions', 'Delete Marked Videos (3)...');
+  assert.equal(marked.id, 'Actions > Delete Marked Videos');
+  assert.equal(item(menu(), 'View', 'Sort By').submenu.find((entry) => entry.label === 'Name').id, 'View > Sort By > Name');
+});
+
+test('the command palette lists runnable items, not submenus, separators, hidden items or itself', () => {
+  // Shaped like Electron MenuItems.
+  const toItems = (template) => template.map((entry) => ({
+    type: entry.type ?? (entry.submenu ? 'submenu' : 'normal'),
+    visible: entry.visible !== false,
+    label: entry.label ?? '',
+    id: entry.id,
+    accelerator: entry.accelerator,
+    enabled: entry.enabled !== false,
+    checked: entry.checked ?? false,
+    submenu: Array.isArray(entry.submenu) ? { items: toItems(entry.submenu) } : null,
+  }));
+  const commands = listCommands(toItems(menu({ hasSession: true, groupByFolder: true })));
+  const ids = commands.map((command) => command.id);
+  assert.ok(ids.includes('View > Sort By > Name'));
+  assert.ok(!ids.includes('View > Sort By'));
+  assert.ok(!ids.includes('View > Command Palette'));
+  assert.equal(ids.filter((id) => id === 'View > Larger Cards').length, 1);
+  assert.deepEqual(commands.find((command) => command.id === 'View > Group by Folder'), {
+    id: 'View > Group by Folder', path: ['View', 'Group by Folder'], accelerator: null, enabled: true, checked: true,
+  });
+  assert.equal(commands.find((command) => command.id === 'File > Open Folder').accelerator, 'CmdOrCtrl+O');
 });

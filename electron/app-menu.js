@@ -194,6 +194,8 @@ function buildMenuTemplate(state, actions) {
     {
       label: 'View',
       submenu: [
+        { label: 'Command Palette...', accelerator: 'CmdOrCtrl+K', click: () => send('open-command-palette') },
+        { type: 'separator' },
         {
           label: 'Sort By',
           enabled: state.hasSession,
@@ -289,7 +291,8 @@ function buildMenuTemplate(state, actions) {
     },
   ];
 
-  return state.isPrivate ? template.map(disableForPrivacy) : template;
+  const withIds = addCommandIds(template, []);
+  return state.isPrivate ? withIds.map(disableForPrivacy) : withIds;
 }
 
 /**
@@ -339,6 +342,51 @@ function buildFolderMenuTemplate(state, send) {
   ];
 }
 
+const COMMAND_PALETTE_ID = 'View > Command Palette';
+
+/**
+ * Gives every labelled item an id from its menu path, so the command palette can list and run
+ * them. Counts such as "(3)" and trailing dots are left out, so the id survives a menu rebuild.
+ * @param {Electron.MenuItemConstructorOptions[]} items @param {string[]} parents
+ * @returns {Electron.MenuItemConstructorOptions[]}
+ */
+function addCommandIds(items, parents) {
+  return items.map((item) => {
+    if (!item.label) return item;
+    const path = [...parents, item.label.replace(/\s*\(\d+\)/, '').replace(/\.+$/, '').replace(/&&/g, '&')];
+    return {
+      ...item,
+      id: path.join(' > '),
+      ...(Array.isArray(item.submenu) ? { submenu: addCommandIds(item.submenu, path) } : {}),
+    };
+  });
+}
+
+/**
+ * @typedef {{ id: string, path: string[], accelerator: string | null, enabled: boolean, checked: boolean | null }} AppCommand
+ */
+
+/**
+ * Every runnable item of a built menu, for the command palette.
+ * @param {Electron.MenuItem[]} items @param {string[]} [parents]
+ * @returns {AppCommand[]}
+ */
+function listCommands(items, parents = []) {
+  return items.flatMap((item) => {
+    if (item.type === 'separator' || !item.visible || !item.label || !item.id) return [];
+    const path = [...parents, item.label.replace(/&&/g, '&')];
+    if (item.submenu) return listCommands(item.submenu.items, path);
+    if (item.id === COMMAND_PALETTE_ID) return [];
+    return [{
+      id: item.id,
+      path,
+      accelerator: typeof item.accelerator === 'string' ? item.accelerator : null,
+      enabled: item.enabled,
+      checked: item.type === 'checkbox' || item.type === 'radio' ? item.checked : null,
+    }];
+  });
+}
+
 /** Only the privacy screen itself, full screen and Exit stay usable behind the privacy screen. */
 function disableForPrivacy(/** @type {Electron.MenuItemConstructorOptions} */ item) {
   /** @type {Electron.MenuItemConstructorOptions} */
@@ -357,4 +405,4 @@ function escapeMenuLabel(/** @type {string} */ label) {
   return label.replace(/&/g, '&&');
 }
 
-module.exports = { buildMenuTemplate, buildFolderMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE };
+module.exports = { buildMenuTemplate, buildFolderMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE };
