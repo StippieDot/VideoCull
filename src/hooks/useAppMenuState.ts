@@ -13,8 +13,6 @@ export default function useAppMenuState(isPrivate: boolean) {
   const metadataRunning = useStore((s) => s.isGenerating && s.genProgress.phase === 'metadata');
   const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const duplicatesEnabled = useStore((s) => s.settings.duplicates.enabled);
-  const reviewMode = useStore((s) => s.reviewMode);
-  const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const hasActiveVideo = useStore((s) => (
     s.reviewMode ? Boolean(s.activeReviewVideoPath) : s.gridSelectionIds.size === 1
   ));
@@ -29,8 +27,6 @@ export default function useAppMenuState(isPrivate: boolean) {
       canUndo,
       canExport: Boolean(directory && videoCount > 0 && !isScanning),
       canFindDuplicates: duplicatesEnabled && videoCount >= 2 && !isFindingDuplicates && !metadataRunning,
-      duplicatesEnabled,
-      view: reviewMode ? 'review' : duplicateGroupsMode ? 'duplicates' : 'grid',
       hasActiveVideo,
       isPrivate,
       recentFolders,
@@ -41,7 +37,7 @@ export default function useAppMenuState(isPrivate: boolean) {
     window.electronAPI?.setMenuState(state);
   }, [
     hasSession, directory, videoCount, markedCount, canUndo, isScanning, metadataRunning,
-    isFindingDuplicates, duplicatesEnabled, reviewMode, duplicateGroupsMode, hasActiveVideo,
+    isFindingDuplicates, duplicatesEnabled, hasActiveVideo,
     isPrivate, recentFolders,
   ]);
 }

@@ -797,16 +797,6 @@ export default function App() {
         }
         case 'close-session': { menuHandlersRef.current.closeSession(); break; }
         case 'find-duplicates': { void menuHandlersRef.current.findDuplicates(); break; }
-        case 'view-grid': { state.setReviewMode(false); state.setDuplicateGroupsMode(false); break; }
-        case 'view-review': {
-          state.setDuplicateGroupsMode(false);
-          if (!state.reviewMode) {
-            state.setReviewIndex(0);
-            state.setReviewMode(true);
-          }
-          break;
-        }
-        case 'view-duplicates': { state.setReviewMode(false); state.setDuplicateGroupsMode(true); break; }
         case 'toggle-theme': { toggleTheme(); break; }
         case 'show-shortcuts': { setShowShortcutsHelp(true); break; }
         case 'open-about': { openSettings('about'); break; }

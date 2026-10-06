@@ -83,8 +83,6 @@ export interface AppMenuState {
   canUndo: boolean;
   canExport: boolean;
   canFindDuplicates: boolean;
-  duplicatesEnabled: boolean;
-  view: 'grid' | 'review' | 'duplicates';
   /** The open review video, or the single selected video in the grid. */
   hasActiveVideo: boolean;
   isPrivate: boolean;

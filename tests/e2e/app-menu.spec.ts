@@ -99,10 +99,9 @@ test('the menu follows the session and its new items act on it', async () => {
     await expect.poll(() => menuItem(app!, ['File', 'Rescan'])).toMatchObject({ enabled: true });
     expect(await menuItem(app, ['Video', 'Reveal in Explorer'])).toMatchObject({ enabled: false });
 
-    await clickMenuItem(app, ['View', 'Review']);
+    await page.getByText('alpha.mp4').click();
     await expect(page.locator('.review-mode')).toBeVisible();
     await expect.poll(() => menuItem(app!, ['Video', 'Reveal in Explorer'])).toMatchObject({ enabled: true });
-    await expect.poll(() => menuItem(app!, ['View', 'Review'])).toMatchObject({ checked: true });
 
     await clickMenuItem(app, ['View', 'Privacy Screen']);
     await expect(page.locator('.privacy-screen')).toBeVisible();

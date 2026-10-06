@@ -10,8 +10,6 @@
  *   canUndo: boolean,
  *   canExport: boolean,
  *   canFindDuplicates: boolean,
- *   duplicatesEnabled: boolean,
- *   view: 'grid' | 'review' | 'duplicates',
  *   hasActiveVideo: boolean,
  *   isPrivate: boolean,
  *   recentFolders: string[],
@@ -47,15 +45,12 @@ const EMPTY_RENDERER_MENU_STATE = {
   canUndo: false,
   canExport: false,
   canFindDuplicates: false,
-  duplicatesEnabled: false,
-  view: 'grid',
   hasActiveVideo: false,
   isPrivate: false,
   recentFolders: [],
 };
 
 const MAX_RECENT_FOLDERS = 8;
-const VIEWS = new Set(['grid', 'review', 'duplicates']);
 
 /**
  * @param {unknown} input
@@ -71,8 +66,6 @@ function normalizeRendererMenuState(input) {
     canUndo: raw.canUndo === true,
     canExport: raw.canExport === true,
     canFindDuplicates: raw.canFindDuplicates === true,
-    duplicatesEnabled: raw.duplicatesEnabled === true,
-    view: typeof raw.view === 'string' && VIEWS.has(raw.view) ? /** @type {RendererMenuState['view']} */ (raw.view) : 'grid',
     hasActiveVideo: raw.hasActiveVideo === true,
     isPrivate: raw.isPrivate === true,
     recentFolders: Array.isArray(raw.recentFolders)
@@ -92,7 +85,6 @@ function normalizeRendererMenuState(input) {
  */
 function buildMenuTemplate(state, actions) {
   const { send } = actions;
-  const hasVideos = state.hasSession && state.videoCount > 0;
 
   /** @type {Electron.MenuItemConstructorOptions[]} */
   const template = [
@@ -161,16 +153,6 @@ function buildMenuTemplate(state, actions) {
     {
       label: 'View',
       submenu: [
-        { label: 'Grid', type: 'radio', checked: state.view === 'grid', enabled: state.hasSession, click: () => send('view-grid') },
-        { label: 'Review', type: 'radio', checked: state.view === 'review', enabled: hasVideos, click: () => send('view-review') },
-        {
-          label: 'Duplicates',
-          type: 'radio',
-          checked: state.view === 'duplicates',
-          enabled: state.hasSession && state.duplicatesEnabled,
-          click: () => send('view-duplicates'),
-        },
-        { type: 'separator' },
         { label: 'Larger Cards', accelerator: 'CmdOrCtrl+Plus', enabled: state.hasSession, click: () => send('zoom-in') },
         { label: 'Larger Cards', accelerator: 'CmdOrCtrl+=', visible: false, click: () => send('zoom-in') },
         { label: 'Smaller Cards', accelerator: 'CmdOrCtrl+-', enabled: state.hasSession, click: () => send('zoom-out') },
