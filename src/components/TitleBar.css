@@ -62,11 +62,12 @@
   text-decoration: underline;
 }
 
-/* Centred location. Narrow enough to leave room for the status pill on the right. */
+/* Centred location, using the room between the menus and the right-hand buttons (about 450px
+   each side), and narrower while the processing status pill needs the right side. */
 .title-bar-center {
   position: absolute;
   left: 50%;
-  max-width: 30%;
+  max-width: max(30%, calc(100% - 900px));
   transform: translateX(-50%);
   display: flex;
   align-items: center;
@@ -81,6 +82,10 @@
   white-space: nowrap;
   color: var(--text-tertiary);
   pointer-events: none;
+}
+
+.title-bar:has(.title-bar-status-pill) .title-bar-center {
+  max-width: 30%;
 }
 
 /* Processing status and pause button, left of the other title bar actions. */

@@ -42,8 +42,10 @@ test('splits paths into clickable parts and collapses the middle of long ones', 
     { label: 'New', path: 'P:\\Downloads\\New' },
   ]);
   expect(splitPath('\\\\nas\\share\\Clips').map((segment) => segment.path)).toEqual(['\\\\nas\\share', '\\\\nas\\share\\Clips']);
-  expect(collapseSegments([1, 2, 3, 4, 5, 6])).toEqual([1, null, 4, 5, 6]);
-  expect(collapseSegments([1, 2, 3, 4, 5])).toEqual([1, 2, 3, 4, 5]);
+  expect(collapseSegments([1, 2, 3, 4, 5], 0)).toEqual([1, 2, 3, 4, 5]);
+  expect(collapseSegments([1, 2, 3, 4, 5], 2)).toEqual([1, null, 4, 5]);
+  // The last part always stays.
+  expect(collapseSegments([1, 2, 3], 9)).toEqual([1, null, 3]);
 });
 
 test('the grid folder menu counts the folder and offers the folder search', () => {
@@ -152,15 +154,20 @@ describe('LocationBar', () => {
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Media');
   });
 
-  test('the … in a long path lists the folders it hides, each with its own menu', () => {
+  test('a path that does not fit hides middle parts behind a … that lists them, each with its own menu', () => {
+    // jsdom has no layout: pretend the path never fits, so every middle part hides.
+    const scrollWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(500);
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(100);
     const deep = 'P:\\a\\b\\c\\d\\e';
     const videos = [makeVideo('deep', {}, deep)];
     useStore.setState({ directories: ['P:\\'], videos, filteredVideos: videos, gridTopFolder: deep });
     render(<LocationBar sessionTitle="P:" appActions={appActions()} />);
-    expect(buttonNames()).toEqual(['P:', 'Folders in P:', 'Hidden folders', 'Folders in b', 'c', 'Folders in c', 'd', 'Folders in d', 'e']);
+    scrollWidth.mockRestore();
+    clientWidth.mockRestore();
+    expect(buttonNames()).toEqual(['P:', 'Folders in P:', 'Hidden folders', 'Folders in d', 'e']);
 
     act(() => screen.getByRole('button', { name: 'Hidden folders' }).click());
-    expect(screen.getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual(['a', 'b']);
+    expect(screen.getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual(['a', 'b', 'c', 'd']);
     act(() => screen.getByRole('menuitemradio', { name: 'b' }).click());
     expect(screen.getByRole('menu', { name: 'b' }).textContent).toContain('1 video · 1 to review');
     expect(screen.getByRole('menuitem', { name: 'Reveal in Explorer' })).toBeTruthy();

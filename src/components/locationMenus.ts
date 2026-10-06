@@ -68,10 +68,11 @@ function lastPart(fullPath: string): string {
   return segments[segments.length - 1]?.label ?? fullPath;
 }
 
-/** Keeps the first part and the last `tail` parts; null marks the hidden middle. */
-export function collapseSegments<T>(segments: T[], tail = 3): Array<T | null> {
-  if (segments.length <= tail + 2) return segments;
-  return [segments[0], null, ...segments.slice(-tail)];
+/** Hides `hidden` parts after the first, never the last; null marks where they were. */
+export function collapseSegments<T>(segments: T[], hidden: number): Array<T | null> {
+  const count = Math.min(hidden, segments.length - 2);
+  if (count <= 0) return segments;
+  return [segments[0], null, ...segments.slice(1 + count)];
 }
 
 const SEPARATOR = (key: string): LocationMenuItem => ({ type: 'separator', key });

@@ -85,10 +85,10 @@ function useLocation(): Location | null {
   }, [directories, duplicateGroupCount, duplicateGroupsMode, folderFilterPath, gridTopFolder, reviewMode, reviewPath]);
 }
 
-function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders: boolean): Control[] {
+function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders: boolean, hiddenCount: number): Control[] {
   const { segments, browsable } = location;
   const controls: Control[] = browsable && hasRoots ? [{ type: 'roots' }] : [];
-  const visible = collapseSegments(segments);
+  const visible = collapseSegments(segments, hiddenCount);
   visible.forEach((segment, index) => {
     if (!segment) {
       const nextShown = visible[index + 1];
@@ -211,9 +211,27 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
     () => lastFolder !== null && listSubfolders(filteredVideos, lastFolder).length > 0,
     [filteredVideos, lastFolder],
   );
+  // Middle parts hide one at a time, only while the full path does not fit.
+  const navRef = useRef<HTMLElement>(null);
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  // The status pill narrows the centre of the title bar while processing (TitleBar.css).
+  const processing = useStore((s) => s.isGenerating || s.isScanning || s.isFindingDuplicates);
+  useLayoutEffect(() => setHiddenCount(0), [location, windowWidth, processing]);
+  const maxHidden = Math.max(0, (location?.segments.length ?? 0) - 2);
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (nav && nav.scrollWidth > nav.clientWidth && hiddenCount < maxHidden) setHiddenCount(hiddenCount + 1);
+  });
+
   const controls = useMemo(
-    () => (location ? buildControls(location, rootCount > 1, lastHasSubfolders) : []),
-    [lastHasSubfolders, location, rootCount],
+    () => (location ? buildControls(location, rootCount > 1, lastHasSubfolders, hiddenCount) : []),
+    [hiddenCount, lastHasSubfolders, location, rootCount],
   );
 
   // The location can change under an open menu (grid scrolled, next video); close it then.
@@ -266,7 +284,13 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
   });
 
   return (
-    <nav className="location-bar" aria-label="Location" title={fullPath}>
+    <nav
+      ref={navRef}
+      // Only when hiding every middle part is not enough do the parts shrink to fit.
+      className={`location-bar${hiddenCount >= maxHidden ? ' squeezed' : ''}`}
+      aria-label="Location"
+      title={fullPath}
+    >
       {controls.map((control, index) => {
         const open = openIndex === index ? ' open' : '';
         switch (control.type) {

@@ -8,6 +8,7 @@
 
 .location-bar-segment {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 3px;
   min-width: 0;
@@ -23,9 +24,12 @@
   -webkit-app-region: no-drag;
 }
 
-/* Earlier parts give way first; the current one keeps its room. */
+/* Parts keep their width so a path that does not fit overflows and gets shortened (LocationBar). */
+.location-bar.squeezed .location-bar-segment:not(.current) {
+  flex-shrink: 1;
+}
+
 .location-bar-segment.current {
-  flex-shrink: 0;
   max-width: 320px;
   color: var(--text-primary);
 }
