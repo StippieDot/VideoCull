@@ -62,11 +62,20 @@
   text-decoration: underline;
 }
 
-.title-bar-title {
+/* Centred: the folder name or processing status, with the pause button right after it. */
+.title-bar-center {
   position: absolute;
   left: 50%;
   max-width: 40%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title-bar-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -167,37 +167,29 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivat
           </button>
         ))}
       </nav>
-      {isPrivate || directories.length === 0 ? (
-        <div className="title-bar-title">{sessionTitle}</div>
-      ) : (
-        <button
-          ref={folderButtonRef}
-          type="button"
-          className={`title-bar-title title-bar-folder${folderMenuOpen ? ' open' : ''}`}
-          title={directories.join('\n')}
-          aria-haspopup="menu"
-          aria-expanded={folderMenuOpen}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => void openFolderMenu()}
-        >
-          {status ? (
-            <span className="title-bar-status" role="status">
-              <span className="title-bar-status-label">{status.label}</span>
-              {status.detail && <span>{status.detail}</span>}
-              {paused && <span className="title-bar-status-paused">Paused</span>}
-            </span>
-          ) : sessionTitle}
-        </button>
-      )}
-      {status && (
-        <div className="title-bar-progress" aria-hidden="true">
-          <div
-            className={`title-bar-progress-fill${status.fraction === null ? ' indeterminate' : ''}${paused ? ' paused' : ''}`}
-            style={status.fraction === null ? undefined : { width: `${Math.min(100, status.fraction * 100)}%` }}
-          />
-        </div>
-      )}
-      <div className="title-bar-actions">
+      <div className="title-bar-center">
+        {isPrivate || directories.length === 0 ? (
+          <div className="title-bar-title">{sessionTitle}</div>
+        ) : (
+          <button
+            ref={folderButtonRef}
+            type="button"
+            className={`title-bar-title title-bar-folder${folderMenuOpen ? ' open' : ''}`}
+            title={directories.join('\n')}
+            aria-haspopup="menu"
+            aria-expanded={folderMenuOpen}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => void openFolderMenu()}
+          >
+            {status ? (
+              <span className="title-bar-status" role="status">
+                <span className="title-bar-status-label">{status.label}</span>
+                {status.detail && <span>{status.detail}</span>}
+                {paused && <span className="title-bar-status-paused">Paused</span>}
+              </span>
+            ) : sessionTitle}
+          </button>
+        )}
         {status && !isPrivate && (
           <button
             type="button"
@@ -211,6 +203,16 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivat
             {pauseStatus === 'running' ? <Pause size={14} /> : <Play size={14} />}
           </button>
         )}
+      </div>
+      {status && (
+        <div className="title-bar-progress" aria-hidden="true">
+          <div
+            className={`title-bar-progress-fill${status.fraction === null ? ' indeterminate' : ''}${paused ? ' paused' : ''}`}
+            style={status.fraction === null ? undefined : { width: `${Math.min(100, status.fraction * 100)}%` }}
+          />
+        </div>
+      )}
+      <div className="title-bar-actions">
         {!isPrivate && (
           <button
             type="button"
