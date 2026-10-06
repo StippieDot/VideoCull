@@ -1,0 +1,135 @@
+.location-bar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.location-bar-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  max-width: 220px;
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+/* Earlier parts give way first; the current one keeps its room. */
+.location-bar-segment.current {
+  flex-shrink: 0;
+  max-width: 320px;
+  color: var(--text-primary);
+}
+
+.location-bar-segment:hover,
+.location-bar-segment:focus-visible,
+.location-bar-segment.open {
+  background: var(--bg-control);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.location-bar-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-bar-separator,
+.location-bar-ellipsis {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.location-menu {
+  min-width: 248px;
+  max-width: min(420px, calc(100vw - 16px));
+  -webkit-app-region: no-drag;
+}
+
+.location-menu-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px 9px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.location-menu-header-text {
+  min-width: 0;
+}
+
+.location-menu-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.location-menu-detail {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.location-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.location-menu-item:focus-visible {
+  background: var(--accent-dim);
+  outline: none;
+}
+
+.location-menu-icon {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.location-menu-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-menu-item-detail {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.location-menu-submenu-anchor {
+  position: relative;
+}
+
+/* Go to Folder can list hundreds of folders. */
+.location-menu.location-menu-submenu {
+  position: absolute;
+  top: -5px;
+  left: calc(100% + 4px);
+  max-height: min(480px, 60vh);
+  overflow-y: auto;
+}

@@ -6,6 +6,8 @@ import TitleBar from '../../../src/components/TitleBar';
 import useStore from '../../../src/store';
 import type { PowerState } from '../../../src/types';
 
+const LOCATION_ACTIONS = { reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn() };
+
 function installElectronApiMock(power: PowerState) {
   const electronAPI = {
     getPowerState: vi.fn().mockResolvedValue(power),
@@ -13,7 +15,6 @@ function installElectronApiMock(power: PowerState) {
     getProcessingPauseState: vi.fn().mockResolvedValue({ status: 'paused' }),
     onProcessingPauseState: vi.fn(() => () => {}),
     openAppMenu: vi.fn().mockResolvedValue(true),
-    openFolderMenu: vi.fn().mockResolvedValue(true),
     setProcessingPaused: vi.fn().mockResolvedValue({ status: 'running' }),
   };
   (window as unknown as { electronAPI: typeof electronAPI }).electronAPI = electronAPI;
@@ -28,12 +29,14 @@ describe('TitleBar', () => {
       isGenerating: true,
       genProgress: { current: 250, total: 1000, phase: 'thumbnails' },
       isFindingDuplicates: false,
+      reviewMode: false,
+      duplicateGroupsMode: false,
     });
   });
 
   test('shows what is processing, how far it is and that it is paused', async () => {
     installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
-    const { container } = render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} />);
+    const { container } = render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
 
     expect(screen.getByRole('status').textContent).toBe(`Thumbnails250 / ${(1000).toLocaleString()}`);
     await screen.findByText('Paused');
@@ -44,7 +47,7 @@ describe('TitleBar', () => {
 
   test('offers resume while processing is paused', async () => {
     const api = installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
-    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} />);
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
 
     act(() => screen.getByRole('button', { name: 'Pause processing' }).click());
     expect(api.setProcessingPaused).toHaveBeenLastCalledWith(true);
@@ -55,7 +58,7 @@ describe('TitleBar', () => {
 
   test('the moon button opens the When Processing Finishes menu and shows the choice', async () => {
     const api = installElectronApiMock({ processing: true, finishAction: 'sleep', countdown: null });
-    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} />);
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
 
     const button = await screen.findByRole('button', { name: 'When processing finishes: sleep' });
     expect(button.classList.contains('active')).toBe(true);
@@ -63,18 +66,18 @@ describe('TitleBar', () => {
     expect(api.openAppMenu).toHaveBeenCalledWith(['Actions', 'When Processing Finishes'], expect.any(Number), expect.any(Number));
   });
 
-  test('the folder name opens the folder menu', async () => {
-    const api = installElectronApiMock({ processing: false, finishAction: 'none', countdown: null });
-    useStore.setState({ isGenerating: false });
-    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} />);
+  test('the location in the centre opens its menu', async () => {
+    installElectronApiMock({ processing: false, finishAction: 'none', countdown: null });
+    useStore.setState({ isGenerating: false, videos: [], gridTopFolder: null });
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
 
-    act(() => screen.getByRole('button', { name: /Videos/ }).click());
-    expect(api.openFolderMenu).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
+    act(() => screen.getByRole('button', { name: 'Videos' }).click());
+    expect(screen.getByRole('menu', { name: 'Videos' }).textContent).toContain('No videos in this session');
   });
 
   test('behind the privacy screen neither the folder nor the processing status is shown', async () => {
     installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
-    render(<TitleBar isPrivate onOpenCommandPalette={() => {}} />);
+    render(<TitleBar isPrivate onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
 
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.getByText('VideoCull')).toBeTruthy();

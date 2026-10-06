@@ -98,7 +98,6 @@ const electronAPI = {
   chooseReportScope: () => ipcRenderer.invoke('choose-report-scope'),
   setMenuState: (state) => ipcRenderer.send('set-menu-state', state),
   openAppMenu: (labels, x, y) => ipcRenderer.invoke('open-app-menu', labels, x, y),
-  openFolderMenu: (x, y) => ipcRenderer.invoke('open-folder-menu', x, y),
   getCommands: () => ipcRenderer.invoke('get-commands'),
   runCommand: (id) => ipcRenderer.invoke('run-command', id),
   openVideo: (filePath) => ipcRenderer.invoke('open-video', filePath),

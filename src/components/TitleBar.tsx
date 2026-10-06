@@ -6,6 +6,7 @@ import useProcessingPauseState from '../hooks/useProcessingPauseState';
 import type { VideoStore } from '../types';
 import videoCullIcon from '../assets/videocull-icon.png';
 import { formatRecentPath } from '../utils';
+import LocationBar, { type LocationBarAppActions } from './LocationBar';
 import './TitleBar.css';
 
 // Must match the top-level menus in electron/app-menu.js; the main process opens them by label.
@@ -65,7 +66,11 @@ function MenuLabelText({ label, accessKey, showAccessKey }: { label: string; acc
  * the matching application menu, so enabled states and shortcuts come from one place. Windows draws
  * the window buttons on the right (titleBarOverlay).
  */
-export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivate: boolean; onOpenCommandPalette: () => void }) {
+export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActions }: {
+  isPrivate: boolean;
+  onOpenCommandPalette: () => void;
+  locationActions: LocationBarAppActions;
+}) {
   const directories = useStore((s) => s.directories);
   // Serialised so the bar only re-renders when the shown status changes, not on every store update.
   const statusJson = useStore((s) => JSON.stringify(selectProcessingStatus(s)));
@@ -74,8 +79,6 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivat
   const pauseStatus = useProcessingPauseState().status;
   const paused = pauseStatus !== 'running';
   const finishButtonRef = useRef<HTMLButtonElement>(null);
-  const folderButtonRef = useRef<HTMLButtonElement>(null);
-  const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuLabel | null>(null);
   const [altHeld, setAltHeld] = useState(false);
   const buttonRefs = useRef(new Map<MenuLabel, HTMLButtonElement>());
@@ -89,17 +92,6 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivat
       await window.electronAPI.openAppMenu([label], rect.left, rect.bottom);
     } finally {
       setOpenMenu(null);
-    }
-  };
-
-  const openFolderMenu = async () => {
-    const rect = folderButtonRef.current?.getBoundingClientRect();
-    if (!rect || !window.electronAPI) return;
-    setFolderMenuOpen(true);
-    try {
-      await window.electronAPI.openFolderMenu(rect.left, rect.bottom);
-    } finally {
-      setFolderMenuOpen(false);
     }
   };
 
@@ -168,21 +160,10 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivat
         ))}
       </nav>
       <div className="title-bar-center">
-        {isPrivate || directories.length === 0 ? (
+        {isPrivate ? (
           <div className="title-bar-title">{sessionTitle}</div>
         ) : (
-          <button
-            ref={folderButtonRef}
-            type="button"
-            className={`title-bar-title title-bar-folder${folderMenuOpen ? ' open' : ''}`}
-            title={directories.join('\n')}
-            aria-haspopup="menu"
-            aria-expanded={folderMenuOpen}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => void openFolderMenu()}
-          >
-            {sessionTitle}
-          </button>
+          <LocationBar sessionTitle={sessionTitle} appActions={locationActions} />
         )}
       </div>
       {status && (

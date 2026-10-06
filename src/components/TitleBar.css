@@ -62,7 +62,7 @@
   text-decoration: underline;
 }
 
-/* Centred folder name. Narrow enough to leave room for the status pill on the right. */
+/* Centred location. Narrow enough to leave room for the status pill on the right. */
 .title-bar-center {
   position: absolute;
   left: 50%;
@@ -81,27 +81,6 @@
   white-space: nowrap;
   color: var(--text-tertiary);
   pointer-events: none;
-}
-
-/* The folder name opens the session menu. */
-.title-bar-folder {
-  height: 24px;
-  padding: 0 10px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  font: inherit;
-  cursor: default;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
-}
-
-.title-bar-folder:hover,
-.title-bar-folder:focus-visible,
-.title-bar-folder.open {
-  background: var(--bg-control);
-  color: var(--text-primary);
-  outline: none;
 }
 
 /* Processing status and pause button, left of the other title bar actions. */

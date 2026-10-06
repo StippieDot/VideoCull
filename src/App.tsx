@@ -1214,7 +1214,18 @@ export default function App() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {window.electronAPI && <TitleBar isPrivate={isPrivate} onOpenCommandPalette={() => setShowCommandPalette(true)} />}
+      {window.electronAPI && (
+        <TitleBar
+          isPrivate={isPrivate}
+          onOpenCommandPalette={() => setShowCommandPalette(true)}
+          locationActions={{
+            reviewFolder: handleReviewFolder,
+            regenerateThumbnails: (videos) => void handleRegenerateThumbnails(videos),
+            findDuplicates: () => void handleFindDuplicates(),
+            openDuplicateSettings: () => openSettings('duplicates'),
+          }}
+        />
+      )}
       {showCommandPalette && !isPrivate && <CommandPalette onClose={() => setShowCommandPalette(false)} />}
       <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
       <StoreTransition />

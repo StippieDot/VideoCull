@@ -14,7 +14,7 @@ import type { Video } from '../types';
 import useStore from '../store';
 import useActiveValue from '../hooks/useActiveValue';
 import VideoCard from './VideoCard';
-import { formatSize, isWebSupported } from '../utils';
+import { formatSize, getFolderLabel, getFolderPath, isWebSupported } from '../utils';
 import { matchesKeybind } from '../keybinds';
 import { Check, ChevronDown, RefreshCw, Search, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
@@ -96,33 +96,6 @@ interface GridScrollAnchor {
 
 let gridRowRuntime: GridRowData | null = null;
 let gridRowRuntimeOwner: symbol | null = null;
-
-function getFolderLabel(video: Video, rootDirs: string[]): string {
-  const sep = video.path.includes('/') ? '/' : '\\';
-  const dir = video.path.substring(0, video.path.lastIndexOf(sep));
-
-  if (rootDirs.length === 0) return dir;
-
-  const rootDir = rootDirs.find((root) => dir === root || dir.startsWith(root + sep));
-  if (!rootDir) return dir;
-
-  if (dir === rootDir) {
-    const rootName = rootDir.split(/[/\\]/).filter(Boolean).slice(-1)[0] || rootDir;
-    return rootDirs.length > 1 ? `${rootName} / Root` : 'Root';
-  }
-
-  const relative = dir.startsWith(rootDir + sep)
-    ? dir.substring(rootDir.length + 1)
-    : dir;
-  if (rootDirs.length <= 1) return relative || 'Root';
-  const rootName = rootDir.split(/[/\\]/).filter(Boolean).slice(-1)[0] || rootDir;
-  return relative ? `${rootName} / ${relative}` : `${rootName} / Root`;
-}
-
-function getFolderPath(video: Video): string {
-  const sep = video.path.includes('/') ? '/' : '\\';
-  return video.path.substring(0, video.path.lastIndexOf(sep));
-}
 
 function formatFolderSize(bytes: number): string {
   return formatSize(bytes).replace(/\.0\s/, ' ').replace(/\s/g, '');
@@ -791,7 +764,37 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
   const handleRowsRendered = useCallback((visibleRows: { startIndex: number; stopIndex: number }) => {
     visibleRowsRef.current = visibleRows;
-  }, []);
+    let topHeader: HeaderRow | null = null;
+    for (const index of headerIndexes) {
+      if (index > visibleRows.startIndex) break;
+      topHeader = rows[index] as HeaderRow;
+    }
+    useStore.getState().setGridTopFolder(topHeader?.folderPath ?? null);
+  }, [headerIndexes, rows]);
+
+  useEffect(() => {
+    if (headerIndexes.length === 0) useStore.getState().setGridTopFolder(null);
+  }, [headerIndexes]);
+
+  // Title bar "Go to Folder": scroll to the folder's header, or to its first video when the grid
+  // is not grouped by folder. A jump stays pending until the folder is in the grid's rows.
+  const gridFolderJump = useStore((s) => s.gridFolderJump);
+  const handledFolderJumpRef = useRef(0);
+  useEffect(() => {
+    if (!gridFolderJump || handledFolderJumpRef.current === gridFolderJump.id || !gridActive) return;
+    const rowIndex = rows.findIndex((row) => (
+      row.type === 'header'
+        ? row.folderPath === gridFolderJump.folderPath
+        : row.videoIds.some((id) => {
+          const video = videosById.get(id);
+          return video !== undefined && getFolderPath(video) === gridFolderJump.folderPath;
+        })
+    ));
+    if (rowIndex < 0) return;
+    handledFolderJumpRef.current = gridFolderJump.id;
+    listRef.current?.scrollToRow({ index: rowIndex, align: 'start' });
+    persistedGridScroll = { directory, offset: getRowTop(rowIndex) };
+  }, [directory, getRowTop, gridActive, gridFolderJump, rows, videosById]);
 
   const handleNextFolder = useCallback(() => {
     if (headerIndexes.length === 0) return;

@@ -321,27 +321,6 @@ function openRecentItem(state, send) {
   };
 }
 
-/**
- * Menu of the folder name in the middle of the title bar: the loaded folders and what can be done
- * with the session.
- *
- * @param {MenuState} state
- * @param {(action: string) => void} send
- * @returns {Electron.MenuItemConstructorOptions[]}
- */
-function buildFolderMenuTemplate(state, send) {
-  return [
-    ...state.folders.map((folder) => ({ label: escapeMenuLabel(folder), enabled: false })),
-    { type: 'separator' },
-    revealFolderItem(state, send, 'Reveal in Explorer'),
-    { label: 'Add Folder to Session...', click: () => send('add-folder') },
-    openRecentItem(state, send),
-    { type: 'separator' },
-    { label: 'Rescan', accelerator: 'F5', click: () => send('rescan-directory') },
-    { label: 'Close Session', click: () => send('close-session') },
-  ];
-}
-
 const COMMAND_PALETTE_ID = 'View > Command Palette';
 
 /**
@@ -405,4 +384,4 @@ function escapeMenuLabel(/** @type {string} */ label) {
   return label.replace(/&/g, '&&');
 }
 
-module.exports = { buildMenuTemplate, buildFolderMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE };
+module.exports = { buildMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE };

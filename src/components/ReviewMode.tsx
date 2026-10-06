@@ -453,6 +453,8 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       // Stand down while the keybind recorder is capturing
       if (document.body.hasAttribute('data-capturing-keybind')) return;
+      // This capture listener runs before an open menu's own keys: Escape there closes the menu, not Review.
+      if (e.target instanceof Element && e.target.closest('[role="menu"]')) return;
 
       const s = useStore.getState().settings;
 

@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { buildMenuTemplate, buildFolderMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('../../electron/app-menu');
+const { buildMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('../../electron/app-menu');
 
 const actions = {
   send: () => {},
@@ -113,21 +113,17 @@ test('menu state from the renderer is normalised', () => {
   });
 });
 
-test('the title bar folder menu lists the loaded folders and reveals the chosen one', () => {
+test('File > Reveal Folder in Explorer offers each loaded folder', () => {
   const sent = [];
-  const state = {
-    ...EMPTY_RENDERER_MENU_STATE, isDev: false, updatesEnabled: false, processing: false, paused: false, finishAction: 'none',
-    hasSession: true, folders: ['D:\Clips', 'E:\Trips'],
-  };
-  const template = buildFolderMenuTemplate(state, (action) => sent.push(action));
-  assert.deepEqual(template.slice(0, 2).map((entry) => [entry.label, entry.enabled]), [['D:\Clips', false], ['E:\Trips', false]]);
-  const reveal = template.find((entry) => entry.label === 'Reveal in Explorer');
-  reveal.submenu[1].click();
-  assert.deepEqual(sent, ['reveal-folder:E:\Trips']);
-
-  const single = buildFolderMenuTemplate({ ...state, folders: ['D:\Clips'] }, (action) => sent.push(action));
-  single.find((entry) => entry.label === 'Reveal in Explorer').click();
-  assert.deepEqual(sent.at(-1), 'reveal-folder:D:\Clips');
+  const reveal = (folders) => item(
+    buildMenuTemplate({ ...EMPTY_RENDERER_MENU_STATE, hasSession: true, folders }, { ...actions, send: (action) => sent.push(action) }),
+    'File',
+    'Reveal Folder in Explorer',
+  );
+  reveal(['D:\\Clips', 'E:\\Trips']).submenu[1].click();
+  assert.deepEqual(sent, ['reveal-folder:E:\\Trips']);
+  reveal(['D:\\Clips']).click();
+  assert.deepEqual(sent.at(-1), 'reveal-folder:D:\\Clips');
 });
 
 test('menu items get ids from their path that survive changing counts', () => {

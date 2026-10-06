@@ -385,6 +385,10 @@ export interface VideoStore {
   reviewScopeIds: string[] | null;
   reviewAutoPlay: boolean;
   activeReviewVideoPath: string | null;
+  /** Folder of the grid's topmost visible folder header, for the title bar; null without headers. */
+  gridTopFolder: string | null;
+  /** Asks the grid to scroll to a folder; the id makes a repeated request for the same folder count. */
+  gridFolderJump: { folderPath: string; id: number } | null;
   duplicateGroupsMode: boolean;
   duplicateGroups: DuplicateGroup[];
   duplicateProgress: DuplicateProgress | null;
@@ -434,6 +438,8 @@ export interface VideoStore {
   setDuplicateFilter: (val: boolean) => void;
   clearFilters: () => void;
   setGroupByFolder: (val: boolean) => void;
+  setGridTopFolder: (folderPath: string | null) => void;
+  requestGridFolderJump: (folderPath: string) => void;
   setFolderSortBy: (sortBy: FolderSortField) => void;
   setFolderSortOrder: (order: SortOrder) => void;
   setIsScanning: (val: boolean) => void;
@@ -667,8 +673,6 @@ export interface ElectronAPI {
   setMenuState: (state: AppMenuState) => void;
   /** Opens an app menu or submenu, given by its label path, at a window position; resolves when it closes. */
   openAppMenu: (labels: string[], x: number, y: number) => Promise<boolean>;
-  /** Opens the menu of the folder name in the title bar; resolves when it closes. */
-  openFolderMenu: (x: number, y: number) => Promise<boolean>;
   getCommands: () => Promise<AppCommand[]>;
   runCommand: (id: string) => Promise<boolean>;
   openVideo: (filePath: string) => Promise<void>;
