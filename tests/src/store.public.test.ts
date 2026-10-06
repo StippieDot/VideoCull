@@ -9,6 +9,7 @@ type ElectronApiMock = {
   saveReviewState: ReturnType<typeof vi.fn>;
   getConfig: ReturnType<typeof vi.fn>;
   validateDroppedPath: ReturnType<typeof vi.fn>;
+  cancelFinishAction: ReturnType<typeof vi.fn>;
 };
 
 function getStoreApi() {
@@ -25,6 +26,7 @@ function installElectronApiMock(): ElectronApiMock {
     saveReviewState: vi.fn().mockResolvedValue(true),
     getConfig: vi.fn().mockResolvedValue(null),
     validateDroppedPath: vi.fn(),
+    cancelFinishAction: vi.fn().mockResolvedValue(undefined),
   };
   (globalThis as { window?: unknown }).window = { electronAPI };
   return electronAPI;
@@ -135,6 +137,13 @@ describe('useStore public behavior', () => {
 
     expect(Array.from(useStore.getState().gridSelectionIds)).toEqual(['trip']);
     expect(useStore.getState().gridSelectionAnchorId).toBeNull();
+  });
+
+  test('opening another folder or closing the session disarms a chosen sleep or shutdown', () => {
+    useStore.getState().setDirectory('D:\Other');
+    useStore.getState().setDirectory(null);
+
+    expect(electronAPI.cancelFinishAction).toHaveBeenCalledTimes(2);
   });
 
   test('starting a replacement folder session clears grid search', () => {

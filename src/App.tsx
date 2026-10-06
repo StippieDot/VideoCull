@@ -1093,7 +1093,6 @@ export default function App() {
     useStore.getState().setDirectory(null);
     void (async () => {
       try {
-        await window.electronAPI?.cancelFinishAction();
         await window.electronAPI?.cancelGeneration();
         await window.electronAPI?.cancelDuplicateDetection();
         await window.electronAPI?.resetLoadedDirectories();
