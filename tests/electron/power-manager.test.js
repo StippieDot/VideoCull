@@ -152,6 +152,9 @@ test('shutdown never forces apps with unsaved work to close, and sleep does not 
   const shutdown = powerCommand('shutdown');
   assert.match(shutdown.file, /System32[\\/]shutdown\.exe$/i);
   assert.deepEqual(shutdown.args, ['/s', '/t', '0']);
+  assert.equal(shutdown.detached, true);
   const sleep = powerCommand('sleep');
   assert.match(sleep.args.at(-1), /SetSuspendState\('Suspend', \$false, \$false\)/);
+  // A detached PowerShell exits without running its command, so the PC would never sleep.
+  assert.equal(sleep.detached, false);
 });
