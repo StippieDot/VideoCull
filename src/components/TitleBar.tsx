@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Moon, Power, Search } from 'lucide-react';
+import { Moon, Pause, Play, Power, Search } from 'lucide-react';
 import useStore from '../store';
 import usePowerState from '../hooks/usePowerState';
 import useProcessingPauseState from '../hooks/useProcessingPauseState';
@@ -71,7 +71,8 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivat
   const statusJson = useStore((s) => JSON.stringify(selectProcessingStatus(s)));
   const status = useMemo(() => JSON.parse(statusJson) as ReturnType<typeof selectProcessingStatus>, [statusJson]);
   const power = usePowerState();
-  const paused = useProcessingPauseState().status !== 'running';
+  const pauseStatus = useProcessingPauseState().status;
+  const paused = pauseStatus !== 'running';
   const finishButtonRef = useRef<HTMLButtonElement>(null);
   const folderButtonRef = useRef<HTMLButtonElement>(null);
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
@@ -197,6 +198,19 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette }: { isPrivat
         </div>
       )}
       <div className="title-bar-actions">
+        {status && !isPrivate && (
+          <button
+            type="button"
+            className={`title-bar-icon-button${paused ? ' paused' : ''}`}
+            title={pauseStatus === 'running' ? 'Pause processing' : pauseStatus === 'pausing' ? 'Pausing...' : 'Resume processing'}
+            aria-label={pauseStatus === 'running' ? 'Pause processing' : 'Resume processing'}
+            disabled={pauseStatus === 'pausing'}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => void window.electronAPI?.setProcessingPaused(pauseStatus === 'running')}
+          >
+            {pauseStatus === 'running' ? <Pause size={14} /> : <Play size={14} />}
+          </button>
+        )}
         {!isPrivate && (
           <button
             type="button"

@@ -890,39 +890,6 @@
   color: var(--text-tertiary);
 }
 
-/* Progress */
-.progress-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.progress-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-.progress-detail {
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-.progress-bar-track {
-  width: 100%;
-  height: 4px;
-  background: var(--bg-surface);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.progress-bar-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 2px;
-  transition: width 300ms ease;
-}
-
-.duplicate-progress-info {
-  margin-top: 10px;
-}
-
 .sidebar-duplicate-mode-section {
   gap: 12px;
 }

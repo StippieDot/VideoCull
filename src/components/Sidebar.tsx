@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { ColorTheme, DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '../types';
-import useProcessingPauseState from '../hooks/useProcessingPauseState';
 import type { SortField } from '../types';
 import useStore from '../store';
 import { beginDevInteraction } from '../perf-dev';
@@ -15,7 +14,7 @@ import videoCullLogo from '../assets/videocull-logo.png';
 import {
   FolderOpen, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, HardDrive, X, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, Pause
+  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -99,78 +98,6 @@ function getRangeTrackStyle(min: number, max: number, selectedMin: number, selec
     '--range-fill-right': `calc(${rightPercent}% + ${rightInset}px)`,
     '--range-fill-visible': hasVisibleFill ? '1' : '0',
   } as CSSProperties;
-}
-
-function SidebarProgressSection() {
-  const isScanning = useStore((s) => s.isScanning);
-  const scanProgress = useStore((s) => s.scanProgress);
-  const isGenerating = useStore((s) => s.isGenerating);
-  const genProgress = useStore((s) => s.genProgress);
-  const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
-  const duplicateProgress = useStore((s) => s.duplicateProgress);
-  const pauseState = useProcessingPauseState();
-
-  if (!isScanning && !isGenerating && !isFindingDuplicates) return null;
-
-  const generationLabel =
-    genProgress.phase === 'metadata'
-      ? 'Metadata...'
-      : genProgress.phase === 'media'
-        ? 'Media data...'
-        : 'Thumbnails...';
-
-  return (
-    <section className="sidebar-section">
-      {isScanning && (
-        <div className="progress-info">
-          <span className="progress-label">Scanning...</span>
-          <span className="progress-detail">{scanProgress.found} videos found</span>
-        </div>
-      )}
-      {isGenerating && (
-        <div className="progress-info">
-          <span className="progress-label">{generationLabel}</span>
-          <div className="progress-bar-track">
-            <div
-              className="progress-bar-fill"
-              style={{ width: `${genProgress.total > 0 ? (genProgress.current / genProgress.total) * 100 : 0}%` }}
-            />
-          </div>
-          <span className="progress-detail">
-            {genProgress.current} / {genProgress.total}
-          </span>
-        </div>
-      )}
-      {isFindingDuplicates && duplicateProgress && (
-        <div className="progress-info duplicate-progress-info">
-          <span className="progress-label">{duplicateProgress.stage}</span>
-          <div className="progress-bar-track">
-            <div
-              className="progress-bar-fill"
-              style={{ width: `${duplicateProgress.total > 0 ? (duplicateProgress.current / duplicateProgress.total) * 100 : 0}%` }}
-            />
-          </div>
-          <span className="progress-detail">
-            {duplicateProgress.total > 0 ? `${duplicateProgress.current} / ${duplicateProgress.total}` : 'Preparing...'}
-          </span>
-        </div>
-      )}
-      {(isGenerating || isFindingDuplicates) && (
-        <button
-          className="btn btn-outline sidebar-wide-action"
-          disabled={pauseState.status === 'pausing'}
-          onClick={() => void window.electronAPI?.setProcessingPaused(pauseState.status === 'running')}
-        >
-          {pauseState.status === 'running' ? <Pause size={14} /> : <Play size={14} />}
-          {pauseState.status === 'running'
-            ? 'Pause processing'
-            : pauseState.status === 'pausing'
-              ? 'Pausing...'
-              : 'Resume processing'}
-        </button>
-      )}
-    </section>
-  );
 }
 
 function SidebarDuplicateSection({
@@ -1094,7 +1021,6 @@ export default function Sidebar({
         </div>
       </section>
 
-      <SidebarProgressSection />
 
       <SidebarDuplicateSection
         onFindDuplicates={onFindDuplicates}

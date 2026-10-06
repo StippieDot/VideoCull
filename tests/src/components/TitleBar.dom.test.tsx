@@ -14,6 +14,7 @@ function installElectronApiMock(power: PowerState) {
     onProcessingPauseState: vi.fn(() => () => {}),
     openAppMenu: vi.fn().mockResolvedValue(true),
     openFolderMenu: vi.fn().mockResolvedValue(true),
+    setProcessingPaused: vi.fn().mockResolvedValue({ status: 'running' }),
   };
   (window as unknown as { electronAPI: typeof electronAPI }).electronAPI = electronAPI;
   return electronAPI;
@@ -37,6 +38,17 @@ describe('TitleBar', () => {
     expect(screen.getByRole('status').textContent).toBe(`Thumbnails250 / ${(1000).toLocaleString()}`);
     await screen.findByText('Paused');
     expect(container.querySelector<HTMLElement>('.title-bar-progress-fill')?.style.width).toBe('25%');
+  });
+
+  test('offers resume while processing is paused', async () => {
+    const api = installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} />);
+
+    act(() => screen.getByRole('button', { name: 'Pause processing' }).click());
+    expect(api.setProcessingPaused).toHaveBeenLastCalledWith(true);
+    const resume = await screen.findByRole('button', { name: 'Resume processing' });
+    act(() => resume.click());
+    expect(api.setProcessingPaused).toHaveBeenLastCalledWith(false);
   });
 
   test('the moon button opens the When Processing Finishes menu and shows the choice', async () => {

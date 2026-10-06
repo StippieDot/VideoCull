@@ -283,30 +283,3 @@ describe('Sidebar recent folder behavior', () => {
     expect((screen.getByRole('button', { name: /scanning/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
-
-describe('Sidebar processing controls', () => {
-  beforeEach(() => {
-    resetPerfDevMock();
-    const store = getStoreApi();
-    store.setState(store.getInitialState(), true);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  test('offers resume while media processing is paused', async () => {
-    const electronAPI = installElectronApiMock();
-    electronAPI.getProcessingPauseState.mockResolvedValue({ status: 'paused' });
-    useStore.setState({
-      isGenerating: true,
-      genProgress: { current: 2, total: 5, phase: 'thumbnails' },
-    });
-
-    renderSidebar();
-    const resume = await screen.findByRole('button', { name: 'Resume processing' });
-    await userEvent.click(resume);
-
-    expect(electronAPI.setProcessingPaused).toHaveBeenCalledWith(false);
-  });
-});
