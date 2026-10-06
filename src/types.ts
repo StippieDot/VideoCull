@@ -304,6 +304,8 @@ export interface AppSettings {
   skipIntroDelaySecs: number;
   hardwareAccel: boolean;
   keepAwakeWhileProcessing: boolean;
+  /** Windows 11 only; temporary while the look is evaluated. */
+  micaTitleBar: boolean;
   recentDirectories: string[];
   recentDirectoryTimestamps: Record<string, number>;
   autoUpdates: boolean;
@@ -626,8 +628,10 @@ export type LegalFileName = 'license' | 'notices';
 // ── Electron API (exposed via preload) ─────────────────────────────
 export interface ElectronAPI {
   initialTheme: ColorTheme;
-  /** The window shows the Windows 11 Mica material behind the title bar. */
+  /** The window started with the Windows 11 Mica material behind the title bar. */
   usesMica: boolean;
+  /** Windows 11 22H2 or newer, where Mica is available. */
+  micaSupported: boolean;
   selectDirectory: () => Promise<string | null>;
   getPathForFile: (file: File) => string;
   validateDroppedPath: (droppedPath: string) => Promise<{ valid: boolean; isDirectory: boolean }>;

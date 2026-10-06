@@ -296,11 +296,23 @@ function folderDisplayName(folderPath) {
 }
 
 // â”€â”€ Window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// The title bar shows the Windows 11 Mica material; the rest of the window stays opaque.
-const useMica = process.platform === 'win32' && supportsMica(require('os').release());
+// The title bar can show the Windows 11 Mica material; the rest of the window stays opaque.
+const micaSupported = process.platform === 'win32' && supportsMica(require('os').release());
+let useMica = false;
+let currentTheme = 'dark';
+
+/** Switches Mica behind the title bar on or off (Settings > Interface), without a restart. */
+function applyWindowMaterial(enabled) {
+  useMica = micaSupported && enabled;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setBackgroundMaterial(useMica ? 'mica' : 'none');
+  mainWindow.setBackgroundColor(useMica ? '#00000000' : getThemeBackgroundColor(currentTheme));
+  mainWindow.setTitleBarOverlay(getTitleBarOverlay(currentTheme, useMica));
+}
 
 function applyNativeTheme(value) {
   const theme = normalizeColorTheme(value);
+  currentTheme = theme;
   nativeTheme.themeSource = theme;
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (!useMica) mainWindow.setBackgroundColor(getThemeBackgroundColor(theme));
@@ -309,7 +321,8 @@ function applyNativeTheme(value) {
   return theme;
 }
 
-function createWindow(initialTheme = 'dark') {
+function createWindow(initialTheme = 'dark', micaTitleBar = true) {
+  useMica = micaSupported && micaTitleBar;
   const theme = applyNativeTheme(initialTheme);
   const appIconPath = app.isPackaged
     ? path.join(process.resourcesPath, 'videocull.ico')
@@ -333,7 +346,11 @@ function createWindow(initialTheme = 'dark') {
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false,
-      additionalArguments: [`${THEME_ARGUMENT_PREFIX}${theme}`, ...(useMica ? ['--video-cull-mica'] : [])],
+      additionalArguments: [
+        `${THEME_ARGUMENT_PREFIX}${theme}`,
+        ...(micaSupported ? ['--video-cull-mica-supported'] : []),
+        ...(useMica ? ['--video-cull-mica'] : []),
+      ],
     },
   });
 
@@ -518,7 +535,7 @@ app.whenReady().then(async () => {
 
   const initialConfig = await readJsonFile(CONFIG_FILE, {});
   powerManager.setKeepAwake(initialConfig.keepAwakeWhileProcessing !== false);
-  createWindow(initialConfig.theme);
+  createWindow(initialConfig.theme, initialConfig.micaTitleBar !== false);
   setApplicationMenu();
   checkDistributedIndexAvailability().catch((err) => log.warn('[cache] Failed to check distributed cache locations:', err));
   if (updatesEnabled) setupAutoUpdater();
@@ -2963,6 +2980,7 @@ ipcMain.handle('save-config', async (_event, config) => {
     await fs.writeFile(configPath, JSON.stringify(normalizedConfig, null, 2), 'utf8');
     applyNativeTheme(theme);
     powerManager.setKeepAwake(normalizedConfig.keepAwakeWhileProcessing !== false);
+    if (micaSupported && (normalizedConfig.micaTitleBar !== false) !== useMica) applyWindowMaterial(normalizedConfig.micaTitleBar !== false);
     return true;
   } catch (e) {
     log.error('[save-config] Error saving config:', e);

@@ -509,6 +509,24 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                   </div>
                 </section>
 
+                {window.electronAPI?.micaSupported && (
+                  <section className="settings-subsection settings-section-divider">
+                    <h3 className="settings-subsection-title">Window</h3>
+
+                    <div className="form-group checkbox-group">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={localSettings.micaTitleBar}
+                          onChange={(e) => handleChange('micaTitleBar', e.target.checked)}
+                        />
+                        Translucent title bar (Mica)
+                      </label>
+                      <span className="help-text">Shows the Windows 11 Mica material behind the title bar instead of a solid colour.</span>
+                    </div>
+                  </section>
+                )}
+
                 <section className="settings-subsection settings-section-divider">
                   <h3 className="settings-subsection-title">Export</h3>
 

@@ -900,6 +900,7 @@ const useStore = create<VideoStore>((set, get) => ({
     skipIntroDelaySecs: 3,
     hardwareAccel: false,
     keepAwakeWhileProcessing: true,
+    micaTitleBar: true,
     recentDirectories: [],
     recentDirectoryTimestamps: {},
     autoUpdates: true,

@@ -1009,6 +1009,12 @@ export default function App() {
 
   useAppMenuState(isPrivate);
 
+  const micaTitleBar = useStore((s) => s.settings.micaTitleBar);
+  useEffect(() => {
+    if (!window.electronAPI?.micaSupported) return;
+    document.documentElement.classList.toggle('mica', micaTitleBar);
+  }, [micaTitleBar]);
+
   useEffect(() => {
     if (!isGenerating && !isFindingDuplicates) {
       void window.electronAPI?.setProcessingPaused(false);

@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const initialThemeArgument = process.argv.find((value) => value.startsWith('--video-cull-theme='));
 const initialTheme = initialThemeArgument?.slice('--video-cull-theme='.length) === 'light' ? 'light' : 'dark';
 const usesMica = process.argv.includes('--video-cull-mica');
+const micaSupported = process.argv.includes('--video-cull-mica-supported');
 
 /**
  * @template T
@@ -22,6 +23,7 @@ function subscribe(channel, callback) {
 const electronAPI = {
   initialTheme: initialTheme,
   usesMica: usesMica,
+  micaSupported: micaSupported,
 
   // Directory
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
