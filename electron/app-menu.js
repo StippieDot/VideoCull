@@ -10,7 +10,15 @@
  *   canUndo: boolean,
  *   canExport: boolean,
  *   canFindDuplicates: boolean,
- *   hasActiveVideo: boolean,
+ *   activeVideoCount: number,
+ *   canRegenerateThumbnails: boolean,
+ *   sortBy: string,
+ *   sortOrder: 'asc' | 'desc',
+ *   sortOptions: string[],
+ *   groupByFolder: boolean,
+ *   filtersActive: boolean,
+ *   muteAvailable: boolean,
+ *   muted: boolean,
  *   isPrivate: boolean,
  *   recentFolders: string[],
  * }} RendererMenuState
@@ -34,6 +42,7 @@
  *   openReleaseNotes: () => void,
  *   reportProblem: () => void,
  *   openLogFolder: () => void,
+ *   openSupportPage: () => void,
  * }} MenuActions
  */
 
@@ -45,10 +54,31 @@ const EMPTY_RENDERER_MENU_STATE = {
   canUndo: false,
   canExport: false,
   canFindDuplicates: false,
-  hasActiveVideo: false,
+  activeVideoCount: 0,
+  canRegenerateThumbnails: false,
+  sortBy: 'name',
+  sortOrder: 'asc',
+  sortOptions: ['name'],
+  groupByFolder: false,
+  filtersActive: false,
+  muteAvailable: false,
+  muted: false,
   isPrivate: false,
   recentFolders: [],
 };
+
+/** Sort fields the renderer may offer, with their menu labels. */
+const SORT_LABELS = {
+  name: 'Name',
+  size: 'Size',
+  duration: 'Duration',
+  date: 'Date',
+  rating: 'Rating',
+  resolution: 'Resolution',
+  fps: 'FPS',
+};
+/** @param {unknown} value @returns {value is keyof typeof SORT_LABELS} */
+const isSortField = (value) => typeof value === 'string' && Object.prototype.hasOwnProperty.call(SORT_LABELS, value);
 
 const MAX_RECENT_FOLDERS = 8;
 
@@ -66,7 +96,15 @@ function normalizeRendererMenuState(input) {
     canUndo: raw.canUndo === true,
     canExport: raw.canExport === true,
     canFindDuplicates: raw.canFindDuplicates === true,
-    hasActiveVideo: raw.hasActiveVideo === true,
+    activeVideoCount: count(raw.activeVideoCount),
+    canRegenerateThumbnails: raw.canRegenerateThumbnails === true,
+    sortBy: isSortField(raw.sortBy) ? raw.sortBy : 'name',
+    sortOrder: raw.sortOrder === 'desc' ? 'desc' : 'asc',
+    sortOptions: Array.isArray(raw.sortOptions) ? raw.sortOptions.filter(isSortField) : ['name'],
+    groupByFolder: raw.groupByFolder === true,
+    filtersActive: raw.filtersActive === true,
+    muteAvailable: raw.muteAvailable === true,
+    muted: raw.muted === true,
     isPrivate: raw.isPrivate === true,
     recentFolders: Array.isArray(raw.recentFolders)
       ? raw.recentFolders.filter((folder) => typeof folder === 'string' && folder.length > 0).slice(0, MAX_RECENT_FOLDERS)
@@ -102,6 +140,7 @@ function buildMenuTemplate(state, actions) {
         },
         { type: 'separator' },
         { label: 'Rescan', accelerator: 'F5', enabled: state.hasSession, click: () => send('rescan-directory') },
+        { label: 'Reveal Folder in Explorer', enabled: state.hasSession, click: () => send('reveal-folder') },
         { label: 'Close Session', enabled: state.hasSession, click: () => send('close-session') },
         { type: 'separator' },
         { label: 'Export Report...', accelerator: 'CmdOrCtrl+Shift+E', enabled: state.canExport, click: () => send('export-report') },
@@ -153,6 +192,30 @@ function buildMenuTemplate(state, actions) {
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Sort By',
+          enabled: state.hasSession,
+          submenu: [
+            ...state.sortOptions.map((field) => ({
+              label: SORT_LABELS[/** @type {keyof typeof SORT_LABELS} */ (field)],
+              type: /** @type {const} */ ('radio'),
+              checked: state.sortBy === field,
+              click: () => send(`sort:${field}`),
+            })),
+            { type: 'separator' },
+            { label: 'Ascending', type: 'radio', checked: state.sortOrder === 'asc', click: () => send('sort-order:asc') },
+            { label: 'Descending', type: 'radio', checked: state.sortOrder === 'desc', click: () => send('sort-order:desc') },
+          ],
+        },
+        {
+          label: 'Group by Folder',
+          type: 'checkbox',
+          checked: state.groupByFolder,
+          enabled: state.hasSession,
+          click: () => send('toggle-group-by-folder'),
+        },
+        { label: 'Clear All Filters', enabled: state.filtersActive, click: () => send('clear-filters') },
+        { type: 'separator' },
         { label: 'Larger Cards', accelerator: 'CmdOrCtrl+Plus', enabled: state.hasSession, click: () => send('zoom-in') },
         { label: 'Larger Cards', accelerator: 'CmdOrCtrl+=', visible: false, click: () => send('zoom-in') },
         { label: 'Smaller Cards', accelerator: 'CmdOrCtrl+-', enabled: state.hasSession, click: () => send('zoom-out') },
@@ -166,6 +229,12 @@ function buildMenuTemplate(state, actions) {
           registerAccelerator: false,
           click: () => send('toggle-privacy'),
         },
+        ...(state.muteAvailable ? [{
+          label: 'Mute In-App Playback',
+          type: /** @type {const} */ ('checkbox'),
+          checked: state.muted,
+          click: () => send('toggle-mute'),
+        }] : []),
         { label: 'Toggle Dark / Light Theme', click: () => send('toggle-theme') },
         { role: 'togglefullscreen', label: 'Full Screen' },
         // Reloading drops the open session and review position, so it is a development tool only.
@@ -179,8 +248,19 @@ function buildMenuTemplate(state, actions) {
     {
       label: 'Video',
       submenu: [
-        { label: 'Reveal in Explorer', accelerator: 'CmdOrCtrl+E', enabled: state.hasActiveVideo, click: () => send('reveal-video') },
-        { label: 'Play Externally', accelerator: 'CmdOrCtrl+P', enabled: state.hasActiveVideo, click: () => send('play-external') },
+        { label: 'Play Externally', accelerator: 'CmdOrCtrl+P', enabled: state.activeVideoCount === 1, click: () => send('play-external') },
+        { label: 'Reveal in Explorer', accelerator: 'CmdOrCtrl+E', enabled: state.activeVideoCount === 1, click: () => send('reveal-video') },
+        {
+          label: state.activeVideoCount > 1 ? `Copy Paths (${state.activeVideoCount})` : 'Copy Path',
+          enabled: state.activeVideoCount > 0,
+          click: () => send('copy-path'),
+        },
+        { type: 'separator' },
+        {
+          label: state.activeVideoCount > 1 ? `Regenerate Thumbnails (${state.activeVideoCount})` : 'Regenerate Thumbnails',
+          enabled: state.activeVideoCount > 0 && state.canRegenerateThumbnails,
+          click: () => send('regenerate-thumbnails'),
+        },
       ],
     },
     {
@@ -194,6 +274,7 @@ function buildMenuTemplate(state, actions) {
         { label: 'Open Log Folder', click: actions.openLogFolder },
         { type: 'separator' },
         ...(state.updatesEnabled ? [{ label: 'Check for Updates...', click: () => send('check-updates') }] : []),
+        { label: 'Support VideoCull', click: actions.openSupportPage },
         { label: 'About VideoCull', click: () => send('open-about') },
       ],
     },

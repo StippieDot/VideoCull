@@ -13,9 +13,10 @@ import ShortcutsHelp from './components/ShortcutsHelp';
 import DocumentationModal from './components/DocumentationModal';
 import StoreTransition from './components/StoreTransition';
 import FinishActionCountdown from './components/FinishActionCountdown';
+import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
-import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, UpdateInfo, Video } from './types';
+import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
 import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
@@ -82,6 +83,8 @@ function sameStrings(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+const SORT_FIELDS = ['name', 'size', 'duration', 'date', 'rating', 'resolution', 'fps'] as const satisfies readonly SortField[];
+
 function isMetadataRunning(isGenerating: boolean, phase: string | undefined): boolean {
   return isGenerating && phase === 'metadata';
 }
@@ -140,6 +143,7 @@ export default function App() {
     findDuplicates: async () => {},
     addFolderToSession: (_folderPath: string) => {},
     openRecent: async (_folderPath: string) => {},
+    regenerateThumbnails: async (_videos: Video[]) => {},
   });
   const showShortcutsHelpRef = useRef(false);
   const showDocumentationRef = useRef(false);
@@ -784,12 +788,36 @@ export default function App() {
         await menuHandlersRef.current.openRecent(action.slice('open-recent:'.length));
         return;
       }
-      const activeVideoPath = state.reviewMode
-        ? state.activeReviewVideoPath
-        : state.gridSelectionIds.size === 1
-          ? state.videos.find((video) => state.gridSelectionIds.has(video.id))?.path ?? null
-          : null;
+      if (action.startsWith('sort:')) {
+        const field = action.slice('sort:'.length);
+        if ((SORT_FIELDS as readonly string[]).includes(field)) state.setSortBy(field as SortField);
+        return;
+      }
+      if (action === 'sort-order:asc' || action === 'sort-order:desc') {
+        state.setSortOrder(action === 'sort-order:asc' ? 'asc' : 'desc');
+        return;
+      }
+      // The Video menu acts on the video open in Review, or on the videos selected in the grid.
+      const activeVideos = state.reviewMode
+        ? state.videos.filter((video) => video.path === state.activeReviewVideoPath)
+        : state.videos.filter((video) => state.gridSelectionIds.has(video.id));
+      const activeVideoPath = activeVideos.length === 1 ? activeVideos[0].path : null;
       switch (action) {
+        case 'copy-path': {
+          if (activeVideos.length === 0) break;
+          try {
+            await copyTextToClipboard(activeVideos.map((video) => video.path).join('\n'));
+            pushToast({ title: activeVideos.length === 1 ? 'Path copied' : `${activeVideos.length} paths copied`, kind: 'success' });
+          } catch {
+            pushToast({ title: 'Copy failed', detail: 'The path could not be copied to the clipboard.', kind: 'error' });
+          }
+          break;
+        }
+        case 'regenerate-thumbnails': { void menuHandlersRef.current.regenerateThumbnails(activeVideos); break; }
+        case 'reveal-folder': { if (state.directory) window.electronAPI.openInExplorer(state.directory); break; }
+        case 'toggle-group-by-folder': { state.setGroupByFolder(!state.groupByFolder); break; }
+        case 'clear-filters': { state.clearFilters(); break; }
+        case 'toggle-mute': { toggleGlobalMute(); break; }
         case 'add-folder': {
           const dir = await window.electronAPI.selectDirectory();
           if (dir) menuHandlersRef.current.addFolderToSession(dir);
@@ -1160,6 +1188,7 @@ export default function App() {
       findDuplicates: handleFindDuplicates,
       addFolderToSession,
       openRecent: openRecentFolder,
+      regenerateThumbnails: handleRegenerateThumbnails,
     };
   });
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import useStore from '../store';
+import useStore, { hasActiveFilters } from '../store';
 import type { AppMenuState } from '../types';
 
 /** Tells the main process what the menu can act on, so unusable items are disabled. */
@@ -13,9 +13,18 @@ export default function useAppMenuState(isPrivate: boolean) {
   const metadataRunning = useStore((s) => s.isGenerating && s.genProgress.phase === 'metadata');
   const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const duplicatesEnabled = useStore((s) => s.settings.duplicates.enabled);
-  const hasActiveVideo = useStore((s) => (
-    s.reviewMode ? Boolean(s.activeReviewVideoPath) : s.gridSelectionIds.size === 1
+  const activeVideoCount = useStore((s) => (
+    s.reviewMode ? (s.activeReviewVideoPath ? 1 : 0) : s.gridSelectionIds.size
   ));
+  const isGenerating = useStore((s) => s.isGenerating);
+  const sortBy = useStore((s) => s.sortBy);
+  const sortOrder = useStore((s) => s.sortOrder);
+  const ratingsEnabled = useStore((s) => s.settings.features.ratings);
+  const codecBadgesEnabled = useStore((s) => s.settings.features.codecBadges);
+  const groupByFolder = useStore((s) => s.groupByFolder);
+  const filtersActive = useStore(hasActiveFilters);
+  const muteAvailable = useStore((s) => s.settings.features.globalMute);
+  const muted = useStore((s) => s.settings.globalMute);
   const recentFolders = useStore((s) => s.settings.recentDirectories);
   const lastSent = useRef('');
 
@@ -27,7 +36,20 @@ export default function useAppMenuState(isPrivate: boolean) {
       canUndo,
       canExport: Boolean(directory && videoCount > 0 && !isScanning),
       canFindDuplicates: duplicatesEnabled && videoCount >= 2 && !isFindingDuplicates && !metadataRunning,
-      hasActiveVideo,
+      activeVideoCount,
+      canRegenerateThumbnails: !isScanning && !isGenerating,
+      sortBy,
+      sortOrder,
+      // Same choices as the sidebar's sort list.
+      sortOptions: [
+        'name', 'size', 'duration', 'date',
+        ...(ratingsEnabled ? ['rating' as const] : []),
+        ...(codecBadgesEnabled ? ['resolution' as const, 'fps' as const] : []),
+      ],
+      groupByFolder,
+      filtersActive,
+      muteAvailable,
+      muted,
       isPrivate,
       recentFolders,
     };
@@ -37,7 +59,8 @@ export default function useAppMenuState(isPrivate: boolean) {
     window.electronAPI?.setMenuState(state);
   }, [
     hasSession, directory, videoCount, markedCount, canUndo, isScanning, metadataRunning,
-    isFindingDuplicates, duplicatesEnabled, hasActiveVideo,
+    isFindingDuplicates, duplicatesEnabled, activeVideoCount, isGenerating, sortBy, sortOrder,
+    ratingsEnabled, codecBadgesEnabled, groupByFolder, filtersActive, muteAvailable, muted,
     isPrivate, recentFolders,
   ]);
 }

@@ -83,8 +83,16 @@ export interface AppMenuState {
   canUndo: boolean;
   canExport: boolean;
   canFindDuplicates: boolean;
-  /** The open review video, or the single selected video in the grid. */
-  hasActiveVideo: boolean;
+  /** Videos the Video menu acts on: the one open in Review, or the videos selected in the grid. */
+  activeVideoCount: number;
+  canRegenerateThumbnails: boolean;
+  sortBy: SortField;
+  sortOrder: SortOrder;
+  sortOptions: SortField[];
+  groupByFolder: boolean;
+  filtersActive: boolean;
+  muteAvailable: boolean;
+  muted: boolean;
   isPrivate: boolean;
   recentFolders: string[];
 }
@@ -409,6 +417,7 @@ export interface VideoStore {
   setFavoritesFilter: (val: boolean) => void;
   setIncompatibleFilter: (val: boolean) => void;
   setDuplicateFilter: (val: boolean) => void;
+  clearFilters: () => void;
   setGroupByFolder: (val: boolean) => void;
   setFolderSortBy: (sortBy: FolderSortField) => void;
   setFolderSortOrder: (order: SortOrder) => void;

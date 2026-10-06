@@ -8,6 +8,7 @@ const actions = {
   openReleaseNotes: () => {},
   reportProblem: () => {},
   openLogFolder: () => {},
+  openSupportPage: () => {},
 };
 
 function menu(overrides = {}) {
@@ -50,11 +51,33 @@ test('items that cannot do anything are disabled', () => {
   assert.equal(item(empty, 'Video', 'Reveal in Explorer').enabled, false);
   assert.equal(item(empty, 'Actions', 'When Processing Finishes').enabled, false);
 
-  const session = menu({ hasSession: true, videoCount: 3, markedCount: 2, hasActiveVideo: true, processing: true });
+  const session = menu({ hasSession: true, videoCount: 3, markedCount: 2, activeVideoCount: 1, processing: true });
   assert.equal(item(session, 'File', 'Rescan').enabled, true);
   assert.equal(item(session, 'Actions', 'Delete Marked Videos (2)...').enabled, true);
   assert.equal(item(session, 'Video', 'Reveal in Explorer').enabled, true);
   assert.equal(item(session, 'Actions', 'When Processing Finishes').enabled, true);
+});
+
+test('the Video menu acts on one video, or copies and regenerates for a selection', () => {
+  const selection = menu({ hasSession: true, videoCount: 3, activeVideoCount: 2, canRegenerateThumbnails: true });
+  assert.equal(item(selection, 'Video', 'Reveal in Explorer').enabled, false);
+  assert.equal(item(selection, 'Video', 'Copy Paths (2)').enabled, true);
+  assert.equal(item(selection, 'Video', 'Regenerate Thumbnails (2)').enabled, true);
+  const busy = menu({ hasSession: true, videoCount: 3, activeVideoCount: 1, canRegenerateThumbnails: false });
+  assert.equal(item(busy, 'Video', 'Regenerate Thumbnails').enabled, false);
+});
+
+test('sorting, grouping, filters and mute reflect the grid state', () => {
+  const template = menu({
+    hasSession: true, videoCount: 3, sortOptions: ['name', 'size'], sortBy: 'size', sortOrder: 'desc',
+    groupByFolder: true, filtersActive: true, muteAvailable: true, muted: true,
+  });
+  const sort = item(template, 'View', 'Sort By').submenu;
+  assert.deepEqual(sort.filter((entry) => entry.checked).map((entry) => entry.label), ['Size', 'Descending']);
+  assert.equal(item(template, 'View', 'Group by Folder').checked, true);
+  assert.equal(item(template, 'View', 'Clear All Filters').enabled, true);
+  assert.equal(item(template, 'View', 'Mute In-App Playback').checked, true);
+  assert.equal(item(menu({ hasSession: true }), 'View', 'Mute In-App Playback'), undefined);
 });
 
 test('behind the privacy screen only the privacy screen, full screen and exit stay usable', () => {
@@ -79,8 +102,11 @@ test('recent folders become menu items, with & shown literally', () => {
 });
 
 test('menu state from the renderer is normalised', () => {
-  assert.deepEqual(normalizeRendererMenuState({ hasSession: 'yes', videoCount: -4, view: 'other', recentFolders: ['a', 3, ''] }), {
+  assert.deepEqual(normalizeRendererMenuState({
+    hasSession: 'yes', videoCount: -4, recentFolders: ['a', 3, ''], sortBy: 'evil', sortOptions: ['size', 'evil'],
+  }), {
     ...EMPTY_RENDERER_MENU_STATE,
     recentFolders: ['a'],
+    sortOptions: ['size'],
   });
 });

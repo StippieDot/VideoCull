@@ -1340,6 +1340,22 @@ const useStore = create<VideoStore>((set, get) => ({
     set({ duplicateFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
   },
 
+  clearFilters: () => {
+    const cleared = {
+      statusFilter: 'all' as StatusFilter,
+      folderFilterPath: null,
+      favoritesFilter: false,
+      incompatibleFilter: false,
+      duplicateFilter: false,
+      minRatingFilter: 0 as RatingFilter,
+      minSizeFilter: 0,
+      maxSizeFilter: null,
+      minDurationFilter: 0,
+      maxDurationFilter: null,
+    };
+    set({ ...cleared, filteredVideos: computeFiltered({ ...get(), ...cleared }), reviewIndex: 0 });
+  },
+
   setGroupByFolder: (groupByFolder: boolean) => {
     const state = { ...get(), groupByFolder };
     set({ groupByFolder, filteredVideos: computeFiltered(state) });
@@ -1913,5 +1929,19 @@ export const __test__ = {
   plural,
   uniqueDirectories,
 };
+
+/** True when any grid filter narrows the loaded videos; matches what Clear all filters resets. */
+export function hasActiveFilters(state: VideoStore): boolean {
+  return state.statusFilter !== 'all'
+    || Boolean(state.folderFilterPath)
+    || state.favoritesFilter
+    || state.incompatibleFilter
+    || state.duplicateFilter
+    || state.minRatingFilter > 0
+    || state.minSizeFilter > 0
+    || state.maxSizeFilter !== null
+    || state.minDurationFilter > 0
+    || state.maxDurationFilter !== null;
+}
 
 export default useStore;

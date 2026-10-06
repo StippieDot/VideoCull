@@ -411,9 +411,7 @@ function SidebarFiltersSection({
   onToggleFilters: () => void;
 }) {
   const statusFilter = useStore((s) => s.statusFilter);
-  const setStatusFilter = useStore((s) => s.setStatusFilter);
   const folderFilterPath = useStore((s) => s.folderFilterPath);
-  const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
   const minSizeFilter = useStore((s) => s.minSizeFilter);
   const maxSizeFilter = useStore((s) => s.maxSizeFilter);
   const setSizeFilterRange = useStore((s) => s.setSizeFilterRange);
@@ -497,16 +495,7 @@ function SidebarFiltersSection({
     setDurationFilterRange(safeMin <= durationRange.min ? 0 : safeMin, safeMax >= durationRange.max ? null : safeMax);
   };
 
-  const clearFilters = () => {
-    setStatusFilter('all');
-    setFolderFilterPath(null);
-    setFavoritesFilter(false);
-    setIncompatibleFilter(false);
-    setDuplicateFilter(false);
-    setMinRatingFilter(0);
-    setSizeFilterRange(0, null);
-    setDurationFilterRange(0, null);
-  };
+  const clearFilters = useStore((s) => s.clearFilters);
 
   return (
     <section className="sidebar-section sidebar-collapsible-section">
