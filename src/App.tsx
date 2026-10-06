@@ -13,6 +13,7 @@ import ShortcutsHelp from './components/ShortcutsHelp';
 import DocumentationModal from './components/DocumentationModal';
 import StoreTransition from './components/StoreTransition';
 import FinishActionCountdown from './components/FinishActionCountdown';
+import TitleBar from './components/TitleBar';
 import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
@@ -1200,6 +1201,7 @@ export default function App() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {window.electronAPI && <TitleBar isPrivate={isPrivate} />}
       <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
       <StoreTransition />
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}

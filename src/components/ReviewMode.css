@@ -1,6 +1,6 @@
 .review-mode {
   position: fixed;
-  inset: 0;
+  inset: var(--title-bar-height, 0px) 0 0 0;
   z-index: 100;
   background: var(--bg-app); /* Solid opaque canvas to prevent bleed-through */
   display: flex;
@@ -170,7 +170,7 @@
 .video-player {
   width: 100%;
   aspect-ratio: 16 / 9;
-  max-height: calc(100vh - 370px);
+  max-height: calc(100vh - 370px - var(--title-bar-height, 0px));
   object-fit: contain;
   background: #000;
   display: block;

@@ -37,6 +37,7 @@ const {
 const {
   THEME_ARGUMENT_PREFIX,
   getThemeBackgroundColor,
+  getTitleBarOverlay,
   normalizeColorTheme,
 } = require('./theme-utils');
 const {
@@ -98,7 +99,6 @@ let defaultCentralCacheRoot = null; // set after app ready
 let activeCacheRoots = new Set();
 let isQuitting = false;
 const activeBatchIntervals = new Set();
-let menuBarHiddenForVideoFullscreen = false;
 let scanGeneration = 0;
 let updateReadyToInstall = false;
 let downloadedUpdateVersion = null;
@@ -294,20 +294,13 @@ function folderDisplayName(folderPath) {
   return path.basename(path.resolve(folderPath)) || folderPath;
 }
 
-function setVideoFullscreenMenuState(fullscreen) {
-  if (!mainWindow || mainWindow.isDestroyed()) return false;
-  menuBarHiddenForVideoFullscreen = Boolean(fullscreen);
-  mainWindow.setAutoHideMenuBar(menuBarHiddenForVideoFullscreen);
-  mainWindow.setMenuBarVisibility(!menuBarHiddenForVideoFullscreen);
-  return true;
-}
-
 // â”€â”€ Window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function applyNativeTheme(value) {
   const theme = normalizeColorTheme(value);
   nativeTheme.themeSource = theme;
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setBackgroundColor(getThemeBackgroundColor(theme));
+    mainWindow.setTitleBarOverlay(getTitleBarOverlay(theme));
   }
   return theme;
 }
@@ -324,6 +317,10 @@ function createWindow(initialTheme = 'dark') {
     minHeight: 600,
     icon: appIconPath,
     backgroundColor: getThemeBackgroundColor(theme),
+    // The renderer draws the title bar with the menu (TitleBar.tsx); Windows still draws the
+    // window buttons. The application menu stays set for its keyboard shortcuts.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: getTitleBarOverlay(theme),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -363,7 +360,6 @@ function createWindow(initialTheme = 'dark') {
     }
   });
   mainWindow.on('closed', () => {
-    menuBarHiddenForVideoFullscreen = false;
     mainWindow = null;
   });
 
@@ -553,13 +549,19 @@ function setApplicationMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// Opens one of the app menus below its title bar button. Resolves when the menu closes.
+ipcMain.handle('open-app-menu', (_event, label, x, y) => new Promise((resolve) => {
+  const item = Menu.getApplicationMenu()?.items.find((entry) => entry.label === label);
+  if (!item?.submenu || !mainWindow || mainWindow.isDestroyed() || !Number.isFinite(x) || !Number.isFinite(y)) {
+    resolve(false);
+    return;
+  }
+  item.submenu.popup({ window: mainWindow, x: Math.round(x), y: Math.round(y), callback: () => resolve(true) });
+}));
+
 ipcMain.on('set-menu-state', (_event, state) => {
   rendererMenuState = normalizeRendererMenuState(state);
   setApplicationMenu();
-});
-
-ipcMain.handle('set-video-fullscreen', (_event, fullscreen) => {
-  return setVideoFullscreenMenuState(Boolean(fullscreen));
 });
 
 app.on('window-all-closed', () => {

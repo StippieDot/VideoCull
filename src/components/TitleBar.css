@@ -1,0 +1,75 @@
+/* The app's own title bar. Its height must match TITLE_BAR_HEIGHT in electron/theme-utils.js,
+   which sizes the Windows window buttons drawn over its right end. */
+:root:has(.title-bar) {
+  --title-bar-height: 32px;
+}
+
+.title-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  /* Above Review mode, below dialogs, which dim it like the rest of the window. */
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  height: var(--title-bar-height);
+  width: 100%;
+  padding-left: 10px;
+  gap: 6px;
+  /* No bottom border: Windows paints its window buttons over the right end, which would cut a
+     border short. --bg-surface must match the overlay colour in electron/theme-utils.js. */
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.title-bar-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+}
+
+.title-bar-menus {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  gap: 2px;
+}
+
+.title-bar-menu-button {
+  height: 24px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-menu-button:hover,
+.title-bar-menu-button:focus-visible,
+.title-bar-menu-button.open {
+  background: var(--bg-control);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.title-bar-access-key {
+  text-decoration: underline;
+}
+
+.title-bar-title {
+  position: absolute;
+  left: 50%;
+  max-width: 40%;
+  transform: translateX(-50%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}

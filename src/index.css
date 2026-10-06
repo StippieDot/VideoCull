@@ -159,6 +159,8 @@ body {
 #root {
   height: 100vh;
   display: flex;
+  /* Room for the fixed title bar (TitleBar.css). */
+  padding-top: var(--title-bar-height, 0px);
 }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────── */

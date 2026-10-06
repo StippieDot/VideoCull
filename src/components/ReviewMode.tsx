@@ -253,27 +253,6 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
     return () => setActiveReviewVideoPath(null);
   }, [setActiveReviewVideoPath]);
 
-  useEffect(() => {
-    if (!isPlaying || !window.electronAPI?.setVideoFullscreen) return;
-
-    const syncMenuBar = () => {
-      const fullscreenElement = document.fullscreenElement;
-      const isVideoFullscreen = Boolean(
-        fullscreenElement &&
-        videoRef.current &&
-        fullscreenElement.contains(videoRef.current)
-      );
-      void window.electronAPI.setVideoFullscreen(isVideoFullscreen);
-    };
-
-    document.addEventListener('fullscreenchange', syncMenuBar);
-    syncMenuBar();
-    return () => {
-      document.removeEventListener('fullscreenchange', syncMenuBar);
-      void window.electronAPI?.setVideoFullscreen(false);
-    };
-  }, [isPlaying, video?.id]);
-
   // One-shot autoplay: only the initially play-clicked video should auto-play.
   useEffect(() => {
     const currentVideoId = video?.id ?? null;

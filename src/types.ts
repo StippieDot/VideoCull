@@ -646,10 +646,11 @@ export interface ElectronAPI {
   exportReport: (videos: Video[], dirPaths: string[]) => Promise<'saved' | 'cancelled' | 'error'>;
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
   setMenuState: (state: AppMenuState) => void;
+  /** Opens a top-level app menu at the given window position; resolves when it closes. */
+  openAppMenu: (label: string, x: number, y: number) => Promise<boolean>;
   openVideo: (filePath: string) => Promise<void>;
   openExternalUrl: (url: string) => Promise<boolean>;
   openLegalFile: (name: LegalFileName) => Promise<boolean>;
-  setVideoFullscreen: (fullscreen: boolean) => Promise<boolean>;
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;
   getAutoConcurrency: (config?: AppSettings) => Promise<number>;
