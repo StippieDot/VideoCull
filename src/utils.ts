@@ -190,7 +190,8 @@ export function getFolderLabel(video: Video, rootDirs: string[]): string {
 
   if (rootDirs.length === 0) return dir;
 
-  const rootDir = rootDirs.find((root) => dir === root || dir.startsWith(root + sep));
+  // A drive root is loaded as "P:\" while its videos' folders read "P:" and "P:\Clips".
+  const rootDir = rootDirs.map((root) => root.replace(/[\\/]+$/, '')).find((root) => dir === root || dir.startsWith(root + sep));
   if (!rootDir) return dir;
 
   if (dir === rootDir) {

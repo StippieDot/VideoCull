@@ -10,8 +10,19 @@ import {
   formatRelativeTime,
   formatResolutionLabel,
   formatSize,
+  getFolderLabel,
   isWebSupported,
 } from '../../src/utils';
+import { makeVideo } from '../helpers/videoFactory';
+
+test('folder labels are relative to the loaded folder, also when that is a drive root', () => {
+  const label = (path: string, roots: string[]) => getFolderLabel(makeVideo('x', { path }), roots);
+  expect(label('P:\\AI\\Trips\\x.mp4', ['P:\\'])).toBe('AI\\Trips');
+  expect(label('P:\\x.mp4', ['P:\\'])).toBe('Root');
+  expect(label('D:\\Media\\Trips\\x.mp4', ['D:\\Media'])).toBe('Trips');
+  expect(label('D:\\Media\\Trips\\x.mp4', ['D:\\Media', 'P:\\'])).toBe('Media / Trips');
+  expect(label('P:\\Clips\\x.mp4', ['D:\\Media', 'P:\\'])).toBe('P: / Clips');
+});
 
 test('format helpers produce user-facing strings for common values', () => {
   expect(formatSize(0)).toBe('0 B');
