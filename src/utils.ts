@@ -211,3 +211,11 @@ export function getFolderPath(video: Video): string {
   const sep = video.path.includes('/') ? '/' : '\\';
   return video.path.substring(0, video.path.lastIndexOf(sep));
 }
+
+/** Whether `folder` is `ancestor` or lies below it; Windows paths, so case and separators do not matter. */
+export function isFolderInside(folder: string, ancestor: string): boolean {
+  const normalize = (value: string) => value.replace(/[\\/]+/g, '\\').replace(/\\$/, '').toLowerCase();
+  const target = normalize(folder);
+  const base = normalize(ancestor);
+  return target === base || target.startsWith(`${base}\\`);
+}

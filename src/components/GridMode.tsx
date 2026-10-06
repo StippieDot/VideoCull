@@ -14,7 +14,7 @@ import type { Video } from '../types';
 import useStore from '../store';
 import useActiveValue from '../hooks/useActiveValue';
 import VideoCard from './VideoCard';
-import { formatSize, getFolderLabel, getFolderPath, isWebSupported } from '../utils';
+import { formatSize, getFolderLabel, getFolderPath, isFolderInside, isWebSupported } from '../utils';
 import { matchesKeybind } from '../keybinds';
 import { Check, ChevronDown, RefreshCw, Search, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
@@ -776,25 +776,27 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     if (headerIndexes.length === 0) useStore.getState().setGridTopFolder(null);
   }, [headerIndexes]);
 
-  // Title bar "Go to Folder": scroll to the folder's header, or to its first video when the grid
-  // is not grouped by folder. A jump stays pending until the folder is in the grid's rows.
+  // Title bar folder jumps: scroll to the first header (or, ungrouped, the first video) in the
+  // folder or below it, so a folder without videos of its own lands on its first subfolder.
+  // A jump stays pending until such a row is in the grid.
   const gridFolderJump = useStore((s) => s.gridFolderJump);
   const handledFolderJumpRef = useRef(0);
   useEffect(() => {
     if (!gridFolderJump || handledFolderJumpRef.current === gridFolderJump.id || !gridActive) return;
+    const target = gridFolderJump.folderPath;
     const rowIndex = rows.findIndex((row) => (
       row.type === 'header'
-        ? row.folderPath === gridFolderJump.folderPath
-        : row.videoIds.some((id) => {
+        ? isFolderInside(row.folderPath, target)
+        : headerIndexes.length === 0 && row.videoIds.some((id) => {
           const video = videosById.get(id);
-          return video !== undefined && getFolderPath(video) === gridFolderJump.folderPath;
+          return video !== undefined && isFolderInside(getFolderPath(video), target);
         })
     ));
     if (rowIndex < 0) return;
     handledFolderJumpRef.current = gridFolderJump.id;
     listRef.current?.scrollToRow({ index: rowIndex, align: 'start' });
     persistedGridScroll = { directory, offset: getRowTop(rowIndex) };
-  }, [directory, getRowTop, gridActive, gridFolderJump, rows, videosById]);
+  }, [directory, getRowTop, gridActive, gridFolderJump, headerIndexes, rows, videosById]);
 
   const handleNextFolder = useCallback(() => {
     if (headerIndexes.length === 0) return;

@@ -195,6 +195,7 @@ function buildMenuTemplate(state, actions) {
       label: 'View',
       submenu: [
         { label: 'Command Palette...', accelerator: 'CmdOrCtrl+K', click: () => send('open-command-palette') },
+        { label: 'Go to Folder...', accelerator: 'CmdOrCtrl+G', enabled: state.hasSession, click: () => send('go-to-folder') },
         { type: 'separator' },
         {
           label: 'Sort By',

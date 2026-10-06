@@ -6,7 +6,7 @@ import TitleBar from '../../../src/components/TitleBar';
 import useStore from '../../../src/store';
 import type { PowerState } from '../../../src/types';
 
-const LOCATION_ACTIONS = { reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn() };
+const LOCATION_ACTIONS = { reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), openFolderSearch: vi.fn() };
 
 function installElectronApiMock(power: PowerState) {
   const electronAPI = {

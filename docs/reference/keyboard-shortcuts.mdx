@@ -23,6 +23,7 @@ VideoCull is built around keyboard-first review. The web tables show the default
 | `Ctrl + +` / `Ctrl + =` / `Ctrl + -` | Larger or smaller cards |
 | `F11` | Toggle fullscreen |
 | `Ctrl + K` | Search and run any menu command |
+| `Ctrl + G` | Go to a folder in the grid |
 | `F1` | Open documentation |
 | `Shift + ?` | Open the keyboard shortcuts reference |
 | `M` | Toggle global mute |
@@ -58,17 +59,21 @@ Every command is also in the menu bar at the top of the window, and **Ctrl + K**
 | --- | --- |
 | File | Open Folder, Add Folder to Session, Open Recent, Rescan, Reveal Folder in Explorer, Close Session, Export Report, Settings, Clear Cache and Reload, Exit |
 | Actions | Undo, Find Duplicates, Pause Processing, When Processing Finishes, Delete Marked Videos |
-| View | Command Palette, Sort By, Group by Folder, Clear All Filters, Larger and Smaller Cards, Privacy Screen, Mute In-App Playback (when enabled), Dark / Light theme, Full Screen |
+| View | Command Palette, Go to Folder, Sort By, Group by Folder, Clear All Filters, Larger and Smaller Cards, Privacy Screen, Mute In-App Playback (when enabled), Dark / Light theme, Full Screen |
 | Video | Play Externally, Reveal in Explorer, Copy Path and Regenerate Thumbnails for the video open in Review or the videos selected in the grid; Play Externally and Reveal in Explorer need exactly one video |
 | Help | Documentation, Online Help, Keyboard Shortcuts, Release Notes, Report a Problem, Open Log Folder, Check for Updates (direct download only), Support VideoCull (GitHub Sponsors or PayPal), About VideoCull |
 
 The middle of the title bar shows where you are: in the grid, the path of the folder at the top of the screen; in Review, the path of the open video; in duplicate groups, the number of groups. Select any part of the path for a menu with counts and actions for that spot:
 
-- **Grid folder:** Review This Folder, Show Only This Folder, Regenerate Thumbnails, Reveal in Explorer, Copy Path, and Go to Folder to jump straight to any folder in the grid.
+- **Grid folder:** Review This Folder, Show Only This Folder, Regenerate Thumbnails, Reveal in Explorer, Copy Path and Go to Folder.
 - **Video in Review:** Reveal in Explorer, Play Externally, Copy Path, Review Only This Folder and Show Folder in Grid.
 - **Duplicate groups:** Find Duplicates Again, Duplicate Settings and Back to Grid, with the space you could reclaim.
 
-In these menus, the arrow keys move through the items, `Right` opens Go to Folder, `Left` and `Right` also move to the neighbouring part of the path, and `Esc` closes the menu.
+In the grid, each `›` in the path lists the folders one level down, with how many videos each still has to review; pick one to scroll there. Folders with nothing left to review are dimmed. A `›` after the last part appears when that folder has subfolders. With several folders loaded, the arrow at the start of the path switches between them.
+
+**Go to Folder** (`Ctrl + G`) jumps to any folder in the grid: type any part of its path. Before you type, it lists the folders you jumped to recently, then the ones with the most left to review.
+
+In these menus, the arrow keys move through the items, `Left` and `Right` move to the neighbouring part of the path, and `Esc` closes the menu.
 
 While VideoCull is processing, the right side of the title bar shows what it is working on and how far it is, with a pause button, and a progress line runs along the bar's bottom edge.
 

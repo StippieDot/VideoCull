@@ -45,6 +45,30 @@
   white-space: nowrap;
 }
 
+/* The `›` between path parts lists the folders one level down. */
+.location-bar-chevron {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.location-bar-chevron:hover,
+.location-bar-chevron:focus-visible,
+.location-bar-chevron.open {
+  background: var(--bg-control);
+  color: var(--text-primary);
+  outline: none;
+}
+
 .location-bar-separator,
 .location-bar-ellipsis {
   flex-shrink: 0;
@@ -121,15 +145,18 @@
   font-variant-numeric: tabular-nums;
 }
 
-.location-menu-submenu-anchor {
-  position: relative;
+.location-menu-item.muted .location-menu-label {
+  color: var(--text-tertiary);
 }
 
-/* Go to Folder can list hundreds of folders. */
-.location-menu.location-menu-submenu {
-  position: absolute;
-  top: -5px;
-  left: calc(100% + 4px);
-  max-height: min(480px, 60vh);
+/* A folder's subfolders can run into the hundreds. */
+.location-menu-list {
+  max-height: min(480px, calc(100vh - var(--title-bar-height, 32px) - 24px));
   overflow-y: auto;
+}
+
+.location-menu-empty {
+  padding: 8px 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
 }

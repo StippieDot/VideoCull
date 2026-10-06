@@ -3,13 +3,17 @@ import { createPortal } from 'react-dom';
 import { Check, ChevronDown, ChevronRight, Copy, Film, Folder } from 'lucide-react';
 import useStore from '../store';
 import type { Video } from '../types';
+import { isFolderInside } from '../utils';
 import { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail } from './contextMenuBuilders';
 import {
   buildDuplicatesMenu,
   buildFolderMenu,
+  buildRootsMenu,
+  buildSubfolderMenu,
   buildVideoMenu,
   collapseSegments,
+  listSubfolders,
   splitPath,
   type LocationActions,
   type LocationMenu,
@@ -25,20 +29,33 @@ export interface LocationBarAppActions {
   regenerateThumbnails: (videos: Video[]) => void;
   findDuplicates: () => void;
   openDuplicateSettings: () => void;
+  openFolderSearch: () => void;
 }
 
 type Segment = PathSegment & { kind: 'folder' | 'video' | 'duplicates' };
 
-function isInsideAny(folder: string, roots: string[]): boolean {
-  const target = folder.toLowerCase();
-  return roots.some((root) => {
-    const base = root.replace(/[\\/]+$/, '').toLowerCase();
-    return target === base || target.startsWith(`${base}\\`) || target.startsWith(`${base}/`);
-  });
+/**
+ * The bar's parts in order. Path parts open what can be done there; in the grid, the `›` between
+ * them lists the folders one level down (Explorer's address bar), and with several loaded folders
+ * a leading button switches between them.
+ */
+type Control =
+  | { type: 'segment'; segment: Segment; last: boolean }
+  | { type: 'subfolders'; parent: string; current: string | null }
+  | { type: 'roots' }
+  | { type: 'ellipsis' }
+  | { type: 'separator' };
+
+const INTERACTIVE = new Set<Control['type']>(['segment', 'subfolders', 'roots']);
+
+interface Location {
+  segments: Segment[];
+  /** Grid: the `›` lists browse folders. Review and duplicates show a plain path. */
+  browsable: boolean;
 }
 
 /** The title bar's location: the grid folder on screen, the video in review, or the duplicate groups. */
-function useSegments(): Segment[] | null {
+function useLocation(): Location | null {
   const reviewMode = useStore((s) => s.reviewMode);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const duplicateGroupCount = useStore((s) => s.duplicateGroups.length);
@@ -51,17 +68,43 @@ function useSegments(): Segment[] | null {
     if (directories.length === 0) return null;
     if (duplicateGroupsMode) {
       const label = `Duplicates · ${duplicateGroupCount.toLocaleString()} ${duplicateGroupCount === 1 ? 'group' : 'groups'}`;
-      return [{ kind: 'duplicates', label, path: 'duplicates' }];
+      return { segments: [{ kind: 'duplicates', label, path: 'duplicates' }], browsable: false };
     }
     if (reviewMode && reviewPath) {
-      const segments = splitPath(reviewPath);
-      return segments.map((segment, index) => ({ ...segment, kind: index === segments.length - 1 ? 'video' : 'folder' }));
+      const parts = splitPath(reviewPath);
+      return {
+        segments: parts.map((segment, index) => ({ ...segment, kind: index === parts.length - 1 ? 'video' : 'folder' })),
+        browsable: false,
+      };
     }
-    const folder = (gridTopFolder && isInsideAny(gridTopFolder, directories) ? gridTopFolder : null)
+    const folder = (gridTopFolder && directories.some((root) => isFolderInside(gridTopFolder, root)) ? gridTopFolder : null)
       ?? folderFilterPath
       ?? (directories.length === 1 ? directories[0] : null);
-    return folder ? splitPath(folder).map((segment) => ({ ...segment, kind: 'folder' })) : null;
+    return folder ? { segments: splitPath(folder).map((segment) => ({ ...segment, kind: 'folder' })), browsable: true } : null;
   }, [directories, duplicateGroupCount, duplicateGroupsMode, folderFilterPath, gridTopFolder, reviewMode, reviewPath]);
+}
+
+function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders: boolean): Control[] {
+  const { segments, browsable } = location;
+  const controls: Control[] = browsable && hasRoots ? [{ type: 'roots' }] : [];
+  const visible = collapseSegments(segments);
+  visible.forEach((segment, index) => {
+    if (!segment) {
+      controls.push({ type: 'ellipsis' });
+      return;
+    }
+    const fullIndex = segments.indexOf(segment);
+    if (index > 0) {
+      controls.push(browsable
+        ? { type: 'subfolders', parent: segments[fullIndex - 1].path, current: segment.path }
+        : { type: 'separator' });
+    }
+    controls.push({ type: 'segment', segment, last: fullIndex === segments.length - 1 });
+  });
+  if (browsable && lastHasSubfolders) {
+    controls.push({ type: 'subfolders', parent: segments[segments.length - 1].path, current: null });
+  }
+  return controls;
 }
 
 function useLocationActions(app: LocationBarAppActions): LocationActions {
@@ -89,6 +132,7 @@ function useLocationActions(app: LocationBarAppActions): LocationActions {
       },
       playExternally: (path) => void window.electronAPI?.openVideo(path),
       goToFolder: (folder) => store().requestGridFolderJump(folder),
+      openFolderSearch: () => appRef.current.openFolderSearch(),
       showFolderInGrid: (folder) => {
         store().setReviewMode(false);
         store().requestGridFolderJump(folder);
@@ -100,8 +144,13 @@ function useLocationActions(app: LocationBarAppActions): LocationActions {
   }, []);
 }
 
-function buildMenu(segment: Segment, actions: LocationActions): LocationMenu | null {
+function buildMenu(control: Control, location: Location, actions: LocationActions): LocationMenu | null {
   const state = useStore.getState();
+  const current = location.segments[location.segments.length - 1]?.path ?? null;
+  if (control.type === 'roots') return buildRootsMenu(state.filteredVideos, state.directories, current, actions);
+  if (control.type === 'subfolders') return buildSubfolderMenu(state.filteredVideos, control.parent, control.current, actions);
+  if (control.type !== 'segment') return null;
+  const { segment } = control;
   if (segment.kind === 'duplicates') return buildDuplicatesMenu(state.duplicateGroups, state.videos, actions);
   const canNarrowReview = !state.reviewScopeIds;
   if (segment.kind === 'video') {
@@ -124,14 +173,25 @@ function buildMenu(segment: Segment, actions: LocationActions): LocationMenu | n
  * be done there, drawn by the app (not a native popup) so it can show a header and counts.
  */
 export default function LocationBar({ sessionTitle, appActions }: { sessionTitle: string; appActions: LocationBarAppActions }) {
-  const segments = useSegments();
+  const location = useLocation();
   const actions = useLocationActions(appActions);
+  const filteredVideos = useStore((s) => s.filteredVideos);
+  const rootCount = useStore((s) => s.directories.length);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const buttonRefs = useRef(new Map<number, HTMLButtonElement>());
-  const visible = useMemo(() => (segments ? collapseSegments(segments) : []), [segments]);
+
+  const lastFolder = location?.browsable ? location.segments[location.segments.length - 1].path : null;
+  const lastHasSubfolders = useMemo(
+    () => lastFolder !== null && listSubfolders(filteredVideos, lastFolder).length > 0,
+    [filteredVideos, lastFolder],
+  );
+  const controls = useMemo(
+    () => (location ? buildControls(location, rootCount > 1, lastHasSubfolders) : []),
+    [lastHasSubfolders, location, rootCount],
+  );
 
   // The location can change under an open menu (grid scrolled, next video); close it then.
-  useEffect(() => setOpenIndex(null), [segments]);
+  useEffect(() => setOpenIndex(null), [location]);
 
   const close = useCallback((refocus: boolean) => {
     setOpenIndex((index) => {
@@ -140,77 +200,98 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
     });
   }, []);
 
-  const switchSegment = useCallback((direction: -1 | 1) => {
+  const switchControl = useCallback((direction: -1 | 1) => {
     setOpenIndex((index) => {
       if (index === null) return index;
-      for (let next = index + direction; next >= 0 && next < visible.length; next += direction) {
-        if (visible[next]) return next;
+      for (let next = index + direction; next >= 0 && next < controls.length; next += direction) {
+        if (INTERACTIVE.has(controls[next].type)) return next;
       }
       return index;
     });
-  }, [visible]);
+  }, [controls]);
 
-  if (!segments) return <div className="title-bar-title">{sessionTitle}</div>;
+  if (!location) return <div className="title-bar-title">{sessionTitle}</div>;
 
-  const lastSegment = segments[segments.length - 1];
-  const fullPath = lastSegment?.kind === 'duplicates' ? undefined : lastSegment?.path;
-  const openSegment = openIndex !== null ? visible[openIndex] : null;
-  const menu = openSegment ? buildMenu(openSegment, actions) : null;
+  const lastSegment = location.segments[location.segments.length - 1];
+  const fullPath = lastSegment.kind === 'duplicates' ? undefined : lastSegment.path;
+  const openControl = openIndex !== null ? controls[openIndex] : null;
+  const menu = openControl ? buildMenu(openControl, location, actions) : null;
   const anchor = openIndex !== null ? buttonRefs.current.get(openIndex)?.getBoundingClientRect() : undefined;
+
+  const buttonProps = (index: number, label: string) => ({
+    ref: (element: HTMLButtonElement | null) => {
+      if (element) buttonRefs.current.set(index, element);
+      else buttonRefs.current.delete(index);
+    },
+    type: 'button' as const,
+    'aria-label': label,
+    'aria-haspopup': 'menu' as const,
+    'aria-expanded': openIndex === index,
+    onMouseDown: (event: React.MouseEvent) => event.preventDefault(),
+    onClick: () => setOpenIndex(openIndex === index ? null : index),
+    onKeyDown: (event: React.KeyboardEvent) => {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setOpenIndex(index);
+      }
+    },
+  });
 
   return (
     <nav className="location-bar" aria-label="Location" title={fullPath}>
-      {visible.map((segment, index) => {
-        const last = index === visible.length - 1;
-        return (
-          <Fragment key={segment?.path ?? 'collapsed'}>
-            {index > 0 && <ChevronRight size={12} className="location-bar-separator" aria-hidden="true" />}
-            {segment ? (
+      {controls.map((control, index) => {
+        const open = openIndex === index ? ' open' : '';
+        switch (control.type) {
+          case 'segment':
+            return (
               <button
-                ref={(element) => {
-                  if (element) buttonRefs.current.set(index, element);
-                  else buttonRefs.current.delete(index);
-                }}
-                type="button"
-                className={`location-bar-segment${last ? ' current' : ''}${openIndex === index ? ' open' : ''}`}
-                aria-haspopup="menu"
-                aria-expanded={openIndex === index}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => setOpenIndex(openIndex === index ? null : index)}
-                onKeyDown={(event) => {
-                  if (event.key === 'ArrowDown') {
-                    event.preventDefault();
-                    setOpenIndex(index);
-                  }
-                }}
+                key={index}
+                {...buttonProps(index, control.segment.label)}
+                className={`location-bar-segment${control.last ? ' current' : ''}${open}`}
               >
-                <span className="location-bar-label">{segment.label}</span>
-                {last && <ChevronDown size={12} aria-hidden="true" />}
+                <span className="location-bar-label">{control.segment.label}</span>
+                {control.last && <ChevronDown size={12} aria-hidden="true" />}
               </button>
-            ) : (
-              <span className="location-bar-ellipsis">…</span>
-            )}
-          </Fragment>
-        );
+            );
+          case 'subfolders':
+            return (
+              <button
+                key={index}
+                {...buttonProps(index, `Folders in ${splitPath(control.parent).pop()?.label ?? control.parent}`)}
+                className={`location-bar-chevron${open}`}
+              >
+                <ChevronRight size={12} aria-hidden="true" />
+              </button>
+            );
+          case 'roots':
+            return (
+              <button key={index} {...buttonProps(index, 'Loaded folders')} className={`location-bar-chevron${open}`}>
+                <ChevronDown size={12} aria-hidden="true" />
+              </button>
+            );
+          case 'ellipsis':
+            return <span key={index} className="location-bar-ellipsis">…</span>;
+          default:
+            return <Fragment key={index}><ChevronRight size={12} className="location-bar-separator" aria-hidden="true" /></Fragment>;
+        }
       })}
       {menu && anchor && (
         <LocationMenuPopup
           key={openIndex}
           menu={menu}
+          label={openControl?.type === 'segment' ? openControl.segment.label : buttonRefs.current.get(openIndex!)?.getAttribute('aria-label') ?? ''}
           left={anchor.left}
           top={anchor.bottom + 4}
           onClose={close}
-          onSwitchSegment={switchSegment}
+          onSwitchSegment={switchControl}
         />
       )}
     </nav>
   );
 }
 
-const HEADER_ICONS = { folder: Folder, video: Film, duplicates: Copy } as const;
+const HEADER_ICONS = { folder: Folder, video: Film, duplicates: Copy, list: Folder } as const;
 const VIEWPORT_GUTTER = 8;
-
-type FocusTarget = { index: number; subIndex: number | null };
 
 function focusableIndexes(items: LocationMenuItem[]): number[] {
   return items.flatMap((item, index) => (item.type === 'separator' ? [] : [index]));
@@ -221,18 +302,21 @@ function stepIndex(list: number[], current: number, delta: number): number {
   return list[(position + delta + list.length) % list.length] ?? current;
 }
 
-export function LocationMenuPopup({ menu, left, top, onClose, onSwitchSegment }: {
+export function LocationMenuPopup({ menu, label, left, top, onClose, onSwitchSegment }: {
   menu: LocationMenu;
+  label: string;
   left: number;
   top: number;
   onClose: (refocus: boolean) => void;
   onSwitchSegment: (direction: -1 | 1) => void;
 }) {
   const popupRef = useRef<HTMLDivElement>(null);
-  const itemRefs = useRef(new Map<string, HTMLButtonElement>());
+  const itemRefs = useRef(new Map<number, HTMLButtonElement>());
   const focusable = useMemo(() => focusableIndexes(menu.items), [menu.items]);
-  const [focus, setFocus] = useState<FocusTarget>({ index: focusable[0] ?? 0, subIndex: null });
-  const [submenuIndex, setSubmenuIndex] = useState<number | null>(null);
+  const [focus, setFocus] = useState(() => {
+    const current = menu.items.findIndex((item) => item.type === 'item' && item.current);
+    return current >= 0 ? current : focusable[0] ?? 0;
+  });
   const [position, setPosition] = useState({ left, top });
 
   useLayoutEffect(() => {
@@ -241,34 +325,16 @@ export function LocationMenuPopup({ menu, left, top, onClose, onSwitchSegment }:
     setPosition({ left: Math.max(VIEWPORT_GUTTER, Math.min(left, window.innerWidth - rect.width - VIEWPORT_GUTTER)), top });
   }, [left, top]);
 
-  // A submenu opens to the right and down; flip or lift it where that would leave the window.
-  const submenuRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const element = submenuRef.current;
-    if (!element) return;
-    element.style.left = '';
-    element.style.right = '';
-    element.style.top = '';
-    const rect = element.getBoundingClientRect();
-    if (rect.right > window.innerWidth - VIEWPORT_GUTTER) {
-      element.style.left = 'auto';
-      element.style.right = 'calc(100% + 4px)';
-    }
-    const overflow = rect.bottom - (window.innerHeight - VIEWPORT_GUTTER);
-    const anchorTop = element.parentElement?.getBoundingClientRect().top ?? rect.top;
-    if (overflow > 0) element.style.top = `${Math.round(rect.top - anchorTop - overflow)}px`;
-  }, [submenuIndex]);
-
   useEffect(() => {
-    const element = itemRefs.current.get(`${focus.index}:${focus.subIndex ?? ''}`);
+    const element = itemRefs.current.get(focus);
     element?.focus();
     element?.scrollIntoView?.({ block: 'nearest' });
-  }, [focus, submenuIndex]);
+  }, [focus]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Element;
-      // Segment buttons toggle the menu themselves.
+      // The bar's buttons toggle their menus themselves.
       if (popupRef.current?.contains(target) || target.closest?.('.location-bar')) return;
       onClose(false);
     };
@@ -288,35 +354,15 @@ export function LocationMenuPopup({ menu, left, top, onClose, onSwitchSegment }:
     item.onSelect();
   };
 
-  const openSubmenu = (index: number) => {
-    const item = menu.items[index];
-    if (item?.type !== 'submenu' || item.items.length === 0) return;
-    setSubmenuIndex(index);
-    setFocus({ index, subIndex: Math.max(0, item.items.findIndex((entry) => entry.current)) });
-  };
-
-  const closeSubmenu = () => {
-    setSubmenuIndex(null);
-    setFocus({ index: focus.index, subIndex: null });
-  };
-
   const handleKeyDown = (event: React.KeyboardEvent) => {
-    const item = menu.items[focus.index];
-    const submenu = item?.type === 'submenu' && focus.subIndex !== null ? item.items : null;
-    const moveSub = (delta: number) => setFocus({
-      index: focus.index,
-      subIndex: submenu ? ((focus.subIndex ?? 0) + delta + submenu.length) % submenu.length : null,
-    });
     const keys: Record<string, () => void> = {
-      ArrowDown: () => (submenu ? moveSub(1) : setFocus({ index: stepIndex(focusable, focus.index, 1), subIndex: null })),
-      ArrowUp: () => (submenu ? moveSub(-1) : setFocus({ index: stepIndex(focusable, focus.index, -1), subIndex: null })),
-      Home: () => setFocus(submenu ? { index: focus.index, subIndex: 0 } : { index: focusable[0], subIndex: null }),
-      End: () => setFocus(submenu
-        ? { index: focus.index, subIndex: submenu.length - 1 }
-        : { index: focusable[focusable.length - 1], subIndex: null }),
-      ArrowRight: () => (item?.type === 'submenu' && !submenu ? openSubmenu(focus.index) : onSwitchSegment(1)),
-      ArrowLeft: () => (submenu ? closeSubmenu() : onSwitchSegment(-1)),
-      Escape: () => (submenu ? closeSubmenu() : onClose(true)),
+      ArrowDown: () => setFocus(stepIndex(focusable, focus, 1)),
+      ArrowUp: () => setFocus(stepIndex(focusable, focus, -1)),
+      Home: () => setFocus(focusable[0]),
+      End: () => setFocus(focusable[focusable.length - 1]),
+      ArrowRight: () => onSwitchSegment(1),
+      ArrowLeft: () => onSwitchSegment(-1),
+      Escape: () => onClose(true),
       Tab: () => onClose(false),
     };
     const handler = keys[event.key];
@@ -327,82 +373,47 @@ export function LocationMenuPopup({ menu, left, top, onClose, onSwitchSegment }:
   };
 
   const HeaderIcon = HEADER_ICONS[menu.kind];
-  const itemRef = (key: string) => (element: HTMLButtonElement | null) => {
-    if (element) itemRefs.current.set(key, element);
-    else itemRefs.current.delete(key);
-  };
+  const isList = menu.kind === 'list';
 
   return createPortal(
     <div
       ref={popupRef}
-      className="app-context-menu location-menu"
+      className={`app-context-menu location-menu${isList ? ' location-menu-list' : ''}`}
       style={{ left: position.left, top: position.top }}
       role="menu"
-      aria-label={menu.title}
+      aria-label={menu.title ?? label}
       onKeyDown={handleKeyDown}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <div className="location-menu-header">
-        <HeaderIcon size={16} aria-hidden="true" />
-        <div className="location-menu-header-text">
-          <div className="location-menu-title">{menu.title}</div>
-          <div className="location-menu-detail">{menu.detail}</div>
+      {menu.title && (
+        <div className="location-menu-header">
+          <HeaderIcon size={16} aria-hidden="true" />
+          <div className="location-menu-header-text">
+            <div className="location-menu-title">{menu.title}</div>
+            <div className="location-menu-detail">{menu.detail}</div>
+          </div>
         </div>
-      </div>
+      )}
+      {menu.items.length === 0 && <div className="location-menu-empty">No folders with videos</div>}
       {menu.items.map((item, index) => {
         if (item.type === 'separator') return <div key={item.key} className="app-context-menu-separator" role="separator" />;
-        const Icon = item.icon;
-        if (item.type === 'submenu') {
-          const open = submenuIndex === index;
-          return (
-            <div key={item.key} className="location-menu-submenu-anchor" onMouseEnter={() => openSubmenu(index)} onMouseLeave={() => setSubmenuIndex(null)}>
-              <button
-                ref={itemRef(`${index}:`)}
-                type="button"
-                role="menuitem"
-                aria-haspopup="menu"
-                aria-expanded={open}
-                className="app-context-menu-item location-menu-item"
-                onClick={() => openSubmenu(index)}
-              >
-                <span className="location-menu-icon">{Icon && <Icon size={14} />}</span>
-                <span className="location-menu-label">{item.label}</span>
-                <ChevronRight size={14} aria-hidden="true" />
-              </button>
-              {open && (
-                <div ref={submenuRef} className="app-context-menu location-menu location-menu-submenu" role="menu" aria-label={item.label}>
-                  {item.items.map((entry, subIndex) => (
-                    <button
-                      key={entry.key}
-                      ref={itemRef(`${index}:${subIndex}`)}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={Boolean(entry.current)}
-                      className="app-context-menu-item location-menu-item"
-                      onClick={() => run(entry)}
-                    >
-                      <span className="location-menu-icon">{entry.current && <Check size={14} />}</span>
-                      <span className="location-menu-label">{entry.label}</span>
-                      {entry.detail && <span className="location-menu-item-detail">{entry.detail}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        }
+        const Icon = item.current ? Check : item.icon;
         return (
           <button
             key={item.key}
-            ref={itemRef(`${index}:`)}
+            ref={(element) => {
+              if (element) itemRefs.current.set(index, element);
+              else itemRefs.current.delete(index);
+            }}
             type="button"
-            role="menuitem"
-            className="app-context-menu-item location-menu-item"
-            onMouseEnter={() => setSubmenuIndex(null)}
+            role={isList ? 'menuitemradio' : 'menuitem'}
+            aria-checked={isList ? Boolean(item.current) : undefined}
+            className={`app-context-menu-item location-menu-item${item.muted ? ' muted' : ''}`}
             onClick={() => run(item)}
           >
             <span className="location-menu-icon">{Icon && <Icon size={14} />}</span>
             <span className="location-menu-label">{item.label}</span>
+            {item.detail && <span className="location-menu-item-detail">{item.detail}</span>}
           </button>
         );
       })}
