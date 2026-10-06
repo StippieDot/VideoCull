@@ -43,10 +43,11 @@ type Control =
   | { type: 'segment'; segment: Segment; last: boolean }
   | { type: 'subfolders'; parent: string; current: string | null }
   | { type: 'roots' }
-  | { type: 'ellipsis' }
+  /** The middle of a long path; opens a list of the folders it hides. */
+  | { type: 'ellipsis'; hidden: Segment[] }
   | { type: 'separator' };
 
-const INTERACTIVE = new Set<Control['type']>(['segment', 'subfolders', 'roots']);
+const INTERACTIVE = new Set<Control['type']>(['segment', 'subfolders', 'roots', 'ellipsis']);
 
 interface Location {
   segments: Segment[];
@@ -90,7 +91,11 @@ function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders:
   const visible = collapseSegments(segments);
   visible.forEach((segment, index) => {
     if (!segment) {
-      controls.push({ type: 'ellipsis' });
+      const nextShown = visible[index + 1];
+      controls.push(browsable
+        ? { type: 'subfolders', parent: segments[0].path, current: segments[1].path }
+        : { type: 'separator' });
+      controls.push({ type: 'ellipsis', hidden: segments.slice(1, nextShown ? segments.indexOf(nextShown) : -1) });
       return;
     }
     const fullIndex = segments.indexOf(segment);
@@ -144,9 +149,27 @@ function useLocationActions(app: LocationBarAppActions): LocationActions {
   }, []);
 }
 
-function buildMenu(control: Control, location: Location, actions: LocationActions): LocationMenu | null {
+function buildMenu(
+  control: Control,
+  location: Location,
+  actions: LocationActions,
+  pickHidden: (segment: Segment) => void,
+): LocationMenu | null {
   const state = useStore.getState();
   const current = location.segments[location.segments.length - 1]?.path ?? null;
+  if (control.type === 'ellipsis') {
+    return {
+      kind: 'list',
+      items: control.hidden.map((segment) => ({
+        type: 'item',
+        key: segment.path,
+        label: segment.label,
+        icon: Folder,
+        keepOpen: true,
+        onSelect: () => pickHidden(segment),
+      })),
+    };
+  }
   if (control.type === 'roots') return buildRootsMenu(state.filteredVideos, state.directories, current, actions);
   if (control.type === 'subfolders') return buildSubfolderMenu(state.filteredVideos, control.parent, control.current, actions);
   if (control.type !== 'segment') return null;
@@ -178,6 +201,9 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
   const filteredVideos = useStore((s) => s.filteredVideos);
   const rootCount = useStore((s) => s.directories.length);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  // A folder picked from the "…" list; its own menu then replaces the list.
+  const [hiddenPick, setHiddenPick] = useState<Segment | null>(null);
+  useEffect(() => setHiddenPick(null), [openIndex]);
   const buttonRefs = useRef(new Map<number, HTMLButtonElement>());
 
   const lastFolder = location?.browsable ? location.segments[location.segments.length - 1].path : null;
@@ -215,7 +241,9 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
   const lastSegment = location.segments[location.segments.length - 1];
   const fullPath = lastSegment.kind === 'duplicates' ? undefined : lastSegment.path;
   const openControl = openIndex !== null ? controls[openIndex] : null;
-  const menu = openControl ? buildMenu(openControl, location, actions) : null;
+  const menu = !openControl ? null : hiddenPick
+    ? buildMenu({ type: 'segment', segment: hiddenPick, last: false }, location, actions, setHiddenPick)
+    : buildMenu(openControl, location, actions, setHiddenPick);
   const anchor = openIndex !== null ? buttonRefs.current.get(openIndex)?.getBoundingClientRect() : undefined;
 
   const buttonProps = (index: number, label: string) => ({
@@ -270,16 +298,21 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
               </button>
             );
           case 'ellipsis':
-            return <span key={index} className="location-bar-ellipsis">…</span>;
+            return (
+              <button key={index} {...buttonProps(index, 'Hidden folders')} className={`location-bar-segment${open}`}>
+                <span className="location-bar-label">…</span>
+              </button>
+            );
           default:
             return <Fragment key={index}><ChevronRight size={12} className="location-bar-separator" aria-hidden="true" /></Fragment>;
         }
       })}
       {menu && anchor && (
         <LocationMenuPopup
-          key={openIndex}
+          key={`${openIndex}:${hiddenPick?.path ?? ''}`}
           menu={menu}
-          label={openControl?.type === 'segment' ? openControl.segment.label : buttonRefs.current.get(openIndex!)?.getAttribute('aria-label') ?? ''}
+          label={hiddenPick?.label
+            ?? (openControl?.type === 'segment' ? openControl.segment.label : buttonRefs.current.get(openIndex!)?.getAttribute('aria-label') ?? '')}
           left={anchor.left}
           top={anchor.bottom + 4}
           onClose={close}
@@ -350,7 +383,7 @@ export function LocationMenuPopup({ menu, label, left, top, onClose, onSwitchSeg
   }, [onClose]);
 
   const run = (item: LocationMenuAction) => {
-    onClose(false);
+    if (!item.keepOpen) onClose(false);
     item.onSelect();
   };
 

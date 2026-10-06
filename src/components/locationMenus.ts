@@ -24,6 +24,8 @@ export type LocationMenuAction = {
   /** Right-aligned extra text, such as a folder's count in Go to Folder. */
   detail?: string;
   current?: boolean;
+  /** Selecting it shows another menu in the same place instead of closing. */
+  keepOpen?: boolean;
   /** Dimmed: a folder with nothing left to review. */
   muted?: boolean;
   onSelect: () => void;

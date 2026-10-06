@@ -152,6 +152,20 @@ describe('LocationBar', () => {
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Media');
   });
 
+  test('the … in a long path lists the folders it hides, each with its own menu', () => {
+    const deep = 'P:\\a\\b\\c\\d\\e';
+    const videos = [makeVideo('deep', {}, deep)];
+    useStore.setState({ directories: ['P:\\'], videos, filteredVideos: videos, gridTopFolder: deep });
+    render(<LocationBar sessionTitle="P:" appActions={appActions()} />);
+    expect(buttonNames()).toEqual(['P:', 'Folders in P:', 'Hidden folders', 'Folders in b', 'c', 'Folders in c', 'd', 'Folders in d', 'e']);
+
+    act(() => screen.getByRole('button', { name: 'Hidden folders' }).click());
+    expect(screen.getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual(['a', 'b']);
+    act(() => screen.getByRole('menuitemradio', { name: 'b' }).click());
+    expect(screen.getByRole('menu', { name: 'b' }).textContent).toContain('1 video · 1 to review');
+    expect(screen.getByRole('menuitem', { name: 'Reveal in Explorer' })).toBeTruthy();
+  });
+
   test('a trailing › lists the subfolders, and several loaded folders get a switcher', () => {
     useStore.setState({
       directories: [ROOT, 'P:\\'],
