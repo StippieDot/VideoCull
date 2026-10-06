@@ -789,6 +789,11 @@ export default function App() {
         await menuHandlersRef.current.openRecent(action.slice('open-recent:'.length));
         return;
       }
+      if (action.startsWith('reveal-folder:')) {
+        const folder = action.slice('reveal-folder:'.length);
+        if (state.directories.includes(folder)) window.electronAPI.openInExplorer(folder);
+        return;
+      }
       if (action.startsWith('sort:')) {
         const field = action.slice('sort:'.length);
         if ((SORT_FIELDS as readonly string[]).includes(field)) state.setSortBy(field as SortField);
@@ -815,7 +820,6 @@ export default function App() {
           break;
         }
         case 'regenerate-thumbnails': { void menuHandlersRef.current.regenerateThumbnails(activeVideos); break; }
-        case 'reveal-folder': { if (state.directory) window.electronAPI.openInExplorer(state.directory); break; }
         case 'toggle-group-by-folder': { state.setGroupByFolder(!state.groupByFolder); break; }
         case 'clear-filters': { state.clearFilters(); break; }
         case 'toggle-mute': { toggleGlobalMute(); break; }

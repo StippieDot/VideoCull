@@ -26,6 +26,7 @@ export default function useAppMenuState(isPrivate: boolean) {
   const muteAvailable = useStore((s) => s.settings.features.globalMute);
   const muted = useStore((s) => s.settings.globalMute);
   const recentFolders = useStore((s) => s.settings.recentDirectories);
+  const folders = useStore((s) => s.directories);
   const lastSent = useRef('');
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function useAppMenuState(isPrivate: boolean) {
       muted,
       isPrivate,
       recentFolders,
+      folders,
     };
     const serialized = JSON.stringify(state);
     if (serialized === lastSent.current) return;
@@ -61,6 +63,6 @@ export default function useAppMenuState(isPrivate: boolean) {
     hasSession, directory, videoCount, markedCount, canUndo, isScanning, metadataRunning,
     isFindingDuplicates, duplicatesEnabled, activeVideoCount, isGenerating, sortBy, sortOrder,
     ratingsEnabled, codecBadgesEnabled, groupByFolder, filtersActive, muteAvailable, muted,
-    isPrivate, recentFolders,
+    isPrivate, recentFolders, folders,
   ]);
 }

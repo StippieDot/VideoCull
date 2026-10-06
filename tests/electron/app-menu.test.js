@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { buildMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('../../electron/app-menu');
+const { buildMenuTemplate, buildFolderMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('../../electron/app-menu');
 
 const actions = {
   send: () => {},
@@ -111,4 +111,21 @@ test('menu state from the renderer is normalised', () => {
     recentFolders: ['a'],
     sortOptions: ['size'],
   });
+});
+
+test('the title bar folder menu lists the loaded folders and reveals the chosen one', () => {
+  const sent = [];
+  const state = {
+    ...EMPTY_RENDERER_MENU_STATE, isDev: false, updatesEnabled: false, processing: false, paused: false, finishAction: 'none',
+    hasSession: true, folders: ['D:\Clips', 'E:\Trips'],
+  };
+  const template = buildFolderMenuTemplate(state, (action) => sent.push(action));
+  assert.deepEqual(template.slice(0, 2).map((entry) => [entry.label, entry.enabled]), [['D:\Clips', false], ['E:\Trips', false]]);
+  const reveal = template.find((entry) => entry.label === 'Reveal in Explorer');
+  reveal.submenu[1].click();
+  assert.deepEqual(sent, ['reveal-folder:E:\Trips']);
+
+  const single = buildFolderMenuTemplate({ ...state, folders: ['D:\Clips'] }, (action) => sent.push(action));
+  single.find((entry) => entry.label === 'Reveal in Explorer').click();
+  assert.deepEqual(sent.at(-1), 'reveal-folder:D:\Clips');
 });

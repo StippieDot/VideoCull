@@ -21,6 +21,7 @@
  *   muted: boolean,
  *   isPrivate: boolean,
  *   recentFolders: string[],
+ *   folders: string[],
  * }} RendererMenuState
  */
 
@@ -67,6 +68,7 @@ const EMPTY_RENDERER_MENU_STATE = {
   muted: false,
   isPrivate: false,
   recentFolders: [],
+  folders: [],
 };
 
 /** Sort fields the renderer may offer, with their menu labels. */
@@ -83,6 +85,11 @@ const SORT_LABELS = {
 const isSortField = (value) => typeof value === 'string' && Object.prototype.hasOwnProperty.call(SORT_LABELS, value);
 
 const MAX_RECENT_FOLDERS = 8;
+
+/** @param {unknown} value @returns {string[]} */
+function folderList(value) {
+  return Array.isArray(value) ? value.filter((folder) => typeof folder === 'string' && folder.length > 0) : [];
+}
 
 /**
  * @param {unknown} input
@@ -108,9 +115,8 @@ function normalizeRendererMenuState(input) {
     muteAvailable: raw.muteAvailable === true,
     muted: raw.muted === true,
     isPrivate: raw.isPrivate === true,
-    recentFolders: Array.isArray(raw.recentFolders)
-      ? raw.recentFolders.filter((folder) => typeof folder === 'string' && folder.length > 0).slice(0, MAX_RECENT_FOLDERS)
-      : [],
+    recentFolders: folderList(raw.recentFolders).slice(0, MAX_RECENT_FOLDERS),
+    folders: folderList(raw.folders),
   };
 }
 
@@ -133,16 +139,10 @@ function buildMenuTemplate(state, actions) {
       submenu: [
         { label: 'Open Folder...', accelerator: 'CmdOrCtrl+O', click: () => send('open-directory') },
         { label: 'Add Folder to Session...', enabled: state.hasSession, click: () => send('add-folder') },
-        {
-          label: 'Open Recent',
-          enabled: state.recentFolders.length > 0,
-          submenu: state.recentFolders.length > 0
-            ? state.recentFolders.map((folder) => ({ label: escapeMenuLabel(folder), click: () => send(`open-recent:${folder}`) }))
-            : [{ label: 'No recent folders', enabled: false }],
-        },
+        openRecentItem(state, send),
         { type: 'separator' },
         { label: 'Rescan', accelerator: 'F5', enabled: state.hasSession, click: () => send('rescan-directory') },
-        { label: 'Reveal Folder in Explorer', enabled: state.hasSession, click: () => send('reveal-folder') },
+        revealFolderItem(state, send, 'Reveal Folder in Explorer'),
         { label: 'Close Session', enabled: state.hasSession, click: () => send('close-session') },
         { type: 'separator' },
         { label: 'Export Report...', accelerator: 'CmdOrCtrl+Shift+E', enabled: state.canExport, click: () => send('export-report') },
@@ -292,6 +292,53 @@ function buildMenuTemplate(state, actions) {
   return state.isPrivate ? template.map(disableForPrivacy) : template;
 }
 
+/**
+ * With several loaded folders, a submenu lists them.
+ * @param {MenuState} state @param {(action: string) => void} send @param {string} label
+ * @returns {Electron.MenuItemConstructorOptions}
+ */
+function revealFolderItem(state, send, label) {
+  if (state.folders.length > 1) {
+    return {
+      label,
+      submenu: state.folders.map((folder) => ({ label: escapeMenuLabel(folder), click: () => send(`reveal-folder:${folder}`) })),
+    };
+  }
+  return { label, enabled: state.folders.length === 1, click: () => send(`reveal-folder:${state.folders[0]}`) };
+}
+
+/** @param {MenuState} state @param {(action: string) => void} send @returns {Electron.MenuItemConstructorOptions} */
+function openRecentItem(state, send) {
+  return {
+    label: 'Open Recent',
+    enabled: state.recentFolders.length > 0,
+    submenu: state.recentFolders.length > 0
+      ? state.recentFolders.map((folder) => ({ label: escapeMenuLabel(folder), click: () => send(`open-recent:${folder}`) }))
+      : [{ label: 'No recent folders', enabled: false }],
+  };
+}
+
+/**
+ * Menu of the folder name in the middle of the title bar: the loaded folders and what can be done
+ * with the session.
+ *
+ * @param {MenuState} state
+ * @param {(action: string) => void} send
+ * @returns {Electron.MenuItemConstructorOptions[]}
+ */
+function buildFolderMenuTemplate(state, send) {
+  return [
+    ...state.folders.map((folder) => ({ label: escapeMenuLabel(folder), enabled: false })),
+    { type: 'separator' },
+    revealFolderItem(state, send, 'Reveal in Explorer'),
+    { label: 'Add Folder to Session...', click: () => send('add-folder') },
+    openRecentItem(state, send),
+    { type: 'separator' },
+    { label: 'Rescan', accelerator: 'F5', click: () => send('rescan-directory') },
+    { label: 'Close Session', click: () => send('close-session') },
+  ];
+}
+
 /** Only the privacy screen itself, full screen and Exit stay usable behind the privacy screen. */
 function disableForPrivacy(/** @type {Electron.MenuItemConstructorOptions} */ item) {
   /** @type {Electron.MenuItemConstructorOptions} */
@@ -310,4 +357,4 @@ function escapeMenuLabel(/** @type {string} */ label) {
   return label.replace(/&/g, '&&');
 }
 
-module.exports = { buildMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE };
+module.exports = { buildMenuTemplate, buildFolderMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE };

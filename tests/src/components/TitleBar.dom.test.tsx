@@ -13,6 +13,7 @@ function installElectronApiMock(power: PowerState) {
     getProcessingPauseState: vi.fn().mockResolvedValue({ status: 'paused' }),
     onProcessingPauseState: vi.fn(() => () => {}),
     openAppMenu: vi.fn().mockResolvedValue(true),
+    openFolderMenu: vi.fn().mockResolvedValue(true),
   };
   (window as unknown as { electronAPI: typeof electronAPI }).electronAPI = electronAPI;
   return electronAPI;
@@ -46,6 +47,15 @@ describe('TitleBar', () => {
     expect(button.classList.contains('active')).toBe(true);
     act(() => button.click());
     expect(api.openAppMenu).toHaveBeenCalledWith(['Actions', 'When Processing Finishes'], expect.any(Number), expect.any(Number));
+  });
+
+  test('the folder name opens the folder menu', async () => {
+    const api = installElectronApiMock({ processing: false, finishAction: 'none', countdown: null });
+    useStore.setState({ isGenerating: false });
+    render(<TitleBar isPrivate={false} />);
+
+    act(() => screen.getByRole('button', { name: /Videos/ }).click());
+    expect(api.openFolderMenu).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
   });
 
   test('behind the privacy screen neither the folder nor the processing status is shown', async () => {

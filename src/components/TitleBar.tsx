@@ -73,6 +73,8 @@ export default function TitleBar({ isPrivate }: { isPrivate: boolean }) {
   const power = usePowerState();
   const paused = useProcessingPauseState().status !== 'running';
   const finishButtonRef = useRef<HTMLButtonElement>(null);
+  const folderButtonRef = useRef<HTMLButtonElement>(null);
+  const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuLabel | null>(null);
   const [altHeld, setAltHeld] = useState(false);
   const buttonRefs = useRef(new Map<MenuLabel, HTMLButtonElement>());
@@ -86,6 +88,17 @@ export default function TitleBar({ isPrivate }: { isPrivate: boolean }) {
       await window.electronAPI.openAppMenu([label], rect.left, rect.bottom);
     } finally {
       setOpenMenu(null);
+    }
+  };
+
+  const openFolderMenu = async () => {
+    const rect = folderButtonRef.current?.getBoundingClientRect();
+    if (!rect || !window.electronAPI) return;
+    setFolderMenuOpen(true);
+    try {
+      await window.electronAPI.openFolderMenu(rect.left, rect.bottom);
+    } finally {
+      setFolderMenuOpen(false);
     }
   };
 
@@ -153,14 +166,27 @@ export default function TitleBar({ isPrivate }: { isPrivate: boolean }) {
           </button>
         ))}
       </nav>
-      {status && !isPrivate ? (
-        <div className="title-bar-title title-bar-status" role="status">
-          <span className="title-bar-status-label">{status.label}</span>
-          {status.detail && <span>{status.detail}</span>}
-          {paused && <span className="title-bar-status-paused">Paused</span>}
-        </div>
+      {isPrivate || directories.length === 0 ? (
+        <div className="title-bar-title">{sessionTitle}</div>
       ) : (
-        <div className="title-bar-title" title={isPrivate ? undefined : directories.join('\n')}>{sessionTitle}</div>
+        <button
+          ref={folderButtonRef}
+          type="button"
+          className={`title-bar-title title-bar-folder${folderMenuOpen ? ' open' : ''}`}
+          title={directories.join('\n')}
+          aria-haspopup="menu"
+          aria-expanded={folderMenuOpen}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => void openFolderMenu()}
+        >
+          {status ? (
+            <span className="title-bar-status" role="status">
+              <span className="title-bar-status-label">{status.label}</span>
+              {status.detail && <span>{status.detail}</span>}
+              {paused && <span className="title-bar-status-paused">Paused</span>}
+            </span>
+          ) : sessionTitle}
+        </button>
       )}
       {status && (
         <div className="title-bar-progress" aria-hidden="true">

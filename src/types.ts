@@ -95,6 +95,8 @@ export interface AppMenuState {
   muted: boolean;
   isPrivate: boolean;
   recentFolders: string[];
+  /** The folders loaded in the session. */
+  folders: string[];
 }
 
 /** What VideoCull does once the current processing has finished. Applies to one run only. */
@@ -648,6 +650,8 @@ export interface ElectronAPI {
   setMenuState: (state: AppMenuState) => void;
   /** Opens an app menu or submenu, given by its label path, at a window position; resolves when it closes. */
   openAppMenu: (labels: string[], x: number, y: number) => Promise<boolean>;
+  /** Opens the menu of the folder name in the title bar; resolves when it closes. */
+  openFolderMenu: (x: number, y: number) => Promise<boolean>;
   openVideo: (filePath: string) => Promise<void>;
   openExternalUrl: (url: string) => Promise<boolean>;
   openLegalFile: (name: LegalFileName) => Promise<boolean>;

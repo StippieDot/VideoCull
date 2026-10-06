@@ -20,7 +20,7 @@ const {
 const { processingPause } = require('./processing-pause');
 const { createPowerManager } = require('./power-manager');
 const { runPowerCommand } = require('./system-power');
-const { buildMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('./app-menu');
+const { buildMenuTemplate, buildFolderMenuTemplate, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('./app-menu');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
@@ -565,6 +565,20 @@ ipcMain.handle('open-app-menu', (_event, labels, x, y) => new Promise((resolve) 
     return;
   }
   item.submenu.popup({ window: mainWindow, x: Math.round(x), y: Math.round(y), callback: () => resolve(true) });
+}));
+
+// The menu behind the folder name in the title bar. Resolves when it closes.
+ipcMain.handle('open-folder-menu', (_event, x, y) => new Promise((resolve) => {
+  if (rendererMenuState.folders.length === 0 || rendererMenuState.isPrivate || !mainWindow || mainWindow.isDestroyed()
+    || !Number.isFinite(x) || !Number.isFinite(y)) {
+    resolve(false);
+    return;
+  }
+  const template = buildFolderMenuTemplate(
+    { ...rendererMenuState, isDev, updatesEnabled, processing: false, paused: false, finishAction: 'none' },
+    (action) => sendToRenderer('menu-action', action),
+  );
+  Menu.buildFromTemplate(template).popup({ window: mainWindow, x: Math.round(x), y: Math.round(y), callback: () => resolve(true) });
 }));
 
 ipcMain.on('set-menu-state', (_event, state) => {
