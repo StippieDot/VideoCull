@@ -25,8 +25,8 @@ const VIDEOS = [
 
 function actionsMock(): LocationActions {
   return {
-    reviewFolder: vi.fn(), reviewOnlyFolder: vi.fn(), showOnlyFolder: vi.fn(), regenerateThumbnails: vi.fn(),
-    reveal: vi.fn(), copyPath: vi.fn(), playExternally: vi.fn(), goToFolder: vi.fn(), openFolderSearch: vi.fn(), showFolderInGrid: vi.fn(),
+    reviewFolder: vi.fn(), reviewOnlyFolder: vi.fn(), filterToPath: vi.fn(), regenerateThumbnails: vi.fn(),
+    reveal: vi.fn(), copyPath: vi.fn(), playExternally: vi.fn(), openFolderSearch: vi.fn(), showFolderInGrid: vi.fn(),
     findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn(),
   };
 }
@@ -51,31 +51,36 @@ test('splits paths into clickable parts and collapses the middle of long ones', 
 test('the grid folder menu counts the folder and offers the folder search', () => {
   const context = {
     mode: 'grid' as const, folder: `${ROOT}\\Trips`, videos: VIDEOS, filteredVideos: VIDEOS,
-    directories: [ROOT], folderFilterPath: null, canNarrowReview: true,
+    directories: [ROOT], canNarrowReview: true,
   };
   const menu = buildFolderMenu(context, actionsMock());
   expect(menu.title).toBe('Trips');
   expect(menu.detail).toBe('2 videos · 1 to review · 200 B');
-  expect(labels(menu.items)).toEqual(['Review This Folder', 'Show Only This Folder', 'Regenerate Thumbnails', 'Reveal in Explorer', 'Copy Path', 'Go to Folder...']);
+  expect(labels(menu.items)).toEqual(['Review This Folder', 'Regenerate Thumbnails', 'Reveal in Explorer', 'Copy Path', 'Go to Folder...']);
 
-  const filtered = buildFolderMenu({ ...context, folderFilterPath: `${ROOT}\\Trips` }, actionsMock());
-  expect(labels(filtered.items)).toContain('Show All Folders');
-
-  // A folder above the loaded one has no videos of its own: no review or filter actions.
+  // A folder above the loaded one has no videos of its own: nothing to review.
   const parent = buildFolderMenu({ ...context, folder: 'D:\\' }, actionsMock());
   expect(labels(parent.items)).toEqual(['Regenerate Thumbnails', 'Reveal in Explorer', 'Copy Path', 'Go to Folder...']);
 });
 
-test('subfolder lists go one level down, count everything below and tick the current one', () => {
+test('a › list offers all of the folder before it, then each folder one level down, and filters to the choice', () => {
   const videos = [...VIDEOS, makeVideo('d', { status: 'keep' }, `${ROOT}\\Trips\\2024\\June`)];
   expect(listSubfolders(videos, 'D:\\')).toEqual([{ path: ROOT, label: 'Media', count: 4, toReview: 2 }]);
   expect(listSubfolders(videos, `${ROOT}\\Trips`)).toEqual([{ path: `${ROOT}\\Trips\\2024`, label: '2024', count: 1, toReview: 0 }]);
 
-  const menu = buildSubfolderMenu(videos, ROOT, `${ROOT}\\Trips`, actionsMock());
-  expect(menu.items.map((item) => item.type === 'item' && [item.label, item.detail, Boolean(item.current)])).toEqual([
+  const actions = actionsMock();
+  const scope = { pathFilter: `${ROOT}\\Trips\\2024`, directories: [ROOT] };
+  const menu = buildSubfolderMenu(videos, ROOT, scope, actions);
+  const rows = menu.items.filter((item) => item.type === 'item');
+  expect(rows.map((item) => item.type === 'item' && [item.label, item.detail, Boolean(item.current)])).toEqual([
+    ['All of Media', '2 to review', false],
     ['Clips', '1 to review', false],
+    // Ticked: the shown folder lies inside it.
     ['Trips', '1 to review', true],
   ]);
+  rows.forEach((item) => item.type === 'item' && item.onSelect());
+  // All of the loaded folder is the same as no filter.
+  expect(vi.mocked(actions.filterToPath).mock.calls).toEqual([[null], [`${ROOT}\\Clips`], [`${ROOT}\\Trips`]]);
 });
 
 test('the video menu describes the video and only narrows review when it can', () => {
@@ -104,9 +109,11 @@ describe('LocationBar', () => {
       filteredVideos: VIDEOS,
       reviewMode: false,
       duplicateGroupsMode: false,
-      gridTopFolder: `${ROOT}\\Trips`,
       gridFolderJump: null,
       folderFilterPath: null,
+      pathFilter: null,
+      statusFilter: 'all',
+      searchQuery: '',
     });
   });
 
@@ -114,11 +121,32 @@ describe('LocationBar', () => {
     reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), openFolderSearch: vi.fn(),
   });
   const buttonNames = () => screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'));
+  const shownIds = () => useStore.getState().filteredVideos.map((video) => video.id);
 
-  test('shows the grid folder on screen and runs its menu from the keyboard', () => {
-    const actions = appActions();
-    render(<LocationBar sessionTitle="Media" appActions={actions} />);
+  test('the › lists filter the grid to a folder and everything below it, and back', () => {
+    render(<LocationBar sessionTitle="Media" appActions={appActions()} />);
+    expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media']);
+
+    act(() => screen.getByRole('button', { name: 'Folders in Media' }).click());
+    // Opens on what is shown: all of the loaded folder.
+    expect(document.activeElement?.textContent).toBe('All of Media2 to review');
+    act(() => screen.getByRole('menuitemradio', { name: /^Trips/ }).click());
+    expect(useStore.getState().pathFilter).toBe(`${ROOT}\\Trips`);
+    expect(shownIds()).toEqual(['a', 'b']);
     expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips']);
+
+    act(() => screen.getByRole('button', { name: 'Folders in Media' }).click());
+    expect(document.activeElement?.textContent).toBe('Trips1 to review');
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Home' });
+    act(() => (document.activeElement as HTMLElement).click());
+    expect(useStore.getState().pathFilter).toBeNull();
+    expect(shownIds()).toHaveLength(3);
+  });
+
+  test('path parts keep their action menus, run from the keyboard', () => {
+    const actions = appActions();
+    useStore.getState().setPathFilter(`${ROOT}\\Trips`);
+    render(<LocationBar sessionTitle="Media" appActions={actions} />);
 
     act(() => screen.getByRole('button', { name: 'Trips' }).click());
     expect(screen.getByRole('menu', { name: 'Trips' })).toBeTruthy();
@@ -127,28 +155,14 @@ describe('LocationBar', () => {
     act(() => (document.activeElement as HTMLElement).click());
     expect(actions.reviewFolder).toHaveBeenCalledWith(`${ROOT}\\Trips`);
     expect(screen.queryByRole('menu')).toBeNull();
-  });
-
-  test('arrow keys reach Go to Folder and the subfolder lists between path parts', () => {
-    const actions = appActions();
-    render(<LocationBar sessionTitle="Media" appActions={actions} />);
-    act(() => screen.getByRole('button', { name: 'Trips' }).click());
-
-    fireEvent.keyDown(screen.getByRole('menu', { name: 'Trips' }), { key: 'End' });
-    expect(document.activeElement?.textContent).toBe('Go to Folder...Ctrl+G');
-    act(() => (document.activeElement as HTMLElement).click());
-    expect(actions.openFolderSearch).toHaveBeenCalled();
 
     act(() => screen.getByRole('button', { name: 'Trips' }).click());
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowLeft' });
-    const list = screen.getByRole('menu', { name: 'Folders in Media' });
-    // Opens on the folder you are in.
-    expect(document.activeElement?.textContent).toBe('Trips1 to review');
-    fireEvent.keyDown(list, { key: 'ArrowUp' });
-    act(() => (document.activeElement as HTMLElement).click());
-    expect(useStore.getState().gridFolderJump?.folderPath).toBe(`${ROOT}\\Clips`);
-
-    act(() => screen.getByRole('button', { name: 'Media' }).click());
+    expect(screen.getByRole('menu', { name: 'Folders in Media' })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowLeft' });
+    expect(screen.getByRole('menu', { name: 'Media' })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'End' });
+    expect(document.activeElement?.textContent).toBe('Copy Path');
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Media');
@@ -160,7 +174,8 @@ describe('LocationBar', () => {
     const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(100);
     const deep = 'P:\\a\\b\\c\\d\\e';
     const videos = [makeVideo('deep', {}, deep)];
-    useStore.setState({ directories: ['P:\\'], videos, filteredVideos: videos, gridTopFolder: deep });
+    useStore.setState({ directories: ['P:\\'], videos, filteredVideos: videos });
+    useStore.getState().setPathFilter(deep);
     render(<LocationBar sessionTitle="P:" appActions={appActions()} />);
     scrollWidth.mockRestore();
     clientWidth.mockRestore();
@@ -173,18 +188,22 @@ describe('LocationBar', () => {
     expect(screen.getByRole('menuitem', { name: 'Reveal in Explorer' })).toBeTruthy();
   });
 
-  test('a trailing › lists the subfolders, and several loaded folders get a switcher', () => {
-    useStore.setState({
-      directories: [ROOT, 'P:\\'],
-      videos: [...VIDEOS, makeVideo('p', {}, 'P:\\Clips')],
-      filteredVideos: [...VIDEOS, makeVideo('p', {}, 'P:\\Clips')],
-      gridTopFolder: ROOT,
-    });
-    render(<LocationBar sessionTitle="Media" appActions={appActions()} />);
-    expect(buttonNames()).toEqual(['Loaded folders', 'D:', 'Folders in D:', 'Media', 'Folders in Media']);
+  test('with several loaded folders, a switcher shows them all or one of them', () => {
+    const videos = [...VIDEOS, makeVideo('p', {}, 'P:\\Clips')];
+    useStore.setState({ directories: [ROOT, 'P:\\'], videos, filteredVideos: videos });
+    render(<LocationBar sessionTitle="Media + 1 more" appActions={appActions()} />);
+    expect(buttonNames()).toEqual(['Loaded folders']);
+    expect(screen.getByText('Media + 1 more')).toBeTruthy();
 
     act(() => screen.getByRole('button', { name: 'Loaded folders' }).click());
-    expect(screen.getByRole('menu').textContent).toContain('P:\\');
+    expect(screen.getAllByRole('menuitemradio').map((item) => [item.textContent, item.getAttribute('aria-checked')])).toEqual([
+      ['All Loaded Folders3 to review', 'true'],
+      [`${ROOT}2 to review`, 'false'],
+      ['P:\\1 to review', 'false'],
+    ]);
+    act(() => screen.getByRole('menuitemradio', { name: /^P:/ }).click());
+    expect(shownIds()).toEqual(['p']);
+    expect(buttonNames()).toEqual(['Loaded folders', 'P:', 'Folders in P:']);
   });
 
   test('in review it shows the open video, and duplicates get their own menu', () => {

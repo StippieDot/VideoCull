@@ -68,7 +68,7 @@ describe('TitleBar', () => {
 
   test('the location in the centre opens its menu', async () => {
     installElectronApiMock({ processing: false, finishAction: 'none', countdown: null });
-    useStore.setState({ isGenerating: false, videos: [], gridTopFolder: null });
+    useStore.setState({ isGenerating: false, videos: [], pathFilter: null });
     render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
 
     act(() => screen.getByRole('button', { name: 'Videos' }).click());

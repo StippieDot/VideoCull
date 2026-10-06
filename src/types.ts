@@ -367,6 +367,8 @@ export interface VideoStore {
   minDurationFilter: number;
   maxDurationFilter: number | null;
   folderFilterPath: string | null;
+  /** Folder chosen in the title bar path: shows it and everything below it. */
+  pathFilter: string | null;
   minRatingFilter: RatingFilter;
   favoritesFilter: boolean;
   incompatibleFilter: boolean;
@@ -385,8 +387,6 @@ export interface VideoStore {
   reviewScopeIds: string[] | null;
   reviewAutoPlay: boolean;
   activeReviewVideoPath: string | null;
-  /** Folder of the grid's topmost visible folder header, for the title bar; null without headers. */
-  gridTopFolder: string | null;
   /** Asks the grid to scroll to a folder; the id makes a repeated request for the same folder count. */
   gridFolderJump: { folderPath: string; id: number } | null;
   duplicateGroupsMode: boolean;
@@ -438,7 +438,7 @@ export interface VideoStore {
   setDuplicateFilter: (val: boolean) => void;
   clearFilters: () => void;
   setGroupByFolder: (val: boolean) => void;
-  setGridTopFolder: (folderPath: string | null) => void;
+  setPathFilter: (folderPath: string | null) => void;
   requestGridFolderJump: (folderPath: string) => void;
   setFolderSortBy: (sortBy: FolderSortField) => void;
   setFolderSortOrder: (order: SortOrder) => void;

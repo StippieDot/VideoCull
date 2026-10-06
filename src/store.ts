@@ -9,7 +9,7 @@ import type {
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, normalizeFeatureSettings, pruneRecentDirectories } from './keybind-defaults';
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
-import { detectVideoCompatibility } from './utils';
+import { detectVideoCompatibility, isFolderInside } from './utils';
 import { getPreloadedColorTheme } from './theme';
 
 function thumbnailIndex(filePath: string): number | null {
@@ -45,7 +45,7 @@ function getFolder(v: Video): string {
   return folder;
 }
 
-function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
+function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'pathFilter' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
   const startedAt = import.meta.env.DEV ? performance.now() : 0;
   let filtered = [...state.videos];
   const minSizeFilter = Math.max(0, Math.floor(state.minSizeFilter));
@@ -87,6 +87,11 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'sta
 
   if (state.folderFilterPath) {
     filtered = filtered.filter((v) => getFolder(v) === state.folderFilterPath);
+  }
+
+  const { pathFilter } = state;
+  if (pathFilter) {
+    filtered = filtered.filter((v) => isFolderInside(getFolder(v), pathFilter));
   }
 
   if (state.minRatingFilter > 0) {
@@ -848,6 +853,7 @@ const useStore = create<VideoStore>((set, get) => ({
   minDurationFilter: 0,
   maxDurationFilter: null,
   folderFilterPath: null,
+  pathFilter: null,
   minRatingFilter: 0,
   favoritesFilter: false,
   incompatibleFilter: false,
@@ -862,7 +868,6 @@ const useStore = create<VideoStore>((set, get) => ({
   reviewScopeIds: null,
   reviewAutoPlay: false,
   activeReviewVideoPath: null,
-  gridTopFolder: null,
   gridFolderJump: null,
   duplicateGroupsMode: false,
   duplicateGroups: [],
@@ -945,6 +950,7 @@ const useStore = create<VideoStore>((set, get) => ({
         settings: newSettings,
         searchQuery: '',
         folderFilterPath: null,
+        pathFilter: null,
         reviewMode: false,
         reviewIndex: 0,
         reviewScopeIds: null,
@@ -976,6 +982,7 @@ const useStore = create<VideoStore>((set, get) => ({
         sidebarAggregates: computeSidebarAggregates([]),
         searchQuery: '',
         folderFilterPath: null,
+        pathFilter: null,
         reviewMode: false,
         reviewIndex: 0,
         reviewScopeIds: null,
@@ -1015,6 +1022,7 @@ const useStore = create<VideoStore>((set, get) => ({
       directories: nextDirs,
       settings: newSettings,
       folderFilterPath: null,
+      pathFilter: null,
       reviewIndex: 0,
     });
     if (window.electronAPI) {
@@ -1032,6 +1040,7 @@ const useStore = create<VideoStore>((set, get) => ({
       directories: nextDirs,
       searchQuery: '',
       folderFilterPath: null,
+      pathFilter: null,
       reviewMode: false,
       reviewIndex: 0,
       reviewScopeIds: null,
@@ -1347,6 +1356,7 @@ const useStore = create<VideoStore>((set, get) => ({
     const cleared = {
       statusFilter: 'all' as StatusFilter,
       folderFilterPath: null,
+      pathFilter: null,
       favoritesFilter: false,
       incompatibleFilter: false,
       duplicateFilter: false,
@@ -1359,8 +1369,9 @@ const useStore = create<VideoStore>((set, get) => ({
     set({ ...cleared, filteredVideos: computeFiltered({ ...get(), ...cleared }), reviewIndex: 0 });
   },
 
-  setGridTopFolder: (gridTopFolder: string | null) => {
-    if (get().gridTopFolder !== gridTopFolder) set({ gridTopFolder });
+  setPathFilter: (pathFilter: string | null) => {
+    const state = { ...get(), pathFilter };
+    set({ pathFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
   },
   requestGridFolderJump: (folderPath: string) => set((state) => ({
     gridFolderJump: { folderPath, id: (state.gridFolderJump?.id ?? 0) + 1 },
@@ -1944,6 +1955,7 @@ export const __test__ = {
 export function hasActiveFilters(state: VideoStore): boolean {
   return state.statusFilter !== 'all'
     || Boolean(state.folderFilterPath)
+    || Boolean(state.pathFilter)
     || state.favoritesFilter
     || state.incompatibleFilter
     || state.duplicateFilter
@@ -1955,3 +1967,8 @@ export function hasActiveFilters(state: VideoStore): boolean {
 }
 
 export default useStore;
+
+/** The grid's videos as if no folder were chosen in the title bar path, for listing the folders around it. */
+export function videosOutsidePathFilter(state: VideoStore): Video[] {
+  return state.pathFilter ? computeFiltered({ ...state, pathFilter: null }) : state.filteredVideos;
+}

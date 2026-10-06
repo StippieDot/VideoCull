@@ -73,6 +73,14 @@
   outline: none;
 }
 
+.location-bar-text {
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
 .location-bar-separator,
 .location-bar-ellipsis {
   flex-shrink: 0;

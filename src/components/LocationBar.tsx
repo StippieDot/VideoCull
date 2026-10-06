@@ -1,9 +1,8 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, ChevronRight, Copy, Film, Folder } from 'lucide-react';
-import useStore from '../store';
+import useStore, { videosOutsidePathFilter } from '../store';
 import type { Video } from '../types';
-import { isFolderInside } from '../utils';
 import { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail } from './contextMenuBuilders';
 import {
@@ -35,14 +34,16 @@ export interface LocationBarAppActions {
 type Segment = PathSegment & { kind: 'folder' | 'video' | 'duplicates' };
 
 /**
- * The bar's parts in order. Path parts open what can be done there; in the grid, the `›` between
- * them lists the folders one level down (Explorer's address bar), and with several loaded folders
- * a leading button switches between them.
+ * The bar's parts in order. Path parts open what can be done there. In the grid, the path is the
+ * folder the grid is filtered to: each `›` lists the folders one level down to filter to instead
+ * (like Explorer's address bar), and with several loaded folders a leading button picks one.
  */
 type Control =
   | { type: 'segment'; segment: Segment; last: boolean }
-  | { type: 'subfolders'; parent: string; current: string | null }
+  | { type: 'subfolders'; parent: string }
   | { type: 'roots' }
+  /** Several loaded folders and no folder chosen: the session's name. */
+  | { type: 'text' }
   /** The middle of a long path; opens a list of the folders it hides. */
   | { type: 'ellipsis'; hidden: Segment[] }
   | { type: 'separator' };
@@ -55,14 +56,13 @@ interface Location {
   browsable: boolean;
 }
 
-/** The title bar's location: the grid folder on screen, the video in review, or the duplicate groups. */
+/** The title bar's location: the folder the grid is filtered to, the video in review, or the duplicate groups. */
 function useLocation(): Location | null {
   const reviewMode = useStore((s) => s.reviewMode);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const duplicateGroupCount = useStore((s) => s.duplicateGroups.length);
   const reviewPath = useStore((s) => s.activeReviewVideoPath);
-  const gridTopFolder = useStore((s) => s.gridTopFolder);
-  const folderFilterPath = useStore((s) => s.folderFilterPath);
+  const pathFilter = useStore((s) => s.pathFilter);
   const directories = useStore((s) => s.directories);
 
   return useMemo(() => {
@@ -78,22 +78,21 @@ function useLocation(): Location | null {
         browsable: false,
       };
     }
-    const folder = (gridTopFolder && directories.some((root) => isFolderInside(gridTopFolder, root)) ? gridTopFolder : null)
-      ?? folderFilterPath
-      ?? (directories.length === 1 ? directories[0] : null);
-    return folder ? { segments: splitPath(folder).map((segment) => ({ ...segment, kind: 'folder' })), browsable: true } : null;
-  }, [directories, duplicateGroupCount, duplicateGroupsMode, folderFilterPath, gridTopFolder, reviewMode, reviewPath]);
+    const folder = pathFilter ?? (directories.length === 1 ? directories[0] : null);
+    return { segments: folder ? splitPath(folder).map((segment) => ({ ...segment, kind: 'folder' })) : [], browsable: true };
+  }, [directories, duplicateGroupCount, duplicateGroupsMode, pathFilter, reviewMode, reviewPath]);
 }
 
 function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders: boolean, hiddenCount: number): Control[] {
   const { segments, browsable } = location;
   const controls: Control[] = browsable && hasRoots ? [{ type: 'roots' }] : [];
+  if (segments.length === 0) return [...controls, { type: 'text' }];
   const visible = collapseSegments(segments, hiddenCount);
   visible.forEach((segment, index) => {
     if (!segment) {
       const nextShown = visible[index + 1];
       controls.push(browsable
-        ? { type: 'subfolders', parent: segments[0].path, current: segments[1].path }
+        ? { type: 'subfolders', parent: segments[0].path }
         : { type: 'separator' });
       controls.push({ type: 'ellipsis', hidden: segments.slice(1, nextShown ? segments.indexOf(nextShown) : -1) });
       return;
@@ -101,13 +100,13 @@ function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders:
     const fullIndex = segments.indexOf(segment);
     if (index > 0) {
       controls.push(browsable
-        ? { type: 'subfolders', parent: segments[fullIndex - 1].path, current: segment.path }
+        ? { type: 'subfolders', parent: segments[fullIndex - 1].path }
         : { type: 'separator' });
     }
     controls.push({ type: 'segment', segment, last: fullIndex === segments.length - 1 });
   });
   if (browsable && lastHasSubfolders) {
-    controls.push({ type: 'subfolders', parent: segments[segments.length - 1].path, current: null });
+    controls.push({ type: 'subfolders', parent: segments[segments.length - 1].path });
   }
   return controls;
 }
@@ -126,7 +125,7 @@ function useLocationActions(app: LocationBarAppActions): LocationActions {
         const index = store().filteredVideos.findIndex((video) => video.path === videoPath);
         if (index >= 0) store().setReviewIndex(index);
       },
-      showOnlyFolder: (folder) => store().setFolderFilterPath(folder),
+      filterToPath: (folder) => store().setPathFilter(folder),
       regenerateThumbnails: (videos) => appRef.current.regenerateThumbnails(videos),
       reveal: (path) => void window.electronAPI?.openInExplorer(path),
       copyPath: (path) => {
@@ -136,7 +135,6 @@ function useLocationActions(app: LocationBarAppActions): LocationActions {
         );
       },
       playExternally: (path) => void window.electronAPI?.openVideo(path),
-      goToFolder: (folder) => store().requestGridFolderJump(folder),
       openFolderSearch: () => appRef.current.openFolderSearch(),
       showFolderInGrid: (folder) => {
         store().setReviewMode(false);
@@ -156,7 +154,6 @@ function buildMenu(
   pickHidden: (segment: Segment) => void,
 ): LocationMenu | null {
   const state = useStore.getState();
-  const current = location.segments[location.segments.length - 1]?.path ?? null;
   if (control.type === 'ellipsis') {
     return {
       kind: 'list',
@@ -170,8 +167,10 @@ function buildMenu(
       })),
     };
   }
-  if (control.type === 'roots') return buildRootsMenu(state.filteredVideos, state.directories, current, actions);
-  if (control.type === 'subfolders') return buildSubfolderMenu(state.filteredVideos, control.parent, control.current, actions);
+  // The lists show every folder the other filters allow, so you can switch to one next to the current one.
+  const scope = { pathFilter: state.pathFilter, directories: state.directories };
+  if (control.type === 'roots') return buildRootsMenu(videosOutsidePathFilter(state), scope, actions);
+  if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsidePathFilter(state), control.parent, scope, actions);
   if (control.type !== 'segment') return null;
   const { segment } = control;
   if (segment.kind === 'duplicates') return buildDuplicatesMenu(state.duplicateGroups, state.videos, actions);
@@ -186,7 +185,6 @@ function buildMenu(
     videos: state.videos,
     filteredVideos: state.filteredVideos,
     directories: state.directories,
-    folderFilterPath: state.folderFilterPath,
     canNarrowReview,
   }, actions);
 }
@@ -206,7 +204,7 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
   useEffect(() => setHiddenPick(null), [openIndex]);
   const buttonRefs = useRef(new Map<number, HTMLButtonElement>());
 
-  const lastFolder = location?.browsable ? location.segments[location.segments.length - 1].path : null;
+  const lastFolder = location?.browsable ? location.segments[location.segments.length - 1]?.path ?? null : null;
   const lastHasSubfolders = useMemo(
     () => lastFolder !== null && listSubfolders(filteredVideos, lastFolder).length > 0,
     [filteredVideos, lastFolder],
@@ -234,7 +232,7 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
     [hiddenCount, lastHasSubfolders, location, rootCount],
   );
 
-  // The location can change under an open menu (grid scrolled, next video); close it then.
+  // The location can change under an open menu (a filter chosen, the next video); close it then.
   useEffect(() => setOpenIndex(null), [location]);
 
   const close = useCallback((refocus: boolean) => {
@@ -257,7 +255,7 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
   if (!location) return <div className="title-bar-title">{sessionTitle}</div>;
 
   const lastSegment = location.segments[location.segments.length - 1];
-  const fullPath = lastSegment.kind === 'duplicates' ? undefined : lastSegment.path;
+  const fullPath = !lastSegment || lastSegment.kind === 'duplicates' ? undefined : lastSegment.path;
   const openControl = openIndex !== null ? controls[openIndex] : null;
   const menu = !openControl ? null : hiddenPick
     ? buildMenu({ type: 'segment', segment: hiddenPick, last: false }, location, actions, setHiddenPick)
@@ -321,6 +319,8 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
                 <ChevronDown size={12} aria-hidden="true" />
               </button>
             );
+          case 'text':
+            return <span key={index} className="location-bar-text">{sessionTitle}</span>;
           case 'ellipsis':
             return (
               <button key={index} {...buttonProps(index, 'Hidden folders')} className={`location-bar-segment${open}`}>

@@ -4,7 +4,6 @@ import {
   Copy,
   ExternalLink,
   Filter,
-  FilterX,
   FolderOpen,
   FolderTree,
   LayoutGrid,
@@ -130,38 +129,88 @@ export function listSubfolders(videos: Video[], parent: string): FolderEntry[] {
     .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' }));
 }
 
-/** The list behind a `›` in the path: the folders one level down, the current one ticked. */
-export function buildSubfolderMenu(videos: Video[], parent: string, current: string | null, actions: LocationActions): LocationMenu {
-  return {
-    kind: 'list',
-    items: listSubfolders(videos, parent).map((entry) => ({
+/** Where the title bar path filters the grid. */
+export interface PathScope {
+  pathFilter: string | null;
+  directories: string[];
+}
+
+/** The folder the grid shows: the path filter, or the loaded folder when there is just one. */
+function shownFolder(scope: PathScope): string | null {
+  return scope.pathFilter ?? (scope.directories.length === 1 ? scope.directories[0] : null);
+}
+
+/** Filtering to a folder that holds every loaded folder is the same as no filter. */
+function filterFor(folder: string, scope: PathScope): string | null {
+  return scope.directories.every((root) => isFolderInside(root, folder)) ? null : folder;
+}
+
+function sameFolder(a: string | null, b: string): boolean {
+  return a !== null && normalizeFolder(a) === normalizeFolder(b);
+}
+
+/**
+ * The list behind a `›` in the path: all of the folder before it, then each folder one level
+ * down. Choosing one filters the grid to it and everything below it; the folder shown is ticked.
+ */
+export function buildSubfolderMenu(videos: Video[], parent: string, scope: PathScope, actions: LocationActions): LocationMenu {
+  const shown = shownFolder(scope);
+  const all = videos.filter((video) => isInsideFolder(video, parent));
+  const allEntry = { path: parent, label: parent, count: all.length, toReview: countToReview(all) };
+  const items: LocationMenuItem[] = [
+    {
+      type: 'item',
+      key: 'all',
+      label: `All of ${lastPart(parent)}`,
+      detail: folderDetail(allEntry),
+      muted: allEntry.toReview === 0,
+      current: sameFolder(shown, parent),
+      onSelect: () => actions.filterToPath(filterFor(parent, scope)),
+    },
+    SEPARATOR('sep-all'),
+    ...listSubfolders(videos, parent).map((entry): LocationMenuItem => ({
       type: 'item',
       key: entry.path,
       label: entry.label,
       detail: folderDetail(entry),
       muted: entry.toReview === 0,
-      current: current !== null && normalizeFolder(entry.path) === normalizeFolder(current),
-      onSelect: () => actions.goToFolder(entry.path),
+      current: shown !== null && isFolderInside(shown, entry.path),
+      onSelect: () => actions.filterToPath(filterFor(entry.path, scope)),
     })),
-  };
+  ];
+  return { kind: 'list', items: trimSeparators(items) };
 }
 
-/** The loaded folders, for switching between them when there are several. */
-export function buildRootsMenu(videos: Video[], directories: string[], current: string | null, actions: LocationActions): LocationMenu {
+/** With several loaded folders: show them all, or one of them. */
+export function buildRootsMenu(videos: Video[], scope: PathScope, actions: LocationActions): LocationMenu {
+  const entry = (path: string, inside: Video[]) => ({ path, label: path, count: inside.length, toReview: countToReview(inside) });
+  const all = entry('', videos);
   return {
     kind: 'list',
-    items: directories.map((root) => {
-      const inside = videos.filter((video) => isInsideFolder(video, root));
-      return {
+    items: [
+      {
         type: 'item',
-        key: root,
-        label: root,
-        detail: folderDetail({ path: root, label: root, count: inside.length, toReview: countToReview(inside) }),
-        muted: countToReview(inside) === 0,
-        current: current !== null && isFolderInside(current, root),
-        onSelect: () => actions.goToFolder(root),
-      };
-    }),
+        key: 'all',
+        label: 'All Loaded Folders',
+        detail: folderDetail(all),
+        muted: all.toReview === 0,
+        current: scope.pathFilter === null,
+        onSelect: () => actions.filterToPath(null),
+      },
+      SEPARATOR('sep-all'),
+      ...scope.directories.map((root): LocationMenuItem => {
+        const rootEntry = entry(root, videos.filter((video) => isInsideFolder(video, root)));
+        return {
+          type: 'item',
+          key: root,
+          label: root,
+          detail: folderDetail(rootEntry),
+          muted: rootEntry.toReview === 0,
+          current: scope.pathFilter !== null && isFolderInside(scope.pathFilter, root),
+          onSelect: () => actions.filterToPath(root),
+        };
+      }),
+    ],
   };
 }
 
@@ -180,13 +229,12 @@ export function listGridFolders(filteredVideos: Video[], directories: string[]):
 export interface LocationActions {
   reviewFolder: (folder: string) => void;
   reviewOnlyFolder: (folder: string) => void;
-  showOnlyFolder: (folder: string | null) => void;
+  /** Shows only this folder and everything below it in the grid; null shows every loaded folder. */
+  filterToPath: (folder: string | null) => void;
   regenerateThumbnails: (videos: Video[]) => void;
   reveal: (path: string) => void;
   copyPath: (path: string) => void;
   playExternally: (path: string) => void;
-  /** Scrolls the grid to the folder, or to the first folder below it that has videos. */
-  goToFolder: (folder: string) => void;
   openFolderSearch: () => void;
   showFolderInGrid: (folder: string) => void;
   findDuplicates: () => void;
@@ -200,7 +248,6 @@ export interface FolderMenuContext {
   videos: Video[];
   filteredVideos: Video[];
   directories: string[];
-  folderFilterPath: string | null;
   /** Review can narrow to a folder unless it was opened on a fixed set of videos (duplicates). */
   canNarrowReview: boolean;
 }
@@ -213,9 +260,6 @@ export function buildFolderMenu(context: FolderMenuContext, actions: LocationAct
 
   if (mode === 'grid' && hasOwnVideos) {
     items.push({ type: 'item', key: 'review', label: 'Review This Folder', icon: Play, onSelect: () => actions.reviewFolder(folder) });
-    items.push(context.folderFilterPath !== null && normalizeFolder(context.folderFilterPath) === normalizeFolder(folder)
-      ? { type: 'item', key: 'show-all', label: 'Show All Folders', icon: FilterX, onSelect: () => actions.showOnlyFolder(null) }
-      : { type: 'item', key: 'show-only', label: 'Show Only This Folder', icon: Filter, onSelect: () => actions.showOnlyFolder(folder) });
   }
   if (mode === 'review' && hasOwnVideos) {
     if (context.canNarrowReview) {
