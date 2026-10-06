@@ -2611,21 +2611,26 @@ ipcMain.handle('save-review-state', (_event, dirPath, updates) => {
   });
 });
 
-ipcMain.handle('save-cache-atomic', async (_event, dirPath, videos) => {
-  if (!dirPath || typeof dirPath !== 'string') return false;
-  try {
-    const safeVideos = await validateCacheSavePayload(dirPath, videos);
-    if (safeVideos.length === 0) return false;
-    const cacheOptions = await getCacheOptions();
-    if (safeVideos.length > ATOMIC_SAVE_SYNC_LIMIT) {
-      log.warn(`[save-cache-atomic] ${safeVideos.length} videos exceeds sync transaction limit; using chunked save to keep UI responsive.`);
+// Part of the scan pipeline (between scanning and metadata), so it counts as processing: a chosen
+// sleep or shutdown must wait for it, and quitting drains it before the cache closes.
+ipcMain.handle('save-cache-atomic', (_event, dirPath, videos) => {
+  if (isQuitting) return false;
+  return trackCacheProducer(() => powerManager.trackWork(async () => {
+    if (!dirPath || typeof dirPath !== 'string') return false;
+    try {
+      const safeVideos = await validateCacheSavePayload(dirPath, videos);
+      if (safeVideos.length === 0) return false;
+      const cacheOptions = await getCacheOptions();
+      if (safeVideos.length > ATOMIC_SAVE_SYNC_LIMIT) {
+        log.warn(`[save-cache-atomic] ${safeVideos.length} videos exceeds sync transaction limit; using chunked save to keep UI responsive.`);
+      }
+      await saveVideosByParentFolder(safeVideos, cacheOptions, { atomic: true });
+      return true;
+    } catch (err) {
+      log.error('[save-cache-atomic] Error saving cache:', err);
+      return false;
     }
-    await saveVideosByParentFolder(safeVideos, cacheOptions, { atomic: true });
-    return true;
-  } catch (err) {
-    log.error('[save-cache-atomic] Error saving cache:', err);
-    return false;
-  }
+  }));
 });
 
 ipcMain.handle('clear-cache', async (event, dirPath) => {
