@@ -86,6 +86,31 @@ function setupWithFinish() {
   return { manager, performed, advance };
 }
 
+test('a chosen finish action keeps the PC awake until it runs, even with the setting off', () => {
+  const timers = [];
+  let awake = false;
+  const performed = [];
+  const manager = createPowerManager({
+    startBlocker: () => { awake = true; return 1; },
+    stopBlocker: () => { awake = false; },
+    isPaused: () => false,
+    performFinishAction: (action) => performed.push({ action, awake }),
+    setTimer: (callback) => timers.push(callback),
+    clearTimer: () => {},
+  });
+  manager.setKeepAwake(false);
+  const end = manager.beginWork();
+  assert.equal(awake, false);
+  manager.setFinishAction('shutdown');
+  end();
+  assert.equal(awake, true, 'awake during the grace period');
+  timers.shift()();
+  assert.equal(awake, true, 'awake during the countdown');
+  timers.shift()();
+  assert.deepEqual(performed, [{ action: 'shutdown', awake: true }]);
+  assert.equal(awake, false, 'released once the action has started');
+});
+
 test('the finish action runs once after processing stays idle, then resets', () => {
   const { manager, performed, advance } = setupWithFinish();
   const endMetadata = manager.beginWork();

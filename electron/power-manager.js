@@ -77,7 +77,11 @@ function createPowerManager({
   }
 
   function updateBlocker() {
-    const wanted = keepAwake && activeWork > 0 && !isPaused();
+    // A chosen finish action keeps the PC awake until it runs, even with the setting off: after a
+    // long unattended run Windows' idle timer has expired, so it would otherwise sleep during the
+    // grace period or countdown and a chosen shutdown would become sleep.
+    const finishPending = graceTimer !== null || countdown !== null;
+    const wanted = finishPending || (keepAwake && activeWork > 0 && !isPaused());
     if (wanted && blockerId === null) {
       blockerId = startBlocker();
     } else if (!wanted && blockerId !== null) {
@@ -104,12 +108,17 @@ function createPowerManager({
     countdown = null;
     finishAction = 'none';
     emit();
+    // Released only after the action has started, so idle sleep cannot get in first.
     performFinishAction(action);
+    updateBlocker();
   }
 
   function startCountdown() {
     graceTimer = null;
-    if (activeWork > 0 || finishAction === 'none') return;
+    if (activeWork > 0 || finishAction === 'none') {
+      updateBlocker();
+      return;
+    }
     countdown = { action: finishAction, endsAt: now() + countdownMs, timer: setTimer(fire, countdownMs) };
     emit();
   }
@@ -127,9 +136,9 @@ function createPowerManager({
       if (ended) return;
       ended = true;
       activeWork -= 1;
+      if (activeWork === 0 && finishAction !== 'none') graceTimer = setTimer(startCountdown, idleGraceMs);
       updateBlocker();
       if (activeWork > 0) return;
-      if (finishAction !== 'none') graceTimer = setTimer(startCountdown, idleGraceMs);
       emit();
     };
   }
@@ -168,6 +177,7 @@ function createPowerManager({
   function cancelFinishAction() {
     clearPendingFinish();
     finishAction = 'none';
+    updateBlocker();
     emit();
     return getState();
   }
