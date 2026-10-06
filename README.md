@@ -132,13 +132,13 @@ Generate an HTML report from Settings or the app menu, scoped to all loaded vide
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl + O` | Open directory |
+| `Ctrl + O` | Open folder |
 | `Ctrl + F` | Search loaded videos (customizable) |
 | `F5` | Rescan |
 | `Ctrl + Z` | Undo |
 | `Ctrl + Backspace` | Send marked videos to Recycle Bin |
 | `Ctrl + E` | Reveal in Explorer |
-| `Ctrl + +` / `Ctrl + -` | Zoom cards |
+| `Ctrl + +` / `Ctrl + -` | Larger or smaller cards |
 | `F11` | Toggle fullscreen |
 | `?` | Keyboard shortcuts reference |
 | `Shift + Esc` | Toggle privacy screen |
