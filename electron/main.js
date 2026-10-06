@@ -719,6 +719,7 @@ app.on('before-quit', (event) => {
     scheduled: updateInstallOnQuitScheduled,
     ready: updateReadyToInstall,
     installInProgress: updateInstallInProgress,
+    shuttingDownPc: shutdownAfterQuit,
   })
     ? (pendingUpdateInstallOptions ?? { isSilent: true, isForceRunAfter: false })
     : null;
