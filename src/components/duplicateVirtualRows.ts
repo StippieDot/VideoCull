@@ -5,7 +5,7 @@ export const DUPLICATE_GROUP_HEADER_HEIGHT = 64;
 export const DUPLICATE_VIDEO_ROW_HEIGHT = 79;
 export const DUPLICATE_GALLERY_ROW_PADDING = 12;
 /** The width cards aim for; columns then stretch or shrink a little to fill the row. */
-export const DUPLICATE_GALLERY_CARD_WIDTH = 360;
+export const DUPLICATE_GALLERY_CARD_WIDTH = 380;
 /** Narrow windows may shrink cards down to this. */
 export const DUPLICATE_GALLERY_CARD_MIN_WIDTH = 232;
 export const DUPLICATE_GALLERY_CARD_GAP = 12;
