@@ -27,7 +27,7 @@ function actionsMock(): LocationActions {
   return {
     reviewFolder: vi.fn(), reviewOnlyFolder: vi.fn(), filterToPath: vi.fn(), setIncludeSubfolders: vi.fn(), regenerateThumbnails: vi.fn(),
     reveal: vi.fn(), copyPath: vi.fn(), playExternally: vi.fn(), openFolderSearch: vi.fn(), showFolderInGrid: vi.fn(),
-    findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn(), goToGroup: vi.fn(), openRecent: vi.fn(),
+    findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn(), goToGroup: vi.fn(), openRecent: vi.fn(), switchDuplicateMethod: vi.fn(),
   };
 }
 
@@ -118,7 +118,7 @@ describe('LocationBar', () => {
   });
 
   const appActions = () => ({
-    reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), openFolderSearch: vi.fn(), openRecent: vi.fn(),
+    reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), openFolderSearch: vi.fn(), openRecent: vi.fn(), switchDuplicateMethod: vi.fn(),
   });
   const buttonNames = () => screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'));
   const shownIds = () => useStore.getState().filteredVideos.map((video) => video.id);
@@ -307,6 +307,7 @@ describe('LocationBar', () => {
       duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })],
       duplicatePosition: { group: 2, total: 40 },
       duplicateGroupJump: null,
+      lastDuplicateMethod: 'phash',
     });
     rerender(<LocationBar sessionTitle="Media" appActions={appActions()} />);
     const groupInput = screen.getByRole('textbox', { name: 'Go to group, 1 to 40' }) as HTMLInputElement;
@@ -319,6 +320,8 @@ describe('LocationBar', () => {
 
     act(() => screen.getByRole('button', { name: 'Duplicates' }).click());
     expect(screen.getByRole('menu', { name: 'Duplicates' }).textContent).toContain('1 group · 2 videos · 100 B to reclaim');
+    // The groups were found with pHash, so the menu offers the other method.
+    expect(screen.getByRole('menuitem', { name: 'Find Again with Visual Similarity' })).toBeTruthy();
     act(() => screen.getByRole('menuitem', { name: 'Back to Grid' }).click());
     expect(useStore.getState().duplicateGroupsMode).toBe(false);
   });

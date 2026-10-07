@@ -19,6 +19,7 @@ vi.mock('../../src/components/Sidebar', async () => {
   const storeModule = await import('../../src/store');
   const MockSidebar = (props: {
     onFindDuplicates?: () => void;
+    onSwitchDuplicateMethod?: () => void;
     onCloseSession?: () => void;
     onToggleTheme?: () => void;
   }) => {
@@ -37,6 +38,15 @@ vi.mock('../../src/components/Sidebar', async () => {
           onClick: props.onFindDuplicates,
         },
         'Find duplicates'
+      ),
+      ReactModule.createElement(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'sidebar-switch-duplicate-method',
+          onClick: props.onSwitchDuplicateMethod,
+        },
+        'Switch method'
       ),
       ReactModule.createElement(
         'button',
@@ -466,6 +476,35 @@ describe('App renderer behavior', () => {
 
     expect(await screen.findByTestId('shortcuts-help')).toBeTruthy();
     expect(electron.api.onScanProgress).toHaveBeenCalledTimes(1);
+  });
+
+  test('switching the duplicate method saves it, runs again with it and can be undone', async () => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    const videos = [makeVideo('a'), makeVideo('b', { path: 'D:\\Media\\b.mp4' })];
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      videos,
+      filteredVideos: videos,
+      settings: { ...initialState.settings, duplicates: { ...initialState.settings.duplicates, comparisonMode: 'phash' } },
+    }, true);
+    const modeOfCall = (index: number) => (electron.api.findDuplicates.mock.calls[index][1] as { settings: { comparisonMode: string } }).settings.comparisonMode;
+
+    render(<App />);
+    await userEvent.click(screen.getByTestId('sidebar-find-duplicates'));
+    await waitFor(() => expect(useStore.getState().lastDuplicateMethod).toBe('phash'));
+
+    await userEvent.click(screen.getByTestId('sidebar-switch-duplicate-method'));
+    expect(modeOfCall(1)).toBe('visual');
+    expect(useStore.getState().settings.duplicates.comparisonMode).toBe('visual');
+    expect(electron.api.saveConfig).toHaveBeenCalledWith(expect.objectContaining({
+      duplicates: expect.objectContaining({ comparisonMode: 'visual' }),
+    }));
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    expect(modeOfCall(2)).toBe('phash');
+    expect(useStore.getState().settings.duplicates.comparisonMode).toBe('phash');
   });
 
   test('prevents duplicate detection while metadata is still updating and explains why', async () => {

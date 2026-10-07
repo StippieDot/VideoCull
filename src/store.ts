@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type {
-  AppSettings, DuplicateGroup,
+  AppSettings, DuplicateComparisonMode, DuplicateGroup,
   Video, VideoReviewChanges, VideoReviewUpdate, VideoStatus, VideoStats, SidebarAggregates, VideoStore, ThumbReadyEvent,
   ScanProgress, ThumbProgress, UndoEntry,
   StatusFilter, SortField, SortOrder, FolderSortField, FolderFilter, RatingFilter,
@@ -11,6 +11,13 @@ import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
 import { detectVideoCompatibility, folderInsideTest } from './utils';
 import { getPreloadedColorTheme } from './theme';
+
+export const DUPLICATE_METHOD_NAMES: Record<DuplicateComparisonMode, string> = { phash: 'pHash', visual: 'Visual Similarity' };
+
+/** The method other than the one the shown duplicates were found with (or the setting, before any run). */
+export function otherDuplicateMethod(state: Pick<VideoStore, 'lastDuplicateMethod' | 'settings'>): DuplicateComparisonMode {
+  return (state.lastDuplicateMethod ?? state.settings.duplicates.comparisonMode) === 'phash' ? 'visual' : 'phash';
+}
 
 function thumbnailIndex(filePath: string): number | null {
   const basename = filePath.split(/[\\/]/).pop() ?? filePath;
@@ -895,6 +902,7 @@ const useStore = create<VideoStore>((set, get) => ({
   reviewPosition: null,
   duplicatePosition: null,
   duplicateGroupJump: null,
+  lastDuplicateMethod: null,
   gridSelectionIds: new Set(),
   gridSelectionAnchorId: null,
   // ── Card sizing ──
@@ -1578,6 +1586,7 @@ const useStore = create<VideoStore>((set, get) => ({
     const current = get().duplicatePosition;
     if (current?.group !== duplicatePosition?.group || current?.total !== duplicatePosition?.total) set({ duplicatePosition });
   },
+  setLastDuplicateMethod: (lastDuplicateMethod) => set({ lastDuplicateMethod }),
   requestDuplicateGroupJump: (index) => set((state) => ({
     duplicateGroupJump: { index, id: (state.duplicateGroupJump?.id ?? 0) + 1 },
   })),

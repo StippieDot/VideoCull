@@ -416,6 +416,8 @@ export interface VideoStore {
   /** The duplicate group at the top of the list and how many are shown, for the title bar. */
   duplicatePosition: { group: number; total: number } | null;
   duplicateGroupJump: { index: number; id: number } | null;
+  /** The method the last duplicate run this session used; the setting may have changed since. */
+  lastDuplicateMethod: DuplicateComparisonMode | null;
   gridSelectionIds: Set<string>;
   gridSelectionAnchorId: string | null;
   // Card sizing
@@ -489,6 +491,7 @@ export interface VideoStore {
   setDuplicatePosition: (position: { group: number; total: number } | null) => void;
   /** Scrolls the duplicate list to the group at this index among the shown groups. */
   requestDuplicateGroupJump: (index: number) => void;
+  setLastDuplicateMethod: (method: DuplicateComparisonMode) => void;
   clearDuplicateListFilters: () => void;
   setGridSelectionIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   setGridSelectionAnchorId: (videoId: string | null) => void;

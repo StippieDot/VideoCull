@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react';
-import useStore from './store';
+import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from './store';
 import { Profiler } from 'react';
 import { formatKeybind, matchesKeybind } from './keybinds';
 import { DEFAULT_KEYBINDS } from './keybind-defaults';
@@ -18,7 +18,7 @@ import CommandPalette from './components/CommandPalette';
 import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
-import type { FolderFilter, MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
+import type { DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
 import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
@@ -111,7 +111,6 @@ export default function App() {
   const theme = useStore((s) => s.settings.theme);
   const globalMuteEnabled = useStore((s) => s.settings.features.globalMute);
   const globalMuteKeybind = useStore((s) => s.settings.keyGlobalMute);
-  const duplicateSettings = useStore((s) => s.settings.duplicates);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const isGenerating = useStore((s) => s.isGenerating);
@@ -383,9 +382,12 @@ export default function App() {
     }
   }, [pushToast]);
 
-  const handleFindDuplicates = useCallback(async () => {
+  /** `restart` starts over while a run is going; the main process cancels the earlier run. */
+  const handleFindDuplicates = useCallback(async ({ restart = false }: { restart?: boolean } = {}) => {
     const state = useStore.getState();
-    if (!window.electronAPI || state.videos.length < 2 || isFindingDuplicates || !duplicateSettings.enabled) return;
+    // Read at call time: a method switch updates the settings just before calling this.
+    const duplicateSettings = state.settings.duplicates;
+    if (!window.electronAPI || state.videos.length < 2 || (isFindingDuplicates && !restart) || !duplicateSettings.enabled) return;
     if (isMetadataRunning(isGenerating, genProgress.phase)) {
       pushToast({
         title: 'Metadata still updating',
@@ -415,6 +417,7 @@ export default function App() {
         const resultIds = result.videos?.map((video) => video.id) ?? [];
         if (resultIds.some((id) => !activeIds.has(id))) return;
         applyDuplicateResult(result);
+        useStore.getState().setLastDuplicateMethod(duplicateSettings.comparisonMode);
         const count = result.stats?.duplicateVideoCount ?? 0;
         pushToast({
           title: count > 0 ? 'Duplicates found' : 'No duplicates found',
@@ -431,7 +434,34 @@ export default function App() {
         setIsFindingDuplicates(false);
       }
     }
-  }, [applyDuplicateResult, duplicateSettings, genProgress.phase, isFindingDuplicates, isGenerating, pushToast, setDuplicateProgress, setIsFindingDuplicates]);
+  }, [applyDuplicateResult, genProgress.phase, isFindingDuplicates, isGenerating, pushToast, setDuplicateProgress, setIsFindingDuplicates]);
+  const findDuplicatesRef = useRef(handleFindDuplicates);
+  findDuplicatesRef.current = handleFindDuplicates;
+
+  /** Saves the other comparison method and finds duplicates again with it; the toast can switch back. */
+  const handleSwitchDuplicateMethod = useCallback(() => {
+    const useMethod = (comparisonMode: DuplicateComparisonMode) => {
+      const state = useStore.getState();
+      state.updateSettings({ duplicates: { ...state.settings.duplicates, comparisonMode } });
+      state.saveSettings().catch(() => pushToast({
+        title: 'Duplicate method not saved',
+        detail: 'It applies until VideoCull closes.',
+        kind: 'warning',
+      }));
+      void findDuplicatesRef.current({ restart: true });
+    };
+    const state = useStore.getState();
+    const previous = state.lastDuplicateMethod ?? state.settings.duplicates.comparisonMode;
+    const next = otherDuplicateMethod(state);
+    useMethod(next);
+    pushToast({
+      title: `Finding duplicates with ${DUPLICATE_METHOD_NAMES[next]}`,
+      detail: 'Saved as the method in Duplicate Settings.',
+      kind: 'info',
+      actionLabel: 'Undo',
+      action: () => useMethod(previous),
+    });
+  }, [pushToast]);
 
   // Scan directory when selected
   const handleScan = useCallback(async (
@@ -1227,6 +1257,7 @@ export default function App() {
             reviewFolder: handleReviewFolder,
             regenerateThumbnails: (videos) => void handleRegenerateThumbnails(videos),
             findDuplicates: () => void handleFindDuplicates(),
+            switchDuplicateMethod: handleSwitchDuplicateMethod,
             openDuplicateSettings: () => openSettings('duplicates'),
             openFolderSearch: () => setPaletteQuery('/'),
             openRecent: (folder) => void openRecentFolder(folder),
@@ -1264,6 +1295,7 @@ export default function App() {
             onOpenDocumentation={() => setShowDocumentation(true)}
             onCloseSession={() => void handleCloseSession()}
             onFindDuplicates={() => void handleFindDuplicates()}
+            onSwitchDuplicateMethod={handleSwitchDuplicateMethod}
             onOpenDuplicateSettings={() => openSettings('duplicates')}
             onRequestPermanentDelete={requestPermanentDelete}
             globalMute={globalMute}

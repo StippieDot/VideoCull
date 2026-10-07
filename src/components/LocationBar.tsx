@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Copy, Film, Filter, Folder, X } from 'lucide-react';
-import useStore, { videosOutsideFolderFilter } from '../store';
+import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod, videosOutsideFolderFilter } from '../store';
 import type { FolderFilter, Video } from '../types';
 import { isFolderInside, normalizeFolder } from '../utils';
 import AppMenu from './AppMenu';
@@ -27,6 +27,7 @@ export interface LocationBarAppActions {
   reviewFolder: (folder: string) => void;
   regenerateThumbnails: (videos: Video[]) => void;
   findDuplicates: () => void;
+  switchDuplicateMethod: () => void;
   openDuplicateSettings: () => void;
   openFolderSearch: () => void;
   openRecent: (folder: string) => void;
@@ -224,6 +225,7 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
         store().requestGridFolderJump(folder);
       },
       findDuplicates: () => appRef.current.findDuplicates(),
+      switchDuplicateMethod: () => appRef.current.switchDuplicateMethod(),
       openDuplicateSettings: () => appRef.current.openDuplicateSettings(),
       backToGrid: () => store().setDuplicateGroupsMode(false),
       goToGroup: () => document.querySelector<HTMLInputElement>('.duplicate-stepper-input')?.focus(),
@@ -257,7 +259,7 @@ function buildMenu(
   if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsideFolderFilter(state), control.parent, scope, actions);
   if (control.type !== 'segment' && control.type !== 'actions') return null;
   const { segment } = control;
-  if (segment.kind === 'duplicates') return buildDuplicatesMenu(state.duplicateGroups, state.videos, actions);
+  if (segment.kind === 'duplicates') return buildDuplicatesMenu(state.duplicateGroups, state.videos, DUPLICATE_METHOD_NAMES[otherDuplicateMethod(state)], actions);
   const canNarrowReview = !state.reviewScopeIds;
   if (segment.kind === 'video') {
     const video = state.videos.find((entry) => entry.path === segment.path);

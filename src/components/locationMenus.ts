@@ -12,6 +12,7 @@ import {
   RefreshCw,
   ScanSearch,
   Settings,
+  Shuffle,
 } from 'lucide-react';
 import type { DuplicateGroup, FolderFilter, Video, VideoStatus } from '../types';
 import { trimSeparators, type AppMenuItem } from './AppMenu';
@@ -249,6 +250,7 @@ export interface LocationActions {
   openFolderSearch: () => void;
   showFolderInGrid: (folder: string) => void;
   findDuplicates: () => void;
+  switchDuplicateMethod: () => void;
   openDuplicateSettings: () => void;
   backToGrid: () => void;
   /** Opens a recent session in place of the loaded folders. */
@@ -355,7 +357,8 @@ export function reclaimableBytes(groups: DuplicateGroup[], videosById: Map<strin
   return total;
 }
 
-export function buildDuplicatesMenu(groups: DuplicateGroup[], videos: Video[], actions: LocationActions): LocationMenu {
+/** `otherMethod` names the comparison method the groups were not found with, to run again with it. */
+export function buildDuplicatesMenu(groups: DuplicateGroup[], videos: Video[], otherMethod: string, actions: LocationActions): LocationMenu {
   const videoCount = new Set(groups.flatMap((group) => group.videoIds)).size;
   const reclaim = reclaimableBytes(groups, new Map(videos.map((video) => [video.id, video])));
   return {
@@ -366,6 +369,7 @@ export function buildDuplicatesMenu(groups: DuplicateGroup[], videos: Video[], a
       { type: 'item', key: 'go-to', label: 'Go to Group...', icon: ListOrdered, onSelect: actions.goToGroup },
       SEPARATOR('sep-go-to'),
       { type: 'item', key: 'find', label: 'Find Duplicates Again', icon: ScanSearch, onSelect: actions.findDuplicates },
+      { type: 'item', key: 'switch', label: `Find Again with ${otherMethod}`, icon: Shuffle, onSelect: actions.switchDuplicateMethod },
       { type: 'item', key: 'settings', label: 'Duplicate Settings', icon: Settings, onSelect: actions.openDuplicateSettings },
       SEPARATOR('sep-back'),
       { type: 'item', key: 'back', label: 'Back to Grid', icon: ArrowLeft, onSelect: actions.backToGrid },

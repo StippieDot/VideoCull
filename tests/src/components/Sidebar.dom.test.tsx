@@ -7,7 +7,7 @@ import { vi } from 'vitest';
 import Sidebar from '../../../src/components/Sidebar';
 import useStore from '../../../src/store';
 import { resetPerfDevMock } from '../../helpers/perfDevMock';
-import { makeVideo } from '../../helpers/videoFactory';
+import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
 
 vi.mock('../../../src/perf-dev', async () => await import('../../helpers/perfDevMock'));
 
@@ -59,6 +59,7 @@ function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}) {
       onOpenSettings={vi.fn()}
       onCloseSession={vi.fn()}
       onFindDuplicates={vi.fn()}
+      onSwitchDuplicateMethod={vi.fn()}
       onOpenDuplicateSettings={vi.fn()}
       onOpenDocumentation={vi.fn()}
       onRequestPermanentDelete={vi.fn().mockResolvedValue(false)}
@@ -261,6 +262,24 @@ describe('Sidebar recent folder behavior', () => {
     expect(chip.textContent).toBe('Media / Trips (only)');
     await userEvent.click(chip);
     expect(useStore.getState().folderFilter).toBeNull();
+  });
+
+  test('in duplicate groups it offers to run again with the other method', async () => {
+    const onSwitchDuplicateMethod = vi.fn();
+    const videos = [makeVideo('a'), makeVideo('b')];
+    useStore.setState({
+      directory: 'D:\Media',
+      directories: ['D:\Media'],
+      videos,
+      filteredVideos: videos,
+      stats: { ...useStore.getState().stats, total: 2, pending: 2 },
+      duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })],
+      duplicateGroupsMode: true,
+      lastDuplicateMethod: 'visual',
+    });
+    renderSidebar({ onSwitchDuplicateMethod });
+    await userEvent.click(screen.getByRole('button', { name: 'Run Again with pHash' }));
+    expect(onSwitchDuplicateMethod).toHaveBeenCalledTimes(1);
   });
 
   test('opens documentation from the sidebar header button', async () => {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { ColorTheme, DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
-import useStore from '../store';
+import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
 import { beginDevInteraction } from '../perf-dev';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
@@ -25,6 +25,8 @@ interface SidebarProps {
   onOpenSettings: () => void;
   onCloseSession: () => void;
   onFindDuplicates: () => void;
+  /** Finds duplicates again with the other comparison method, which becomes the setting. */
+  onSwitchDuplicateMethod: () => void;
   onOpenDuplicateSettings: () => void;
   onOpenDocumentation: () => void;
   onRequestPermanentDelete: (filePaths: string[]) => Promise<boolean>;
@@ -102,8 +104,10 @@ function getRangeTrackStyle(min: number, max: number, selectedMin: number, selec
 
 function SidebarDuplicateSection({
   onFindDuplicates,
+  onSwitchDuplicateMethod,
   onOpenDuplicateSettings,
-}: Pick<SidebarProps, 'onFindDuplicates' | 'onOpenDuplicateSettings'>) {
+}: Pick<SidebarProps, 'onFindDuplicates' | 'onSwitchDuplicateMethod' | 'onOpenDuplicateSettings'>) {
+  const otherMethod = useStore(otherDuplicateMethod);
   const duplicateSettings = useStore((s) => s.settings.duplicates);
   const statsTotal = useStore((s) => s.stats.total);
   const videoCount = useStore((s) => s.videos.length);
@@ -280,6 +284,15 @@ function SidebarDuplicateSection({
         >
           <RefreshCw size={14} />
           {isFindingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Run Again'}
+        </button>
+
+        <button
+          className="btn btn-outline sidebar-wide-action"
+          onClick={onSwitchDuplicateMethod}
+          disabled={duplicateDisabled && !isFindingDuplicates}
+          title={`Switch the duplicate method to ${DUPLICATE_METHOD_NAMES[otherMethod]} and run again`}
+        >
+          Run Again with {DUPLICATE_METHOD_NAMES[otherMethod]}
         </button>
 
         <button className="btn btn-outline sidebar-wide-action" onClick={() => setDuplicateGroupsMode(false)}>
@@ -643,6 +656,7 @@ export default function Sidebar({
   onOpenSettings,
   onCloseSession,
   onFindDuplicates,
+  onSwitchDuplicateMethod,
   onOpenDuplicateSettings,
   onOpenDocumentation,
   onRequestPermanentDelete,
@@ -1042,6 +1056,7 @@ export default function Sidebar({
 
       <SidebarDuplicateSection
         onFindDuplicates={onFindDuplicates}
+        onSwitchDuplicateMethod={onSwitchDuplicateMethod}
         onOpenDuplicateSettings={onOpenDuplicateSettings}
       />
       {recentContextMenu && (
