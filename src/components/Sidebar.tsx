@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ColorTheme, DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
 import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
@@ -7,14 +7,15 @@ import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { formatDeleteConfirmation, formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import { deleteWithPermanentReview } from '../deletion';
+import AppMenu, { type AppMenuItem } from './AppMenu';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
 import { PRODUCT } from '../product';
 import videoCullLogo from '../assets/videocull-logo.png';
 import {
   FolderOpen, Folder, RefreshCw, Play, Trash2, Filter,
-  ArrowUpDown, HardDrive, X, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun
+  ArrowUpDown, X, Maximize2, Settings, ChevronDown,
+  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, History, FolderPlus
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -36,6 +37,11 @@ interface SidebarProps {
   onToggleGlobalMute: () => void;
   theme: ColorTheme;
   onToggleTheme: () => void;
+}
+
+/** The last part of a path; a drive root keeps its letter. */
+function folderName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
 function sameStrings(a: string[], b: string[]): boolean {
@@ -703,6 +709,8 @@ export default function Sidebar({
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [showRecents, setShowRecents] = useState(false);
+  const switcherRef = useRef<HTMLButtonElement>(null);
+  const [switcherAt, setSwitcherAt] = useState<{ x: number; y: number } | null>(null);
   const [showFilters, setShowFilters] = useState(true);
   const [showSort, setShowSort] = useState(true);
   const [showView, setShowView] = useState(true);
@@ -718,7 +726,6 @@ export default function Sidebar({
   const handleOpenRecent = async (dir: string) => {
     if (!window.electronAPI) {
       setDirectory(dir);
-      setShowRecents(false);
       return;
     }
     const result = await window.electronAPI.validateDroppedPath(dir);
@@ -749,6 +756,16 @@ export default function Sidebar({
       detail: formatRecentPath(dir),
       kind: 'info',
       dedupeKey: `recent-removed:${dir}`,
+    });
+  };
+
+  const handleClearRecents = () => {
+    const removedCount = recentDirectories.length;
+    clearRecentDirectories();
+    onNotify({
+      title: 'Recents cleared',
+      detail: `${removedCount} ${removedCount === 1 ? 'entry' : 'entries'} removed.`,
+      kind: 'info',
     });
   };
 
@@ -828,9 +845,34 @@ export default function Sidebar({
       onCopyPath: () => {
         void handleCopyRecentPath(recentContextMenu.dir);
       },
+      onRemove: () => handleRemoveRecent(recentContextMenu.dir),
     });
   }, [directories, recentContextMenu]);
 
+
+  const toggleSwitcher = () => {
+    const rect = switcherRef.current?.getBoundingClientRect();
+    setSwitcherAt((open) => (open || !rect ? null : { x: rect.left, y: rect.bottom + 4 }));
+  };
+  const closeSwitcher = useCallback((refocus: boolean) => {
+    setSwitcherAt(null);
+    if (refocus) switcherRef.current?.focus();
+  }, []);
+  const sessionName = directories.length > 1
+    ? `${folderName(directories[0])} + ${directories.length - 1} more`
+    : directory ? folderName(directory) : 'No folder open';
+  const switcherItems: AppMenuItem[] = [
+    { key: 'open', label: 'Open Another Folder...', icon: FolderOpen, detail: 'Ctrl+O', onSelect: () => void handleSelectDir() },
+    {
+      key: 'add',
+      label: 'Add Folder to Session...',
+      icon: FolderPlus,
+      onSelect: () => void window.electronAPI?.runCommand('File > Add Folder to Session'),
+    },
+    { type: 'separator', key: 'sep-session' },
+    { key: 'rescan', label: 'Rescan', icon: RefreshCw, detail: 'F5', disabled: isScanning, onSelect: onRescan },
+    { key: 'close', label: 'Close Session', icon: X, onSelect: onCloseSession },
+  ];
 
   const handleBatchDelete = async () => {
     if (!window.electronAPI) return;
@@ -952,41 +994,45 @@ export default function Sidebar({
         </div>
       </div>
 
-      <section className="sidebar-section sidebar-session-section">
-        <div className="session-card">
-          <div className="session-card-main">
-            <HardDrive size={14} />
-            <div className="session-card-copy">
-              <span className="session-label">Current folder</span>
-              <span className="session-path" title={directories.join('\n') || directory || undefined}>
-                {directories.length > 1 ? `${directories.length} folders loaded` : directory}
-              </span>
-              <label className="session-subfolders-toggle">
-                <input
-                  type="checkbox"
-                  checked={includeSubfolders}
-                  onChange={(e) => setIncludeSubfolders(e.target.checked)}
-                />
-                <span className="session-subfolders-box" />
-                <span>Include subfolders</span>
-              </label>
-            </div>
-          </div>
+      {/* One switcher for the session: the title bar shows the full path, this names the folder and holds what you do with it. */}
+      <section className="sidebar-section sidebar-session-section" aria-label="Folder">
+        <button
+          ref={switcherRef}
+          type="button"
+          className="session-switcher"
+          title={directories.join('\n') || directory || undefined}
+          aria-haspopup="menu"
+          aria-expanded={switcherAt !== null}
+          onClick={toggleSwitcher}
+        >
+          <Folder size={15} aria-hidden="true" />
+          <span className="session-switcher-name">{sessionName}</span>
+          <ChevronDown size={14} aria-hidden="true" className={switcherAt ? 'chevron-open' : ''} />
+        </button>
+        <div className="session-option-row">
+          <label className="session-subfolders-toggle">
+            <input
+              type="checkbox"
+              checked={includeSubfolders}
+              onChange={(e) => setIncludeSubfolders(e.target.checked)}
+            />
+            <span className="session-subfolders-box" />
+            <span>Include subfolders</span>
+          </label>
+          {recentDirectories.length > 1 && (
+            <button
+              type="button"
+              className={`session-recents-btn${showRecents ? ' active' : ''}`}
+              title="Recent folders"
+              aria-label="Recent folders"
+              aria-expanded={showRecents}
+              aria-controls="sidebar-recents-list"
+              onClick={() => setShowRecents((v) => !v)}
+            >
+              <History size={14} />
+            </button>
+          )}
         </div>
-
-        {recentDirectories.length > 1 && (
-          <button
-            className="recents-header-btn"
-            title="Show recent folders"
-            aria-expanded={showRecents}
-            aria-controls="sidebar-recents-list"
-            onClick={() => setShowRecents((v) => !v)}
-          >
-            <span>Recent folders</span>
-            <ChevronDown size={14} className={showRecents ? 'chevron-open' : ''} />
-          </button>
-        )}
-
         {showRecents && recentDirectories.length > 1 && (
           <div className="recents-panel">
             <ul className="recents-list" id="sidebar-recents-list">
@@ -1023,34 +1069,25 @@ export default function Sidebar({
             <button
               className="recents-clear-btn"
               onClick={() => {
-                const removedCount = recentDirectories.length;
-                clearRecentDirectories();
+                handleClearRecents();
                 setShowRecents(false);
-                onNotify({
-                  title: 'Recents cleared',
-                  detail: `${removedCount} ${removedCount === 1 ? 'entry' : 'entries'} removed.`,
-                  kind: 'info',
-                });
               }}
             >
               Clear all recent folders
             </button>
           </div>
         )}
-
-        <div className="session-action-row">
-          <button className="btn btn-primary session-action-btn" onClick={handleSelectDir}>
-            Change
-          </button>
-
-          <button className="btn btn-outline session-action-btn" onClick={onRescan} disabled={isScanning}>
-            Rescan
-          </button>
-
-          <button className="btn btn-outline btn-close-session session-action-btn" onClick={onCloseSession}>
-            Close
-          </button>
-        </div>
+        {switcherAt && (
+          <AppMenu
+            label="Folder"
+            items={switcherItems}
+            x={switcherAt.x}
+            y={switcherAt.y}
+            className="session-switcher-menu"
+            onClose={closeSwitcher}
+            keepOpenWithin=".session-switcher"
+          />
+        )}
       </section>
 
 

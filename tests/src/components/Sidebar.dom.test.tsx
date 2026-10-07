@@ -128,6 +128,25 @@ describe('Sidebar recent folder behavior', () => {
     expect(screen.queryByRole('button', { name: /clear all recent folders/i })).toBeNull();
   });
 
+  test('the folder switcher names the folder and holds the session actions', async () => {
+    installElectronApiMock();
+    const onRescan = vi.fn();
+    const onCloseSession = vi.fn();
+    useStore.setState({ directory: 'D:\\Media\\Current', directories: ['D:\\Media\\Current', 'E:\\Clips'] });
+    renderSidebar({ onRescan, onCloseSession });
+
+    const switcher = screen.getByRole('button', { name: 'Current + 1 more' });
+    await userEvent.click(switcher);
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Open Another Folder...Ctrl+O', 'Add Folder to Session...', 'RescanF5', 'Close Session',
+    ]);
+    await userEvent.click(screen.getByRole('menuitem', { name: /Rescan/ }));
+    expect(onRescan).toHaveBeenCalledTimes(1);
+    await userEvent.click(switcher);
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Close Session' }));
+    expect(onCloseSession).toHaveBeenCalledTimes(1);
+  });
+
   test('reveals a recent folder through the sidebar context menu', async () => {
     const electronAPI = installElectronApiMock();
     const currentDir = 'D:\\Media\\Current';

@@ -97,62 +97,81 @@
   gap: 12px;
 }
 
-.session-card {
+/* Reads as the open folder; selecting it opens what can be done with the session. */
+.session-switcher {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
-  padding: 9px 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-}
-
-.session-card-main {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.session-card-main > svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--text-tertiary);
-}
-
-.session-card-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-  flex: 1;
-  width: 100%;
-}
-
-.session-label {
-  font-size: 10px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-align: left;
+}
+
+.session-switcher:hover,
+.session-switcher[aria-expanded="true"] {
+  border-color: var(--border-hover);
+  background: var(--bg-surface-hover);
+}
+
+.session-switcher svg {
+  flex-shrink: 0;
   color: var(--text-tertiary);
 }
 
-.session-path {
+.session-switcher-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-switcher .chevron-open {
+  transform: rotate(180deg);
+}
+
+.session-switcher-menu {
+  min-width: 260px;
+}
+
+.session-option-row {
+  display: flex;
+  gap: 6px;
+}
+
+.session-recents-btn {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-subtle);
   color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.4;
-  word-break: break-all;
+}
+
+.session-recents-btn:hover,
+.session-recents-btn.active {
+  border-color: var(--border-hover);
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
 }
 
 .session-subfolders-toggle {
   display: inline-flex;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
   align-items: center;
   gap: 7px;
-  width: calc(100% + 23px);
   box-sizing: border-box;
-  margin-top: 3px;
-  margin-left: -23px;
   padding: 5px 9px;
   border-radius: 999px;
   color: var(--text-secondary);
@@ -199,41 +218,6 @@
   border: solid var(--text-on-accent);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
-}
-
-.session-action-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.session-action-btn {
-  min-width: 0;
-  padding: 8px 6px;
-  font-size: 12px;
-  gap: 5px;
-  justify-content: center;
-}
-
-.recents-header-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 9px;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  font-size: 12px;
-  text-align: left;
-}
-
-.recents-header-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--border-hover);
-  background: var(--bg-surface-hover);
 }
 
 /* Collapsible Sections */
@@ -342,10 +326,6 @@
   transform: rotate(180deg);
 }
 
-.recents-header-btn .chevron-open {
-  transform: rotate(180deg);
-}
-
 .sidebar-section-content {
   display: flex;
   flex-direction: column;
@@ -353,7 +333,7 @@
   padding-top: 10px;
 }
 
-/* Directory Path */
+/* Recent folders */
 .recents-list {
   list-style: none;
   display: flex;
@@ -1035,7 +1015,6 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-
 
 /* Buttons */
 .btn {

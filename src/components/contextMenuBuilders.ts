@@ -126,6 +126,7 @@ export function buildRecentFolderMenu(args: {
   onAddToSession: Action;
   onReveal: Action;
   onCopyPath: Action;
+  onRemove?: Action;
 }): ContextMenuItem[] {
   const normalizedTarget = normalizePath(args.directory);
   const alreadyLoaded = args.loadedDirectories.some((dir) => normalizePath(dir) === normalizedTarget);
@@ -135,6 +136,10 @@ export function buildRecentFolderMenu(args: {
     separator('sep-main'),
     { key: 'reveal', label: 'Reveal in Explorer', onSelect: args.onReveal },
     { key: 'copy', label: 'Copy path', onSelect: args.onCopyPath, tone: 'secondary' },
+    ...(args.onRemove ? [
+      separator('sep-remove'),
+      { key: 'remove', label: 'Remove from recent folders', onSelect: args.onRemove, tone: 'secondary' as const },
+    ] : []),
   ];
 }
 
