@@ -520,9 +520,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                           checked={localSettings.micaTitleBar}
                           onChange={(e) => handleChange('micaTitleBar', e.target.checked)}
                         />
-                        Translucent title bar (Mica)
+                        Tint the title bar with the desktop background
                       </label>
-                      <span className="help-text">Shows the Windows 11 Mica material behind the title bar instead of a solid colour.</span>
+                      <span className="help-text">As in Windows 11's own apps. Turn off for a solid title bar.</span>
                     </div>
                   </section>
                 )}
