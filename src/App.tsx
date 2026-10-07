@@ -1229,6 +1229,7 @@ export default function App() {
             findDuplicates: () => void handleFindDuplicates(),
             openDuplicateSettings: () => openSettings('duplicates'),
             openFolderSearch: () => setPaletteQuery('/'),
+            openRecent: (folder) => void openRecentFolder(folder),
           }}
         />
       )}

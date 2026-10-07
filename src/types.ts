@@ -411,6 +411,11 @@ export interface VideoStore {
   duplicateSortBy: DuplicateSortField;
   duplicateSortOrder: SortOrder;
   duplicateScrollTop: number;
+  /** Review's place in its scope, for the title bar; null outside Review and on its finished screen. */
+  reviewPosition: { index: number; total: number } | null;
+  /** The duplicate group at the top of the list and how many are shown, for the title bar. */
+  duplicatePosition: { group: number; total: number } | null;
+  duplicateGroupJump: { index: number; id: number } | null;
   gridSelectionIds: Set<string>;
   gridSelectionAnchorId: string | null;
   // Card sizing
@@ -480,6 +485,10 @@ export interface VideoStore {
   setDuplicateSortBy: (sortBy: DuplicateSortField) => void;
   setDuplicateSortOrder: (order: SortOrder) => void;
   setDuplicateScrollTop: (scrollTop: number) => void;
+  setReviewPosition: (position: { index: number; total: number } | null) => void;
+  setDuplicatePosition: (position: { group: number; total: number } | null) => void;
+  /** Scrolls the duplicate list to the group at this index among the shown groups. */
+  requestDuplicateGroupJump: (index: number) => void;
   clearDuplicateListFilters: () => void;
   setGridSelectionIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   setGridSelectionAnchorId: (videoId: string | null) => void;

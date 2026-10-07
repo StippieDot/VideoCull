@@ -27,7 +27,7 @@ function actionsMock(): LocationActions {
   return {
     reviewFolder: vi.fn(), reviewOnlyFolder: vi.fn(), filterToPath: vi.fn(), setIncludeSubfolders: vi.fn(), regenerateThumbnails: vi.fn(),
     reveal: vi.fn(), copyPath: vi.fn(), playExternally: vi.fn(), openFolderSearch: vi.fn(), showFolderInGrid: vi.fn(),
-    findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn(),
+    findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn(), goToGroup: vi.fn(), openRecent: vi.fn(),
   };
 }
 
@@ -118,7 +118,7 @@ describe('LocationBar', () => {
   });
 
   const appActions = () => ({
-    reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), openFolderSearch: vi.fn(),
+    reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), openFolderSearch: vi.fn(), openRecent: vi.fn(),
   });
   const buttonNames = () => screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'));
   const shownIds = () => useStore.getState().filteredVideos.map((video) => video.id);
@@ -268,8 +268,14 @@ describe('LocationBar', () => {
 
   test('with several loaded folders, a switcher shows them all or one of them', () => {
     const videos = [...VIDEOS, makeVideo('p', {}, 'P:\\Clips')];
-    useStore.setState({ directories: [ROOT, 'P:\\'], videos, filteredVideos: videos });
-    render(<LocationBar sessionTitle="Media + 1 more" appActions={appActions()} />);
+    useStore.setState({
+      directories: [ROOT, 'P:\\'],
+      videos,
+      filteredVideos: videos,
+      settings: { ...useStore.getState().settings, recentDirectories: [ROOT, 'E:\\Old'] },
+    });
+    const actions = appActions();
+    render(<LocationBar sessionTitle="Media + 1 more" appActions={actions} />);
     expect(buttonNames()).toEqual(['Loaded folders']);
     expect(screen.getByText('Media + 1 more')).toBeTruthy();
 
@@ -279,20 +285,39 @@ describe('LocationBar', () => {
       [`${ROOT}2 to review`, 'false'],
       ['P:\\1 to review', 'false'],
     ]);
+    // Recent sessions that are not loaded follow, to open instead.
+    act(() => screen.getByRole('menuitem', { name: 'E:\\Old' }).click());
+    expect(actions.openRecent).toHaveBeenCalledWith('E:\\Old');
+    act(() => screen.getByRole('button', { name: 'Loaded folders' }).click());
     act(() => screen.getByRole('menuitemradio', { name: /^P:/ }).click());
     expect(shownIds()).toEqual(['p']);
     expect(buttonNames()).toEqual(['Loaded folders', 'P:, filtered', 'Clear folder filter', 'P: actions', 'Folders in P:']);
   });
 
-  test('in review it shows the open video, and duplicates get their own menu', () => {
-    useStore.setState({ reviewMode: true, activeReviewVideoPath: VIDEOS[1].path });
+  test('in review it shows the open video and its place, and duplicates get their own menu and group stepper', () => {
+    useStore.setState({ reviewMode: true, activeReviewVideoPath: VIDEOS[1].path, reviewPosition: { index: 33, total: 210 } });
     const { rerender } = render(<LocationBar sessionTitle="Media" appActions={appActions()} />);
     // Review shows a plain path: no subfolder lists.
     expect(buttonNames()).toEqual(['D:', 'Media', 'Trips', 'b.mp4']);
+    expect(screen.getByRole('button', { name: 'b.mp4' }).textContent).toContain('34 / 210');
 
-    useStore.setState({ reviewMode: false, duplicateGroupsMode: true, duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })] });
+    useStore.setState({
+      reviewMode: false,
+      duplicateGroupsMode: true,
+      duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })],
+      duplicatePosition: { group: 2, total: 40 },
+      duplicateGroupJump: null,
+    });
     rerender(<LocationBar sessionTitle="Media" appActions={appActions()} />);
-    act(() => screen.getByRole('button', { name: 'Duplicates · 1 group' }).click());
+    const groupInput = screen.getByRole('textbox', { name: 'Go to group, 1 to 40' }) as HTMLInputElement;
+    expect(groupInput.value).toBe('3');
+    act(() => screen.getByRole('button', { name: 'Next group' }).click());
+    expect(useStore.getState().duplicateGroupJump?.index).toBe(3);
+    fireEvent.change(groupInput, { target: { value: '99' } });
+    fireEvent.keyDown(groupInput, { key: 'Enter' });
+    expect(useStore.getState().duplicateGroupJump?.index).toBe(39);
+
+    act(() => screen.getByRole('button', { name: 'Duplicates' }).click());
     expect(screen.getByRole('menu', { name: 'Duplicates' }).textContent).toContain('1 group · 2 videos · 100 B to reclaim');
     act(() => screen.getByRole('menuitem', { name: 'Back to Grid' }).click());
     expect(useStore.getState().duplicateGroupsMode).toBe(false);

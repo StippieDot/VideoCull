@@ -67,6 +67,50 @@
   color: var(--accent);
 }
 
+.location-bar-count {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.location-bar-duplicates,
+.duplicate-stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.duplicate-stepper-text {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Reads as text until focused; the title bar around it drags the window. */
+.duplicate-stepper-input {
+  min-width: 0;
+  padding: 1px 3px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  -webkit-app-region: no-drag;
+}
+
+.duplicate-stepper-input:hover,
+.duplicate-stepper-input:focus {
+  border-color: var(--border-strong);
+  background: var(--bg-control);
+  outline: none;
+}
+
 .location-bar-only {
   color: var(--text-secondary);
   font-size: 11px;

@@ -1003,6 +1003,22 @@ function DuplicateGroupsView() {
     };
   }, [dimensions.height, dimensions.width, duplicateScrollTop, reviewMode, viewMode, virtualRows.length]);
 
+  const handleRowsRendered = useCallback(({ startIndex }: { startIndex: number; stopIndex: number }) => {
+    const row = virtualRows[startIndex];
+    if (row) useStore.getState().setDuplicatePosition({ group: row.groupIndex, total: visibleGroupViews.length });
+  }, [virtualRows, visibleGroupViews.length]);
+  useEffect(() => () => useStore.getState().setDuplicatePosition(null), []);
+
+  const duplicateGroupJump = useStore((s) => s.duplicateGroupJump);
+  const handledGroupJumpRef = useRef(duplicateGroupJump?.id ?? 0);
+  useEffect(() => {
+    if (!duplicateGroupJump || handledGroupJumpRef.current === duplicateGroupJump.id || reviewMode) return;
+    const rowIndex = virtualRows.findIndex((row) => row.type === 'group-header' && row.groupIndex === duplicateGroupJump.index);
+    if (rowIndex < 0) return;
+    handledGroupJumpRef.current = duplicateGroupJump.id;
+    listRef.current?.scrollToRow({ index: rowIndex, align: 'start' });
+  }, [duplicateGroupJump, reviewMode, virtualRows]);
+
   const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     if (reviewMode || restoringScrollRef.current) return;
     setDuplicateScrollTop(event.currentTarget.scrollTop);
@@ -1157,6 +1173,7 @@ function DuplicateGroupsView() {
             rowHeight={getItemSize}
             rowProps={rowRenderSignals}
             overscanCount={2}
+            onRowsRendered={handleRowsRendered}
             onScroll={handleScroll}
             style={{ height: dimensions.height, width: dimensions.width }}
           />

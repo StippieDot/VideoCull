@@ -6,6 +6,7 @@ import { isFolderInside, normalizeFolder } from '../utils';
 import AppMenu from './AppMenu';
 import { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail } from './contextMenuBuilders';
+import DuplicateStepper from './DuplicateStepper';
 import {
   buildDuplicatesMenu,
   buildFolderMenu,
@@ -28,6 +29,7 @@ export interface LocationBarAppActions {
   findDuplicates: () => void;
   openDuplicateSettings: () => void;
   openFolderSearch: () => void;
+  openRecent: (folder: string) => void;
 }
 
 type Segment = PathSegment & {
@@ -66,11 +68,17 @@ interface Location {
   filter: FolderFilter | null;
 }
 
+/** Where the open video is in the videos being reviewed. */
+function ReviewCount() {
+  const position = useStore((s) => s.reviewPosition);
+  if (!position) return null;
+  return <span className="location-bar-count">{(position.index + 1).toLocaleString()} / {position.total.toLocaleString()}</span>;
+}
+
 /** The title bar's location: the folder at the top of the grid, the video in review, or the duplicate groups. */
 function useLocation(): Location | null {
   const reviewMode = useStore((s) => s.reviewMode);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
-  const duplicateGroupCount = useStore((s) => s.duplicateGroups.length);
   const reviewPath = useStore((s) => s.activeReviewVideoPath);
   const filter = useStore((s) => s.folderFilter);
   const filterPath = filter?.path ?? null;
@@ -80,8 +88,7 @@ function useLocation(): Location | null {
   return useMemo(() => {
     if (directories.length === 0) return null;
     if (duplicateGroupsMode) {
-      const label = `Duplicates · ${duplicateGroupCount.toLocaleString()} ${duplicateGroupCount === 1 ? 'group' : 'groups'}`;
-      return { segments: [{ kind: 'duplicates', label, path: 'duplicates' }], browsable: false, filter: null };
+      return { segments: [{ kind: 'duplicates', label: 'Duplicates', path: 'duplicates' }], browsable: false, filter: null };
     }
     if (reviewMode && reviewPath) {
       const parts = splitPath(reviewPath);
@@ -110,7 +117,7 @@ function useLocation(): Location | null {
       browsable: true,
       filter,
     };
-  }, [directories, duplicateGroupCount, duplicateGroupsMode, gridTopFolder, filter, filterPath, reviewMode, reviewPath]);
+  }, [directories, duplicateGroupsMode, gridTopFolder, filter, filterPath, reviewMode, reviewPath]);
 }
 
 function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders: boolean, hiddenCount: number): Control[] {
@@ -211,6 +218,7 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
       },
       playExternally: (path) => void window.electronAPI?.openVideo(path),
       openFolderSearch: () => appRef.current.openFolderSearch(),
+      openRecent: (folder) => appRef.current.openRecent(folder),
       showFolderInGrid: (folder) => {
         store().setReviewMode(false);
         store().requestGridFolderJump(folder);
@@ -218,6 +226,7 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
       findDuplicates: () => appRef.current.findDuplicates(),
       openDuplicateSettings: () => appRef.current.openDuplicateSettings(),
       backToGrid: () => store().setDuplicateGroupsMode(false),
+      goToGroup: () => document.querySelector<HTMLInputElement>('.duplicate-stepper-input')?.focus(),
     };
   }, [navigate]);
 }
@@ -244,7 +253,7 @@ function buildMenu(
   }
   // The lists show every folder the other filters allow, so you can switch to one next to the current one.
   const scope = { filterPath: state.folderFilter?.path ?? null, directories: state.directories };
-  if (control.type === 'roots') return buildRootsMenu(videosOutsideFolderFilter(state), scope, actions);
+  if (control.type === 'roots') return buildRootsMenu(videosOutsideFolderFilter(state), scope, state.settings.recentDirectories ?? [], actions);
   if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsideFolderFilter(state), control.parent, scope, actions);
   if (control.type !== 'segment' && control.type !== 'actions') return null;
   const { segment } = control;
@@ -443,9 +452,18 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
                 {segment.filtered && <Filter size={11} aria-hidden="true" />}
                 <span className="location-bar-label">{segment.label}</span>
                 {only && <span className="location-bar-only">only</span>}
+                {segment.kind === 'video' && <ReviewCount />}
                 {last && !location.browsable && <ChevronDown size={12} aria-hidden="true" />}
               </button>
             );
+            if (segment.kind === 'duplicates') {
+              return (
+                <span key={index} className="location-bar-duplicates">
+                  {button}
+                  <DuplicateStepper />
+                </span>
+              );
+            }
             if (!segment.filtered) return button;
             return (
               <span key={index} className="location-bar-chip">

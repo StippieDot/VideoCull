@@ -6,7 +6,7 @@ import TitleBar from '../../../src/components/TitleBar';
 import useStore from '../../../src/store';
 import type { PowerState } from '../../../src/types';
 
-const LOCATION_ACTIONS = { reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), openFolderSearch: vi.fn() };
+const LOCATION_ACTIONS = { reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), openFolderSearch: vi.fn(), openRecent: vi.fn() };
 
 function installElectronApiMock(power: PowerState) {
   const electronAPI = {
@@ -99,6 +99,19 @@ describe('TitleBar', () => {
 
     act(() => screen.getByRole('button', { name: 'Videos' }).click());
     expect(screen.getByRole('menu', { name: 'Videos' }).textContent).toContain('No videos in this session');
+  });
+
+  test('marked videos show with their size and start the delete flow', async () => {
+    const api = installElectronApiMock({ processing: false, finishAction: 'none', countdown: null });
+    useStore.setState({ isGenerating: false, stats: { ...useStore.getState().stats, delete: 0, deleteSize: 0 } });
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
+    expect(screen.queryByRole('button', { name: /marked/ })).toBeNull();
+
+    act(() => useStore.setState({ stats: { ...useStore.getState().stats, delete: 2, deleteSize: 2048 } }));
+    const marked = screen.getByRole('button', { name: 'Delete 2 marked videos' });
+    expect(marked.textContent).toBe('2 marked · 2 KB');
+    act(() => marked.click());
+    expect(api.runCommand).toHaveBeenCalledWith('Actions > Delete Marked Videos');
   });
 
   test('behind the privacy screen neither the folder nor the processing status is shown', async () => {

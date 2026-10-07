@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Moon, Pause, Play, Power, Search } from 'lucide-react';
+import { Moon, Pause, Play, Power, Search, Trash2 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import useStore from '../store';
 import usePowerState from '../hooks/usePowerState';
 import useProcessingPauseState from '../hooks/useProcessingPauseState';
 import type { TaskbarProgress } from '../types';
 import videoCullIcon from '../assets/videocull-icon.png';
-import { formatRecentPath } from '../utils';
+import { formatRecentPath, formatSize } from '../utils';
 import AppMenu, { type AppMenuItem } from './AppMenu';
 import { formatTimeLeft, listProcessingJobs, TimeLeftEstimator, type ProcessingJob } from './processingStatus';
 import LocationBar, { type LocationBarAppActions } from './LocationBar';
@@ -147,6 +147,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
   const status = jobs[0] ?? null;
   const statusDetail = status ? [status.detail, paused ? '' : timeLeft.get(status.id)].filter(Boolean).join(' · ') : '';
   const pillRef = useRef<HTMLButtonElement>(null);
+  const marked = useStore(useShallow((s) => ({ count: s.stats.delete, size: s.stats.deleteSize })));
   const [openMenu, setOpenMenu] = useState<MenuLabel | null>(null);
   const [altHeld, setAltHeld] = useState(false);
   const buttonRefs = useRef(new Map<MenuLabel, HTMLButtonElement>());
@@ -306,12 +307,26 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
             </button>
           </div>
         )}
+        {marked.count > 0 && !isPrivate && (
+          <button
+            type="button"
+            className="title-bar-marked"
+            title={`Delete ${marked.count.toLocaleString()} marked ${marked.count === 1 ? 'video' : 'videos'} (${formatSize(marked.size)})… (Ctrl+Backspace)`}
+            aria-label={`Delete ${marked.count.toLocaleString()} marked ${marked.count === 1 ? 'video' : 'videos'}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => void window.electronAPI?.runCommand('Actions > Delete Marked Videos')}
+          >
+            <Trash2 size={13} aria-hidden="true" />
+            {marked.count.toLocaleString()}
+            <span className="title-bar-marked-detail"> marked · {formatSize(marked.size)}</span>
+          </button>
+        )}
         {!isPrivate && (
           <button
             type="button"
             className="title-bar-icon-button"
-            title="Search commands (Ctrl+K)"
-            aria-label="Search commands"
+            title="Find a command, folder or video (Ctrl+K)"
+            aria-label="Quick open"
             onMouseDown={(event) => event.preventDefault()}
             onClick={onOpenCommandPalette}
           >

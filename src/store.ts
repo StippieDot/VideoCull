@@ -892,6 +892,9 @@ const useStore = create<VideoStore>((set, get) => ({
   duplicateSortBy: 'similarity',
   duplicateSortOrder: 'desc',
   duplicateScrollTop: 0,
+  reviewPosition: null,
+  duplicatePosition: null,
+  duplicateGroupJump: null,
   gridSelectionIds: new Set(),
   gridSelectionAnchorId: null,
   // ── Card sizing ──
@@ -1567,6 +1570,17 @@ const useStore = create<VideoStore>((set, get) => ({
   })),
   setDuplicateSortOrder: (duplicateSortOrder) => set({ duplicateSortOrder }),
   setDuplicateScrollTop: (duplicateScrollTop) => set({ duplicateScrollTop: Math.max(0, duplicateScrollTop) }),
+  setReviewPosition: (reviewPosition) => {
+    const current = get().reviewPosition;
+    if (current?.index !== reviewPosition?.index || current?.total !== reviewPosition?.total) set({ reviewPosition });
+  },
+  setDuplicatePosition: (duplicatePosition) => {
+    const current = get().duplicatePosition;
+    if (current?.group !== duplicatePosition?.group || current?.total !== duplicatePosition?.total) set({ duplicatePosition });
+  },
+  requestDuplicateGroupJump: (index) => set((state) => ({
+    duplicateGroupJump: { index, id: (state.duplicateGroupJump?.id ?? 0) + 1 },
+  })),
   clearDuplicateListFilters: () => set({
     duplicatePathFilter: '',
     duplicateMinSimilarity: 0,

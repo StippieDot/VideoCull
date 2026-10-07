@@ -253,6 +253,12 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
     return () => setActiveReviewVideoPath(null);
   }, [setActiveReviewVideoPath]);
 
+  const hasVideo = video !== null;
+  useEffect(() => {
+    useStore.getState().setReviewPosition(hasVideo ? { index: reviewIndex, total } : null);
+  }, [hasVideo, reviewIndex, total]);
+  useEffect(() => () => useStore.getState().setReviewPosition(null), []);
+
   // One-shot autoplay: only the initially play-clicked video should auto-play.
   useEffect(() => {
     const currentVideoId = video?.id ?? null;

@@ -14,7 +14,7 @@ export type AppMenuAction = {
   detail?: string;
   /** Ticked; in a selection menu, the chosen one. */
   checked?: boolean;
-  /** One of a group of choices (a radio item) in a menu that is not a selection menu. */
+  /** A radio item; in a selection menu every item is one unless this is false. */
   radio?: boolean;
   disabled?: boolean;
   tone?: 'default' | 'secondary' | 'danger';
@@ -204,7 +204,7 @@ export default function AppMenu({
         if (item.type === 'heading') return <div key={item.key} className="app-menu-heading" role="presentation">{item.label}</div>;
         if (!isAction(item)) return <div key={item.key} className="app-context-menu-separator" role="separator" />;
         const Icon = item.checked ? Check : item.icon;
-        const radio = selection || Boolean(item.radio);
+        const radio = item.radio ?? selection;
         const checkable = radio || item.checked !== undefined;
         return (
           <button
