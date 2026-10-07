@@ -3,7 +3,7 @@ import { Moon, Pause, Play, Power, Search } from 'lucide-react';
 import useStore from '../store';
 import usePowerState from '../hooks/usePowerState';
 import useProcessingPauseState from '../hooks/useProcessingPauseState';
-import type { VideoStore } from '../types';
+import type { DuplicateProgress, VideoStore } from '../types';
 import videoCullIcon from '../assets/videocull-icon.png';
 import { formatRecentPath } from '../utils';
 import LocationBar, { type LocationBarAppActions } from './LocationBar';
@@ -22,6 +22,8 @@ type MenuLabel = typeof MENUS[number]['label'];
 
 const GENERATION_LABELS = { metadata: 'Reading video info', media: 'Media data', thumbnails: 'Thumbnails' } as const;
 
+const PAIR_STAGES = new Set<DuplicateProgress['stage']>(['Comparing pHashes', 'Confirming visual matches']);
+
 /** What is processing right now, for the title bar; null when idle. */
 function selectProcessingStatus(state: VideoStore): { label: string; detail: string; fraction: number | null } | null {
   const count = (current: number, total: number) => `${current.toLocaleString()} / ${total.toLocaleString()}`;
@@ -35,7 +37,10 @@ function selectProcessingStatus(state: VideoStore): { label: string; detail: str
   }
   if (state.isFindingDuplicates && state.duplicateProgress) {
     const { stage, current, total } = state.duplicateProgress;
-    return { label: stage, detail: total > 0 ? count(current, total) : '', fraction: total > 0 ? current / total : null };
+    if (total <= 0) return { label: stage, detail: '', fraction: null };
+    // These stages count pairs of videos, which run into the millions.
+    const detail = PAIR_STAGES.has(stage) ? `${Math.floor((current / total) * 100)}%` : count(current, total);
+    return { label: stage, detail, fraction: current / total };
   }
   if (state.isScanning) {
     return { label: 'Scanning', detail: `${state.scanProgress.found.toLocaleString()} found`, fraction: null };

@@ -94,7 +94,8 @@
   align-items: center;
   gap: 4px;
   height: 24px;
-  max-width: calc(35vw - 150px);
+  /* The centre ends at 65% (30% wide, centred); this leaves room for the buttons and window controls right of the pill. */
+  max-width: calc(35vw - 230px);
   margin-right: 4px;
   padding-left: 10px;
   border-radius: 12px;

@@ -45,6 +45,17 @@ describe('TitleBar', () => {
     expect(screen.getByRole('button', { name: /Videos/ })).toBeTruthy();
   });
 
+  test('duplicate stages that compare pairs show a percentage instead of the pair count', () => {
+    installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
+    useStore.setState({
+      isGenerating: false,
+      isFindingDuplicates: true,
+      duplicateProgress: { stage: 'Comparing pHashes', current: 4_500_000, total: 8_525_176 },
+    });
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
+    expect(screen.getByRole('status').textContent).toBe('Comparing pHashes52%');
+  });
+
   test('offers resume while processing is paused', async () => {
     const api = installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
     render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
