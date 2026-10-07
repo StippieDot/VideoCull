@@ -80,3 +80,16 @@ test('virtual row heights stay deterministic by row type', () => {
   expect(videoHeight).toBe(DUPLICATE_VIDEO_ROW_HEIGHT);
   expect(galleryHeight).toBe(DUPLICATE_GALLERY_ROW_HEIGHT);
 });
+
+test('a gallery row grows to fit portrait thumbnails, and landscape rows keep the standard height', () => {
+  const thumbnails = Array.from({ length: 9 }, (_, index) => `t${index}.jpg`);
+  const group = { group: { id: 'p', videoIds: ['portrait', 'landscape'] }, videos: [{ id: 'portrait', thumbnails }, { id: 'landscape', thumbnails }] };
+  const layout = computeDuplicateGalleryLayout(260);
+  const aspects: Record<string, number> = { portrait: 9 / 16, landscape: 16 / 9 };
+  const rows = buildDuplicateGalleryRows([group], layout, (id) => aspects[id] ?? null);
+  const [portraitRow, landscapeRow] = rows.filter((row) => row.type === 'gallery-card-row');
+
+  expect(getDuplicateVirtualRowHeight(landscapeRow!)).toBe(DUPLICATE_GALLERY_ROW_HEIGHT);
+  // Three frames of a 9:16 video in a card about 230 px wide are far taller than a standard card.
+  expect(getDuplicateVirtualRowHeight(portraitRow!)).toBeGreaterThan(DUPLICATE_GALLERY_ROW_HEIGHT + 150);
+});

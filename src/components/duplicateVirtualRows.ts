@@ -1,3 +1,5 @@
+import { calcThumbGrid } from '../utils';
+
 export const DUPLICATE_GROUP_GAP = 12;
 export const DUPLICATE_GROUP_HEADER_HEIGHT = 64;
 export const DUPLICATE_VIDEO_ROW_HEIGHT = 79;
@@ -7,6 +9,10 @@ export const DUPLICATE_GALLERY_CARD_HEIGHT = 336;
 export const DUPLICATE_GALLERY_CARD_GAP = 12;
 export const DUPLICATE_GALLERY_ROW_HEIGHT =
   DUPLICATE_GALLERY_CARD_HEIGHT + DUPLICATE_GALLERY_ROW_PADDING * 2 + 1;
+/** A gallery card's name, details, buttons and border: everything but its thumbnails. */
+const DUPLICATE_GALLERY_CARD_CHROME_HEIGHT = 122;
+const CARD_BORDER_WIDTH = 3;
+const THUMB_GAP = 2;
 
 export type DuplicateVirtualizableGroup = {
   group: {
@@ -15,8 +21,12 @@ export type DuplicateVirtualizableGroup = {
   };
   videos: Array<{
     id: string;
+    thumbnails?: string[];
   }>;
 };
+
+/** Width over height of a video's frames, or null when unknown. */
+export type DuplicateAspectLookup = (videoId: string) => number | null;
 
 export type DuplicateVirtualRow =
   | {
@@ -41,6 +51,8 @@ export type DuplicateVirtualRow =
       type: 'gallery-card-row';
       groupId: string;
       videoIds: string[];
+      /** Fits the tallest card in the row, so portrait thumbnails do not run into the next row. */
+      cardHeight: number;
       groupIndex: number;
       isFirstGroup: boolean;
       isLastInGroup: boolean;
@@ -114,9 +126,19 @@ export function computeDuplicateGalleryLayout(
   return { availableWidth: safeWidth, columnCount, cardWidth };
 }
 
+/** The card height that shows every thumbnail at its frame shape, never below the standard card. */
+export function duplicateGalleryCardHeight(aspect: number | null, thumbnailCount: number, cardWidth: number): number {
+  if (!aspect || !(aspect > 0) || thumbnailCount === 0) return DUPLICATE_GALLERY_CARD_HEIGHT;
+  const { cols, rows } = calcThumbGrid(thumbnailCount);
+  const frameWidth = (cardWidth - CARD_BORDER_WIDTH - THUMB_GAP * (cols - 1)) / cols;
+  const thumbsHeight = rows * (frameWidth / aspect) + THUMB_GAP * (rows - 1);
+  return Math.max(DUPLICATE_GALLERY_CARD_HEIGHT, Math.ceil(DUPLICATE_GALLERY_CARD_CHROME_HEIGHT + thumbsHeight));
+}
+
 export function buildDuplicateGalleryRows(
   groupViews: DuplicateVirtualizableGroup[],
-  layout: DuplicateGalleryLayout
+  layout: DuplicateGalleryLayout,
+  aspectOf: DuplicateAspectLookup = () => null,
 ): DuplicateVirtualRow[] {
   const rows: DuplicateVirtualRow[] = [];
   const columnCount = Math.max(1, layout.columnCount);
@@ -133,14 +155,16 @@ export function buildDuplicateGalleryRows(
     });
 
     for (let startIndex = 0; startIndex < groupView.videos.length; startIndex += columnCount) {
-      const rowVideos = groupView.videos
-        .slice(startIndex, startIndex + columnCount)
-        .map((video) => video.id);
+      const slice = groupView.videos.slice(startIndex, startIndex + columnCount);
+      const cardHeight = Math.max(...slice.map((video) => (
+        duplicateGalleryCardHeight(aspectOf(video.id), video.thumbnails?.length ?? 0, layout.cardWidth)
+      )));
       rows.push({
         key: `${groupView.group.id}:gallery:${startIndex}`,
         type: 'gallery-card-row',
         groupId: groupView.group.id,
-        videoIds: rowVideos,
+        videoIds: slice.map((video) => video.id),
+        cardHeight,
         groupIndex,
         isFirstGroup: groupIndex === 0,
         isLastInGroup: startIndex + columnCount >= groupView.videos.length,
@@ -158,5 +182,5 @@ export function getDuplicateVirtualRowHeight(row: DuplicateVirtualRow): number {
   if (row.type === 'video-row') {
     return DUPLICATE_VIDEO_ROW_HEIGHT;
   }
-  return DUPLICATE_GALLERY_ROW_HEIGHT;
+  return row.cardHeight + DUPLICATE_GALLERY_ROW_PADDING * 2 + 1;
 }

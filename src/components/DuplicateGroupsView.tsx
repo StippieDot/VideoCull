@@ -30,7 +30,6 @@ import {
   buildDuplicateGalleryRows,
   buildDuplicateRowsRows,
   computeDuplicateGalleryLayout,
-  DUPLICATE_GALLERY_CARD_HEIGHT,
   DUPLICATE_GALLERY_CARD_GAP,
   DUPLICATE_GALLERY_ROW_PADDING,
   DUPLICATE_GROUP_GAP,
@@ -101,6 +100,8 @@ type DuplicateGalleryCardProps = {
   onToggleSelection: (video: Video) => void;
   onPlayVideo: (videoId: string, scopeIds: string[]) => void;
   onOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+  /** Reports the frame shape of a loaded thumbnail, which sets the row height. */
+  onThumbnailAspect: (videoId: string, aspect: number) => void;
 };
 
 type DuplicateRowRuntimeData = {
@@ -115,6 +116,7 @@ type DuplicateRowRuntimeData = {
   handlePlayVideo: (videoId: string, scopeIds: string[]) => void;
   handleOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
   handleOpenGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
+  reportThumbnailAspect: (videoId: string, aspect: number) => void;
 };
 
 type DuplicateRowRenderSignals = {
@@ -325,8 +327,12 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
   );
 });
 
+/** Frame shape of each video's loaded thumbnails, kept for the session so rows keep their height. */
+const thumbnailAspects = new Map<string, number>();
+
 const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   video,
+  onThumbnailAspect,
   groupVideoIds,
   groupId,
   isSelected,
@@ -334,9 +340,23 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   onPlayVideo,
   onOpenVideoContextMenu,
 }: DuplicateGalleryCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = cardRef.current;
+    if (!element) return;
+    const handleLoad = (event: Event) => {
+      const image = event.target;
+      if (image instanceof HTMLImageElement && image.classList.contains('thumb-img') && image.naturalHeight > 0) {
+        onThumbnailAspect(video.id, image.naturalWidth / image.naturalHeight);
+      }
+    };
+    // Image load events do not bubble, but an ancestor still sees them while capturing.
+    element.addEventListener('load', handleLoad, true);
+    return () => element.removeEventListener('load', handleLoad, true);
+  }, [onThumbnailAspect, video.id]);
+
   return (
-    // The full height lets the card fit its cell; portrait thumbnails otherwise grow it past the row.
-    <div className="duplicate-gallery-card" onContextMenu={(event) => onOpenVideoContextMenu(event, groupId, video.id)}>
+    <div ref={cardRef} className="duplicate-gallery-card" onContextMenu={(event) => onOpenVideoContextMenu(event, groupId, video.id)}>
       <VideoCard
         video={video}
         showSelectionControls
@@ -478,10 +498,11 @@ function DuplicateVirtualRowRenderer({
               <div
                 key={video.id}
                 className="duplicate-card-grid-cell"
-                style={{ height: DUPLICATE_GALLERY_CARD_HEIGHT }}
+                style={{ height: row.cardHeight }}
               >
                 <DuplicateGalleryCard
                   video={video}
+                  onThumbnailAspect={runtime.reportThumbnailAspect}
                   groupId={groupView.group.id}
                   groupVideoIds={groupView.group.videoIds}
                   isSelected={runtime.selectedIds.has(video.id)}
@@ -895,6 +916,19 @@ function DuplicateGroupsView() {
     }
   }, [groupViewsById, pushToast, setManualDuplicateKeeper, videosById]);
 
+  // Phone videos often report their size before rotation, so the loaded thumbnails correct it.
+  const [thumbnailAspectVersion, setThumbnailAspectVersion] = useState(0);
+  const aspectFrameRef = useRef(0);
+  useEffect(() => () => window.cancelAnimationFrame(aspectFrameRef.current), []);
+  const reportThumbnailAspect = useCallback((videoId: string, aspect: number) => {
+    const known = thumbnailAspects.get(videoId);
+    if (known && Math.abs(known - aspect) < 0.01) return;
+    thumbnailAspects.set(videoId, aspect);
+    window.cancelAnimationFrame(aspectFrameRef.current);
+    // One row update for all thumbnails that load in the same frame.
+    aspectFrameRef.current = window.requestAnimationFrame(() => setThumbnailAspectVersion((version) => version + 1));
+  }, []);
+
   const galleryLayout = useMemo(
     () => computeDuplicateGalleryLayout(dimensions.width),
     [dimensions.width]
@@ -904,8 +938,15 @@ function DuplicateGroupsView() {
     if (viewMode === 'rows') {
       return buildDuplicateRowsRows(visibleGroupViews);
     }
-    return buildDuplicateGalleryRows(visibleGroupViews, galleryLayout);
-  }, [galleryLayout, viewMode, visibleGroupViews]);
+    const aspectOf = (videoId: string) => {
+      const measured = thumbnailAspects.get(videoId);
+      if (measured) return measured;
+      const video = videosById.get(videoId);
+      return video?.width && video.height ? video.width / video.height : null;
+    };
+    return buildDuplicateGalleryRows(visibleGroupViews, galleryLayout, aspectOf);
+    // thumbnailAspectVersion: the measured shapes live outside React state.
+  }, [galleryLayout, thumbnailAspectVersion, videosById, viewMode, visibleGroupViews]);
 
   if (lastRowsRef.current !== virtualRows) {
     lastRowsRef.current = virtualRows;
@@ -934,6 +975,7 @@ function DuplicateGroupsView() {
     handlePlayVideo,
     handleOpenVideoContextMenu: openVideoContextMenu,
     handleOpenGroupContextMenu: openGroupContextMenu,
+    reportThumbnailAspect,
   }), [
     dismissGroup,
     galleryLayout.cardWidth,
@@ -941,6 +983,7 @@ function DuplicateGroupsView() {
     openGroupContextMenu,
     openVideoContextMenu,
     handlePlayVideo,
+    reportThumbnailAspect,
     selectSuggestedDuplicatesForGroup,
     selectedIds,
     toggleVideoSelection,
