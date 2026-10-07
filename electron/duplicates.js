@@ -737,7 +737,6 @@ function runVisualWorker(videos, grayRows, settings, run, sendProgress) {
       similarity: settings.finalSimilarityThreshold,
       durationTolerancePercent: settings.durationTolerancePercent,
     });
-    progress(sendProgress, 'Finding candidates', { current: 0, total: 0 });
     progress(sendProgress, 'Confirming visual matches', { current: 0, total: 0 });
     const pauseHandle = processingPause.createWorkerPauseHandle();
     const worker = new Worker(path.join(__dirname, 'visual-worker.js'), {
@@ -754,14 +753,12 @@ function runVisualWorker(videos, grayRows, settings, run, sendProgress) {
     run.worker = worker;
     worker.on('message', (message) => {
       if (message.type === 'progress') {
-        progress(sendProgress, 'Finding candidates', { current: message.compared, total: message.total });
         progress(sendProgress, 'Confirming visual matches', { current: message.compared, total: message.total });
       } else if (message.type === 'paused') {
         pauseHandle.markPaused();
       } else if (message.type === 'done') {
         run.worker = null;
         pauseHandle.release();
-        progress(sendProgress, 'Finding candidates', { current: message.total, total: message.total });
         progress(sendProgress, 'Confirming visual matches', { current: message.total, total: message.total });
         duplicateLog('Visual comparison worker complete', {
           compared: message.compared,

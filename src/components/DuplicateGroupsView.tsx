@@ -335,7 +335,8 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   onOpenVideoContextMenu,
 }: DuplicateGalleryCardProps) {
   return (
-    <div onContextMenu={(event) => onOpenVideoContextMenu(event, groupId, video.id)}>
+    // The full height lets the card fit its cell; portrait thumbnails otherwise grow it past the row.
+    <div className="duplicate-gallery-card" onContextMenu={(event) => onOpenVideoContextMenu(event, groupId, video.id)}>
       <VideoCard
         video={video}
         showSelectionControls
@@ -510,7 +511,6 @@ function DuplicateGroupsView() {
   const duplicateMinSimilarity = useStore((s) => s.duplicateMinSimilarity);
   const duplicateSortBy = useStore((s) => s.duplicateSortBy);
   const duplicateSortOrder = useStore((s) => s.duplicateSortOrder);
-  const duplicateScrollTop = useStore((s) => s.duplicateScrollTop);
   const setDuplicateGroups = useStore((s) => s.setDuplicateGroups);
   const setManualDuplicateKeeper = useStore((s) => s.setManualDuplicateKeeper);
   const setDuplicateScrollTop = useStore((s) => s.setDuplicateScrollTop);
@@ -974,6 +974,9 @@ function DuplicateGroupsView() {
     if (reviewMode) restoringScrollRef.current = false;
     else if (wasReviewMode) restoringScrollRef.current = true;
 
+    // Read, not subscribed: as a dependency every scroll event re-ran this and, with smooth wheel
+    // scrolling a frame ahead of the stored value, pulled the list back to where it just was.
+    const duplicateScrollTop = useStore.getState().duplicateScrollTop;
     const element = listRef.current?.element;
     if (!element) return;
     if (Math.abs(element.scrollTop - duplicateScrollTop) > 1) {
@@ -1001,7 +1004,7 @@ function DuplicateGroupsView() {
       window.cancelAnimationFrame(frameOne);
       window.cancelAnimationFrame(frameTwo);
     };
-  }, [dimensions.height, dimensions.width, duplicateScrollTop, reviewMode, viewMode, virtualRows.length]);
+  }, [dimensions.height, dimensions.width, reviewMode, viewMode, virtualRows.length]);
 
   const handleRowsRendered = useCallback(({ startIndex }: { startIndex: number; stopIndex: number }) => {
     const row = virtualRows[startIndex];

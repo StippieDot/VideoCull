@@ -422,6 +422,10 @@
   height: 336px;
 }
 
+.duplicate-gallery-card {
+  height: 100%;
+}
+
 .duplicate-empty {
   display: grid;
   place-content: center;
