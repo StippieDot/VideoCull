@@ -97,6 +97,7 @@ const electronAPI = {
   exportReport: (videos, dirPaths) => ipcRenderer.invoke('export-report', videos, dirPaths),
   chooseReportScope: () => ipcRenderer.invoke('choose-report-scope'),
   setMenuState: (state) => ipcRenderer.send('set-menu-state', state),
+  setTaskbarProgress: (progress) => ipcRenderer.send('set-taskbar-progress', progress),
   openAppMenu: (id, x, y) => ipcRenderer.invoke('open-app-menu', id, x, y),
   getCommands: () => ipcRenderer.invoke('get-commands'),
   runCommand: (id) => ipcRenderer.invoke('run-command', id),

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { LucideIcon } from 'lucide-react';
 import { Check } from 'lucide-react';
@@ -14,6 +14,8 @@ export type AppMenuAction = {
   detail?: string;
   /** Ticked; in a selection menu, the chosen one. */
   checked?: boolean;
+  /** One of a group of choices (a radio item) in a menu that is not a selection menu. */
+  radio?: boolean;
   disabled?: boolean;
   tone?: 'default' | 'secondary' | 'danger';
   /** Dimmed, such as a folder with nothing left to review. */
@@ -23,7 +25,11 @@ export type AppMenuAction = {
   onSelect: () => void;
 };
 
-export type AppMenuItem = AppMenuAction | { type: 'separator'; key: string };
+export type AppMenuItem =
+  | AppMenuAction
+  | { type: 'separator'; key: string }
+  /** A small caption above a group of items. */
+  | { type: 'heading'; key: string; label: string };
 
 export interface AppMenuHeader {
   icon: LucideIcon;
@@ -38,6 +44,8 @@ interface AppMenuProps {
   /** Accessible name when there is no header. */
   label?: string;
   header?: AppMenuHeader;
+  /** Shown between the header and the items, such as progress details. */
+  content?: ReactNode;
   /** A list to pick one item from: radio items, focus starts on the checked one. */
   selection?: boolean;
   /** Long lists scroll instead of running off the window. */
@@ -66,7 +74,7 @@ export function trimSeparators<T extends { type?: string }>(items: T[]): T[] {
 }
 
 function isAction(item: AppMenuItem): item is AppMenuAction {
-  return item.type !== 'separator';
+  return item.type === undefined || item.type === 'item';
 }
 
 function stepIndex(list: number[], current: number, delta: number): number {
@@ -80,7 +88,7 @@ function stepIndex(list: number[], current: number, delta: number): number {
  * the next item starting with it, Esc closes, Tab closes and moves on.
  */
 export default function AppMenu({
-  items: rawItems, x, y, label, header, selection = false, scrollable = false, emptyText, className = '',
+  items: rawItems, x, y, label, header, content, selection = false, scrollable = false, emptyText, className = '',
   onClose, onSwitch, keepOpenWithin,
 }: AppMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -190,11 +198,14 @@ export default function AppMenu({
           </div>
         </div>
       )}
+      {content}
       {items.length === 0 && emptyText && <div className="app-menu-empty">{emptyText}</div>}
       {items.map((item, index) => {
+        if (item.type === 'heading') return <div key={item.key} className="app-menu-heading" role="presentation">{item.label}</div>;
         if (!isAction(item)) return <div key={item.key} className="app-context-menu-separator" role="separator" />;
         const Icon = item.checked ? Check : item.icon;
-        const checkable = selection || item.checked !== undefined;
+        const radio = selection || Boolean(item.radio);
+        const checkable = radio || item.checked !== undefined;
         return (
           <button
             key={item.key}
@@ -203,7 +214,7 @@ export default function AppMenu({
               else itemRefs.current.delete(index);
             }}
             type="button"
-            role={selection ? 'menuitemradio' : checkable ? 'menuitemcheckbox' : 'menuitem'}
+            role={radio ? 'menuitemradio' : checkable ? 'menuitemcheckbox' : 'menuitem'}
             aria-checked={checkable ? Boolean(item.checked) : undefined}
             disabled={item.disabled}
             tabIndex={index === focus ? 0 : -1}

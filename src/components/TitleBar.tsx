@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Moon, Pause, Play, Power, Search } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import useStore from '../store';
 import usePowerState from '../hooks/usePowerState';
 import useProcessingPauseState from '../hooks/useProcessingPauseState';
-import type { DuplicateProgress, VideoStore } from '../types';
+import type { TaskbarProgress } from '../types';
 import videoCullIcon from '../assets/videocull-icon.png';
 import { formatRecentPath } from '../utils';
-import AppMenu from './AppMenu';
+import AppMenu, { type AppMenuItem } from './AppMenu';
+import { formatTimeLeft, listProcessingJobs, TimeLeftEstimator, type ProcessingJob } from './processingStatus';
 import LocationBar, { type LocationBarAppActions } from './LocationBar';
 import './TitleBar.css';
 
@@ -22,42 +23,68 @@ const MENUS = [
 
 type MenuLabel = typeof MENUS[number]['label'];
 
-const GENERATION_LABELS = { metadata: 'Reading video info', media: 'Media data', thumbnails: 'Thumbnails' } as const;
-
-const PAIR_STAGES = new Set<DuplicateProgress['stage']>(['Comparing pHashes', 'Confirming visual matches']);
-
-/** What is processing right now, for the title bar; null when idle. */
-function selectProcessingStatus(state: VideoStore): { label: string; detail: string; fraction: number | null } | null {
-  const count = (current: number, total: number) => `${current.toLocaleString()} / ${total.toLocaleString()}`;
-  if (state.isGenerating) {
-    const { current, total, phase } = state.genProgress;
-    return {
-      label: GENERATION_LABELS[phase ?? 'thumbnails'],
-      detail: count(current, total),
-      fraction: total > 0 ? current / total : null,
-    };
-  }
-  if (state.isFindingDuplicates && state.duplicateProgress) {
-    const { stage, current, total } = state.duplicateProgress;
-    if (total <= 0) return { label: stage, detail: '', fraction: null };
-    // These stages count pairs of videos, which run into the millions.
-    const detail = PAIR_STAGES.has(stage) ? `${Math.floor((current / total) * 100)}%` : count(current, total);
-    return { label: stage, detail, fraction: current / total };
-  }
-  if (state.isScanning) {
-    return { label: 'Scanning', detail: `${state.scanProgress.found.toLocaleString()} found`, fraction: null };
-  }
-  return null;
-}
-
 // Labels match Actions › When Processing Finishes, whose items the choices run.
 const FINISH_ACTIONS = [['none', 'Do Nothing'], ['sleep', 'Sleep'], ['shutdown', 'Shut Down']] as const;
 
-const FINISH_ACTION_TITLES = {
-  none: 'When processing finishes: do nothing',
-  sleep: 'When processing finishes: sleep',
-  shutdown: 'When processing finishes: shut down',
-} as const;
+const FINISH_ACTION_GLYPHS = { none: null, sleep: Moon, shutdown: Power } as const;
+
+/** Time left per job, from the progress seen so far; nothing while paused. */
+function useTimeLeft(jobs: ProcessingJob[], paused: boolean): Map<ProcessingJob['id'], string> {
+  const estimators = useRef(new Map<ProcessingJob['id'], TimeLeftEstimator>());
+  return useMemo(() => {
+    const result = new Map<ProcessingJob['id'], string>();
+    for (const job of jobs) {
+      let estimator = estimators.current.get(job.id);
+      if (!estimator) {
+        estimator = new TimeLeftEstimator();
+        estimators.current.set(job.id, estimator);
+      }
+      // A pause breaks the rate; it starts over on resume.
+      if (paused) {
+        estimator.reset();
+        continue;
+      }
+      const seconds = estimator.update(`${job.id}:${job.label}`, job.fraction, Date.now());
+      if (seconds !== null) result.set(job.id, formatTimeLeft(seconds));
+    }
+    return result;
+  }, [jobs, paused]);
+}
+
+/** The taskbar button shows the most important measurable job, so progress shows while minimised. */
+function useTaskbarProgress(jobs: ProcessingJob[], paused: boolean) {
+  const lastSent = useRef('');
+  useEffect(() => {
+    const job = jobs.find((entry) => entry.fraction !== null) ?? jobs[0];
+    const progress: TaskbarProgress = !job
+      ? { mode: 'none' }
+      : job.fraction === null
+        ? { mode: 'indeterminate' }
+        // Whole percents: the taskbar cannot show finer steps, so smaller changes are not sent.
+        : { mode: paused ? 'paused' : 'normal', fraction: Math.floor(job.fraction * 100) / 100 };
+    const key = JSON.stringify(progress);
+    if (key === lastSent.current) return;
+    lastSent.current = key;
+    window.electronAPI?.setTaskbarProgress(progress);
+  }, [jobs, paused]);
+}
+
+function JobRow({ job, timeLeft, paused }: { job: ProcessingJob; timeLeft?: string; paused: boolean }) {
+  return (
+    <div className="processing-job">
+      <div className="processing-job-text">
+        <span className="processing-job-label">{job.label}</span>
+        <span className="processing-job-detail">{[job.detail, paused ? 'Paused' : timeLeft].filter(Boolean).join(' · ')}</span>
+      </div>
+      <div className="processing-job-track" aria-hidden="true">
+        <div
+          className={`processing-job-fill${job.fraction === null ? ' indeterminate' : ''}${paused ? ' paused' : ''}`}
+          style={job.fraction === null ? undefined : { width: `${Math.min(100, job.fraction * 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 const RING_RADIUS = 6;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
@@ -102,12 +129,24 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
   locationActions: LocationBarAppActions;
 }) {
   const directories = useStore((s) => s.directories);
-  // Compared field by field, so the bar only re-renders when the shown status changes.
-  const status = useStore(useShallow(selectProcessingStatus));
+  // Compared field by field, so the bar only re-renders when processing progress changes.
+  const processingInputs = useStore(useShallow((s) => ({
+    isGenerating: s.isGenerating,
+    genProgress: s.genProgress,
+    isFindingDuplicates: s.isFindingDuplicates,
+    duplicateProgress: s.duplicateProgress,
+    isScanning: s.isScanning,
+    scanProgress: s.scanProgress,
+  })));
+  const jobs = useMemo(() => listProcessingJobs(processingInputs), [processingInputs]);
   const power = usePowerState();
   const pauseStatus = useProcessingPauseState().status;
   const paused = pauseStatus !== 'running';
-  const finishButtonRef = useRef<HTMLButtonElement>(null);
+  const timeLeft = useTimeLeft(jobs, paused);
+  useTaskbarProgress(jobs, paused);
+  const status = jobs[0] ?? null;
+  const statusDetail = status ? [status.detail, paused ? '' : timeLeft.get(status.id)].filter(Boolean).join(' · ') : '';
+  const pillRef = useRef<HTMLButtonElement>(null);
   const [openMenu, setOpenMenu] = useState<MenuLabel | null>(null);
   const [altHeld, setAltHeld] = useState(false);
   const buttonRefs = useRef(new Map<MenuLabel, HTMLButtonElement>());
@@ -124,15 +163,36 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
     }
   };
 
-  const [finishMenuAt, setFinishMenuAt] = useState<{ x: number; y: number } | null>(null);
-  const toggleFinishActionMenu = () => {
-    const rect = finishButtonRef.current?.getBoundingClientRect();
-    setFinishMenuAt((open) => (open || !rect ? null : { x: rect.left, y: rect.bottom + 4 }));
+  const [panelAt, setPanelAt] = useState<{ x: number; y: number } | null>(null);
+  const togglePanel = () => {
+    const rect = pillRef.current?.parentElement?.getBoundingClientRect();
+    setPanelAt((open) => (open || !rect ? null : { x: rect.left, y: rect.bottom + 4 }));
   };
-  const closeFinishActionMenu = useCallback((refocus: boolean) => {
-    setFinishMenuAt(null);
-    if (refocus) finishButtonRef.current?.focus();
+  const closePanel = useCallback((refocus: boolean) => {
+    setPanelAt(null);
+    if (refocus) pillRef.current?.focus();
   }, []);
+  const FinishGlyph = FINISH_ACTION_GLYPHS[power.finishAction];
+  const panelItems: AppMenuItem[] = [
+    {
+      key: 'pause',
+      label: paused ? 'Resume Processing' : 'Pause Processing',
+      icon: paused ? Play : Pause,
+      disabled: pauseStatus === 'pausing',
+      onSelect: () => void window.electronAPI?.setProcessingPaused(!paused),
+    },
+    ...(power.processing ? [
+      { type: 'separator' as const, key: 'sep-finish' },
+      { type: 'heading' as const, key: 'finish', label: 'When processing finishes' },
+      ...FINISH_ACTIONS.map(([action, label]): AppMenuItem => ({
+        key: action,
+        label,
+        radio: true,
+        checked: power.finishAction === action,
+        onSelect: () => void window.electronAPI?.runCommand(`Actions > When Processing Finishes > ${label}`),
+      })),
+    ] : []),
+  ];
   const openRef = useRef(open);
   openRef.current = open;
 
@@ -211,13 +271,28 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
       )}
       <div className="title-bar-actions">
         {status && !isPrivate && (
-          <div className="title-bar-status-pill" title={[status.label, status.detail, paused ? 'Paused' : ''].filter(Boolean).join(' · ')}>
-            <ProgressRing fraction={status.fraction} paused={paused} />
-            <span className="title-bar-status" role="status">
-              <span className="title-bar-status-label">{status.label}</span>
-              {status.detail && <span className="title-bar-status-detail">{status.detail}</span>}
-              {paused && <span className="title-bar-status-paused">Paused</span>}
-            </span>
+          <div className="title-bar-status-pill">
+            <button
+              ref={pillRef}
+              type="button"
+              className="title-bar-status-button"
+              title={[status.label, statusDetail, paused ? 'Paused' : ''].filter(Boolean).join(' · ')}
+              aria-haspopup="menu"
+              aria-expanded={panelAt !== null}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={togglePanel}
+            >
+              <ProgressRing fraction={status.fraction} paused={paused} />
+              <span className="title-bar-status" role="status">
+                <span className="title-bar-status-label">{status.label}</span>
+                {statusDetail && <span className="title-bar-status-detail">{statusDetail}</span>}
+                {paused && <span className="title-bar-status-paused">Paused</span>}
+              </span>
+              {jobs.length > 1 && <span className="title-bar-status-more" aria-label={`and ${jobs.length - 1} more`}>+{jobs.length - 1}</span>}
+              {FinishGlyph && (
+                <FinishGlyph size={12} className="title-bar-status-finish" aria-label={power.finishAction === 'sleep' ? 'Then sleep' : 'Then shut down'} />
+              )}
+            </button>
             <button
               type="button"
               className={`title-bar-icon-button${paused ? ' paused' : ''}`}
@@ -243,35 +318,16 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
             <Search size={14} />
           </button>
         )}
-        {power.processing && !isPrivate && (
-          <button
-            ref={finishButtonRef}
-            type="button"
-            className={`title-bar-icon-button title-bar-finish-button${power.finishAction !== 'none' ? ' active' : ''}`}
-            title={FINISH_ACTION_TITLES[power.finishAction]}
-            aria-label={FINISH_ACTION_TITLES[power.finishAction]}
-            onMouseDown={(event) => event.preventDefault()}
-            aria-haspopup="menu"
-            aria-expanded={finishMenuAt !== null}
-            onClick={toggleFinishActionMenu}
-          >
-            {power.finishAction === 'shutdown' ? <Power size={14} /> : <Moon size={14} />}
-          </button>
-        )}
-        {finishMenuAt && power.processing && !isPrivate && (
+        {panelAt && status && !isPrivate && (
           <AppMenu
-            label="When processing finishes"
-            selection
-            items={FINISH_ACTIONS.map(([action, label]) => ({
-              key: action,
-              label,
-              checked: power.finishAction === action,
-              onSelect: () => void window.electronAPI?.runCommand(`Actions > When Processing Finishes > ${label}`),
-            }))}
-            x={finishMenuAt.x}
-            y={finishMenuAt.y}
-            onClose={closeFinishActionMenu}
-            keepOpenWithin=".title-bar-finish-button"
+            label="Processing"
+            content={jobs.map((job) => <JobRow key={job.id} job={job} timeLeft={timeLeft.get(job.id)} paused={paused} />)}
+            items={panelItems}
+            className="processing-panel"
+            x={panelAt.x}
+            y={panelAt.y}
+            onClose={closePanel}
+            keepOpenWithin=".title-bar-status-button"
           />
         )}
       </div>

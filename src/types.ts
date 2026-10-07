@@ -113,6 +113,11 @@ export interface AppMenuState {
 /** What VideoCull does once the current processing has finished. Applies to one run only. */
 export type FinishAction = 'none' | 'sleep' | 'shutdown';
 
+/** Progress on the taskbar button; `fraction` is 0–1. */
+export type TaskbarProgress =
+  | { mode: 'none' | 'indeterminate' }
+  | { mode: 'normal' | 'paused'; fraction: number };
+
 export interface PowerState {
   processing: boolean;
   finishAction: FinishAction;
@@ -677,6 +682,7 @@ export interface ElectronAPI {
   exportReport: (videos: Video[], dirPaths: string[]) => Promise<'saved' | 'cancelled' | 'error'>;
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
   setMenuState: (state: AppMenuState) => void;
+  setTaskbarProgress: (progress: TaskbarProgress) => void;
   /** Opens an app menu or submenu, given by its label path, at a window position; resolves when it closes. */
   /** Opens the app menu or submenu with this command id, such as "File" or "Actions > When Processing Finishes". */
   openAppMenu: (id: string, x: number, y: number) => Promise<boolean>;

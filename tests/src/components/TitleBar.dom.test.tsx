@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import TitleBar from '../../../src/components/TitleBar';
 import useStore from '../../../src/store';
@@ -16,6 +16,7 @@ function installElectronApiMock(power: PowerState) {
     onProcessingPauseState: vi.fn(() => () => {}),
     openAppMenu: vi.fn().mockResolvedValue(true),
     runCommand: vi.fn().mockResolvedValue(true),
+    setTaskbarProgress: vi.fn(),
     setProcessingPaused: vi.fn().mockResolvedValue({ status: 'running' }),
   };
   (window as unknown as { electronAPI: typeof electronAPI }).electronAPI = electronAPI;
@@ -68,16 +69,24 @@ describe('TitleBar', () => {
     expect(api.setProcessingPaused).toHaveBeenLastCalledWith(false);
   });
 
-  test('the moon button opens the When Processing Finishes menu and shows the choice', async () => {
+  test('the status opens a panel with every running job, pause and what to do when finished', async () => {
     const api = installElectronApiMock({ processing: true, finishAction: 'sleep', countdown: null });
-    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
+    useStore.setState({ isScanning: true, scanProgress: { found: 40, currentFile: '' } });
+    const { container } = render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
 
-    const button = await screen.findByRole('button', { name: 'When processing finishes: sleep' });
-    expect(button.classList.contains('active')).toBe(true);
-    act(() => button.click());
-    const menu = screen.getByRole('menu', { name: 'When processing finishes' });
-    expect(menu.querySelector('[aria-checked="true"]')?.textContent).toBe('Sleep');
-    expect(document.activeElement?.textContent).toBe('Sleep');
+    const status = await screen.findByRole('button', { name: /Thumbnails/ });
+    // Scanning runs too, and the chosen finish action shows on the status.
+    expect(status.textContent).toContain('+1');
+    await screen.findByLabelText('Then sleep');
+    await waitFor(() => expect(api.setTaskbarProgress).toHaveBeenLastCalledWith({ mode: 'paused', fraction: 0.25 }));
+
+    act(() => status.click());
+    const panel = screen.getByRole('menu', { name: 'Processing' });
+    expect([...container.ownerDocument.querySelectorAll('.processing-job-label')].map((label) => label.textContent))
+      .toEqual(['Thumbnails', 'Scanning']);
+    expect(panel.textContent).toContain('40 found');
+    expect(screen.getByRole('menuitem', { name: 'Resume Processing' })).toBeTruthy();
+    expect(panel.querySelector('[aria-checked="true"]')?.textContent).toBe('Sleep');
     act(() => screen.getByRole('menuitemradio', { name: 'Shut Down' }).click());
     expect(api.runCommand).toHaveBeenCalledWith('Actions > When Processing Finishes > Shut Down');
     expect(screen.queryByRole('menu')).toBeNull();

@@ -1,7 +1,7 @@
 import { memo, useCallback, useRef } from 'react';
 import AppMenu, { type AppMenuItem } from './AppMenu';
 
-export type ContextMenuItem = AppMenuItem;
+export type ContextMenuItem = Exclude<AppMenuItem, { type: 'heading' }>;
 
 type ContextMenuProps = {
   x: number;

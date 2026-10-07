@@ -595,6 +595,21 @@ ipcMain.handle('run-command', (_event, id) => {
   return true;
 });
 
+// Progress on the taskbar button, so processing can be followed while the window is minimised.
+ipcMain.on('set-taskbar-progress', (_event, progress) => {
+  if (!mainWindow || mainWindow.isDestroyed() || !progress || typeof progress !== 'object') return;
+  const { mode, fraction } = progress;
+  if (mode === 'normal' || mode === 'paused') {
+    if (!Number.isFinite(fraction)) return;
+    mainWindow.setProgressBar(Math.min(1, Math.max(0, fraction)), { mode });
+  } else if (mode === 'indeterminate') {
+    // Windows shows the moving bar for any value above 1 in this mode.
+    mainWindow.setProgressBar(2, { mode: 'indeterminate' });
+  } else {
+    mainWindow.setProgressBar(-1);
+  }
+});
+
 ipcMain.on('set-menu-state', (_event, state) => {
   rendererMenuState = normalizeRendererMenuState(state);
   setApplicationMenu();

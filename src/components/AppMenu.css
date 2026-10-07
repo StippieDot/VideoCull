@@ -79,3 +79,9 @@
   color: var(--text-tertiary);
   font-size: 12px;
 }
+
+.app-menu-heading {
+  padding: 6px 10px 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}

@@ -174,6 +174,7 @@ function createElectronApiMock() {
     saveCacheAtomic: vi.fn().mockResolvedValue(true),
     saveReviewState: vi.fn().mockResolvedValue(true),
     setMenuState: vi.fn(),
+    setTaskbarProgress: vi.fn(),
     getPathForFile: vi.fn(),
     selectDirectory: vi.fn().mockResolvedValue(null),
     validateDroppedPath: vi.fn().mockResolvedValue({ valid: true, isDirectory: true }),

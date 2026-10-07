@@ -97,9 +97,45 @@
   height: 24px;
   min-width: 0;
   margin-right: 4px;
-  padding-left: 10px;
   border-radius: 12px;
   background: var(--bg-control);
+}
+
+/* The status itself opens the processing panel; the pause button beside it stays one click. */
+.title-bar-status-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-status-button:hover,
+.title-bar-status-button:focus-visible,
+.title-bar-status-button[aria-expanded="true"] {
+  background: var(--bg-surface-active);
+  outline: none;
+}
+
+.title-bar-status-more {
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.title-bar-status-finish {
+  flex-shrink: 0;
+  color: var(--accent);
 }
 
 .title-bar-status {
@@ -275,5 +311,68 @@
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
+  }
+}
+
+.processing-panel {
+  min-width: 280px;
+  -webkit-app-region: no-drag;
+}
+
+.processing-job {
+  padding: 8px 10px;
+}
+
+.processing-job + .app-menu-item,
+.processing-job:last-of-type {
+  margin-bottom: 4px;
+}
+
+.processing-job-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.processing-job-label {
+  color: var(--text-primary);
+}
+
+.processing-job-detail {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.processing-job-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.processing-job-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.processing-job-fill.paused {
+  background: var(--color-skip);
+}
+
+.processing-job-fill.indeterminate {
+  width: 30%;
+  animation: title-bar-progress-sweep 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processing-job-fill.indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
   }
 }
