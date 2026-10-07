@@ -2,7 +2,8 @@ import {
   buildDuplicateGalleryRows,
   buildDuplicateRowsRows,
   computeDuplicateGalleryLayout,
-  DUPLICATE_GALLERY_ROW_HEIGHT,
+  duplicateGalleryCardHeight,
+  DUPLICATE_GALLERY_ROW_PADDING,
   DUPLICATE_GROUP_GAP,
   DUPLICATE_GROUP_HEADER_HEIGHT,
   DUPLICATE_VIDEO_ROW_HEIGHT,
@@ -39,8 +40,8 @@ test('rows mode preserves group and member order', () => {
   expect(rows[6]?.isLastInGroup).toBe(true);
 });
 
-test('gallery mode packs card rows by computed column count, with cards the size of the grid at 100%', () => {
-  const layout = computeDuplicateGalleryLayout(960);
+test('gallery mode packs card rows by computed column count', () => {
+  const layout = computeDuplicateGalleryLayout(760);
   const rows = buildDuplicateGalleryRows(groupViews, layout);
 
   expect(layout.columnCount).toBe(2);
@@ -71,14 +72,13 @@ test('virtual row heights stay deterministic by row type', () => {
   const firstHeaderHeight = getDuplicateVirtualRowHeight(rows[0]!);
   const laterHeaderHeight = getDuplicateVirtualRowHeight(rows[4]!);
   const videoHeight = getDuplicateVirtualRowHeight(rows[1]!);
-  const galleryHeight = getDuplicateVirtualRowHeight(
-    buildDuplicateGalleryRows(groupViews, computeDuplicateGalleryLayout(720))[1]!
-  );
+  const galleryLayout = computeDuplicateGalleryLayout(720);
+  const galleryHeight = getDuplicateVirtualRowHeight(buildDuplicateGalleryRows(groupViews, galleryLayout)[1]!);
 
   expect(firstHeaderHeight).toBe(DUPLICATE_GROUP_HEADER_HEIGHT);
   expect(laterHeaderHeight).toBe(DUPLICATE_GROUP_HEADER_HEIGHT + DUPLICATE_GROUP_GAP);
   expect(videoHeight).toBe(DUPLICATE_VIDEO_ROW_HEIGHT);
-  expect(galleryHeight).toBe(DUPLICATE_GALLERY_ROW_HEIGHT);
+  expect(galleryHeight).toBe(duplicateGalleryCardHeight(null, 0, galleryLayout.cardWidth) + DUPLICATE_GALLERY_ROW_PADDING * 2 + 1);
 });
 
 test('a gallery row grows to fit portrait thumbnails, and landscape rows keep the standard height', () => {
@@ -89,7 +89,8 @@ test('a gallery row grows to fit portrait thumbnails, and landscape rows keep th
   const rows = buildDuplicateGalleryRows([group], layout, (id) => aspects[id] ?? null);
   const [portraitRow, landscapeRow] = rows.filter((row) => row.type === 'gallery-card-row');
 
-  expect(getDuplicateVirtualRowHeight(landscapeRow!)).toBe(DUPLICATE_GALLERY_ROW_HEIGHT);
-  // Three frames of a 9:16 video in a card about 230 px wide are far taller than a standard card.
-  expect(getDuplicateVirtualRowHeight(portraitRow!)).toBeGreaterThan(DUPLICATE_GALLERY_ROW_HEIGHT + 150);
+  const standardRow = duplicateGalleryCardHeight(null, 9, layout.cardWidth) + DUPLICATE_GALLERY_ROW_PADDING * 2 + 1;
+  expect(getDuplicateVirtualRowHeight(landscapeRow!)).toBe(standardRow);
+  // Its thumbnails are about three times as tall as 16:9 ones, so the card is about twice as tall.
+  expect(getDuplicateVirtualRowHeight(portraitRow!)).toBeGreaterThan(standardRow * 1.8);
 });

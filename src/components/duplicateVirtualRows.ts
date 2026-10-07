@@ -1,16 +1,17 @@
 import { calcThumbGrid } from '../utils';
-import { VIDEO_CARD_HEIGHT, VIDEO_CARD_WIDTH } from './cardSize';
 
 export const DUPLICATE_GROUP_GAP = 12;
 export const DUPLICATE_GROUP_HEADER_HEIGHT = 64;
 export const DUPLICATE_VIDEO_ROW_HEIGHT = 79;
 export const DUPLICATE_GALLERY_ROW_PADDING = 12;
-/** Narrow windows may shrink cards below the grid size, down to this. */
+/** The width cards aim for; columns then stretch or shrink a little to fill the row. */
+export const DUPLICATE_GALLERY_CARD_WIDTH = 360;
+/** Narrow windows may shrink cards down to this. */
 export const DUPLICATE_GALLERY_CARD_MIN_WIDTH = 232;
-export const DUPLICATE_GALLERY_CARD_HEIGHT = VIDEO_CARD_HEIGHT;
 export const DUPLICATE_GALLERY_CARD_GAP = 12;
-export const DUPLICATE_GALLERY_ROW_HEIGHT =
-  DUPLICATE_GALLERY_CARD_HEIGHT + DUPLICATE_GALLERY_ROW_PADDING * 2 + 1;
+/** The frame shape and thumbnail count every card has room for, so landscape videos show no black bars. */
+const STANDARD_ASPECT = 16 / 9;
+const STANDARD_THUMBNAIL_COUNT = 9;
 /** A gallery card's name, details, buttons and border: everything but its thumbnails. */
 const DUPLICATE_GALLERY_CARD_CHROME_HEIGHT = 122;
 const CARD_BORDER_WIDTH = 3;
@@ -111,11 +112,12 @@ export function computeDuplicateGalleryLayout(
     DUPLICATE_GALLERY_CARD_MIN_WIDTH,
     safeWidth - DUPLICATE_GALLERY_ROW_PADDING * 2
   );
+  // Rounded rather than floored, so stretched cards stay near the aimed-for width instead of up to twice it.
   const columnCount = Math.max(
     1,
-    Math.floor(
+    Math.round(
       (usableWidth + DUPLICATE_GALLERY_CARD_GAP) /
-        (VIDEO_CARD_WIDTH + DUPLICATE_GALLERY_CARD_GAP)
+        (DUPLICATE_GALLERY_CARD_WIDTH + DUPLICATE_GALLERY_CARD_GAP)
     )
   );
   const cardWidth = Math.max(
@@ -128,13 +130,21 @@ export function computeDuplicateGalleryLayout(
   return { availableWidth: safeWidth, columnCount, cardWidth };
 }
 
-/** The card height that shows every thumbnail at its frame shape, never below the standard card. */
-export function duplicateGalleryCardHeight(aspect: number | null, thumbnailCount: number, cardWidth: number): number {
-  if (!aspect || !(aspect > 0) || thumbnailCount === 0) return DUPLICATE_GALLERY_CARD_HEIGHT;
+function thumbnailsHeight(aspect: number, thumbnailCount: number, cardWidth: number): number {
   const { cols, rows } = calcThumbGrid(thumbnailCount);
   const frameWidth = (cardWidth - CARD_BORDER_WIDTH - THUMB_GAP * (cols - 1)) / cols;
-  const thumbsHeight = rows * (frameWidth / aspect) + THUMB_GAP * (rows - 1);
-  return Math.max(DUPLICATE_GALLERY_CARD_HEIGHT, Math.ceil(DUPLICATE_GALLERY_CARD_CHROME_HEIGHT + thumbsHeight));
+  return rows * (frameWidth / aspect) + THUMB_GAP * (rows - 1);
+}
+
+/**
+ * The card height that shows every thumbnail at its frame shape. It never drops below what a 16:9
+ * video needs at this width, so landscape cards share one height and portrait ones grow.
+ */
+export function duplicateGalleryCardHeight(aspect: number | null, thumbnailCount: number, cardWidth: number): number {
+  const count = thumbnailCount > 0 ? thumbnailCount : STANDARD_THUMBNAIL_COUNT;
+  const standard = thumbnailsHeight(STANDARD_ASPECT, count, cardWidth);
+  const own = aspect && aspect > 0 ? thumbnailsHeight(aspect, count, cardWidth) : 0;
+  return Math.ceil(DUPLICATE_GALLERY_CARD_CHROME_HEIGHT + Math.max(standard, own));
 }
 
 export function buildDuplicateGalleryRows(
