@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, ChevronRight, Copy, Film, Filter, Folder } from 'lucide-react';
-import useStore, { videosOutsidePathFilter } from '../store';
+import useStore, { videosOutsideFolderFilter } from '../store';
 import type { Video } from '../types';
 import { isFolderInside, normalizeFolder } from '../utils';
 import { copyTextToClipboard } from './ContextMenu';
@@ -64,7 +64,7 @@ function useLocation(): Location | null {
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const duplicateGroupCount = useStore((s) => s.duplicateGroups.length);
   const reviewPath = useStore((s) => s.activeReviewVideoPath);
-  const pathFilter = useStore((s) => s.pathFilter);
+  const filterPath = useStore((s) => s.folderFilter?.path ?? null);
   const gridTopFolder = useStore((s) => s.gridTopFolder);
   const directories = useStore((s) => s.directories);
 
@@ -82,18 +82,18 @@ function useLocation(): Location | null {
       };
     }
     // The top folder lags a render behind a filter change, so it only counts once inside the filter.
-    const topFolder = gridTopFolder && (pathFilter
-      ? isFolderInside(gridTopFolder, pathFilter)
+    const topFolder = gridTopFolder && (filterPath
+      ? isFolderInside(gridTopFolder, filterPath)
       : directories.some((root) => isFolderInside(gridTopFolder, root))) ? gridTopFolder : null;
-    const folder = topFolder ?? pathFilter ?? (directories.length === 1 ? directories[0] : null);
-    const filterKey = pathFilter && normalizeFolder(pathFilter);
+    const folder = topFolder ?? filterPath ?? (directories.length === 1 ? directories[0] : null);
+    const filterKey = filterPath && normalizeFolder(filterPath);
     return {
       segments: folder
         ? splitPath(folder).map((segment) => ({ ...segment, kind: 'folder', filtered: normalizeFolder(segment.path) === filterKey }))
         : [],
       browsable: true,
     };
-  }, [directories, duplicateGroupCount, duplicateGroupsMode, gridTopFolder, pathFilter, reviewMode, reviewPath]);
+  }, [directories, duplicateGroupCount, duplicateGroupsMode, gridTopFolder, filterPath, reviewMode, reviewPath]);
 }
 
 function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders: boolean, hiddenCount: number): Control[] {
@@ -138,7 +138,7 @@ function useLocationActions(app: LocationBarAppActions): LocationActions {
         const index = store().filteredVideos.findIndex((video) => video.path === videoPath);
         if (index >= 0) store().setReviewIndex(index);
       },
-      filterToPath: (folder) => store().setPathFilter(folder),
+      filterToPath: (folder) => store().setFolderFilter(folder ? { path: folder, includeSubfolders: true } : null),
       regenerateThumbnails: (videos) => appRef.current.regenerateThumbnails(videos),
       reveal: (path) => void window.electronAPI?.openInExplorer(path),
       copyPath: (path) => {
@@ -181,9 +181,9 @@ function buildMenu(
     };
   }
   // The lists show every folder the other filters allow, so you can switch to one next to the current one.
-  const scope = { pathFilter: state.pathFilter, directories: state.directories };
-  if (control.type === 'roots') return buildRootsMenu(videosOutsidePathFilter(state), scope, actions);
-  if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsidePathFilter(state), control.parent, scope, actions);
+  const scope = { filterPath: state.folderFilter?.path ?? null, directories: state.directories };
+  if (control.type === 'roots') return buildRootsMenu(videosOutsideFolderFilter(state), scope, actions);
+  if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsideFolderFilter(state), control.parent, scope, actions);
   if (control.type !== 'segment') return null;
   const { segment } = control;
   if (segment.kind === 'duplicates') return buildDuplicatesMenu(state.duplicateGroups, state.videos, actions);
@@ -222,7 +222,7 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
     () => lastFolder !== null && hasSubfolders(filteredVideos, lastFolder),
     [filteredVideos, lastFolder],
   );
-  // Middle parts hide one at a time, only while the full path does not fit.
+  // Middle parts hide only while the full path does not fit.
   const navRef = useRef<HTMLElement>(null);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
@@ -235,15 +235,19 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
   const processing = useStore((s) => s.isGenerating || s.isScanning || s.isFindingDuplicates);
   useLayoutEffect(() => setHiddenCount(0), [location, windowWidth, processing]);
   const maxHidden = Math.max(0, (location?.segments.length ?? 0) - 2);
-  useLayoutEffect(() => {
-    const nav = navRef.current;
-    if (nav && nav.scrollWidth > nav.clientWidth && hiddenCount < maxHidden) setHiddenCount(hiddenCount + 1);
-  });
-
   const controls = useMemo(
     () => (location ? buildControls(location, rootCount > 1, lastHasSubfolders, hiddenCount) : []),
     [hiddenCount, lastHasSubfolders, location, rootCount],
   );
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav || !location || hiddenCount >= maxHidden) return;
+    const overflow = nav.scrollWidth - nav.clientWidth;
+    if (overflow <= 0) return;
+    const fits = hiddenCount === 0 ? partsToHide(nav, controls, location.segments, overflow) : null;
+    // A miss (or no layout to measure) falls back to hiding one more part per render.
+    setHiddenCount(fits !== null && fits > 0 ? Math.min(fits, maxHidden) : hiddenCount + 1);
+  });
 
   // The location can change under an open menu (a filter chosen, the next video); close it then.
   useEffect(() => setOpenIndex(null), [location]);
@@ -265,14 +269,19 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
     });
   }, [controls]);
 
+  const openControl = openIndex !== null ? controls[openIndex] ?? null : null;
+  // Built when a menu opens, and again only when the grid's videos change (its counts), not on
+  // every render while it is open.
+  const menu = useMemo(() => {
+    if (!openControl || !location) return null;
+    return buildMenu(hiddenPick ? { type: 'segment', segment: hiddenPick, last: false } : openControl, location, actions, setHiddenPick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- filteredVideos invalidates the counts read from the store
+  }, [actions, filteredVideos, hiddenPick, location, openControl]);
+
   if (!location) return <div className="title-bar-title">{sessionTitle}</div>;
 
   const lastSegment = location.segments[location.segments.length - 1];
   const fullPath = !lastSegment || lastSegment.kind === 'duplicates' ? undefined : lastSegment.path;
-  const openControl = openIndex !== null ? controls[openIndex] : null;
-  const menu = !openControl ? null : hiddenPick
-    ? buildMenu({ type: 'segment', segment: hiddenPick, last: false }, location, actions, setHiddenPick)
-    : buildMenu(openControl, location, actions, setHiddenPick);
   const anchor = openIndex !== null ? buttonRefs.current.get(openIndex)?.getBoundingClientRect() : undefined;
 
   const buttonProps = (index: number, label: string) => ({
@@ -359,6 +368,29 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
       )}
     </nav>
   );
+}
+
+/** Width the "…" and the chevron before it take once parts are hidden. */
+const ELLIPSIS_WIDTH = 40;
+
+/**
+ * How many middle parts to hide so the path fits, from the measured widths of the full path's
+ * parts and the chevrons before them; null when they do not add up (nothing measured).
+ */
+export function partsToHide(nav: HTMLElement, controls: Control[], segments: Segment[], overflow: number): number | null {
+  const widths = Array.from(nav.children, (child) => child.getBoundingClientRect().width);
+  let freed = -ELLIPSIS_WIDTH;
+  let count = 0;
+  for (let index = 0; index < controls.length; index += 1) {
+    const control = controls[index];
+    if (control.type !== 'segment') continue;
+    const segmentIndex = segments.indexOf(control.segment);
+    if (segmentIndex < 1 || segmentIndex > segments.length - 2) continue;
+    freed += (widths[index] ?? 0) + (widths[index - 1] ?? 0);
+    count += 1;
+    if (freed >= overflow) return count;
+  }
+  return null;
 }
 
 const HEADER_ICONS = { folder: Folder, video: Film, duplicates: Copy, list: Folder } as const;

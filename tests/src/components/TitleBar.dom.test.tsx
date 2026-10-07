@@ -74,12 +74,12 @@ describe('TitleBar', () => {
     const button = await screen.findByRole('button', { name: 'When processing finishes: sleep' });
     expect(button.classList.contains('active')).toBe(true);
     act(() => button.click());
-    expect(api.openAppMenu).toHaveBeenCalledWith(['Actions', 'When Processing Finishes'], expect.any(Number), expect.any(Number));
+    expect(api.openAppMenu).toHaveBeenCalledWith('Actions > When Processing Finishes', expect.any(Number), expect.any(Number));
   });
 
   test('the location in the centre opens its menu', async () => {
     installElectronApiMock({ processing: false, finishAction: 'none', countdown: null });
-    useStore.setState({ isGenerating: false, videos: [], pathFilter: null });
+    useStore.setState({ isGenerating: false, videos: [], folderFilter: null });
     render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
 
     act(() => screen.getByRole('button', { name: 'Videos' }).click());

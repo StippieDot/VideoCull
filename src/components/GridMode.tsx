@@ -333,7 +333,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const setVideoStatusesBatch = useStore((s) => s.setVideoStatusesBatch);
   const pushToast = useStore((s) => s.pushToast);
-  const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
+  const setFolderFilter = useStore((s) => s.setFolderFilter);
   const selectedIds = useStore((s) => s.gridSelectionIds);
   const selectionAnchorId = useStore((s) => s.gridSelectionAnchorId);
   const setGridSelectionIds = useStore((s) => s.setGridSelectionIds);
@@ -895,7 +895,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         persistCurrentScroll();
         onReviewFolder(contextMenuFolder.folderPath);
       },
-      onFilterToFolder: () => setFolderFilterPath(contextMenuFolder.folderPath),
+      onFilterToFolder: () => setFolderFilter({ path: contextMenuFolder.folderPath, includeSubfolders: false }),
       onRevealFolder: () => {
         void window.electronAPI?.openInExplorer(contextMenuFolder.folderPath);
       },
@@ -909,7 +909,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         void onRegenerateThumbnails(folderVideos);
       },
     });
-  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, setFolderFilterPath, setVideoStatusesBatch, videosById]);
+  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, setFolderFilter, setVideoStatusesBatch, videosById]);
 
   const videoContextMenuItems = useMemo(() => {
     if (!contextMenuVideo) return [];

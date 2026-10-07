@@ -273,6 +273,11 @@ export interface DuplicateResult {
 }
 
 // ── Undo Entry ─────────────────────────────────────────────────────
+export interface FolderFilter {
+  path: string;
+  includeSubfolders: boolean;
+}
+
 export interface UndoEntry {
   videoId: string;
   previousStatus: VideoStatus;
@@ -366,9 +371,8 @@ export interface VideoStore {
   maxSizeFilter: number | null;
   minDurationFilter: number;
   maxDurationFilter: number | null;
-  folderFilterPath: string | null;
-  /** Folder chosen in the title bar path: shows it and everything below it. */
-  pathFilter: string | null;
+  /** One folder of the grid, or also everything below it (the title bar path). */
+  folderFilter: FolderFilter | null;
   minRatingFilter: RatingFilter;
   favoritesFilter: boolean;
   incompatibleFilter: boolean;
@@ -433,14 +437,13 @@ export interface VideoStore {
   setSizeFilterRange: (minSize: number, maxSize: number | null) => void;
   setMinDurationFilter: (seconds: number) => void;
   setDurationFilterRange: (minSeconds: number, maxSeconds: number | null) => void;
-  setFolderFilterPath: (folderPath: string | null) => void;
+  setFolderFilter: (filter: FolderFilter | null) => void;
   setMinRatingFilter: (rating: RatingFilter) => void;
   setFavoritesFilter: (val: boolean) => void;
   setIncompatibleFilter: (val: boolean) => void;
   setDuplicateFilter: (val: boolean) => void;
   clearFilters: () => void;
   setGroupByFolder: (val: boolean) => void;
-  setPathFilter: (folderPath: string | null) => void;
   setGridTopFolder: (folderPath: string | null) => void;
   requestGridFolderJump: (folderPath: string) => void;
   setFolderSortBy: (sortBy: FolderSortField) => void;
@@ -675,7 +678,8 @@ export interface ElectronAPI {
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
   setMenuState: (state: AppMenuState) => void;
   /** Opens an app menu or submenu, given by its label path, at a window position; resolves when it closes. */
-  openAppMenu: (labels: string[], x: number, y: number) => Promise<boolean>;
+  /** Opens the app menu or submenu with this command id, such as "File" or "Actions > When Processing Finishes". */
+  openAppMenu: (id: string, x: number, y: number) => Promise<boolean>;
   getCommands: () => Promise<AppCommand[]>;
   runCommand: (id: string) => Promise<boolean>;
   openVideo: (filePath: string) => Promise<void>;

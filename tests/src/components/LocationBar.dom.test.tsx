@@ -2,7 +2,7 @@
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
-import LocationBar from '../../../src/components/LocationBar';
+import LocationBar, { partsToHide } from '../../../src/components/LocationBar';
 import {
   buildFolderMenu,
   buildVideoMenu,
@@ -69,7 +69,7 @@ test('a › list offers all of the folder before it, then each folder one level 
   expect(listSubfolders(videos, `${ROOT}\\Trips`)).toEqual([{ path: `${ROOT}\\Trips\\2024`, label: '2024', count: 1, toReview: 0 }]);
 
   const actions = actionsMock();
-  const scope = { pathFilter: `${ROOT}\\Trips\\2024`, directories: [ROOT] };
+  const scope = { filterPath: `${ROOT}\\Trips\\2024`, directories: [ROOT] };
   const menu = buildSubfolderMenu(videos, ROOT, scope, actions);
   const rows = menu.items.filter((item) => item.type === 'item');
   expect(rows.map((item) => item.type === 'item' && [item.label, item.detail, Boolean(item.current)])).toEqual([
@@ -111,8 +111,7 @@ describe('LocationBar', () => {
       duplicateGroupsMode: false,
       gridFolderJump: null,
       gridTopFolder: null,
-      folderFilterPath: null,
-      pathFilter: null,
+      folderFilter: null,
       statusFilter: 'all',
       searchQuery: '',
     });
@@ -132,7 +131,7 @@ describe('LocationBar', () => {
     // Opens on what is shown: all of the loaded folder.
     expect(document.activeElement?.textContent).toBe('All of Media2 to review');
     act(() => screen.getByRole('menuitemradio', { name: /^Trips/ }).click());
-    expect(useStore.getState().pathFilter).toBe(`${ROOT}\\Trips`);
+    expect(useStore.getState().folderFilter?.path).toBe(`${ROOT}\\Trips`);
     expect(shownIds()).toEqual(['a', 'b']);
     expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips, filtered']);
 
@@ -140,7 +139,7 @@ describe('LocationBar', () => {
     expect(document.activeElement?.textContent).toBe('Trips1 to review');
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Home' });
     act(() => (document.activeElement as HTMLElement).click());
-    expect(useStore.getState().pathFilter).toBeNull();
+    expect(useStore.getState().folderFilter).toBeNull();
     expect(shownIds()).toHaveLength(3);
   });
 
@@ -151,7 +150,7 @@ describe('LocationBar', () => {
     expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Clips']);
 
     // Right after filtering, the old top folder lies outside the filter and is ignored.
-    act(() => useStore.getState().setPathFilter(`${ROOT}\\Trips`));
+    act(() => useStore.getState().setFolderFilter({ path: `${ROOT}\\Trips`, includeSubfolders: true }));
     expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips, filtered', 'Folders in Trips']);
     act(() => useStore.getState().setGridTopFolder(`${ROOT}\\Trips\\June`));
     expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips, filtered', 'Folders in Trips', 'June']);
@@ -159,7 +158,7 @@ describe('LocationBar', () => {
 
   test('path parts keep their action menus, run from the keyboard', () => {
     const actions = appActions();
-    useStore.getState().setPathFilter(`${ROOT}\\Trips`);
+    useStore.getState().setFolderFilter({ path: `${ROOT}\\Trips`, includeSubfolders: true });
     render(<LocationBar sessionTitle="Media" appActions={actions} />);
 
     act(() => screen.getByRole('button', { name: 'Trips, filtered' }).click());
@@ -189,7 +188,7 @@ describe('LocationBar', () => {
     const deep = 'P:\\a\\b\\c\\d\\e';
     const videos = [makeVideo('deep', {}, deep)];
     useStore.setState({ directories: ['P:\\'], videos, filteredVideos: videos });
-    useStore.getState().setPathFilter(deep);
+    useStore.getState().setFolderFilter({ path: deep, includeSubfolders: true });
     render(<LocationBar sessionTitle="P:" appActions={appActions()} />);
     scrollWidth.mockRestore();
     clientWidth.mockRestore();
@@ -200,6 +199,23 @@ describe('LocationBar', () => {
     act(() => screen.getByRole('menuitemradio', { name: 'b' }).click());
     expect(screen.getByRole('menu', { name: 'b' }).textContent).toContain('1 video · 1 to review');
     expect(screen.getByRole('menuitem', { name: 'Reveal in Explorer' })).toBeTruthy();
+  });
+
+  test('a path that does not fit hides as many middle parts as its measured widths need, at once', () => {
+    const segments = splitPath('P:\\a\\b\\c\\d').map((segment) => ({ ...segment, kind: 'folder' as const }));
+    const controls = segments.flatMap((segment, index) => [
+      ...(index > 0 ? [{ type: 'subfolders' as const, parent: segments[index - 1].path }] : []),
+      { type: 'segment' as const, segment, last: index === segments.length - 1 },
+    ]);
+    const nav = document.createElement('nav');
+    for (let index = 0; index < controls.length; index += 1) {
+      const child = nav.appendChild(document.createElement('button'));
+      child.getBoundingClientRect = () => ({ width: 50 }) as DOMRect;
+    }
+    // Each hidden part frees itself and its chevron (100), less the room the "…" takes.
+    expect(partsToHide(nav, controls, segments, 150)).toBe(2);
+    // Never the first or last part: hiding every middle part is not enough.
+    expect(partsToHide(nav, controls, segments, 1000)).toBeNull();
   });
 
   test('with several loaded folders, a switcher shows them all or one of them', () => {

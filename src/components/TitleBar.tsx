@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Moon, Pause, Play, Power, Search } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import useStore from '../store';
 import usePowerState from '../hooks/usePowerState';
 import useProcessingPauseState from '../hooks/useProcessingPauseState';
@@ -77,9 +78,8 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
   locationActions: LocationBarAppActions;
 }) {
   const directories = useStore((s) => s.directories);
-  // Serialised so the bar only re-renders when the shown status changes, not on every store update.
-  const statusJson = useStore((s) => JSON.stringify(selectProcessingStatus(s)));
-  const status = useMemo(() => JSON.parse(statusJson) as ReturnType<typeof selectProcessingStatus>, [statusJson]);
+  // Compared field by field, so the bar only re-renders when the shown status changes.
+  const status = useStore(useShallow(selectProcessingStatus));
   const power = usePowerState();
   const pauseStatus = useProcessingPauseState().status;
   const paused = pauseStatus !== 'running';
@@ -94,7 +94,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
     const rect = button.getBoundingClientRect();
     setOpenMenu(label);
     try {
-      await window.electronAPI.openAppMenu([label], rect.left, rect.bottom);
+      await window.electronAPI.openAppMenu(label, rect.left, rect.bottom);
     } finally {
       setOpenMenu(null);
     }
@@ -103,7 +103,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
   const openFinishActionMenu = () => {
     const rect = finishButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    void window.electronAPI?.openAppMenu(['Actions', 'When Processing Finishes'], rect.left, rect.bottom);
+    void window.electronAPI?.openAppMenu('Actions > When Processing Finishes', rect.left, rect.bottom);
   };
   const openRef = useRef(open);
   openRef.current = open;

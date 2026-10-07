@@ -326,8 +326,7 @@ function SidebarFiltersSection({
   onToggleFilters: () => void;
 }) {
   const statusFilter = useStore((s) => s.statusFilter);
-  const folderFilterPath = useStore((s) => s.folderFilterPath);
-  const pathFilter = useStore((s) => s.pathFilter);
+  const folderFilter = useStore((s) => s.folderFilter);
   const minSizeFilter = useStore((s) => s.minSizeFilter);
   const maxSizeFilter = useStore((s) => s.maxSizeFilter);
   const setSizeFilterRange = useStore((s) => s.setSizeFilterRange);
@@ -394,7 +393,7 @@ function SidebarFiltersSection({
   const incompatibleCount = sidebarAggregates.incompatibleCount;
   const hasIncompatibleVideos = incompatibleCount > 0;
   const hasExtraFilter = favoritesFilter || incompatibleFilter || duplicateFilter;
-  const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilterPath) || Boolean(pathFilter) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
+  const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilter) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
   const filteredSummary = `${filteredVideoCount} / ${videoCount}`;
   const sizeRangeStyle = getRangeTrackStyle(sizeRange.min, sizeRange.max, effectiveMinSize, effectiveMaxSize);
   const durationRangeStyle = getRangeTrackStyle(durationRange.min, durationRange.max, effectiveMinDuration, effectiveMaxDuration);

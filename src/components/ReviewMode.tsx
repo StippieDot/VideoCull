@@ -168,7 +168,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
   const setReviewIndex = useStore((s) => s.setReviewIndex);
   const setReviewMode = useStore((s) => s.setReviewMode);
   const setActiveReviewVideoPath = useStore((s) => s.setActiveReviewVideoPath);
-  const folderFilterPath = useStore((s) => s.folderFilterPath);
+  const folderFilterPath = useStore((s) => s.folderFilter?.path ?? null);
   const setVideoStatus = useStore((s) => s.setVideoStatus);
   const undo = useStore((s) => s.undo);
   const undoStack = useStore((s) => s.undoStack);

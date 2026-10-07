@@ -19,7 +19,7 @@ import FolderSearch from './components/FolderSearch';
 import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
-import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
+import type { FolderFilter, MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
 import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
@@ -127,7 +127,7 @@ export default function App() {
   const setDuplicateProgress = useStore((s) => s.setDuplicateProgress);
   const setIsFindingDuplicates = useStore((s) => s.setIsFindingDuplicates);
   const setDuplicateGroupsMode = useStore((s) => s.setDuplicateGroupsMode);
-  const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
+  const setFolderFilter = useStore((s) => s.setFolderFilter);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const thumbsPerVideo = useStore((s) => s.settings.thumbsPerVideo);
   const skipIntroDelaySecs = useStore((s) => s.settings.skipIntroDelaySecs);
@@ -151,7 +151,8 @@ export default function App() {
   const showShortcutsHelpRef = useRef(false);
   const showDocumentationRef = useRef(false);
   const dragDepthRef = useRef(0);
-  const folderReviewPathRef = useRef<string | null>(null);
+  // The folder filter from before Review This Folder, restored when Review closes.
+  const folderReviewRestoreRef = useRef<{ previous: FolderFilter | null } | null>(null);
   const settingsSaveQueueRef = useRef(Promise.resolve());
   const previousReviewModeRef = useRef(reviewMode);
   const autoScanStateRef = useRef({
@@ -1025,11 +1026,12 @@ export default function App() {
   }, [isFindingDuplicates, isGenerating]);
 
   useEffect(() => {
-    if (!reviewMode && folderReviewPathRef.current) {
-      folderReviewPathRef.current = null;
-      setFolderFilterPath(null);
+    if (!reviewMode && folderReviewRestoreRef.current) {
+      const { previous } = folderReviewRestoreRef.current;
+      folderReviewRestoreRef.current = null;
+      setFolderFilter(previous);
     }
-  }, [reviewMode, setFolderFilterPath]);
+  }, [reviewMode, setFolderFilter]);
 
   useEffect(() => {
     const key = `${directories.join('\0')}|subfolders:${includeSubfolders}`;
@@ -1154,11 +1156,11 @@ export default function App() {
   }, []);
 
   const handleReviewFolder = useCallback((folderPath: string) => {
-    folderReviewPathRef.current = folderPath;
-    setFolderFilterPath(folderPath);
+    folderReviewRestoreRef.current ??= { previous: useStore.getState().folderFilter };
+    setFolderFilter({ path: folderPath, includeSubfolders: false });
     useStore.getState().setReviewIndex(0);
     useStore.getState().setReviewMode(true);
-  }, [setFolderFilterPath]);
+  }, [setFolderFilter]);
 
   const handleCloseSession = useCallback(() => {
     scanIdRef.current += 1;

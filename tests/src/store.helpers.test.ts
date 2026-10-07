@@ -16,7 +16,7 @@ function makeStoreState(overrides: Partial<VideoStore> = {}): VideoStore {
     maxSizeFilter: null,
     minDurationFilter: 0,
     maxDurationFilter: null,
-    folderFilterPath: null,
+    folderFilter: null,
     minRatingFilter: 0,
     favoritesFilter: false,
     incompatibleFilter: false,

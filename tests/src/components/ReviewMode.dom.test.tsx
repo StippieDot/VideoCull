@@ -96,6 +96,22 @@ describe('ReviewMode behavior', () => {
     });
   });
 
+  test('names the folder it reviews, also when filtered to a folder and its subfolders', () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\Trips\\alpha.mp4' });
+    const beta = makeVideo('beta', { path: 'D:\\Media\\Clips\\beta.mp4' });
+    useStore.setState({
+      videos: [alpha, beta],
+      filteredVideos: [alpha],
+      folderFilter: { path: 'D:\\Media\\Trips', includeSubfolders: true },
+      reviewMode: true,
+      // Past the last video: the finished screen, headed with the scope.
+      reviewIndex: 1,
+    });
+
+    render(<ReviewMode />);
+    expect(screen.getByRole('heading', { name: 'Trips' })).toBeTruthy();
+  });
+
   test('opens the file in the external player when the video cannot play in review', async () => {
     const electronAPI = installElectronApiMock();
     const unsupportedVideo = makeVideo('legacy', {

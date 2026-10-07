@@ -65,7 +65,7 @@ vi.mock('../../src/components/GridMode', async () => {
   const ReactModule = await import('react');
   const storeModule = await import('../../src/store');
   let mountCount = 0;
-  const MockGridMode = () => {
+  const MockGridMode = (props: { onReviewFolder?: (folderPath: string) => void }) => {
     const mountIdRef = ReactModule.useRef<number | null>(null);
     if (mountIdRef.current === null) {
       mountCount += 1;
@@ -75,7 +75,13 @@ vi.mock('../../src/components/GridMode', async () => {
     const text = firstVideo
       ? `thumbs:${firstVideo.thumbnails.length}|codec:${firstVideo.videoCodec ?? 'none'}|compat:${firstVideo.compatible ? 'yes' : 'no'}`
       : 'empty';
-    return ReactModule.createElement('div', { 'data-testid': 'grid-state', 'data-mount-id': String(mountIdRef.current) }, text);
+    return ReactModule.createElement(ReactModule.Fragment, null,
+      ReactModule.createElement('div', { 'data-testid': 'grid-state', 'data-mount-id': String(mountIdRef.current) }, text),
+      ReactModule.createElement('button', {
+        type: 'button',
+        'data-testid': 'grid-review-folder',
+        onClick: () => props.onReviewFolder?.('D:\\Media\\Trips'),
+      }, 'Review folder'));
   };
   return { default: MockGridMode };
 });
@@ -337,6 +343,23 @@ describe('App renderer behavior', () => {
     await waitFor(() => {
       expect(screen.getByTestId('grid-state').textContent).toContain('thumbs:2|codec:h264|compat:yes');
     });
+  });
+
+  test('Review This Folder reviews only that folder and brings the earlier folder filter back afterwards', async () => {
+    const earlier = { path: 'D:\\Media', includeSubfolders: true };
+    getStoreApi().setState({
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+      videos: [makeVideo('a', {}, 'D:\\Media\\Trips')],
+      filteredVideos: [makeVideo('a', {}, 'D:\\Media\\Trips')],
+      folderFilter: earlier,
+    });
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('grid-review-folder'));
+    expect(getStoreApi().getState().folderFilter).toEqual({ path: 'D:\\Media\\Trips', includeSubfolders: false });
+    act(() => getStoreApi().getState().setReviewMode(false));
+    await waitFor(() => expect(getStoreApi().getState().folderFilter).toEqual(earlier));
   });
 
   test('reflects duplicate-progress events in the sidebar state', async () => {

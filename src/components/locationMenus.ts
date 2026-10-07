@@ -136,13 +136,13 @@ export function listSubfolders(videos: Video[], parent: string): FolderEntry[] {
 
 /** Where the title bar path filters the grid. */
 export interface PathScope {
-  pathFilter: string | null;
+  filterPath: string | null;
   directories: string[];
 }
 
 /** The folder the grid shows: the path filter, or the loaded folder when there is just one. */
 function shownFolder(scope: PathScope): string | null {
-  return scope.pathFilter ?? (scope.directories.length === 1 ? scope.directories[0] : null);
+  return scope.filterPath ?? (scope.directories.length === 1 ? scope.directories[0] : null);
 }
 
 /** Filtering to a folder that holds every loaded folder is the same as no filter. */
@@ -199,7 +199,7 @@ export function buildRootsMenu(videos: Video[], scope: PathScope, actions: Locat
         label: 'All Loaded Folders',
         detail: folderDetail(all),
         muted: all.toReview === 0,
-        current: scope.pathFilter === null,
+        current: scope.filterPath === null,
         onSelect: () => actions.filterToPath(null),
       },
       SEPARATOR('sep-all'),
@@ -211,7 +211,7 @@ export function buildRootsMenu(videos: Video[], scope: PathScope, actions: Locat
           label: root,
           detail: folderDetail(rootEntry),
           muted: rootEntry.toReview === 0,
-          current: scope.pathFilter !== null && isFolderInside(scope.pathFilter, root),
+          current: scope.filterPath !== null && isFolderInside(scope.filterPath, root),
           onSelect: () => actions.filterToPath(root),
         };
       }),
