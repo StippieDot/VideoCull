@@ -21,7 +21,13 @@ All notable changes to VideoCull will be documented here.
 - Right-click menus throughout the app now work from the keyboard: the arrow keys move through the items, a letter jumps to the next item starting with it, and `Esc` closes the menu.
 - The folder filter from a grid folder header and the one from the title bar are now one filter, and **Review This Folder** brings back the earlier folder filter when Review closes. Review names the filtered folder instead of "filtered selection".
 - Pausing processing moved from the sidebar to the title bar.
+- The sidebar's folder card is now one button with the folder's name, which opens **Open Another Folder**, **Add Folder to Session**, **Rescan** and **Close Session**; the full path is in the title bar. Recent folders open from a small button beside **Include subfolders**, and their right-click menu can also remove a folder from the list.
+- Duplicate gallery cards are narrower and sized to show 16:9 thumbnails without black bars; rows of portrait videos grow to show their thumbnails in full.
 - Filtering, sorting and the folder lists are faster in large sessions.
+
+### Fixed
+- Scrolling up through duplicate groups no longer jumps back to where it was.
+- Portrait videos in the duplicate gallery no longer run into the next group.
 
 ### Removed
 - The interface reload (`Ctrl + R`) is no longer in the released app, and **Clear Cache and Reload** no longer has a shortcut; it sits at the bottom of the File menu.
