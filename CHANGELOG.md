@@ -2,6 +2,29 @@
 
 All notable changes to VideoCull will be documented here.
 
+## [Unreleased]
+
+### Added
+- One title bar in the app's style replaces the Windows title bar and the separate menu bar. The menus sit on the left, Windows still draws the minimise, maximise and close buttons in the light or dark theme, and on Windows 11 22H2 and newer the bar can show the translucent Mica material (Settings > Interface > Window).
+- The middle of the title bar shows where you are: the path of the folder at the top of the grid, the video open in Review with its place such as `34 / 210`, or the duplicate group at the top such as `Group 3 of 40`, with previous and next buttons and a number you can type to go to a group. Each part has a menu with counts and actions for that spot, and a path too long for the bar is shortened to `…`, which opens the hidden folders.
+- Selecting a folder in the title bar path filters the grid to that folder and everything below it, whatever the sort order or grouping. The filter shows as a chip in the path and in the sidebar filters, can be limited to the folder alone, and clears with its `×`. Each `›` in the path lists the folders one level down with how many videos each still has to review, and with several loaded folders a switcher at the start shows all of them or one and lists recent sessions to open. `Alt + Left` and `Alt + Right` step through earlier folder filters, and `Ctrl + L` focuses the path.
+- `Ctrl + K` (or the search icon in the title bar) finds menu commands, folders and videos in one search. Start with `>` for commands only, `/` for folders or `@` for videos; `Ctrl + G` opens it on folders. A folder can be scrolled to or filtered to, a video selected in the grid or opened in Review, and the last row moves the text into the grid search.
+- While VideoCull is processing, the title bar shows the step, how far it is and about how long is left, with a pause button and a progress line along its bottom edge; the taskbar button shows the progress too. Selecting the status opens a panel with every running job, **Pause Processing** and **When Processing Finishes**. In a narrow window the status shrinks to its progress, then to a progress ring.
+- While videos are marked for deletion, the title bar shows how many and their total size; selecting it starts the usual delete flow with its confirmation.
+- New menu commands: **Add Folder to Session**, **Open Recent**, **Close Session** and **Reveal Folder in Explorer** (File); **Find Duplicates** and **Pause Processing** (Actions); **Sort By**, **Group by Folder**, **Clear All Filters** and **Mute In-App Playback** (View); **Copy Path** and **Regenerate Thumbnails** (Video); **Keyboard Shortcuts**, **Release Notes**, **Report a Problem**, **Open Log Folder**, **Online Help** and **Support VideoCull** (Help).
+
+### Changed
+- Menu commands that cannot do anything right now are greyed out instead of silently doing nothing. Behind the privacy screen only **Privacy Screen**, **Full Screen** and **Exit** work.
+- **Reveal in Explorer** and **Play Externally** also act on the single selected video in the grid, and **Copy Path** and **Regenerate Thumbnails** on every selected video. **Delete Marked Videos** shows how many are marked.
+- Menu names follow common Windows wording: **Open Folder**, **Larger Cards** and **Smaller Cards**; **Settings** sits next to **Exit**.
+- Right-click menus throughout the app now work from the keyboard: the arrow keys move through the items, a letter jumps to the next item starting with it, and `Esc` closes the menu.
+- The folder filter from a grid folder header and the one from the title bar are now one filter, and **Review This Folder** brings back the earlier folder filter when Review closes. Review names the filtered folder instead of "filtered selection".
+- Pausing processing moved from the sidebar to the title bar.
+- Filtering, sorting and the folder lists are faster in large sessions.
+
+### Removed
+- The interface reload (`Ctrl + R`) is no longer in the released app, and **Clear Cache and Reload** no longer has a shortcut; it sits at the bottom of the File menu.
+
 ## [2.3.2] - 2026-09-30
 
 ### Fixed
