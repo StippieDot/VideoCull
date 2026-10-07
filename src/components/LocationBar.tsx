@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Copy, Film, Filter, Folder } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Film, Filter, Folder, X } from 'lucide-react';
 import useStore, { videosOutsideFolderFilter } from '../store';
-import type { Video } from '../types';
+import type { FolderFilter, Video } from '../types';
 import { isFolderInside, normalizeFolder } from '../utils';
 import AppMenu from './AppMenu';
 import { copyTextToClipboard } from './ContextMenu';
@@ -30,16 +30,25 @@ export interface LocationBarAppActions {
   openFolderSearch: () => void;
 }
 
-type Segment = PathSegment & { kind: 'folder' | 'video' | 'duplicates'; filtered?: boolean };
+type Segment = PathSegment & {
+  kind: 'folder' | 'video' | 'duplicates';
+  /** The folder the grid is filtered to: drawn as a chip with a clear button. */
+  filtered?: boolean;
+  /** Below the loaded or filtered folder: only where the grid is scrolled to, not a filter. */
+  position?: boolean;
+};
 
 /**
- * The bar's parts in order. Path parts open what can be done there. In the grid, the path follows
- * the folder at the top of the grid (or the folder the grid is filtered to): each `›` lists the
- * folders one level down to filter to (like Explorer's address bar), and with several loaded
- * folders a leading button picks one.
+ * The bar's parts in order. In the grid the path is the loaded or filtered folder, then (in grey)
+ * the folder the grid is scrolled to. As in Explorer's address bar, selecting a folder filters the
+ * grid to it, each `›` lists the folders one level down, and with several loaded folders a leading
+ * button picks one; the ▾ after the last part (or right-click) opens what can be done there. In
+ * Review and duplicate groups, a part opens its menu directly.
  */
 type Control =
   | { type: 'segment'; segment: Segment; last: boolean }
+  /** The ▾ after the last part in the grid: that folder's menu. */
+  | { type: 'actions'; segment: Segment }
   | { type: 'subfolders'; parent: string }
   | { type: 'roots' }
   /** Several loaded folders and no folder chosen: the session's name. */
@@ -48,12 +57,13 @@ type Control =
   | { type: 'ellipsis'; hidden: Segment[] }
   | { type: 'separator' };
 
-const INTERACTIVE = new Set<Control['type']>(['segment', 'subfolders', 'roots', 'ellipsis']);
+const INTERACTIVE = new Set<Control['type']>(['segment', 'actions', 'subfolders', 'roots', 'ellipsis']);
 
 interface Location {
   segments: Segment[];
-  /** Grid: the `›` lists browse folders. Review and duplicates show a plain path. */
+  /** Grid: parts filter and the `›` lists browse folders. Review and duplicates show a plain path. */
   browsable: boolean;
+  filter: FolderFilter | null;
 }
 
 /** The title bar's location: the folder at the top of the grid, the video in review, or the duplicate groups. */
@@ -62,7 +72,8 @@ function useLocation(): Location | null {
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const duplicateGroupCount = useStore((s) => s.duplicateGroups.length);
   const reviewPath = useStore((s) => s.activeReviewVideoPath);
-  const filterPath = useStore((s) => s.folderFilter?.path ?? null);
+  const filter = useStore((s) => s.folderFilter);
+  const filterPath = filter?.path ?? null;
   const gridTopFolder = useStore((s) => s.gridTopFolder);
   const directories = useStore((s) => s.directories);
 
@@ -70,13 +81,14 @@ function useLocation(): Location | null {
     if (directories.length === 0) return null;
     if (duplicateGroupsMode) {
       const label = `Duplicates · ${duplicateGroupCount.toLocaleString()} ${duplicateGroupCount === 1 ? 'group' : 'groups'}`;
-      return { segments: [{ kind: 'duplicates', label, path: 'duplicates' }], browsable: false };
+      return { segments: [{ kind: 'duplicates', label, path: 'duplicates' }], browsable: false, filter: null };
     }
     if (reviewMode && reviewPath) {
       const parts = splitPath(reviewPath);
       return {
         segments: parts.map((segment, index) => ({ ...segment, kind: index === parts.length - 1 ? 'video' : 'folder' })),
         browsable: false,
+        filter: null,
       };
     }
     // The top folder lags a render behind a filter change, so it only counts once inside the filter.
@@ -84,14 +96,21 @@ function useLocation(): Location | null {
       ? isFolderInside(gridTopFolder, filterPath)
       : directories.some((root) => isFolderInside(gridTopFolder, root))) ? gridTopFolder : null;
     const folder = topFolder ?? filterPath ?? (directories.length === 1 ? directories[0] : null);
+    if (!folder) return { segments: [], browsable: true, filter };
     const filterKey = filterPath && normalizeFolder(filterPath);
+    const scopeFolder = filterPath ?? directories.find((root) => isFolderInside(folder, root)) ?? folder;
+    const scopeLength = splitPath(scopeFolder).length;
     return {
-      segments: folder
-        ? splitPath(folder).map((segment) => ({ ...segment, kind: 'folder', filtered: normalizeFolder(segment.path) === filterKey }))
-        : [],
+      segments: splitPath(folder).map((segment, index) => ({
+        ...segment,
+        kind: 'folder',
+        filtered: normalizeFolder(segment.path) === filterKey,
+        position: index >= scopeLength,
+      })),
       browsable: true,
+      filter,
     };
-  }, [directories, duplicateGroupCount, duplicateGroupsMode, gridTopFolder, filterPath, reviewMode, reviewPath]);
+  }, [directories, duplicateGroupCount, duplicateGroupsMode, gridTopFolder, filter, filterPath, reviewMode, reviewPath]);
 }
 
 function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders: boolean, hiddenCount: number): Control[] {
@@ -114,7 +133,9 @@ function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders:
         ? { type: 'subfolders', parent: segments[fullIndex - 1].path }
         : { type: 'separator' });
     }
-    controls.push({ type: 'segment', segment, last: fullIndex === segments.length - 1 });
+    const last = fullIndex === segments.length - 1;
+    controls.push({ type: 'segment', segment, last });
+    if (browsable && last) controls.push({ type: 'actions', segment });
   });
   if (browsable && lastHasSubfolders) {
     controls.push({ type: 'subfolders', parent: segments[segments.length - 1].path });
@@ -122,7 +143,41 @@ function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders:
   return controls;
 }
 
-function useLocationActions(app: LocationBarAppActions): LocationActions {
+/**
+ * Back and forward through the folder filters chosen in the path (Alt+Left / Alt+Right), like a
+ * browser. Only choices made here count, not Review This Folder; it starts over with each session.
+ */
+function useFilterHistory() {
+  const directories = useStore((s) => s.directories);
+  const history = useRef<{ back: Array<FolderFilter | null>; forward: Array<FolderFilter | null> }>({ back: [], forward: [] });
+  useEffect(() => {
+    history.current = { back: [], forward: [] };
+  }, [directories]);
+  return useMemo(() => {
+    const setFilter = (filter: FolderFilter | null) => useStore.getState().setFolderFilter(filter);
+    return {
+      navigate: (filter: FolderFilter | null) => {
+        const current = useStore.getState().folderFilter;
+        if (current?.path === filter?.path && current?.includeSubfolders === filter?.includeSubfolders) return;
+        history.current = { back: [...history.current.back, current], forward: [] };
+        setFilter(filter);
+      },
+      step: (direction: -1 | 1) => {
+        const { back, forward } = history.current;
+        const from = direction === -1 ? back : forward;
+        if (from.length === 0) return;
+        const target = from[from.length - 1];
+        const current = useStore.getState().folderFilter;
+        history.current = direction === -1
+          ? { back: back.slice(0, -1), forward: [...forward, current] }
+          : { back: [...back, current], forward: forward.slice(0, -1) };
+        setFilter(target);
+      },
+    };
+  }, []);
+}
+
+function useLocationActions(app: LocationBarAppActions, navigate: (filter: FolderFilter | null) => void): LocationActions {
   const appRef = useRef(app);
   appRef.current = app;
   return useMemo<LocationActions>(() => {
@@ -136,7 +191,11 @@ function useLocationActions(app: LocationBarAppActions): LocationActions {
         const index = store().filteredVideos.findIndex((video) => video.path === videoPath);
         if (index >= 0) store().setReviewIndex(index);
       },
-      filterToPath: (folder) => store().setFolderFilter(folder ? { path: folder, includeSubfolders: true } : null),
+      filterToPath: (folder) => navigate(folder ? { path: folder, includeSubfolders: true } : null),
+      setIncludeSubfolders: (includeSubfolders) => {
+        const filter = store().folderFilter;
+        if (filter) navigate({ ...filter, includeSubfolders });
+      },
       regenerateThumbnails: (videos) => appRef.current.regenerateThumbnails(videos),
       reveal: (path) => void window.electronAPI?.openInExplorer(path),
       copyPath: (path) => {
@@ -155,7 +214,7 @@ function useLocationActions(app: LocationBarAppActions): LocationActions {
       openDuplicateSettings: () => appRef.current.openDuplicateSettings(),
       backToGrid: () => store().setDuplicateGroupsMode(false),
     };
-  }, []);
+  }, [navigate]);
 }
 
 function buildMenu(
@@ -182,7 +241,7 @@ function buildMenu(
   const scope = { filterPath: state.folderFilter?.path ?? null, directories: state.directories };
   if (control.type === 'roots') return buildRootsMenu(videosOutsideFolderFilter(state), scope, actions);
   if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsideFolderFilter(state), control.parent, scope, actions);
-  if (control.type !== 'segment') return null;
+  if (control.type !== 'segment' && control.type !== 'actions') return null;
   const { segment } = control;
   if (segment.kind === 'duplicates') return buildDuplicatesMenu(state.duplicateGroups, state.videos, actions);
   const canNarrowReview = !state.reviewScopeIds;
@@ -197,6 +256,7 @@ function buildMenu(
     filteredVideos: state.filteredVideos,
     directories: state.directories,
     canNarrowReview,
+    filter: state.folderFilter,
   }, actions);
 }
 
@@ -206,7 +266,30 @@ function buildMenu(
  */
 export default function LocationBar({ sessionTitle, appActions }: { sessionTitle: string; appActions: LocationBarAppActions }) {
   const location = useLocation();
-  const actions = useLocationActions(appActions);
+  const filterHistory = useFilterHistory();
+  const navRef = useRef<HTMLElement>(null);
+  const actions = useLocationActions(appActions, filterHistory.navigate);
+  const browsable = location?.browsable ?? false;
+  // Ctrl+L focuses the path, as the address bar in Explorer or a browser; Alt+Left / Alt+Right step
+  // back and forward through the folder filters chosen in it.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const { target } = event;
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'l') {
+        const buttons = navRef.current?.querySelectorAll<HTMLButtonElement>('.location-bar-segment');
+        const lastButton = buttons?.[buttons.length - 1];
+        if (!lastButton) return;
+        event.preventDefault();
+        lastButton.focus();
+      } else if (browsable && event.altKey && !event.ctrlKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault();
+        filterHistory.step(event.key === 'ArrowLeft' ? -1 : 1);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [browsable, filterHistory]);
   const filteredVideos = useStore((s) => s.filteredVideos);
   const rootCount = useStore((s) => s.directories.length);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -221,7 +304,6 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
     [filteredVideos, lastFolder],
   );
   // Middle parts hide only while the full path does not fit.
-  const navRef = useRef<HTMLElement>(null);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   useEffect(() => {
@@ -282,7 +364,18 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
   const fullPath = !lastSegment || lastSegment.kind === 'duplicates' ? undefined : lastSegment.path;
   const anchor = openIndex !== null ? buttonRefs.current.get(openIndex)?.getBoundingClientRect() : undefined;
 
-  const buttonProps = (index: number, label: string) => ({
+  const toggleMenu = (index: number) => setOpenIndex(openIndex === index ? null : index);
+  const focusControl = (index: number, direction: -1 | 1) => {
+    for (let next = index + direction; next >= 0 && next < controls.length; next += direction) {
+      const button = buttonRefs.current.get(next);
+      if (button) {
+        button.focus();
+        return;
+      }
+    }
+  };
+  /** `onActivate` replaces opening the menu on click; the menu then opens from the keyboard and right-click. */
+  const buttonProps = (index: number, label: string, onActivate?: () => void) => ({
     ref: (element: HTMLButtonElement | null) => {
       if (element) buttonRefs.current.set(index, element);
       else buttonRefs.current.delete(index);
@@ -292,14 +385,32 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
     'aria-haspopup': 'menu' as const,
     'aria-expanded': openIndex === index,
     onMouseDown: (event: React.MouseEvent) => event.preventDefault(),
-    onClick: () => setOpenIndex(openIndex === index ? null : index),
+    onClick: onActivate ?? (() => toggleMenu(index)),
+    onContextMenu: (event: React.MouseEvent) => {
+      event.preventDefault();
+      setOpenIndex(index);
+    },
     onKeyDown: (event: React.KeyboardEvent) => {
-      if (event.key === 'ArrowDown') {
+      if (event.key === 'ArrowDown' || event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
         event.preventDefault();
         setOpenIndex(index);
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        focusControl(index, event.key === 'ArrowLeft' ? -1 : 1);
       }
     },
   });
+  const filterTo = (segment: Segment, index: number) => {
+    const { directories, folderFilter } = useStore.getState();
+    // A folder that holds every loaded folder is the same as no filter.
+    const all = directories.every((root) => isFolderInside(root, segment.path));
+    // Nothing to filter, so the click opens the menu like any other part.
+    if (all && !folderFilter) {
+      toggleMenu(index);
+      return;
+    }
+    filterHistory.navigate(all ? null : { path: segment.path, includeSubfolders: folderFilter?.path === segment.path ? folderFilter.includeSubfolders : true });
+  };
 
   return (
     <nav
@@ -312,16 +423,45 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
       {controls.map((control, index) => {
         const open = openIndex === index ? ' open' : '';
         switch (control.type) {
-          case 'segment':
-            return (
+          case 'segment': {
+            const { segment, last } = control;
+            const browsing = location.browsable && segment.kind === 'folder';
+            const only = segment.filtered && location.filter?.includeSubfolders === false;
+            const name = segment.filtered ? `${segment.label}, filtered${only ? ', this folder only' : ''}` : segment.label;
+            const button = (
               <button
                 key={index}
-                {...buttonProps(index, control.segment.filtered ? `${control.segment.label}, filtered` : control.segment.label)}
-                className={`location-bar-segment${control.last ? ' current' : ''}${control.segment.filtered ? ' filtered' : ''}${open}`}
+                {...buttonProps(index, name, browsing && !segment.filtered ? () => filterTo(segment, index) : undefined)}
+                className={`location-bar-segment${last ? ' current' : ''}${segment.position ? ' position' : ''}${open}`}
+                title={segment.position ? `Scrolled to: ${segment.path}` : undefined}
               >
-                {control.segment.filtered && <Filter size={11} aria-hidden="true" />}
-                <span className="location-bar-label">{control.segment.label}</span>
-                {control.last && <ChevronDown size={12} aria-hidden="true" />}
+                {segment.filtered && <Filter size={11} aria-hidden="true" />}
+                <span className="location-bar-label">{segment.label}</span>
+                {only && <span className="location-bar-only">only</span>}
+                {last && !location.browsable && <ChevronDown size={12} aria-hidden="true" />}
+              </button>
+            );
+            if (!segment.filtered) return button;
+            return (
+              <span key={index} className="location-bar-chip">
+                {button}
+                <button
+                  type="button"
+                  className="location-bar-chip-clear"
+                  aria-label="Clear folder filter"
+                  title="Clear folder filter"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => filterHistory.navigate(null)}
+                >
+                  <X size={11} aria-hidden="true" />
+                </button>
+              </span>
+            );
+          }
+          case 'actions':
+            return (
+              <button key={index} {...buttonProps(index, `${control.segment.label} actions`)} className={`location-bar-chevron location-bar-actions${open}`}>
+                <ChevronDown size={12} aria-hidden="true" />
               </button>
             );
           case 'subfolders':

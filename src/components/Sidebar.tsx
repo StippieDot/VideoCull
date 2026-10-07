@@ -12,7 +12,7 @@ import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenu
 import { PRODUCT } from '../product';
 import videoCullLogo from '../assets/videocull-logo.png';
 import {
-  FolderOpen, RefreshCw, Play, Trash2, Filter,
+  FolderOpen, Folder, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, HardDrive, X, Maximize2, Settings, ChevronDown,
   Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun
 } from 'lucide-react';
@@ -327,6 +327,7 @@ function SidebarFiltersSection({
 }) {
   const statusFilter = useStore((s) => s.statusFilter);
   const folderFilter = useStore((s) => s.folderFilter);
+  const setFolderFilter = useStore((s) => s.setFolderFilter);
   const minSizeFilter = useStore((s) => s.minSizeFilter);
   const maxSizeFilter = useStore((s) => s.maxSizeFilter);
   const setSizeFilterRange = useStore((s) => s.setSizeFilterRange);
@@ -445,6 +446,23 @@ function SidebarFiltersSection({
           <ChevronDown size={14} className={showFilters ? 'chevron-open' : ''} />
         </button>
       </div>
+
+      {/* Set from the title bar path or a folder header; shown even while the filters are folded away. */}
+      {folderFilter && (
+        <div className="filter-folder-chip-row">
+          <button
+            type="button"
+            className="pill pill-active filter-folder-chip"
+            onClick={() => setFolderFilter(null)}
+            title={`${folderFilter.path}${folderFilter.includeSubfolders ? ' and its subfolders' : ' only'}. Select to clear.`}
+            aria-label={`Clear folder filter: ${folderFilter.path}`}
+          >
+            <Folder size={12} />
+            <span className="pill-text">{formatRecentPath(folderFilter.path)}{folderFilter.includeSubfolders ? '' : ' (only)'}</span>
+            <X size={11} className="pill-clear-icon" />
+          </button>
+        </div>
+      )}
 
       {showFilters && (
         <div className="sidebar-section-content">

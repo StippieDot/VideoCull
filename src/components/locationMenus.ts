@@ -11,7 +11,7 @@ import {
   ScanSearch,
   Settings,
 } from 'lucide-react';
-import type { DuplicateGroup, Video, VideoStatus } from '../types';
+import type { DuplicateGroup, FolderFilter, Video, VideoStatus } from '../types';
 import { trimSeparators, type AppMenuItem } from './AppMenu';
 import { formatDuration, formatResolutionLabel, formatSize, getFolderLabel, getFolderPath, isFolderInside, normalizeFolder } from '../utils';
 
@@ -221,6 +221,8 @@ export interface LocationActions {
   reviewOnlyFolder: (folder: string) => void;
   /** Shows only this folder and everything below it in the grid; null shows every loaded folder. */
   filterToPath: (folder: string | null) => void;
+  /** Whether the folder filter also shows the folders below it. */
+  setIncludeSubfolders: (includeSubfolders: boolean) => void;
   regenerateThumbnails: (videos: Video[]) => void;
   reveal: (path: string) => void;
   copyPath: (path: string) => void;
@@ -240,6 +242,7 @@ export interface FolderMenuContext {
   directories: string[];
   /** Review can narrow to a folder unless it was opened on a fixed set of videos (duplicates). */
   canNarrowReview: boolean;
+  filter?: FolderFilter | null;
 }
 
 export function buildFolderMenu(context: FolderMenuContext, actions: LocationActions): LocationMenu {
@@ -256,6 +259,16 @@ export function buildFolderMenu(context: FolderMenuContext, actions: LocationAct
       items.push({ type: 'item', key: 'review-only', label: 'Review Only This Folder', icon: Filter, onSelect: () => actions.reviewOnlyFolder(folder) });
     }
     items.push({ type: 'item', key: 'show-in-grid', label: 'Show Folder in Grid', icon: LayoutGrid, onSelect: () => actions.showFolderInGrid(folder) });
+  }
+  const { filter } = context;
+  if (mode === 'grid' && filter && normalizeFolder(filter.path) === normalizeFolder(folder)) {
+    items.push({
+      type: 'item',
+      key: 'subfolders',
+      label: 'Include Subfolders',
+      checked: filter.includeSubfolders,
+      onSelect: () => actions.setIncludeSubfolders(!filter.includeSubfolders),
+    });
   }
   if (mode === 'grid' && folderVideos.length > 0) {
     items.push({ type: 'item', key: 'thumbs', label: 'Regenerate Thumbnails', icon: RefreshCw, onSelect: () => actions.regenerateThumbnails(folderVideos) });

@@ -246,6 +246,23 @@ describe('Sidebar recent folder behavior', () => {
     expect(keepButton.getAttribute('aria-pressed')).toBe('true');
   });
 
+  test('shows the folder filter as a chip that clears it', async () => {
+    const video = makeVideo('a', {}, 'D:\\Media\\Trips');
+    useStore.setState({
+      directory: 'D:\Media',
+      directories: ['D:\Media'],
+      videos: [video],
+      filteredVideos: [video],
+      stats: { ...useStore.getState().stats, total: 1, pending: 1 },
+      folderFilter: { path: 'D:\\Media\\Trips', includeSubfolders: false },
+    });
+    renderSidebar();
+    const chip = screen.getByRole('button', { name: 'Clear folder filter: D:\\Media\\Trips' });
+    expect(chip.textContent).toBe('Media / Trips (only)');
+    await userEvent.click(chip);
+    expect(useStore.getState().folderFilter).toBeNull();
+  });
+
   test('opens documentation from the sidebar header button', async () => {
     const onOpenDocumentation = vi.fn();
     useStore.setState({

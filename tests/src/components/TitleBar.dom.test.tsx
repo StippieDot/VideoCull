@@ -44,7 +44,7 @@ describe('TitleBar', () => {
     await screen.findByText('Paused');
     expect(container.querySelector<HTMLElement>('.title-bar-progress-fill')?.style.width).toBe('25%');
     // The folder stays in the centre while processing.
-    expect(screen.getByRole('button', { name: /Videos/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Videos' })).toBeTruthy();
   });
 
   test('duplicate stages that compare pairs show a percentage instead of the pair count', () => {

@@ -542,6 +542,22 @@
 }
 
 /* Filter Pills */
+.filter-folder-chip-row {
+  display: flex;
+  padding: 0 0 8px;
+}
+
+.filter-folder-chip {
+  max-width: 100%;
+}
+
+.filter-folder-chip .pill-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .filter-pills {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
