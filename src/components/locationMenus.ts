@@ -13,7 +13,7 @@ import {
   Settings,
 } from 'lucide-react';
 import type { DuplicateGroup, Video, VideoStatus } from '../types';
-import { formatDuration, formatResolutionLabel, formatSize, getFolderLabel, getFolderPath, isFolderInside } from '../utils';
+import { formatDuration, formatResolutionLabel, formatSize, getFolderLabel, getFolderPath, isFolderInside, normalizeFolder } from '../utils';
 
 export type LocationMenuAction = {
   type: 'item';
@@ -76,10 +76,6 @@ export function collapseSegments<T>(segments: T[], hidden: number): Array<T | nu
 
 const SEPARATOR = (key: string): LocationMenuItem => ({ type: 'separator', key });
 
-function normalizeFolder(value: string): string {
-  return value.replace(/[\\/]+$/, '').toLowerCase();
-}
-
 function isInsideFolder(video: Video, folder: string): boolean {
   return isFolderInside(getFolderPath(video), folder);
 }
@@ -109,6 +105,15 @@ export interface FolderEntry {
 
 function folderDetail(entry: FolderEntry): string {
   return entry.toReview > 0 ? `${entry.toReview.toLocaleString()} to review` : plural(entry.count, 'video');
+}
+
+/** Whether any video lies in a folder below `parent`. */
+export function hasSubfolders(videos: Video[], parent: string): boolean {
+  const base = normalizeFolder(parent);
+  return videos.some((video) => {
+    const folder = normalizeFolder(getFolderPath(video));
+    return folder !== base && folder.startsWith(`${base}\\`);
+  });
 }
 
 /** Subfolders of `parent` that hold videos, also further down, with what is in them. */
@@ -276,7 +281,8 @@ export function buildFolderMenu(context: FolderMenuContext, actions: LocationAct
     { type: 'item', key: 'copy', label: 'Copy Path', icon: Copy, onSelect: () => actions.copyPath(folder) },
   );
 
-  if (mode === 'grid' && listGridFolders(context.filteredVideos, context.directories).length > 1) {
+  const firstFolder = context.filteredVideos[0] && getFolderPath(context.filteredVideos[0]);
+  if (mode === 'grid' && context.filteredVideos.some((video) => getFolderPath(video) !== firstFolder)) {
     items.push(SEPARATOR('sep-go'), {
       type: 'item', key: 'go-to', label: 'Go to Folder...', icon: FolderTree, detail: 'Ctrl+G', onSelect: actions.openFolderSearch,
     });

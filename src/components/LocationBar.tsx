@@ -1,8 +1,9 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, ChevronRight, Copy, Film, Folder } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Copy, Film, Filter, Folder } from 'lucide-react';
 import useStore, { videosOutsidePathFilter } from '../store';
 import type { Video } from '../types';
+import { isFolderInside, normalizeFolder } from '../utils';
 import { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail } from './contextMenuBuilders';
 import {
@@ -12,7 +13,7 @@ import {
   buildSubfolderMenu,
   buildVideoMenu,
   collapseSegments,
-  listSubfolders,
+  hasSubfolders,
   splitPath,
   type LocationActions,
   type LocationMenu,
@@ -31,12 +32,13 @@ export interface LocationBarAppActions {
   openFolderSearch: () => void;
 }
 
-type Segment = PathSegment & { kind: 'folder' | 'video' | 'duplicates' };
+type Segment = PathSegment & { kind: 'folder' | 'video' | 'duplicates'; filtered?: boolean };
 
 /**
- * The bar's parts in order. Path parts open what can be done there. In the grid, the path is the
- * folder the grid is filtered to: each `›` lists the folders one level down to filter to instead
- * (like Explorer's address bar), and with several loaded folders a leading button picks one.
+ * The bar's parts in order. Path parts open what can be done there. In the grid, the path follows
+ * the folder at the top of the grid (or the folder the grid is filtered to): each `›` lists the
+ * folders one level down to filter to (like Explorer's address bar), and with several loaded
+ * folders a leading button picks one.
  */
 type Control =
   | { type: 'segment'; segment: Segment; last: boolean }
@@ -56,13 +58,14 @@ interface Location {
   browsable: boolean;
 }
 
-/** The title bar's location: the folder the grid is filtered to, the video in review, or the duplicate groups. */
+/** The title bar's location: the folder at the top of the grid, the video in review, or the duplicate groups. */
 function useLocation(): Location | null {
   const reviewMode = useStore((s) => s.reviewMode);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const duplicateGroupCount = useStore((s) => s.duplicateGroups.length);
   const reviewPath = useStore((s) => s.activeReviewVideoPath);
   const pathFilter = useStore((s) => s.pathFilter);
+  const gridTopFolder = useStore((s) => s.gridTopFolder);
   const directories = useStore((s) => s.directories);
 
   return useMemo(() => {
@@ -78,9 +81,19 @@ function useLocation(): Location | null {
         browsable: false,
       };
     }
-    const folder = pathFilter ?? (directories.length === 1 ? directories[0] : null);
-    return { segments: folder ? splitPath(folder).map((segment) => ({ ...segment, kind: 'folder' })) : [], browsable: true };
-  }, [directories, duplicateGroupCount, duplicateGroupsMode, pathFilter, reviewMode, reviewPath]);
+    // The top folder lags a render behind a filter change, so it only counts once inside the filter.
+    const topFolder = gridTopFolder && (pathFilter
+      ? isFolderInside(gridTopFolder, pathFilter)
+      : directories.some((root) => isFolderInside(gridTopFolder, root))) ? gridTopFolder : null;
+    const folder = topFolder ?? pathFilter ?? (directories.length === 1 ? directories[0] : null);
+    const filterKey = pathFilter && normalizeFolder(pathFilter);
+    return {
+      segments: folder
+        ? splitPath(folder).map((segment) => ({ ...segment, kind: 'folder', filtered: normalizeFolder(segment.path) === filterKey }))
+        : [],
+      browsable: true,
+    };
+  }, [directories, duplicateGroupCount, duplicateGroupsMode, gridTopFolder, pathFilter, reviewMode, reviewPath]);
 }
 
 function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders: boolean, hiddenCount: number): Control[] {
@@ -206,7 +219,7 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
 
   const lastFolder = location?.browsable ? location.segments[location.segments.length - 1]?.path ?? null : null;
   const lastHasSubfolders = useMemo(
-    () => lastFolder !== null && listSubfolders(filteredVideos, lastFolder).length > 0,
+    () => lastFolder !== null && hasSubfolders(filteredVideos, lastFolder),
     [filteredVideos, lastFolder],
   );
   // Middle parts hide one at a time, only while the full path does not fit.
@@ -296,9 +309,10 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
             return (
               <button
                 key={index}
-                {...buttonProps(index, control.segment.label)}
-                className={`location-bar-segment${control.last ? ' current' : ''}${open}`}
+                {...buttonProps(index, control.segment.filtered ? `${control.segment.label}, filtered` : control.segment.label)}
+                className={`location-bar-segment${control.last ? ' current' : ''}${control.segment.filtered ? ' filtered' : ''}${open}`}
               >
+                {control.segment.filtered && <Filter size={11} aria-hidden="true" />}
                 <span className="location-bar-label">{control.segment.label}</span>
                 {control.last && <ChevronDown size={12} aria-hidden="true" />}
               </button>

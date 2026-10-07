@@ -110,6 +110,7 @@ describe('LocationBar', () => {
       reviewMode: false,
       duplicateGroupsMode: false,
       gridFolderJump: null,
+      gridTopFolder: null,
       folderFilterPath: null,
       pathFilter: null,
       statusFilter: 'all',
@@ -133,7 +134,7 @@ describe('LocationBar', () => {
     act(() => screen.getByRole('menuitemradio', { name: /^Trips/ }).click());
     expect(useStore.getState().pathFilter).toBe(`${ROOT}\\Trips`);
     expect(shownIds()).toEqual(['a', 'b']);
-    expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips']);
+    expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips, filtered']);
 
     act(() => screen.getByRole('button', { name: 'Folders in Media' }).click());
     expect(document.activeElement?.textContent).toBe('Trips1 to review');
@@ -143,12 +144,25 @@ describe('LocationBar', () => {
     expect(shownIds()).toHaveLength(3);
   });
 
+  test('the path follows the folder at the top of the grid, inside the filter', () => {
+    const videos = [...VIDEOS, makeVideo('d', {}, `${ROOT}\\Trips\\June`)];
+    useStore.setState({ videos, filteredVideos: videos, gridTopFolder: `${ROOT}\\Clips` });
+    render(<LocationBar sessionTitle="Media" appActions={appActions()} />);
+    expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Clips']);
+
+    // Right after filtering, the old top folder lies outside the filter and is ignored.
+    act(() => useStore.getState().setPathFilter(`${ROOT}\\Trips`));
+    expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips, filtered', 'Folders in Trips']);
+    act(() => useStore.getState().setGridTopFolder(`${ROOT}\\Trips\\June`));
+    expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips, filtered', 'Folders in Trips', 'June']);
+  });
+
   test('path parts keep their action menus, run from the keyboard', () => {
     const actions = appActions();
     useStore.getState().setPathFilter(`${ROOT}\\Trips`);
     render(<LocationBar sessionTitle="Media" appActions={actions} />);
 
-    act(() => screen.getByRole('button', { name: 'Trips' }).click());
+    act(() => screen.getByRole('button', { name: 'Trips, filtered' }).click());
     expect(screen.getByRole('menu', { name: 'Trips' })).toBeTruthy();
     expect(document.activeElement?.textContent).toBe('Review This Folder');
     // Enter on a focused button is the browser's click.
@@ -156,7 +170,7 @@ describe('LocationBar', () => {
     expect(actions.reviewFolder).toHaveBeenCalledWith(`${ROOT}\\Trips`);
     expect(screen.queryByRole('menu')).toBeNull();
 
-    act(() => screen.getByRole('button', { name: 'Trips' }).click());
+    act(() => screen.getByRole('button', { name: 'Trips, filtered' }).click());
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowLeft' });
     expect(screen.getByRole('menu', { name: 'Folders in Media' })).toBeTruthy();
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowLeft' });
@@ -179,7 +193,7 @@ describe('LocationBar', () => {
     render(<LocationBar sessionTitle="P:" appActions={appActions()} />);
     scrollWidth.mockRestore();
     clientWidth.mockRestore();
-    expect(buttonNames()).toEqual(['P:', 'Folders in P:', 'Hidden folders', 'Folders in d', 'e']);
+    expect(buttonNames()).toEqual(['P:', 'Folders in P:', 'Hidden folders', 'Folders in d', 'e, filtered']);
 
     act(() => screen.getByRole('button', { name: 'Hidden folders' }).click());
     expect(screen.getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual(['a', 'b', 'c', 'd']);
@@ -203,7 +217,7 @@ describe('LocationBar', () => {
     ]);
     act(() => screen.getByRole('menuitemradio', { name: /^P:/ }).click());
     expect(shownIds()).toEqual(['p']);
-    expect(buttonNames()).toEqual(['Loaded folders', 'P:', 'Folders in P:']);
+    expect(buttonNames()).toEqual(['Loaded folders', 'P:, filtered', 'Folders in P:']);
   });
 
   test('in review it shows the open video, and duplicates get their own menu', () => {

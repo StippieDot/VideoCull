@@ -764,7 +764,17 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
   const handleRowsRendered = useCallback((visibleRows: { startIndex: number; stopIndex: number }) => {
     visibleRowsRef.current = visibleRows;
-  }, []);
+    let topHeader: HeaderRow | null = null;
+    for (const index of headerIndexes) {
+      if (index > visibleRows.startIndex) break;
+      topHeader = rows[index] as HeaderRow;
+    }
+    useStore.getState().setGridTopFolder(topHeader?.folderPath ?? null);
+  }, [headerIndexes, rows]);
+
+  useEffect(() => {
+    if (headerIndexes.length === 0) useStore.getState().setGridTopFolder(null);
+  }, [headerIndexes]);
 
   // Go to Folder (Ctrl+G): scroll to the first header (or, ungrouped, the first video) in the
   // folder or below it, so a folder without videos of its own lands on its first subfolder.

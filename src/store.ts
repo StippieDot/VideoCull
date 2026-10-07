@@ -9,7 +9,7 @@ import type {
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, normalizeFeatureSettings, pruneRecentDirectories } from './keybind-defaults';
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
-import { detectVideoCompatibility, isFolderInside } from './utils';
+import { detectVideoCompatibility, folderInsideTest } from './utils';
 import { getPreloadedColorTheme } from './theme';
 
 function thumbnailIndex(filePath: string): number | null {
@@ -45,9 +45,15 @@ function getFolder(v: Video): string {
   return folder;
 }
 
-function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'pathFilter' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' | 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
-  const startedAt = import.meta.env.DEV ? performance.now() : 0;
-  let filtered = [...state.videos];
+// localeCompare with options builds a collator per call, which dominates sorting large sessions.
+const NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const FOLDER_COLLATOR = new Intl.Collator();
+
+type FilterInputs = Pick<VideoStore, 'videos' | 'searchQuery' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' | 'folderFilterPath' | 'pathFilter' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter'>;
+
+/** The videos every filter lets through, in session order. */
+function applyFilters(state: FilterInputs): Video[] {
+  let filtered = state.videos;
   const minSizeFilter = Math.max(0, Math.floor(state.minSizeFilter));
   const maxSizeFilter = state.maxSizeFilter === null
     ? null
@@ -91,7 +97,8 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'sta
 
   const { pathFilter } = state;
   if (pathFilter) {
-    filtered = filtered.filter((v) => isFolderInside(getFolder(v), pathFilter));
+    const inside = folderInsideTest(pathFilter);
+    filtered = filtered.filter((v) => inside(getFolder(v)));
   }
 
   if (state.minRatingFilter > 0) {
@@ -109,11 +116,18 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'sta
   if (state.duplicateFilter) {
     filtered = filtered.filter((v) => Boolean(v.duplicateGroupId));
   }
+  return filtered;
+}
+
+function computeFiltered(state: FilterInputs & Pick<VideoStore, 'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'>): Video[] {
+  const startedAt = import.meta.env.DEV ? performance.now() : 0;
+  let filtered = applyFilters(state);
+  if (filtered === state.videos) filtered = [...filtered];
 
   const getSortCmp = (a: Video, b: Video): number => {
     switch (state.sortBy) {
       case 'name':
-        return a.filename.localeCompare(b.filename, undefined, { numeric: true, sensitivity: 'base' });
+        return NAME_COLLATOR.compare(a.filename, b.filename);
       case 'size':
         return a.sizeBytes - b.sizeBytes;
       case 'duration':
@@ -162,9 +176,9 @@ function computeFiltered(state: Pick<VideoStore, 'videos' | 'searchQuery' | 'sta
       let folderCmp = 0;
       if (state.folderSortBy === 'size' && folderSizeMap) {
         folderCmp = (folderSizeMap.get(folderA) || 0) - (folderSizeMap.get(folderB) || 0);
-        if (folderCmp === 0) folderCmp = folderA.localeCompare(folderB);
+        if (folderCmp === 0) folderCmp = FOLDER_COLLATOR.compare(folderA, folderB);
       } else {
-        folderCmp = folderA.localeCompare(folderB);
+        folderCmp = FOLDER_COLLATOR.compare(folderA, folderB);
       }
       return state.folderSortOrder === 'asc' ? folderCmp : -folderCmp;
     });
@@ -868,6 +882,7 @@ const useStore = create<VideoStore>((set, get) => ({
   reviewScopeIds: null,
   reviewAutoPlay: false,
   activeReviewVideoPath: null,
+  gridTopFolder: null,
   gridFolderJump: null,
   duplicateGroupsMode: false,
   duplicateGroups: [],
@@ -1372,6 +1387,9 @@ const useStore = create<VideoStore>((set, get) => ({
   setPathFilter: (pathFilter: string | null) => {
     const state = { ...get(), pathFilter };
     set({ pathFilter, filteredVideos: computeFiltered(state), reviewIndex: 0 });
+  },
+  setGridTopFolder: (gridTopFolder: string | null) => {
+    if (get().gridTopFolder !== gridTopFolder) set({ gridTopFolder });
   },
   requestGridFolderJump: (folderPath: string) => set((state) => ({
     gridFolderJump: { folderPath, id: (state.gridFolderJump?.id ?? 0) + 1 },
@@ -1968,7 +1986,34 @@ export function hasActiveFilters(state: VideoStore): boolean {
 
 export default useStore;
 
-/** The grid's videos as if no folder were chosen in the title bar path, for listing the folders around it. */
+let outsidePathFilterCache: { inputs: FilterInputs; result: Video[] } | null = null;
+
+/**
+ * The grid's videos as if no folder were chosen in the title bar path, unsorted, for listing the
+ * folders around it. Cached on the filter inputs, since an open folder list rebuilds on every render.
+ */
 export function videosOutsidePathFilter(state: VideoStore): Video[] {
-  return state.pathFilter ? computeFiltered({ ...state, pathFilter: null }) : state.filteredVideos;
+  if (!state.pathFilter) return state.filteredVideos;
+  const inputs: FilterInputs = {
+    videos: state.videos,
+    searchQuery: state.searchQuery,
+    statusFilter: state.statusFilter,
+    minSizeFilter: state.minSizeFilter,
+    maxSizeFilter: state.maxSizeFilter,
+    minDurationFilter: state.minDurationFilter,
+    maxDurationFilter: state.maxDurationFilter,
+    folderFilterPath: state.folderFilterPath,
+    pathFilter: null,
+    minRatingFilter: state.minRatingFilter,
+    favoritesFilter: state.favoritesFilter,
+    incompatibleFilter: state.incompatibleFilter,
+    duplicateFilter: state.duplicateFilter,
+  };
+  const cached = outsidePathFilterCache;
+  if (cached && (Object.keys(inputs) as Array<keyof FilterInputs>).every((key) => cached.inputs[key] === inputs[key])) {
+    return cached.result;
+  }
+  const result = applyFilters(inputs);
+  outsidePathFilterCache = { inputs, result };
+  return result;
 }

@@ -34,6 +34,11 @@
   color: var(--text-primary);
 }
 
+/* The folder the grid is filtered to; the path past it follows scrolling. */
+.location-bar-segment.filtered {
+  color: var(--accent);
+}
+
 .location-bar-segment:hover,
 .location-bar-segment:focus-visible,
 .location-bar-segment.open {

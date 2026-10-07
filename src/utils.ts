@@ -207,15 +207,42 @@ export function getFolderLabel(video: Video, rootDirs: string[]): string {
   return relative ? `${rootName} / ${relative}` : `${rootName} / Root`;
 }
 
+const folderPaths = new WeakMap<Video, string>();
+
 export function getFolderPath(video: Video): string {
-  const sep = video.path.includes('/') ? '/' : '\\';
-  return video.path.substring(0, video.path.lastIndexOf(sep));
+  let folder = folderPaths.get(video);
+  if (folder === undefined) {
+    const sep = video.path.includes('/') ? '/' : '\\';
+    folder = video.path.substring(0, video.path.lastIndexOf(sep));
+    folderPaths.set(video, folder);
+  }
+  return folder;
 }
 
-/** Whether `folder` is `ancestor` or lies below it; Windows paths, so case and separators do not matter. */
+// Sessions hold far fewer folders than videos, so each folder string is normalized once.
+// ponytail: grows by one entry per distinct folder seen; clear it per session if that ever matters.
+const normalizedFolders = new Map<string, string>();
+
+/** A folder in a form where equal folders compare equal. */
+export function normalizeFolder(value: string): string {
+  let normalized = normalizedFolders.get(value);
+  if (normalized === undefined) {
+    normalized = value.replace(/[\\/]+/g, '\\').replace(/\\$/, '').toLowerCase();
+    normalizedFolders.set(value, normalized);
+  }
+  return normalized;
+}
+
+/** Tests whether a folder is `ancestor` or lies below it; Windows paths, so case and separators do not matter. */
+export function folderInsideTest(ancestor: string): (folder: string) => boolean {
+  const base = normalizeFolder(ancestor);
+  const prefix = `${base}\\`;
+  return (folder) => {
+    const target = normalizeFolder(folder);
+    return target === base || target.startsWith(prefix);
+  };
+}
+
 export function isFolderInside(folder: string, ancestor: string): boolean {
-  const normalize = (value: string) => value.replace(/[\\/]+/g, '\\').replace(/\\$/, '').toLowerCase();
-  const target = normalize(folder);
-  const base = normalize(ancestor);
-  return target === base || target.startsWith(`${base}\\`);
+  return folderInsideTest(ancestor)(folder);
 }
