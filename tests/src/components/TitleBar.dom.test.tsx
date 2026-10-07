@@ -109,8 +109,7 @@ describe('TitleBar', () => {
 
     act(() => useStore.setState({ stats: { ...useStore.getState().stats, delete: 2, deleteSize: 2048 } }));
     const marked = screen.getByRole('button', { name: 'Delete 2 marked videos' });
-    expect(marked.textContent).toBe('2');
-    expect(marked.title).toContain('2 KB');
+    expect(marked.textContent).toBe('2 marked · 2 KB');
     act(() => marked.click());
     expect(api.runCommand).toHaveBeenCalledWith('Actions > Delete Marked Videos');
   });

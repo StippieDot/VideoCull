@@ -318,6 +318,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
           >
             <Trash2 size={13} aria-hidden="true" />
             {marked.count.toLocaleString()}
+            <span className="title-bar-marked-detail"> marked · {formatSize(marked.size)}</span>
           </button>
         )}
         {!isPrivate && (

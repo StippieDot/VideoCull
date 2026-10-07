@@ -206,18 +206,18 @@
   gap: 2px;
 }
 
-/* Runs the usual delete flow with its confirmation; shown only while something is marked.
-   Kept as quiet as the icon buttons beside it: the size is in its tooltip. */
+/* Runs the usual delete flow with its confirmation; shown only while something is marked. */
 .title-bar-marked {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   height: 24px;
-  padding: 0 6px;
+  margin-right: 4px;
+  padding: 0 10px;
   border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
+  border-radius: 12px;
+  background: var(--color-delete-dim);
+  color: var(--color-delete);
   font: inherit;
   font-size: 12px;
   white-space: nowrap;
@@ -225,14 +225,10 @@
   -webkit-app-region: no-drag;
 }
 
-.title-bar-marked svg {
-  color: var(--color-delete);
-}
-
 .title-bar-marked:hover,
 .title-bar-marked:focus-visible {
-  background: var(--color-delete-dim);
-  color: var(--text-primary);
+  background: var(--color-delete);
+  color: var(--text-on-accent, #fff);
   outline: none;
 }
 
@@ -321,6 +317,10 @@
 }
 
 @media (max-width: 1199px) {
+  .title-bar-marked-detail {
+    display: none;
+  }
+
   .title-bar-status-label {
     position: absolute;
     width: 1px;
