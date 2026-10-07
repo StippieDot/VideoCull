@@ -31,7 +31,7 @@ function actionsMock(): LocationActions {
   };
 }
 
-function labels(items: Array<{ type: string; label?: string }>) {
+function labels(items: Array<{ type?: string; label?: string }>) {
   return items.filter((item) => item.type !== 'separator').map((item) => item.label);
 }
 
@@ -72,7 +72,7 @@ test('a › list offers all of the folder before it, then each folder one level 
   const scope = { filterPath: `${ROOT}\\Trips\\2024`, directories: [ROOT] };
   const menu = buildSubfolderMenu(videos, ROOT, scope, actions);
   const rows = menu.items.filter((item) => item.type === 'item');
-  expect(rows.map((item) => item.type === 'item' && [item.label, item.detail, Boolean(item.current)])).toEqual([
+  expect(rows.map((item) => item.type === 'item' && [item.label, item.detail, Boolean(item.checked)])).toEqual([
     ['All of Media', '2 to review', false],
     ['Clips', '1 to review', false],
     // Ticked: the shown folder lies inside it.

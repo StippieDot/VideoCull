@@ -1,9 +1,9 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Check, ChevronDown, ChevronRight, Copy, Film, Filter, Folder } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Film, Filter, Folder } from 'lucide-react';
 import useStore, { videosOutsideFolderFilter } from '../store';
 import type { Video } from '../types';
 import { isFolderInside, normalizeFolder } from '../utils';
+import AppMenu from './AppMenu';
 import { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail } from './contextMenuBuilders';
 import {
@@ -17,8 +17,6 @@ import {
   splitPath,
   type LocationActions,
   type LocationMenu,
-  type LocationMenuAction,
-  type LocationMenuItem,
   type PathSegment,
 } from './locationMenus';
 import './LocationBar.css';
@@ -355,15 +353,22 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
         }
       })}
       {menu && anchor && (
-        <LocationMenuPopup
+        <AppMenu
           key={`${openIndex}:${hiddenPick?.path ?? ''}`}
-          menu={menu}
+          items={menu.items}
+          header={menu.title ? { icon: HEADER_ICONS[menu.kind], title: menu.title, detail: menu.detail } : undefined}
           label={hiddenPick?.label
             ?? (openControl?.type === 'segment' ? openControl.segment.label : buttonRefs.current.get(openIndex!)?.getAttribute('aria-label') ?? '')}
-          left={anchor.left}
-          top={anchor.bottom + 4}
+          selection={menu.kind === 'list'}
+          scrollable={menu.kind === 'list'}
+          emptyText="No folders with videos"
+          className="location-menu"
+          x={anchor.left}
+          y={anchor.bottom + 4}
           onClose={close}
-          onSwitchSegment={switchControl}
+          onSwitch={switchControl}
+          // The bar's buttons toggle their menus themselves.
+          keepOpenWithin=".location-bar"
         />
       )}
     </nav>
@@ -394,133 +399,3 @@ export function partsToHide(nav: HTMLElement, controls: Control[], segments: Seg
 }
 
 const HEADER_ICONS = { folder: Folder, video: Film, duplicates: Copy, list: Folder } as const;
-const VIEWPORT_GUTTER = 8;
-
-function focusableIndexes(items: LocationMenuItem[]): number[] {
-  return items.flatMap((item, index) => (item.type === 'separator' ? [] : [index]));
-}
-
-function stepIndex(list: number[], current: number, delta: number): number {
-  const position = list.indexOf(current);
-  return list[(position + delta + list.length) % list.length] ?? current;
-}
-
-export function LocationMenuPopup({ menu, label, left, top, onClose, onSwitchSegment }: {
-  menu: LocationMenu;
-  label: string;
-  left: number;
-  top: number;
-  onClose: (refocus: boolean) => void;
-  onSwitchSegment: (direction: -1 | 1) => void;
-}) {
-  const popupRef = useRef<HTMLDivElement>(null);
-  const itemRefs = useRef(new Map<number, HTMLButtonElement>());
-  const focusable = useMemo(() => focusableIndexes(menu.items), [menu.items]);
-  const [focus, setFocus] = useState(() => {
-    const current = menu.items.findIndex((item) => item.type === 'item' && item.current);
-    return current >= 0 ? current : focusable[0] ?? 0;
-  });
-  const [position, setPosition] = useState({ left, top });
-
-  useLayoutEffect(() => {
-    const rect = popupRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setPosition({ left: Math.max(VIEWPORT_GUTTER, Math.min(left, window.innerWidth - rect.width - VIEWPORT_GUTTER)), top });
-  }, [left, top]);
-
-  useEffect(() => {
-    const element = itemRefs.current.get(focus);
-    element?.focus();
-    element?.scrollIntoView?.({ block: 'nearest' });
-  }, [focus]);
-
-  useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Element;
-      // The bar's buttons toggle their menus themselves.
-      if (popupRef.current?.contains(target) || target.closest?.('.location-bar')) return;
-      onClose(false);
-    };
-    const handleBlur = () => onClose(false);
-    window.addEventListener('pointerdown', handlePointerDown, true);
-    window.addEventListener('blur', handleBlur);
-    window.addEventListener('resize', handleBlur);
-    return () => {
-      window.removeEventListener('pointerdown', handlePointerDown, true);
-      window.removeEventListener('blur', handleBlur);
-      window.removeEventListener('resize', handleBlur);
-    };
-  }, [onClose]);
-
-  const run = (item: LocationMenuAction) => {
-    if (!item.keepOpen) onClose(false);
-    item.onSelect();
-  };
-
-  const handleKeyDown = (event: React.KeyboardEvent) => {
-    const keys: Record<string, () => void> = {
-      ArrowDown: () => setFocus(stepIndex(focusable, focus, 1)),
-      ArrowUp: () => setFocus(stepIndex(focusable, focus, -1)),
-      Home: () => setFocus(focusable[0]),
-      End: () => setFocus(focusable[focusable.length - 1]),
-      ArrowRight: () => onSwitchSegment(1),
-      ArrowLeft: () => onSwitchSegment(-1),
-      Escape: () => onClose(true),
-      Tab: () => onClose(false),
-    };
-    const handler = keys[event.key];
-    if (!handler) return;
-    if (event.key !== 'Tab') event.preventDefault();
-    event.stopPropagation();
-    handler();
-  };
-
-  const HeaderIcon = HEADER_ICONS[menu.kind];
-  const isList = menu.kind === 'list';
-
-  return createPortal(
-    <div
-      ref={popupRef}
-      className={`app-context-menu location-menu${isList ? ' location-menu-list' : ''}`}
-      style={{ left: position.left, top: position.top }}
-      role="menu"
-      aria-label={menu.title ?? label}
-      onKeyDown={handleKeyDown}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      {menu.title && (
-        <div className="location-menu-header">
-          <HeaderIcon size={16} aria-hidden="true" />
-          <div className="location-menu-header-text">
-            <div className="location-menu-title">{menu.title}</div>
-            <div className="location-menu-detail">{menu.detail}</div>
-          </div>
-        </div>
-      )}
-      {menu.items.length === 0 && <div className="location-menu-empty">No folders with videos</div>}
-      {menu.items.map((item, index) => {
-        if (item.type === 'separator') return <div key={item.key} className="app-context-menu-separator" role="separator" />;
-        const Icon = item.current ? Check : item.icon;
-        return (
-          <button
-            key={item.key}
-            ref={(element) => {
-              if (element) itemRefs.current.set(index, element);
-              else itemRefs.current.delete(index);
-            }}
-            type="button"
-            role={isList ? 'menuitemradio' : 'menuitem'}
-            aria-checked={isList ? Boolean(item.current) : undefined}
-            className={`app-context-menu-item location-menu-item${item.muted ? ' muted' : ''}`}
-            onClick={() => run(item)}
-          >
-            <span className="location-menu-icon">{Icon && <Icon size={14} />}</span>
-            <span className="location-menu-label">{item.label}</span>
-            {item.detail && <span className="location-menu-item-detail">{item.detail}</span>}
-          </button>
-        );
-      })}
-    </div>,
-    document.body,
-  );
-}

@@ -130,6 +130,12 @@ test('menu items get ids from their path that survive changing counts', () => {
   const marked = item(menu({ hasSession: true, markedCount: 3 }), 'Actions', 'Delete Marked Videos (3)...');
   assert.equal(marked.id, 'Actions > Delete Marked Videos');
   assert.equal(item(menu(), 'View', 'Sort By').submenu.find((entry) => entry.label === 'Name').id, 'View > Sort By > Name');
+  // The title bar's finish-action menu runs these by id (TitleBar.tsx).
+  assert.deepEqual(item(menu(), 'Actions', 'When Processing Finishes').submenu.map((entry) => entry.id), [
+    'Actions > When Processing Finishes > Do Nothing',
+    'Actions > When Processing Finishes > Sleep',
+    'Actions > When Processing Finishes > Shut Down',
+  ]);
 });
 
 test('the command palette lists runnable items, not submenus, separators, hidden items or itself', () => {

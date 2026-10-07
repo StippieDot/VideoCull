@@ -1,4 +1,3 @@
-import type { LucideIcon } from 'lucide-react';
 import {
   ArrowLeft,
   Copy,
@@ -13,24 +12,10 @@ import {
   Settings,
 } from 'lucide-react';
 import type { DuplicateGroup, Video, VideoStatus } from '../types';
+import { trimSeparators, type AppMenuItem } from './AppMenu';
 import { formatDuration, formatResolutionLabel, formatSize, getFolderLabel, getFolderPath, isFolderInside, normalizeFolder } from '../utils';
 
-export type LocationMenuAction = {
-  type: 'item';
-  key: string;
-  label: string;
-  icon?: LucideIcon;
-  /** Right-aligned extra text, such as a folder's count in Go to Folder. */
-  detail?: string;
-  current?: boolean;
-  /** Selecting it shows another menu in the same place instead of closing. */
-  keepOpen?: boolean;
-  /** Dimmed: a folder with nothing left to review. */
-  muted?: boolean;
-  onSelect: () => void;
-};
-
-export type LocationMenuItem = LocationMenuAction | { type: 'separator'; key: string };
+export type LocationMenuItem = AppMenuItem;
 
 export interface LocationMenu {
   kind: 'folder' | 'video' | 'duplicates' | 'list';
@@ -169,7 +154,7 @@ export function buildSubfolderMenu(videos: Video[], parent: string, scope: PathS
       label: `All of ${lastPart(parent)}`,
       detail: folderDetail(allEntry),
       muted: allEntry.toReview === 0,
-      current: sameFolder(shown, parent),
+      checked: sameFolder(shown, parent),
       onSelect: () => actions.filterToPath(filterFor(parent, scope)),
     },
     SEPARATOR('sep-all'),
@@ -179,7 +164,7 @@ export function buildSubfolderMenu(videos: Video[], parent: string, scope: PathS
       label: entry.label,
       detail: folderDetail(entry),
       muted: entry.toReview === 0,
-      current: shown !== null && isFolderInside(shown, entry.path),
+      checked: shown !== null && isFolderInside(shown, entry.path),
       onSelect: () => actions.filterToPath(filterFor(entry.path, scope)),
     })),
   ];
@@ -199,7 +184,7 @@ export function buildRootsMenu(videos: Video[], scope: PathScope, actions: Locat
         label: 'All Loaded Folders',
         detail: folderDetail(all),
         muted: all.toReview === 0,
-        current: scope.filterPath === null,
+        checked: scope.filterPath === null,
         onSelect: () => actions.filterToPath(null),
       },
       SEPARATOR('sep-all'),
@@ -211,7 +196,7 @@ export function buildRootsMenu(videos: Video[], scope: PathScope, actions: Locat
           label: root,
           detail: folderDetail(rootEntry),
           muted: rootEntry.toReview === 0,
-          current: scope.filterPath !== null && isFolderInside(scope.filterPath, root),
+          checked: scope.filterPath !== null && isFolderInside(scope.filterPath, root),
           onSelect: () => actions.filterToPath(root),
         };
       }),
@@ -348,9 +333,4 @@ export function buildDuplicatesMenu(groups: DuplicateGroup[], videos: Video[], a
       { type: 'item', key: 'back', label: 'Back to Grid', icon: ArrowLeft, onSelect: actions.backToGrid },
     ],
   };
-}
-
-function trimSeparators(items: LocationMenuItem[]): LocationMenuItem[] {
-  return items.filter((item, index) => item.type !== 'separator'
-    || (index > 0 && index < items.length - 1 && items[index - 1].type !== 'separator'));
 }

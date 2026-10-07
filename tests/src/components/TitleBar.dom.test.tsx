@@ -15,6 +15,7 @@ function installElectronApiMock(power: PowerState) {
     getProcessingPauseState: vi.fn().mockResolvedValue({ status: 'paused' }),
     onProcessingPauseState: vi.fn(() => () => {}),
     openAppMenu: vi.fn().mockResolvedValue(true),
+    runCommand: vi.fn().mockResolvedValue(true),
     setProcessingPaused: vi.fn().mockResolvedValue({ status: 'running' }),
   };
   (window as unknown as { electronAPI: typeof electronAPI }).electronAPI = electronAPI;
@@ -74,7 +75,12 @@ describe('TitleBar', () => {
     const button = await screen.findByRole('button', { name: 'When processing finishes: sleep' });
     expect(button.classList.contains('active')).toBe(true);
     act(() => button.click());
-    expect(api.openAppMenu).toHaveBeenCalledWith('Actions > When Processing Finishes', expect.any(Number), expect.any(Number));
+    const menu = screen.getByRole('menu', { name: 'When processing finishes' });
+    expect(menu.querySelector('[aria-checked="true"]')?.textContent).toBe('Sleep');
+    expect(document.activeElement?.textContent).toBe('Sleep');
+    act(() => screen.getByRole('menuitemradio', { name: 'Shut Down' }).click());
+    expect(api.runCommand).toHaveBeenCalledWith('Actions > When Processing Finishes > Shut Down');
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   test('the location in the centre opens its menu', async () => {

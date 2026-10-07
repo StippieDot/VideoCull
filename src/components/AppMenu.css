@@ -1,0 +1,81 @@
+/* Parts AppMenu adds to the context menu look (ContextMenu.css): header, icons, details. */
+
+.app-menu-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px 9px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.app-menu-header-text {
+  min-width: 0;
+}
+
+.app-menu-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-menu-detail {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-menu-item:focus-visible {
+  background: var(--accent-dim);
+  outline: none;
+}
+
+.app-menu-icon {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.app-menu-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-menu-item-detail {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-menu-item.muted .app-menu-label {
+  color: var(--text-tertiary);
+}
+
+/* Lists such as a folder's subfolders can run into the hundreds. */
+.app-menu-scrollable {
+  max-height: min(480px, calc(100vh - var(--title-bar-height, 32px) - 24px));
+  overflow-y: auto;
+}
+
+.app-menu-empty {
+  padding: 8px 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Moon, Pause, Play, Power, Search } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import useStore from '../store';
@@ -7,6 +7,7 @@ import useProcessingPauseState from '../hooks/useProcessingPauseState';
 import type { DuplicateProgress, VideoStore } from '../types';
 import videoCullIcon from '../assets/videocull-icon.png';
 import { formatRecentPath } from '../utils';
+import AppMenu from './AppMenu';
 import LocationBar, { type LocationBarAppActions } from './LocationBar';
 import './TitleBar.css';
 
@@ -48,6 +49,9 @@ function selectProcessingStatus(state: VideoStore): { label: string; detail: str
   }
   return null;
 }
+
+// Labels match Actions › When Processing Finishes, whose items the choices run.
+const FINISH_ACTIONS = [['none', 'Do Nothing'], ['sleep', 'Sleep'], ['shutdown', 'Shut Down']] as const;
 
 const FINISH_ACTION_TITLES = {
   none: 'When processing finishes: do nothing',
@@ -100,11 +104,15 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
     }
   };
 
-  const openFinishActionMenu = () => {
+  const [finishMenuAt, setFinishMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const toggleFinishActionMenu = () => {
     const rect = finishButtonRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    void window.electronAPI?.openAppMenu('Actions > When Processing Finishes', rect.left, rect.bottom);
+    setFinishMenuAt((open) => (open || !rect ? null : { x: rect.left, y: rect.bottom + 4 }));
   };
+  const closeFinishActionMenu = useCallback((refocus: boolean) => {
+    setFinishMenuAt(null);
+    if (refocus) finishButtonRef.current?.focus();
+  }, []);
   const openRef = useRef(open);
   openRef.current = open;
 
@@ -216,14 +224,32 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
           <button
             ref={finishButtonRef}
             type="button"
-            className={`title-bar-icon-button${power.finishAction !== 'none' ? ' active' : ''}`}
+            className={`title-bar-icon-button title-bar-finish-button${power.finishAction !== 'none' ? ' active' : ''}`}
             title={FINISH_ACTION_TITLES[power.finishAction]}
             aria-label={FINISH_ACTION_TITLES[power.finishAction]}
             onMouseDown={(event) => event.preventDefault()}
-            onClick={openFinishActionMenu}
+            aria-haspopup="menu"
+            aria-expanded={finishMenuAt !== null}
+            onClick={toggleFinishActionMenu}
           >
             {power.finishAction === 'shutdown' ? <Power size={14} /> : <Moon size={14} />}
           </button>
+        )}
+        {finishMenuAt && power.processing && !isPrivate && (
+          <AppMenu
+            label="When processing finishes"
+            selection
+            items={FINISH_ACTIONS.map(([action, label]) => ({
+              key: action,
+              label,
+              checked: power.finishAction === action,
+              onSelect: () => void window.electronAPI?.runCommand(`Actions > When Processing Finishes > ${label}`),
+            }))}
+            x={finishMenuAt.x}
+            y={finishMenuAt.y}
+            onClose={closeFinishActionMenu}
+            keepOpenWithin=".title-bar-finish-button"
+          />
         )}
       </div>
     </header>
