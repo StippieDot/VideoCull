@@ -10,12 +10,14 @@
   left: 0;
   /* Above Review mode, below dialogs, which dim it like the rest of the window. */
   z-index: 1050;
-  display: flex;
+  /* Start and end columns share the room left beside the location, so it is centred on the
+     window while both fit, then shifts and shrinks; the three never overlap. */
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
   align-items: center;
+  column-gap: 12px;
   height: var(--title-bar-height);
   width: 100%;
-  padding-left: 10px;
-  gap: 6px;
   /* No bottom border: Windows paints its window buttons over the right end, which would cut a
      border short. --bg-surface must match the overlay colour in electron/theme-utils.js. */
   background: var(--bg-surface);
@@ -23,6 +25,14 @@
   font-size: 12px;
   user-select: none;
   -webkit-app-region: drag;
+}
+
+.title-bar-start {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding-left: 10px;
 }
 
 .title-bar-icon {
@@ -62,14 +72,9 @@
   text-decoration: underline;
 }
 
-/* Centred location, using the room between the menus and the right-hand buttons (about 450px
-   each side), and narrower while the processing status pill needs the right side. */
 .title-bar-center {
-  position: absolute;
-  left: 50%;
-  max-width: max(30%, calc(100% - 900px));
-  transform: translateX(-50%);
   display: flex;
+  justify-content: center;
   align-items: center;
   gap: 2px;
   min-width: 0;
@@ -84,18 +89,13 @@
   pointer-events: none;
 }
 
-.title-bar:has(.title-bar-status-pill) .title-bar-center {
-  max-width: 30%;
-}
-
 /* Processing status and pause button, left of the other title bar actions. */
 .title-bar-status-pill {
   display: flex;
   align-items: center;
   gap: 4px;
   height: 24px;
-  /* The centre ends at 65% (30% wide, centred); this leaves room for the buttons and window controls right of the pill. */
-  max-width: calc(35vw - 230px);
+  min-width: 0;
   margin-right: 4px;
   padding-left: 10px;
   border-radius: 12px;
@@ -159,12 +159,12 @@
   }
 }
 
-/* Right-hand controls, kept clear of the window buttons Windows draws over the bar's right end. */
+/* Right-hand controls. The padding keeps them clear of the window buttons Windows draws over the
+   bar's right end, and counts those buttons in this column's width so the centring includes them. */
 .title-bar-actions {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
+  justify-self: end;
+  height: 100%;
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -211,4 +211,69 @@
 
 :root.mica .title-bar {
   background: transparent;
+}
+
+/* Narrower windows: the stage name goes first, then the numbers, leaving a progress ring. The
+   text stays readable by screen readers (role=status), and the pill's title shows it in full. */
+.title-bar-status-ring {
+  display: none;
+  flex-shrink: 0;
+  transform: rotate(-90deg);
+}
+
+.title-bar-status-ring circle {
+  fill: none;
+  stroke-width: 2;
+}
+
+.title-bar-status-ring-track {
+  stroke: var(--border);
+}
+
+.title-bar-status-ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+
+.title-bar-status-ring.paused .title-bar-status-ring-fill {
+  stroke: var(--color-skip);
+}
+
+.title-bar-status-ring.indeterminate {
+  animation: title-bar-ring-spin 1.2s linear infinite;
+}
+
+@keyframes title-bar-ring-spin {
+  from { transform: rotate(-90deg); }
+  to { transform: rotate(270deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-bar-status-ring.indeterminate {
+    animation: none;
+  }
+}
+
+@media (max-width: 1199px) {
+  .title-bar-status-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+@media (max-width: 999px) {
+  .title-bar-status-ring {
+    display: block;
+  }
+
+  .title-bar-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
 }

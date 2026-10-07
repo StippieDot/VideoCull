@@ -59,6 +59,26 @@ const FINISH_ACTION_TITLES = {
   shutdown: 'When processing finishes: shut down',
 } as const;
 
+const RING_RADIUS = 6;
+const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
+
+/** Stands in for the status text when the window is too narrow for it (TitleBar.css). */
+function ProgressRing({ fraction, paused }: { fraction: number | null; paused: boolean }) {
+  return (
+    <svg className={`title-bar-status-ring${fraction === null ? ' indeterminate' : ''}${paused ? ' paused' : ''}`} width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <circle className="title-bar-status-ring-track" cx="8" cy="8" r={RING_RADIUS} />
+      <circle
+        className="title-bar-status-ring-fill"
+        cx="8"
+        cy="8"
+        r={RING_RADIUS}
+        strokeDasharray={RING_LENGTH}
+        strokeDashoffset={RING_LENGTH * (1 - (fraction ?? 0.25))}
+      />
+    </svg>
+  );
+}
+
 function MenuLabelText({ label, accessKey, showAccessKey }: { label: string; accessKey: string; showAccessKey: boolean }) {
   const index = label.toLowerCase().indexOf(accessKey);
   if (!showAccessKey || index < 0) return <>{label}</>;
@@ -152,26 +172,28 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
 
   return (
     <header className="title-bar">
-      <img className="title-bar-icon" src={videoCullIcon} alt="" draggable={false} />
-      <nav className="title-bar-menus" aria-label="Application menu">
-        {MENUS.map(({ label, accessKey }) => (
-          <button
-            key={label}
-            ref={(element) => {
-              if (element) buttonRefs.current.set(label, element);
-              else buttonRefs.current.delete(label);
-            }}
-            type="button"
-            className={`title-bar-menu-button${openMenu === label ? ' open' : ''}`}
-            aria-haspopup="menu"
-            aria-expanded={openMenu === label}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => void open(label)}
-          >
-            <MenuLabelText label={label} accessKey={accessKey} showAccessKey={altHeld} />
-          </button>
-        ))}
-      </nav>
+      <div className="title-bar-start">
+        <img className="title-bar-icon" src={videoCullIcon} alt="" draggable={false} />
+        <nav className="title-bar-menus" aria-label="Application menu">
+          {MENUS.map(({ label, accessKey }) => (
+            <button
+              key={label}
+              ref={(element) => {
+                if (element) buttonRefs.current.set(label, element);
+                else buttonRefs.current.delete(label);
+              }}
+              type="button"
+              className={`title-bar-menu-button${openMenu === label ? ' open' : ''}`}
+              aria-haspopup="menu"
+              aria-expanded={openMenu === label}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void open(label)}
+            >
+              <MenuLabelText label={label} accessKey={accessKey} showAccessKey={altHeld} />
+            </button>
+          ))}
+        </nav>
+      </div>
       <div className="title-bar-center">
         {isPrivate ? (
           <div className="title-bar-title">{sessionTitle}</div>
@@ -189,10 +211,11 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
       )}
       <div className="title-bar-actions">
         {status && !isPrivate && (
-          <div className="title-bar-status-pill">
+          <div className="title-bar-status-pill" title={[status.label, status.detail, paused ? 'Paused' : ''].filter(Boolean).join(' · ')}>
+            <ProgressRing fraction={status.fraction} paused={paused} />
             <span className="title-bar-status" role="status">
               <span className="title-bar-status-label">{status.label}</span>
-              {status.detail && <span>{status.detail}</span>}
+              {status.detail && <span className="title-bar-status-detail">{status.detail}</span>}
               {paused && <span className="title-bar-status-paused">Paused</span>}
             </span>
             <button
