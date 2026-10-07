@@ -271,8 +271,9 @@
   background: transparent;
 }
 
+/* A light layer of the theme colour keeps the bar close to the app's colours over a bright wallpaper. */
 :root.mica .title-bar {
-  background: transparent;
+  background: color-mix(in srgb, var(--bg-surface) 20%, transparent);
 }
 
 /* Narrower windows: the stage name goes first, then the numbers, leaving a progress ring. The
