@@ -145,7 +145,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
   const timeLeft = useTimeLeft(jobs, paused);
   useTaskbarProgress(jobs, paused);
   const status = jobs[0] ?? null;
-  const statusDetail = status ? [status.detail, paused ? '' : timeLeft.get(status.id)].filter(Boolean).join(' · ') : '';
+  const statusDetail = status?.detail ?? '';
   const pillRef = useRef<HTMLButtonElement>(null);
   const marked = useStore(useShallow((s) => ({ count: s.stats.delete, size: s.stats.deleteSize })));
   const [openMenu, setOpenMenu] = useState<MenuLabel | null>(null);
