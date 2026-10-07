@@ -1,11 +1,13 @@
 import { calcThumbGrid } from '../utils';
+import { VIDEO_CARD_HEIGHT, VIDEO_CARD_WIDTH } from './cardSize';
 
 export const DUPLICATE_GROUP_GAP = 12;
 export const DUPLICATE_GROUP_HEADER_HEIGHT = 64;
 export const DUPLICATE_VIDEO_ROW_HEIGHT = 79;
 export const DUPLICATE_GALLERY_ROW_PADDING = 12;
+/** Narrow windows may shrink cards below the grid size, down to this. */
 export const DUPLICATE_GALLERY_CARD_MIN_WIDTH = 232;
-export const DUPLICATE_GALLERY_CARD_HEIGHT = 336;
+export const DUPLICATE_GALLERY_CARD_HEIGHT = VIDEO_CARD_HEIGHT;
 export const DUPLICATE_GALLERY_CARD_GAP = 12;
 export const DUPLICATE_GALLERY_ROW_HEIGHT =
   DUPLICATE_GALLERY_CARD_HEIGHT + DUPLICATE_GALLERY_ROW_PADDING * 2 + 1;
@@ -113,7 +115,7 @@ export function computeDuplicateGalleryLayout(
     1,
     Math.floor(
       (usableWidth + DUPLICATE_GALLERY_CARD_GAP) /
-        (DUPLICATE_GALLERY_CARD_MIN_WIDTH + DUPLICATE_GALLERY_CARD_GAP)
+        (VIDEO_CARD_WIDTH + DUPLICATE_GALLERY_CARD_GAP)
     )
   );
   const cardWidth = Math.max(

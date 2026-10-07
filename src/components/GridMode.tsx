@@ -23,10 +23,9 @@ import {
   buildFolderHeaderMenu,
   buildLibraryGridVideoMenu,
 } from './contextMenuBuilders';
+import { VIDEO_CARD_HEIGHT as BASE_CARD_HEIGHT, VIDEO_CARD_WIDTH as BASE_CARD_WIDTH } from './cardSize';
 import './GridMode.css';
 
-const BASE_CARD_WIDTH = 450;
-const BASE_CARD_HEIGHT = 360;
 const GAP = 12;
 const HEADER_HEIGHT = 44;
 

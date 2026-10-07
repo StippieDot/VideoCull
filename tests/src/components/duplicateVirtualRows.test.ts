@@ -39,8 +39,8 @@ test('rows mode preserves group and member order', () => {
   expect(rows[6]?.isLastInGroup).toBe(true);
 });
 
-test('gallery mode packs card rows by computed column count', () => {
-  const layout = computeDuplicateGalleryLayout(720);
+test('gallery mode packs card rows by computed column count, with cards the size of the grid at 100%', () => {
+  const layout = computeDuplicateGalleryLayout(960);
   const rows = buildDuplicateGalleryRows(groupViews, layout);
 
   expect(layout.columnCount).toBe(2);
