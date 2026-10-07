@@ -15,7 +15,6 @@ import StoreTransition from './components/StoreTransition';
 import FinishActionCountdown from './components/FinishActionCountdown';
 import TitleBar from './components/TitleBar';
 import CommandPalette from './components/CommandPalette';
-import FolderSearch from './components/FolderSearch';
 import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
@@ -162,8 +161,9 @@ export default function App() {
   });
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
-  const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [showFolderSearch, setShowFolderSearch] = useState(false);
+  /** The text the quick-open palette starts with, or null while it is closed. */
+  const [paletteQuery, setPaletteQuery] = useState<string | null>(null);
+  const closePalette = useCallback(() => setPaletteQuery(null), []);
   const [showDocumentation, setShowDocumentation] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -837,8 +837,8 @@ export default function App() {
         case 'find-duplicates': { void menuHandlersRef.current.findDuplicates(); break; }
         case 'toggle-theme': { toggleTheme(); break; }
         case 'show-shortcuts': { setShowShortcutsHelp(true); break; }
-        case 'open-command-palette': { setShowCommandPalette(true); break; }
-        case 'go-to-folder': { setShowFolderSearch(true); break; }
+        case 'open-command-palette': { setPaletteQuery(''); break; }
+        case 'go-to-folder': { setPaletteQuery('/'); break; }
         case 'open-about': { openSettings('about'); break; }
         case 'check-updates': { openSettings('updates'); break; }
         case 'open-settings': { openSettings('interface'); break; }
@@ -1222,18 +1222,17 @@ export default function App() {
       {window.electronAPI && (
         <TitleBar
           isPrivate={isPrivate}
-          onOpenCommandPalette={() => setShowCommandPalette(true)}
+          onOpenCommandPalette={() => setPaletteQuery('')}
           locationActions={{
             reviewFolder: handleReviewFolder,
             regenerateThumbnails: (videos) => void handleRegenerateThumbnails(videos),
             findDuplicates: () => void handleFindDuplicates(),
             openDuplicateSettings: () => openSettings('duplicates'),
-            openFolderSearch: () => setShowFolderSearch(true),
+            openFolderSearch: () => setPaletteQuery('/'),
           }}
         />
       )}
-      {showCommandPalette && !isPrivate && <CommandPalette onClose={() => setShowCommandPalette(false)} />}
-      {showFolderSearch && !isPrivate && <FolderSearch onClose={() => setShowFolderSearch(false)} />}
+      {paletteQuery !== null && !isPrivate && <CommandPalette key={paletteQuery} initialQuery={paletteQuery} onClose={closePalette} />}
       <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
       <StoreTransition />
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}

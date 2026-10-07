@@ -22,7 +22,7 @@ VideoCull is built around keyboard-first review. The web tables show the default
 | `Ctrl + P` | Play the open or selected video externally |
 | `Ctrl + +` / `Ctrl + =` / `Ctrl + -` | Larger or smaller cards |
 | `F11` | Toggle fullscreen |
-| `Ctrl + K` | Search and run any menu command |
+| `Ctrl + K` | Find a command, folder or video |
 | `Ctrl + G` | Go to a folder in the grid |
 | `Ctrl + L` | Focus the path in the title bar |
 | `Alt + Left` / `Alt + Right` | Previous or next folder filter |
@@ -55,7 +55,7 @@ VideoCull is built around keyboard-first review. The web tables show the default
 
 ## Menu bar
 
-Every command is also in the menu bar at the top of the window, and **Ctrl + K** (or the search icon in the title bar) finds and runs any of them by name. Hold `Alt` to see each menu's access key, then press it to open the menu: `Alt + F` File, `Alt + A` Actions, `Alt + V` View, `Alt + D` Video, `Alt + H` Help. Commands that cannot do anything right now, such as **Rescan** without an open folder or **Reveal in Explorer** without an open or selected video, are greyed out.
+Every command is also in the menu bar at the top of the window, and **Ctrl + K** (or the search icon in the title bar) finds and runs any of them by name, along with folders and videos (see below). Hold `Alt` to see each menu's access key, then press it to open the menu: `Alt + F` File, `Alt + A` Actions, `Alt + V` View, `Alt + D` Video, `Alt + H` Help. Commands that cannot do anything right now, such as **Rescan** without an open folder or **Reveal in Explorer** without an open or selected video, are greyed out.
 
 | Menu | Commands |
 | --- | --- |
@@ -75,7 +75,12 @@ In the grid, select a folder in the path to show only that folder and everything
 
 The actions for a part of the path open from the `▾` after the last part, by right-clicking any part, or with `Down`, the Menu key or `Shift + F10` on a focused part. `Ctrl + L` focuses the path.
 
-**Go to Folder** (`Ctrl + G`) scrolls to any folder shown in the grid: type any part of its path. Before you type, it lists the folders you jumped to recently, then the ones with the most left to review.
+**Ctrl + K** opens one search for commands, folders and videos, showing the best few of each; every typed word must appear. Start with `>` to list only commands, `/` for folders or `@` for videos. **Go to Folder** (`Ctrl + G`) opens the same search with `/` already typed: before you type, it lists the folders you picked recently, then the ones with the most left to review.
+
+- **Command:** `Enter` runs it.
+- **Folder:** `Enter` scrolls the grid to it; `Shift + Enter` filters the grid to it.
+- **Video:** `Enter` selects it and scrolls the grid to it; `Ctrl + Enter` opens it in Review.
+- **Search videos for "…"**, the last row, puts the text in the grid's search box (`Ctrl + F`), which keeps the grid narrowed as you go on.
 
 In these menus and in right-click menus, the arrow keys move through the items, a letter jumps to the next item starting with it, and `Esc` closes the menu. In the path menus, `Left` and `Right` move to the neighbouring part of the path.
 

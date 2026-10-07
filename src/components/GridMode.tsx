@@ -798,6 +798,16 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     persistedGridScroll = { directory, offset: getRowTop(rowIndex) };
   }, [directory, getRowTop, gridActive, gridFolderJump, headerIndexes, rows, videosById]);
 
+  const gridVideoJump = useStore((s) => s.gridVideoJump);
+  const handledVideoJumpRef = useRef(0);
+  useEffect(() => {
+    if (!gridVideoJump || handledVideoJumpRef.current === gridVideoJump.id || !gridActive) return;
+    const rowIndex = rows.findIndex((row) => row.type !== 'header' && row.videoIds.includes(gridVideoJump.videoId));
+    if (rowIndex < 0) return;
+    handledVideoJumpRef.current = gridVideoJump.id;
+    listRef.current?.scrollToRow({ index: rowIndex, align: 'center' });
+  }, [gridActive, gridVideoJump, rows]);
+
   const handleNextFolder = useCallback(() => {
     if (headerIndexes.length === 0) return;
     const currentStart = visibleRowsRef.current.startIndex;

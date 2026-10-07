@@ -154,7 +154,12 @@ function useFilterHistory() {
     history.current = { back: [], forward: [] };
   }, [directories]);
   return useMemo(() => {
-    const setFilter = (filter: FolderFilter | null) => useStore.getState().setFolderFilter(filter);
+    const setFilter = (filter: FolderFilter | null) => {
+      const state = useStore.getState();
+      state.setFolderFilter(filter);
+      // Otherwise the grid keeps the old scroll offset and lands somewhere inside the new folder.
+      if (filter) state.requestGridFolderJump(filter.path);
+    };
     return {
       navigate: (filter: FolderFilter | null) => {
         const current = useStore.getState().folderFilter;

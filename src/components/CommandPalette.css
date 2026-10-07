@@ -96,3 +96,21 @@
   color: var(--text-tertiary);
   font-size: 13px;
 }
+
+.command-palette-section {
+  padding: 8px 10px 4px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.command-palette-results > li:first-child .command-palette-section {
+  padding-top: 2px;
+}
+
+.command-palette-footer {
+  padding: 7px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-tertiary);
+  font-size: 11px;
+}

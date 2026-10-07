@@ -75,7 +75,7 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
   { keys: ['Ctrl+-'],          description: 'Smaller cards',         group: 'Global' },
   { keys: ['Ctrl+E'],          description: 'Reveal in Explorer',    group: 'Global' },
   { keys: ['Ctrl+P'],          description: 'Play externally',      group: 'Global' },
-  { keys: ['Ctrl+K'],          description: 'Search commands',       group: 'Global' },
+  { keys: ['Ctrl+K'],          description: 'Find a command, folder or video', group: 'Global' },
   { keys: ['Ctrl+G'],          description: 'Go to folder',          group: 'Global' },
   { keys: ['Ctrl+L'],          description: 'Focus the path',        group: 'Global' },
   { keys: ['Alt+Left', 'Alt+Right'], description: 'Previous / next folder filter', group: 'Global' },

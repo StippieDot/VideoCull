@@ -881,6 +881,7 @@ const useStore = create<VideoStore>((set, get) => ({
   activeReviewVideoPath: null,
   gridTopFolder: null,
   gridFolderJump: null,
+  gridVideoJump: null,
   duplicateGroupsMode: false,
   duplicateGroups: [],
   duplicateProgress: null,
@@ -1381,6 +1382,11 @@ const useStore = create<VideoStore>((set, get) => ({
   },
   requestGridFolderJump: (folderPath: string) => set((state) => ({
     gridFolderJump: { folderPath, id: (state.gridFolderJump?.id ?? 0) + 1 },
+  })),
+  requestGridVideoJump: (videoId: string) => set((state) => ({
+    gridVideoJump: { videoId, id: (state.gridVideoJump?.id ?? 0) + 1 },
+    gridSelectionIds: new Set([videoId]),
+    gridSelectionAnchorId: videoId,
   })),
 
   setGroupByFolder: (groupByFolder: boolean) => {

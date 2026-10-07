@@ -139,7 +139,7 @@ Generate an HTML report from Settings or the app menu, scoped to all loaded vide
 | `Ctrl + Backspace` | Send marked videos to Recycle Bin |
 | `Ctrl + E` | Reveal in Explorer |
 | `Ctrl + +` / `Ctrl + -` | Larger or smaller cards |
-| `Ctrl + K` | Search and run any menu command |
+| `Ctrl + K` | Find a command, folder or video |
 | `F11` | Toggle fullscreen |
 | `?` | Keyboard shortcuts reference |
 | `Shift + Esc` | Toggle privacy screen |

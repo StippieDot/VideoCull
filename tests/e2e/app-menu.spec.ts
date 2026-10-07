@@ -128,9 +128,11 @@ test('Ctrl+K opens the command palette, which runs menu commands', async () => {
     app = await launchElectronApp(userDataDir);
     const page = await openSeededRecentFolder(app);
     await pressWithControl(app, 'k');
-    const input = page.getByPlaceholder('Search commands');
+    const input = page.getByPlaceholder('Search commands, folders and videos');
     await expect(input).toBeFocused();
     await input.fill('close session');
+    // The commands arrive from the main process; before that only the grid search row is listed.
+    await expect(page.getByRole('option', { name: /Close Session/ })).toBeVisible();
     await page.keyboard.press('Enter');
     await expect(input).toHaveCount(0);
     await expect.poll(() => menuItem(app!, ['File', 'Rescan'])).toMatchObject({ enabled: false });

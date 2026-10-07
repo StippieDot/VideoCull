@@ -400,6 +400,7 @@ export interface VideoStore {
   /** Folder of the grid's topmost visible folder header, for the title bar; null without headers. */
   gridTopFolder: string | null;
   gridFolderJump: { folderPath: string; id: number } | null;
+  gridVideoJump: { videoId: string; id: number } | null;
   duplicateGroupsMode: boolean;
   duplicateGroups: DuplicateGroup[];
   duplicateProgress: DuplicateProgress | null;
@@ -451,6 +452,8 @@ export interface VideoStore {
   setGroupByFolder: (val: boolean) => void;
   setGridTopFolder: (folderPath: string | null) => void;
   requestGridFolderJump: (folderPath: string) => void;
+  /** Selects the video and scrolls the grid to it. */
+  requestGridVideoJump: (videoId: string) => void;
   setFolderSortBy: (sortBy: FolderSortField) => void;
   setFolderSortOrder: (order: SortOrder) => void;
   setIsScanning: (val: boolean) => void;
