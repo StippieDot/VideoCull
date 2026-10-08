@@ -310,7 +310,11 @@ function revealFolderItem(state, send, label) {
   if (state.folders.length > 1) {
     return {
       label,
-      submenu: state.folders.map((folder) => ({ label: escapeMenuLabel(folder), click: () => send(`reveal-folder:${folder}`) })),
+      submenu: state.folders.map((folder) => ({
+        id: `File > ${label} > ${folder}`,
+        label: escapeMenuLabel(folder),
+        click: () => send(`reveal-folder:${folder}`),
+      })),
     };
   }
   return { label, enabled: state.folders.length === 1, click: () => send(`reveal-folder:${state.folders[0]}`) };

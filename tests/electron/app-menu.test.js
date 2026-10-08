@@ -163,6 +163,17 @@ test('recent folders whose names differ only by a number keep separate ids', () 
   assert.deepEqual(recent.map((entry) => entry.id), ['File > Open Recent > D:\\Clips', 'File > Open Recent > D:\\Clips (2)']);
 });
 
+test('reveal commands keep distinct folder ids and target the matching folder', () => {
+  const folders = ['D:\\Clips', 'D:\\Clips (2)'];
+  const sent = [];
+  const template = buildMenuTemplate({ ...EMPTY_RENDERER_MENU_STATE, folders }, { ...actions, send: (action) => sent.push(action) });
+  const reveal = item(template, 'File', 'Reveal Folder in Explorer').submenu;
+  const ids = folders.map((folder) => `File > Reveal Folder in Explorer > ${folder}`);
+  assert.deepEqual(reveal.map((entry) => entry.id), ids);
+  ids.forEach((id) => reveal.find((entry) => entry.id === id).click());
+  assert.deepEqual(sent, folders.map((folder) => `reveal-folder:${folder}`));
+});
+
 test('the hidden Ctrl+= alias of Larger Cards follows it when no folder is open', () => {
   const larger = (template) => template.find((entry) => entry.label === 'View').submenu.filter((entry) => entry.label === 'Larger Cards');
   assert.deepEqual(larger(menu()).map((entry) => entry.enabled), [false, false]);
