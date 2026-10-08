@@ -92,11 +92,22 @@ test('sorting, grouping, filters and mute reflect the grid state', () => {
 });
 
 test('behind the privacy screen only the privacy screen, full screen and exit stay usable', () => {
-  const template = menu({ hasSession: true, videoCount: 3, isPrivate: true });
+  const folders = ['D:\\Private Clips', 'E:\\Private Trips'];
+  const recentFolders = ['P:\\Private Recent'];
+  const template = menu({ hasSession: true, videoCount: 3, isPrivate: true, folders, recentFolders });
   assert.equal(item(template, 'File', 'Open Folder...').enabled, false);
   assert.equal(item(template, 'File', 'quit').enabled, undefined);
   assert.equal(item(template, 'View', 'Privacy Screen').enabled, undefined);
   assert.equal(item(template, 'View', 'Privacy Screen').checked, true);
+  const recent = item(template, 'File', 'Open Recent');
+  assert.equal(recent.enabled, false);
+  assert.deepEqual(recent.submenu.map((entry) => entry.label), ['No recent folders']);
+  const reveal = item(template, 'File', 'Reveal Folder in Explorer');
+  assert.equal(reveal.enabled, false);
+  assert.equal(reveal.submenu, undefined);
+  const visible = menu({ hasSession: true, folders, recentFolders });
+  assert.deepEqual(item(visible, 'File', 'Open Recent').submenu.map((entry) => entry.label), recentFolders);
+  assert.deepEqual(item(visible, 'File', 'Reveal Folder in Explorer').submenu.map((entry) => entry.label), folders);
 });
 
 test('recent folders become menu items, with & shown literally', () => {

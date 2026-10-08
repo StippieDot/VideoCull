@@ -134,6 +134,8 @@ function normalizeRendererMenuState(input) {
  */
 function buildMenuTemplate(state, actions) {
   const { send } = actions;
+  // Disabled submenus still display their labels, so private paths must be omitted entirely.
+  if (state.isPrivate) state = { ...state, folders: [], recentFolders: [] };
 
   /** @type {Electron.MenuItemConstructorOptions[]} */
   const template = [
