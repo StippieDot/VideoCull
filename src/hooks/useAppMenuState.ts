@@ -37,6 +37,7 @@ export default function useAppMenuState(isPrivate: boolean) {
       canUndo,
       canExport: Boolean(directory && videoCount > 0 && !isScanning),
       canFindDuplicates: duplicatesEnabled && videoCount >= 2 && !isFindingDuplicates && !metadataRunning,
+      canPauseProcessing: isGenerating || isFindingDuplicates,
       activeVideoCount,
       canRegenerateThumbnails: !isScanning && !isGenerating,
       sortBy,

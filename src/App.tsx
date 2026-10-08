@@ -150,7 +150,7 @@ export default function App() {
   const showDocumentationRef = useRef(false);
   const dragDepthRef = useRef(0);
   // The folder filter from before Review This Folder, restored when Review closes.
-  const folderReviewRestoreRef = useRef<{ previous: FolderFilter | null } | null>(null);
+  const folderReviewRestoreRef = useRef<{ previous: FolderFilter | null; applied: FolderFilter } | null>(null);
   const settingsSaveQueueRef = useRef(Promise.resolve());
   const previousReviewModeRef = useRef(reviewMode);
   const autoScanStateRef = useRef({
@@ -1057,10 +1057,12 @@ export default function App() {
 
   useEffect(() => {
     if (!reviewMode && folderReviewRestoreRef.current) {
-      const { previous } = folderReviewRestoreRef.current;
+      const { previous, applied } = folderReviewRestoreRef.current;
       folderReviewRestoreRef.current = null;
+      const { directories: loaded, folderFilter } = useStore.getState();
+      // An explicit filter choice made while leaving Review takes precedence over restoration.
+      if (folderFilter !== applied) return;
       // Opening another folder also ends Review; the old session's filter would hide all of the new one.
-      const { directories: loaded } = useStore.getState();
       if (previous && !loaded.some((root) => isFolderInside(previous.path, root))) return;
       setFolderFilter(previous);
     }
@@ -1189,8 +1191,12 @@ export default function App() {
   }, []);
 
   const handleReviewFolder = useCallback((folderPath: string) => {
-    folderReviewRestoreRef.current ??= { previous: useStore.getState().folderFilter };
-    setFolderFilter({ path: folderPath, includeSubfolders: false });
+    const applied = { path: folderPath, includeSubfolders: false };
+    folderReviewRestoreRef.current = {
+      previous: folderReviewRestoreRef.current ? folderReviewRestoreRef.current.previous : useStore.getState().folderFilter,
+      applied,
+    };
+    setFolderFilter(applied);
     useStore.getState().setReviewIndex(0);
     useStore.getState().setReviewMode(true);
   }, [setFolderFilter]);

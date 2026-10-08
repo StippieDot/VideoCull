@@ -56,6 +56,24 @@ describe('TitleBar', () => {
     });
     render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
     expect(screen.getByRole('status').textContent).toBe('Comparing pHashes52%');
+    expect(screen.getByRole('button', { name: 'Pause processing' })).toBeTruthy();
+  });
+
+  test('scan-only work has no pause controls or paused label, but keeps the finish actions', async () => {
+    const api = installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
+    useStore.setState({ isGenerating: false, isScanning: true, scanProgress: { found: 40, currentFile: '' } });
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
+
+    await waitFor(() => expect(api.getProcessingPauseState).toHaveBeenCalled());
+    expect(screen.queryByText('Paused')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Pause|Resume) processing$/ })).toBeNull();
+    act(() => screen.getByRole('button', { name: /Scanning/ }).click());
+    const panel = screen.getByRole('menu', { name: 'Processing' });
+    expect(panel.textContent).toContain('40 found');
+    expect(panel.textContent).not.toContain('Paused');
+    expect(screen.queryByRole('menuitem', { name: /^(Pause|Resume) Processing$/ })).toBeNull();
+    expect(screen.getByRole('menuitemradio', { name: 'Sleep' })).toBeTruthy();
+    expect(api.setProcessingPaused).not.toHaveBeenCalled();
   });
 
   test('offers resume while processing is paused', async () => {

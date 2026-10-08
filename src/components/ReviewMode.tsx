@@ -191,15 +191,15 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const shortcutsBlocked = keyboardBlocked || isSettingsModalOpen || contextMenu !== null;
 
-  const scopeIdsRef = useRef<string[] | null>(null);
-  if (scopeIdsRef.current === null) {
-    scopeIdsRef.current = reviewScopeIds ?? useStore.getState().filteredVideos.map((item) => item.id);
-  }
+  // Keep the filtered snapshot until an explicit action starts a different review scope.
+  const scopeIds = useMemo(() => (
+    reviewScopeIds ?? useStore.getState().filteredVideos.map((item) => item.id)
+  ), [reviewScopeIds]);
 
   const videosById = useMemo(() => new Map(allVideos.map((item) => [item.id, item])), [allVideos]);
   const reviewScope = useMemo(() => (
-    buildReviewScope(videosById, scopeIdsRef.current ?? [])
-  ), [videosById]);
+    buildReviewScope(videosById, scopeIds)
+  ), [videosById, scopeIds]);
   const { reviewVideos, pendingIndexes, decidedCount, remainingCount, progressPct, summary } = reviewScope;
 
   const scopeLabel = useMemo(() => {

@@ -74,6 +74,7 @@ describe('folders and videos', () => {
     makeVideo('b', { filename: 'old.mp4', path: 'D:\\Media\\Clips\\old.mp4' }, 'D:\\Media\\Clips'),
   ];
   beforeEach(() => {
+    useStore.setState(useStore.getInitialState(), true);
     (window as unknown as { electronAPI: unknown }).electronAPI = {
       getCommands: vi.fn().mockResolvedValue(COMMANDS),
       runCommand: vi.fn(),
@@ -96,6 +97,47 @@ describe('folders and videos', () => {
     render(<CommandPalette initialQuery="/clip" onClose={vi.fn()} />);
     fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter', shiftKey: true });
     expect(useStore.getState().folderFilter).toEqual({ path: 'D:\\Media\\Clips', includeSubfolders: true });
+  });
+
+  test('folder search includes siblings and clears a blocking folder filter while preserving other filters', async () => {
+    const kept = makeVideo('kept', { status: 'keep' }, 'D:\\Media\\Hidden');
+    const state = useStore.getState();
+    state.setVideos([...videos, kept]);
+    state.setStatusFilter('pending');
+    state.setFolderFilter({ path: 'D:\\Media\\Trips', includeSubfolders: true });
+    render(<CommandPalette initialQuery="/" onClose={vi.fn()} />);
+
+    expect(screen.getByRole('option', { name: /^Clips/ })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /^Hidden/ })).toBeNull();
+    const input = screen.getByRole('combobox');
+    fireEvent.change(input, { target: { value: '/clip' } });
+    await act(async () => fireEvent.keyDown(input, { key: 'Enter' }));
+    expect(useStore.getState().folderFilter).toBeNull();
+    expect(useStore.getState().statusFilter).toBe('pending');
+    expect(useStore.getState().filteredVideos).toHaveLength(2);
+    expect(useStore.getState().gridFolderJump?.folderPath).toBe('D:\\Media\\Clips');
+  });
+
+  test('going to a visible folder preserves the active folder filter', async () => {
+    const filter = { path: 'D:\\Media\\Trips', includeSubfolders: false };
+    useStore.getState().setFolderFilter(filter);
+    render(<CommandPalette initialQuery="/trip" onClose={vi.fn()} />);
+
+    await act(async () => fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' }));
+    expect(useStore.getState().folderFilter).toBe(filter);
+    expect(useStore.getState().gridFolderJump?.folderPath).toBe(filter.path);
+  });
+
+  test.each(videos)('Ctrl+Enter on $filename replaces a duplicate Review scope with the matching library scope', async (video) => {
+    useStore.setState({ duplicateGroupsMode: true, reviewScopeIds: ['b'], reviewIndex: 0 });
+    render(<CommandPalette initialQuery={`@${video.filename}`} onClose={vi.fn()} />);
+
+    await act(async () => fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter', ctrlKey: true }));
+    expect(useStore.getState().duplicateGroupsMode).toBe(false);
+    expect(useStore.getState().reviewMode).toBe(true);
+    expect(useStore.getState().reviewScopeIds).toEqual(['a', 'b']);
+    expect(useStore.getState().reviewIndex).toBe(videos.indexOf(video));
+    expect(useStore.getState().activeReviewVideoPath).toBe(video.path);
   });
 
   test('without a prefix it lists each kind; a video is selected and scrolled to, or opened in Review with Ctrl+Enter', async () => {

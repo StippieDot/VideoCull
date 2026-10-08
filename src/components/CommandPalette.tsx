@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Search } from 'lucide-react';
-import useStore from '../store';
+import useStore, { videosOutsideFolderFilter } from '../store';
 import type { AppCommand, Video } from '../types';
-import { getFolderLabel } from '../utils';
+import { getFolderLabel, isFolderInside } from '../utils';
 import { listGridFolders, type FolderEntry } from './locationMenus';
 import './CommandPalette.css';
 
@@ -102,7 +102,7 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
   const { folders, videos, directories } = useMemo(() => {
     const state = useStore.getState();
     return {
-      folders: listGridFolders(state.filteredVideos, state.directories),
+      folders: listGridFolders(videosOutsideFolderFilter(state), state.directories),
       videos: state.filteredVideos,
       directories: state.directories,
     };
@@ -160,6 +160,9 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
             leaveToGrid();
             const state = useStore.getState();
             if (shift) state.setFolderFilter({ path: folder.path, includeSubfolders: true });
+            else if (state.folderFilter && !state.filteredVideos.some((video) => isFolderInside(video.path, folder.path))) {
+              state.setFolderFilter(null);
+            }
             state.requestGridFolderJump(folder.path);
           },
         });
@@ -182,10 +185,7 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
               return;
             }
             if (state.duplicateGroupsMode) state.setDuplicateGroupsMode(false);
-            const index = state.filteredVideos.findIndex((entry) => entry.id === video.id);
-            if (index < 0) return;
-            state.setReviewIndex(index);
-            state.setReviewMode(true);
+            state.enterReviewAndPlay(video.id);
           },
         });
       }

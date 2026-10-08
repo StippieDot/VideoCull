@@ -141,7 +141,8 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
   const jobs = useMemo(() => listProcessingJobs(processingInputs), [processingInputs]);
   const power = usePowerState();
   const pauseStatus = useProcessingPauseState().status;
-  const paused = pauseStatus !== 'running';
+  const canPause = processingInputs.isGenerating || processingInputs.isFindingDuplicates;
+  const paused = canPause && pauseStatus !== 'running';
   const timeLeft = useTimeLeft(jobs, paused);
   useTaskbarProgress(jobs, paused);
   const status = jobs[0] ?? null;
@@ -175,13 +176,13 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
   }, []);
   const FinishGlyph = FINISH_ACTION_GLYPHS[power.finishAction];
   const panelItems: AppMenuItem[] = [
-    {
+    ...(canPause ? [{
       key: 'pause',
       label: paused ? 'Resume Processing' : 'Pause Processing',
       icon: paused ? Play : Pause,
       disabled: pauseStatus === 'pausing',
       onSelect: () => void window.electronAPI?.setProcessingPaused(!paused),
-    },
+    }] : []),
     ...(power.processing ? [
       { type: 'separator' as const, key: 'sep-finish' },
       { type: 'heading' as const, key: 'finish', label: 'When processing finishes' },
@@ -294,7 +295,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
                 <FinishGlyph size={12} className="title-bar-status-finish" aria-label={power.finishAction === 'sleep' ? 'Then sleep' : 'Then shut down'} />
               )}
             </button>
-            <button
+            {canPause && <button
               type="button"
               className={`title-bar-icon-button${paused ? ' paused' : ''}`}
               title={pauseStatus === 'running' ? 'Pause processing' : pauseStatus === 'pausing' ? 'Pausing...' : 'Resume processing'}
@@ -304,7 +305,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
               onClick={() => void window.electronAPI?.setProcessingPaused(pauseStatus === 'running')}
             >
               {pauseStatus === 'running' ? <Pause size={14} /> : <Play size={14} />}
-            </button>
+            </button>}
           </div>
         )}
         {marked.count > 0 && !isPrivate && (

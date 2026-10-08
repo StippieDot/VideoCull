@@ -94,6 +94,7 @@ export interface AppMenuState {
   canUndo: boolean;
   canExport: boolean;
   canFindDuplicates: boolean;
+  canPauseProcessing: boolean;
   /** Videos the Video menu acts on: the one open in Review, or the videos selected in the grid. */
   activeVideoCount: number;
   canRegenerateThumbnails: boolean;

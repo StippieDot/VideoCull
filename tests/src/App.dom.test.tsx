@@ -184,6 +184,7 @@ function createElectronApiMock() {
     saveCacheAtomic: vi.fn().mockResolvedValue(true),
     saveReviewState: vi.fn().mockResolvedValue(true),
     setMenuState: vi.fn(),
+    getCommands: vi.fn().mockResolvedValue([]),
     setTaskbarProgress: vi.fn(),
     getPathForFile: vi.fn(),
     selectDirectory: vi.fn().mockResolvedValue(null),
@@ -388,6 +389,36 @@ describe('App renderer behavior', () => {
     act(() => getStoreApi().getState().setDirectory('E:\\Other'));
     await waitFor(() => expect(getStoreApi().getState().reviewMode).toBe(false));
     expect(getStoreApi().getState().folderFilter).toBeNull();
+  });
+
+  test.each([null, { path: 'D:\\Media', includeSubfolders: true }])('a palette folder filter survives leaving Review This Folder with previous filter %j', async (previous) => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const videos = [makeVideo('a', {}, 'D:\\Media\\Trips'), makeVideo('b', {}, 'D:\\Media\\Clips')];
+    electron.api.scanDirectory.mockResolvedValue(videos);
+    getStoreApi().setState({
+      directory: 'D:\\Media', directories: ['D:\\Media'], videos, filteredVideos: videos, folderFilter: previous,
+    });
+    render(<App />);
+    await waitFor(() => expect(getStoreApi().getState().isScanning).toBe(false));
+    fireEvent.click(screen.getByTestId('grid-review-folder'));
+    await electron.emitMenuAction('go-to-folder');
+
+    const input = screen.getByRole('combobox');
+    fireEvent.change(input, { target: { value: '/clip' } });
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+    expect(getStoreApi().getState().reviewMode).toBe(false);
+    expect(getStoreApi().getState().folderFilter).toEqual({ path: 'D:\\Media\\Clips', includeSubfolders: true });
+    expect(getStoreApi().getState().filteredVideos.map((video) => video.id)).toEqual(['b']);
+  });
+
+  test.each([
+    { isScanning: true, isGenerating: false, isFindingDuplicates: false, expected: false },
+    { isScanning: true, isGenerating: true, isFindingDuplicates: false, expected: true },
+    { isScanning: false, isGenerating: false, isFindingDuplicates: true, expected: true },
+  ])('reports native menu pause availability for $isScanning/$isGenerating/$isFindingDuplicates', ({ expected, ...processing }) => {
+    getStoreApi().setState(processing);
+    render(<App />);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ canPauseProcessing: expected }));
   });
 
   test('reflects duplicate-progress events in the sidebar state', async () => {

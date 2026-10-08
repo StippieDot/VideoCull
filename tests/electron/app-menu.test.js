@@ -69,6 +69,15 @@ test('the Video menu acts on one video, or copies and regenerates for a selectio
   assert.equal(item(busy, 'Video', 'Regenerate Thumbnails').enabled, false);
 });
 
+test('scan-only processing allows finish actions but cannot be paused', () => {
+  const scan = menu({ processing: true });
+  assert.equal(item(scan, 'Actions', 'Pause Processing').enabled, false);
+  assert.equal(item(scan, 'Actions', 'When Processing Finishes').enabled, true);
+  assert.equal(item(menu({ processing: true, canPauseProcessing: true }), 'Actions', 'Pause Processing').enabled, true);
+  assert.equal(normalizeRendererMenuState({ canPauseProcessing: 'yes' }).canPauseProcessing, false);
+  assert.equal(normalizeRendererMenuState({ canPauseProcessing: true }).canPauseProcessing, true);
+});
+
 test('sorting, grouping, filters and mute reflect the grid state', () => {
   const template = menu({
     hasSession: true, videoCount: 3, sortOptions: ['name', 'size'], sortBy: 'size', sortOrder: 'desc',
