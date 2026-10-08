@@ -94,6 +94,12 @@ test('the menu follows the session and its new items act on it', async () => {
 
   try {
     app = await launchElectronApp(userDataDir);
+    // The title bar draws the menus; Windows must not add its own menu bar under it.
+    const nativeMenuBar = () => app!.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      return { visible: win.isMenuBarVisible(), contentTop: win.getContentBounds().y - win.getBounds().y };
+    });
+    await expect.poll(nativeMenuBar).toEqual({ visible: false, contentTop: 0 });
     expect(await menuItem(app, ['File', 'Rescan'])).toMatchObject({ enabled: false });
     const page = await openSeededRecentFolder(app);
     await expect.poll(() => menuItem(app!, ['File', 'Rescan'])).toMatchObject({ enabled: true });

@@ -222,7 +222,7 @@ function buildMenuTemplate(state, actions) {
         { label: 'Clear All Filters', enabled: state.filtersActive, click: () => send('clear-filters') },
         { type: 'separator' },
         { label: 'Larger Cards', accelerator: 'CmdOrCtrl+Plus', enabled: state.hasSession, click: () => send('zoom-in') },
-        { label: 'Larger Cards', accelerator: 'CmdOrCtrl+=', visible: false, click: () => send('zoom-in') },
+        { label: 'Larger Cards', accelerator: 'CmdOrCtrl+=', visible: false, enabled: state.hasSession, click: () => send('zoom-in') },
         { label: 'Smaller Cards', accelerator: 'CmdOrCtrl+-', enabled: state.hasSession, click: () => send('zoom-out') },
         { type: 'separator' },
         {
@@ -317,7 +317,12 @@ function openRecentItem(state, send) {
     label: 'Open Recent',
     enabled: state.recentFolders.length > 0,
     submenu: state.recentFolders.length > 0
-      ? state.recentFolders.map((folder) => ({ label: escapeMenuLabel(folder), click: () => send(`open-recent:${folder}`) }))
+      ? state.recentFolders.map((folder) => ({
+        // The full path: the id made from the label drops "(2)", which would merge "Clips (2)" into "Clips".
+        id: `File > Open Recent > ${folder}`,
+        label: escapeMenuLabel(folder),
+        click: () => send(`open-recent:${folder}`),
+      }))
       : [{ label: 'No recent folders', enabled: false }],
   };
 }
@@ -336,7 +341,7 @@ function addCommandIds(items, parents) {
     const path = [...parents, item.label.replace(/\s*\(\d+\)/, '').replace(/\.+$/, '').replace(/&&/g, '&')];
     return {
       ...item,
-      id: path.join(' > '),
+      id: item.id ?? path.join(' > '),
       ...(Array.isArray(item.submenu) ? { submenu: addCommandIds(item.submenu, path) } : {}),
     };
   });

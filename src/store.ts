@@ -9,7 +9,7 @@ import type {
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, normalizeFeatureSettings, pruneRecentDirectories } from './keybind-defaults';
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
-import { detectVideoCompatibility, folderInsideTest } from './utils';
+import { detectVideoCompatibility, folderInsideTest, normalizeFolder } from './utils';
 import { getPreloadedColorTheme } from './theme';
 
 export const DUPLICATE_METHOD_NAMES: Record<DuplicateComparisonMode, string> = { phash: 'pHash', visual: 'Visual Similarity' };
@@ -100,9 +100,10 @@ function applyFilters(state: FilterInputs): Video[] {
 
   const { folderFilter } = state;
   if (folderFilter) {
+    const exactKey = normalizeFolder(folderFilter.path);
     const matches = folderFilter.includeSubfolders
       ? folderInsideTest(folderFilter.path)
-      : (folder: string) => folder === folderFilter.path;
+      : (folder: string) => normalizeFolder(folder) === exactKey;
     filtered = filtered.filter((v) => matches(getFolder(v)));
   }
 

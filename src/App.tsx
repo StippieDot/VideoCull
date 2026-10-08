@@ -19,7 +19,7 @@ import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
-import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
+import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside } from './utils';
 import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
@@ -1059,6 +1059,9 @@ export default function App() {
     if (!reviewMode && folderReviewRestoreRef.current) {
       const { previous } = folderReviewRestoreRef.current;
       folderReviewRestoreRef.current = null;
+      // Opening another folder also ends Review; the old session's filter would hide all of the new one.
+      const { directories: loaded } = useStore.getState();
+      if (previous && !loaded.some((root) => isFolderInside(previous.path, root))) return;
       setFolderFilter(previous);
     }
   }, [reviewMode, setFolderFilter]);

@@ -292,4 +292,10 @@ test('the title bar path filter keeps a folder and everything below it, not fold
   // Without subfolders, only the folder's own videos.
   const exact = __test__.computeFiltered(makeFilterState({ videos, folderFilter: { path: 'P:\\AI', includeSubfolders: false } }));
   expect(exact.map((video) => video.id)).toEqual(['top']);
+  // Letter case and a drive root's trailing separator do not matter either.
+  expect(__test__.computeFiltered(makeFilterState({ videos, folderFilter: { path: 'p:\\ai', includeSubfolders: false } }))
+    .map((video) => video.id)).toEqual(['top']);
+  const onRoot = [makeVideo('root', {}, 'P:'), ...videos];
+  expect(__test__.computeFiltered(makeFilterState({ videos: onRoot, folderFilter: { path: 'P:\\', includeSubfolders: false } }))
+    .map((video) => video.id)).toEqual(['root']);
 });

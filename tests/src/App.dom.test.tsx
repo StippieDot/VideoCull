@@ -373,6 +373,23 @@ describe('App renderer behavior', () => {
     await waitFor(() => expect(getStoreApi().getState().folderFilter).toEqual(earlier));
   });
 
+  test('opening another folder from Review This Folder does not carry the old folder filter into it', async () => {
+    getStoreApi().setState({
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+      videos: [makeVideo('a', {}, 'D:\\Media\\Trips')],
+      filteredVideos: [makeVideo('a', {}, 'D:\\Media\\Trips')],
+      folderFilter: { path: 'D:\\Media', includeSubfolders: true },
+    });
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('grid-review-folder'));
+    // Opening another folder ends Review and clears the filter.
+    act(() => getStoreApi().getState().setDirectory('E:\\Other'));
+    await waitFor(() => expect(getStoreApi().getState().reviewMode).toBe(false));
+    expect(getStoreApi().getState().folderFilter).toBeNull();
+  });
+
   test('reflects duplicate-progress events in the sidebar state', async () => {
     getStoreApi().setState({
       directory: 'D:\\Media',

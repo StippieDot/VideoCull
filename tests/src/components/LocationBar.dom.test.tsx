@@ -318,6 +318,14 @@ describe('LocationBar', () => {
     fireEvent.keyDown(groupInput, { key: 'Enter' });
     expect(useStore.getState().duplicateGroupJump?.index).toBe(39);
 
+    // A video played from a duplicate group is Review, with the duplicate list still open underneath.
+    act(() => useStore.setState({ reviewMode: true, activeReviewVideoPath: VIDEOS[1].path }));
+    rerender(<LocationBar sessionTitle="Media" appActions={appActions()} />);
+    expect(buttonNames()).toEqual(['D:', 'Media', 'Trips', 'b.mp4']);
+    expect(screen.queryByRole('button', { name: 'Next group' })).toBeNull();
+    act(() => useStore.setState({ reviewMode: false }));
+    rerender(<LocationBar sessionTitle="Media" appActions={appActions()} />);
+
     act(() => screen.getByRole('button', { name: 'Duplicates' }).click());
     expect(screen.getByRole('menu', { name: 'Duplicates' }).textContent).toContain('1 group · 2 videos · 100 B to reclaim');
     // The groups were found with pHash, so the menu offers the other method.

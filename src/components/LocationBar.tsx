@@ -88,7 +88,8 @@ function useLocation(): Location | null {
 
   return useMemo(() => {
     if (directories.length === 0) return null;
-    if (duplicateGroupsMode) {
+    // Playing a video from a duplicate group keeps the duplicate list open underneath, so Review goes first.
+    if (!(reviewMode && reviewPath) && duplicateGroupsMode) {
       return { segments: [{ kind: 'duplicates', label: 'Duplicates', path: 'duplicates' }], browsable: false, filter: null };
     }
     if (reviewMode && reviewPath) {

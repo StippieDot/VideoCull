@@ -138,6 +138,17 @@ test('menu items get ids from their path that survive changing counts', () => {
   ]);
 });
 
+test('recent folders whose names differ only by a number keep separate ids', () => {
+  const recent = item(menu({ recentFolders: ['D:\\Clips', 'D:\\Clips (2)'] }), 'File', 'Open Recent').submenu;
+  assert.deepEqual(recent.map((entry) => entry.id), ['File > Open Recent > D:\\Clips', 'File > Open Recent > D:\\Clips (2)']);
+});
+
+test('the hidden Ctrl+= alias of Larger Cards follows it when no folder is open', () => {
+  const larger = (template) => template.find((entry) => entry.label === 'View').submenu.filter((entry) => entry.label === 'Larger Cards');
+  assert.deepEqual(larger(menu()).map((entry) => entry.enabled), [false, false]);
+  assert.deepEqual(larger(menu({ hasSession: true })).map((entry) => entry.enabled), [true, true]);
+});
+
 test('the command palette lists runnable items, not submenus, separators, hidden items or itself', () => {
   // Shaped like Electron MenuItems.
   const toItems = (template) => template.map((entry) => ({
