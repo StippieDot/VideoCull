@@ -108,6 +108,7 @@ describe('LocationBar', () => {
       videos: VIDEOS,
       filteredVideos: VIDEOS,
       reviewMode: false,
+      reviewScopeIds: null,
       duplicateGroupsMode: false,
       gridFolderJump: null,
       gridTopFolder: null,
@@ -332,5 +333,16 @@ describe('LocationBar', () => {
     expect(screen.getByRole('menuitem', { name: 'Find Again with Visual Similarity' })).toBeTruthy();
     act(() => screen.getByRole('menuitem', { name: 'Back to Grid' }).click());
     expect(useStore.getState().duplicateGroupsMode).toBe(false);
+  });
+
+  test('folder narrowing stays available with a review scope, except when reviewing duplicate groups', () => {
+    useStore.setState({ reviewMode: true, reviewScopeIds: ['a', 'b'], activeReviewVideoPath: VIDEOS[1].path });
+    render(<LocationBar sessionTitle="Media" appActions={appActions()} />);
+    act(() => screen.getByRole('button', { name: 'b.mp4' }).click());
+    expect(screen.getByRole('menuitem', { name: 'Review Only This Folder' })).toBeTruthy();
+    act(() => screen.getByRole('button', { name: 'b.mp4' }).click());
+    act(() => useStore.getState().setDuplicateGroupsMode(true));
+    act(() => screen.getByRole('button', { name: 'b.mp4' }).click());
+    expect(screen.queryByRole('menuitem', { name: 'Review Only This Folder' })).toBeNull();
   });
 });

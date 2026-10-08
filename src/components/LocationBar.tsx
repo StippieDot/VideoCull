@@ -261,7 +261,7 @@ function buildMenu(
   if (control.type !== 'segment' && control.type !== 'actions') return null;
   const { segment } = control;
   if (segment.kind === 'duplicates') return buildDuplicatesMenu(state.duplicateGroups, state.videos, DUPLICATE_METHOD_NAMES[otherDuplicateMethod(state)], actions);
-  const canNarrowReview = !state.reviewScopeIds;
+  const canNarrowReview = !state.duplicateGroupsMode;
   if (segment.kind === 'video') {
     const video = state.videos.find((entry) => entry.path === segment.path);
     return video ? buildVideoMenu(video, canNarrowReview, actions) : null;

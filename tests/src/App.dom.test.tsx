@@ -374,6 +374,36 @@ describe('App renderer behavior', () => {
     await waitFor(() => expect(getStoreApi().getState().folderFilter).toEqual(earlier));
   });
 
+  test.each([{ scope: null }, { scope: ['c', 'a', 'b'] }])('narrowing mounted Review with scope $scope replaces its list and keeps the open video', async ({ scope }) => {
+    const videos = [
+      makeVideo('c', {}, 'D:\\Media\\Clips'),
+      makeVideo('a', {}, 'D:\\Media\\Trips'),
+      makeVideo('b', {}, 'D:\\Media\\Trips'),
+      makeVideo('decided', { status: 'keep' }, 'D:\\Media\\Trips'),
+    ];
+    electron.api.scanDirectory.mockResolvedValue(videos);
+    getStoreApi().setState({
+      directory: 'D:\\Media', directories: ['D:\\Media'], videos, filteredVideos: videos,
+      statusFilter: 'pending',
+    });
+    render(<App />);
+    await waitFor(() => expect(getStoreApi().getState().isScanning).toBe(false));
+    act(() => {
+      useStore.getState().setReviewScopeIds(scope);
+      useStore.getState().setReviewIndex(2);
+      useStore.getState().setReviewMode(true);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'b.mp4' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Review Only This Folder' }));
+
+    expect(useStore.getState().reviewScopeIds).toEqual(['a', 'b']);
+    expect(useStore.getState().reviewIndex).toBe(1);
+    expect(useStore.getState().activeReviewVideoPath).toBe(videos[2].path);
+    expect(useStore.getState().reviewMode).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'b.mp4' }));
+    expect(screen.getByRole('menuitem', { name: 'Review Only This Folder' })).toBeTruthy();
+  });
+
   test('opening another folder from Review This Folder does not carry the old folder filter into it', async () => {
     getStoreApi().setState({
       directory: 'D:\\Media',

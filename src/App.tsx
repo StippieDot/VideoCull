@@ -1197,6 +1197,8 @@ export default function App() {
       applied,
     };
     setFolderFilter(applied);
+    // A mounted Review keeps its snapshot until an explicit scope replaces it.
+    useStore.getState().setReviewScopeIds(useStore.getState().filteredVideos.map((video) => video.id));
     useStore.getState().setReviewIndex(0);
     useStore.getState().setReviewMode(true);
   }, [setFolderFilter]);
