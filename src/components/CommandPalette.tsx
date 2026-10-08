@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Search } from 'lucide-react';
 import useStore, { videosOutsideFolderFilter } from '../store';
 import type { AppCommand, Video } from '../types';
-import { getFolderLabel, isFolderInside } from '../utils';
+import { getFolderLabel, isFolderInside, normalizeFolder } from '../utils';
 import { listGridFolders, type FolderEntry } from './locationMenus';
 import './CommandPalette.css';
 
@@ -160,8 +160,13 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
             leaveToGrid();
             const state = useStore.getState();
             if (shift) state.setFolderFilter({ path: folder.path, includeSubfolders: true });
-            else if (state.folderFilter && !state.filteredVideos.some((video) => isFolderInside(video.path, folder.path))) {
-              state.setFolderFilter(null);
+            else if (state.folderFilter) {
+              const { path, includeSubfolders } = state.folderFilter;
+              // Visible child videos do not make the requested ancestor's own videos reachable.
+              const reachable = includeSubfolders
+                ? isFolderInside(folder.path, path)
+                : normalizeFolder(folder.path) === normalizeFolder(path);
+              if (!reachable) state.setFolderFilter(null);
             }
             state.requestGridFolderJump(folder.path);
           },

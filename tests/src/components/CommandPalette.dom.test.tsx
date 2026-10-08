@@ -118,6 +118,41 @@ describe('folders and videos', () => {
     expect(useStore.getState().gridFolderJump?.folderPath).toBe('D:\\Media\\Clips');
   });
 
+  test.each([true, false])('going to an ancestor clears the child folder filter (recursive: %s)', async (includeSubfolders) => {
+    const state = useStore.getState();
+    state.setVideos([
+      makeVideo('parent', { rating: 5 }, 'D:\\Media\\Trips'),
+      makeVideo('child', { rating: 5 }, 'D:\\Media\\Trips\\Summer'),
+      makeVideo('kept', { status: 'keep', rating: 5 }, 'D:\\Media\\Trips'),
+    ]);
+    state.setStatusFilter('pending');
+    state.setMinRatingFilter(5);
+    state.setFolderFilter({ path: 'D:\\Media\\Trips\\Summer', includeSubfolders });
+    render(<CommandPalette initialQuery="/Trips" onClose={vi.fn()} />);
+
+    await act(async () => fireEvent.click(screen.getByRole('option', { name: /^Trips\s*1 to review$/ })));
+    expect(useStore.getState().folderFilter).toBeNull();
+    expect(useStore.getState().statusFilter).toBe('pending');
+    expect(useStore.getState().minRatingFilter).toBe(5);
+    expect(useStore.getState().filteredVideos.map((video) => video.id).sort()).toEqual(['child', 'parent']);
+    expect(useStore.getState().gridFolderJump?.folderPath).toBe('D:\\Media\\Trips');
+  });
+
+  test.each([true, false])('going to a descendant retains only a recursive parent filter (recursive: %s)', async (includeSubfolders) => {
+    const filter = { path: 'D:\\Media\\Trips', includeSubfolders };
+    useStore.getState().setVideos([
+      makeVideo('parent', {}, filter.path),
+      makeVideo('child', {}, 'D:\\Media\\Trips\\Summer'),
+    ]);
+    useStore.getState().setFolderFilter(filter);
+    render(<CommandPalette initialQuery="/Summer" onClose={vi.fn()} />);
+
+    await act(async () => fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' }));
+    expect(useStore.getState().folderFilter).toBe(includeSubfolders ? filter : null);
+    expect(useStore.getState().filteredVideos.some((video) => video.id === 'child')).toBe(true);
+    expect(useStore.getState().gridFolderJump?.folderPath).toBe('D:\\Media\\Trips\\Summer');
+  });
+
   test('going to a visible folder preserves the active folder filter', async () => {
     const filter = { path: 'D:\\Media\\Trips', includeSubfolders: false };
     useStore.getState().setFolderFilter(filter);
