@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import useStore from '../../src/store';
+import { copyTextToClipboard } from '../../src/components/ContextMenu';
 import { resetPerfDevMock } from '../helpers/perfDevMock';
 import { makeDuplicateGroup, makeVideo } from '../helpers/videoFactory';
 import type {
@@ -12,6 +13,7 @@ import type {
   ThumbReadyEvent,
   UpdateInfo,
   VideoStore,
+  Video,
 } from '../../src/types';
 
 vi.mock('../../src/components/Sidebar', async () => {
@@ -135,6 +137,11 @@ vi.mock('../../src/components/ShortcutsHelp', () => ({
   default: () => <div data-testid="shortcuts-help">Shortcuts Help</div>,
 }));
 
+vi.mock('../../src/components/ContextMenu', () => ({
+  default: () => null,
+  copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../src/components/DocumentationModal', () => ({
   default: (props: {
     onOpenSettings?: (tab: string) => void;
@@ -198,6 +205,8 @@ function createElectronApiMock() {
     scanDirectory: vi.fn().mockResolvedValue([]),
     processMetadata: vi.fn().mockResolvedValue(true),
     generateThumbnails: vi.fn().mockResolvedValue(true),
+    openInExplorer: vi.fn().mockResolvedValue(true),
+    openVideo: vi.fn().mockResolvedValue(true),
     batchDelete: vi.fn().mockResolvedValue([]),
     permanentlyDelete: vi.fn().mockResolvedValue([]),
     findDuplicates: vi.fn().mockResolvedValue({ status: 'ok', groups: [], videos: [], stats: { groupCount: 0, duplicateVideoCount: 0, exactGroupCount: 0, similarityGroupCount: 0 } }),
@@ -276,6 +285,7 @@ describe('App renderer behavior', () => {
     cleanup();
     vi.useRealTimers();
     resetPerfDevMock();
+    vi.mocked(copyTextToClipboard).mockClear();
     electron = createElectronApiMock();
     const store = getStoreApi();
     store.setState(store.getInitialState(), true);
@@ -617,6 +627,73 @@ describe('App renderer behavior', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Duplicates' }));
     expect(screen.getByRole('menuitem', { name: `Find Again with ${otherLabel}` })).toBeTruthy();
+  });
+
+  test.each(['status', 'rating', 'folder'] as const)('Video menu targets only visible selections after a %s filter', async (filter) => {
+    const store = getStoreApi();
+    const visible = makeVideo('a', { rating: 5 }, 'D:\\Media\\Trips');
+    const hidden = makeVideo('b', { status: 'keep' }, 'D:\\Media\\Clips');
+    store.setState({ directory: 'D:\\Media' });
+    store.getState().setVideos([visible, hidden]);
+    store.getState().setGridSelectionIds(new Set(['a', 'b']));
+    render(<App />);
+    act(() => {
+      if (filter === 'status') store.getState().setStatusFilter('pending');
+      if (filter === 'rating') store.getState().setMinRatingFilter(5);
+      if (filter === 'folder') store.getState().setFolderFilter({ path: 'D:\\Media\\Trips', includeSubfolders: false });
+    });
+    expect(store.getState().filteredVideos.map((video) => video.id)).toEqual(['a']);
+    // The mocked grid leaves selection cleanup pending, as it can be during native menu dispatch.
+    expect(Array.from(store.getState().gridSelectionIds)).toEqual(['a', 'b']);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 1 }));
+    await electron.emitMenuAction('copy-path');
+    await electron.emitMenuAction('reveal-video');
+    await electron.emitMenuAction('play-external');
+    expect(copyTextToClipboard).toHaveBeenCalledWith(visible.path);
+    expect(electron.api.openInExplorer).toHaveBeenCalledWith(visible.path);
+    expect(electron.api.openVideo).toHaveBeenCalledWith(visible.path);
+    electron.api.generateThumbnails.mockImplementation(async (videos: Video[]) => {
+      const ids = new Set(videos.map((video) => video.id));
+      store.getState().setVideos(store.getState().videos.map((video) => ids.has(video.id)
+        ? { ...video, thumbnails: Array(6).fill('thumb.jpg') } : video));
+      return true;
+    });
+    await electron.emitMenuAction('regenerate-thumbnails');
+    await waitFor(() => expect(store.getState().isGenerating).toBe(false));
+    expect(electron.api.generateThumbnails).toHaveBeenCalledTimes(1);
+    expect(electron.api.generateThumbnails.mock.calls[0][0].map((video: Video) => video.id)).toEqual(['a']);
+  });
+
+  test('Video menu does nothing when every selected grid video is hidden', async () => {
+    const store = getStoreApi();
+    store.setState({ directory: 'D:\\Media' });
+    store.getState().setVideos([makeVideo('a', { status: 'keep' })]);
+    store.getState().setGridSelectionIds(new Set(['a']));
+    store.getState().setStatusFilter('pending');
+    render(<App />);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 0 }));
+    for (const action of ['copy-path', 'reveal-video', 'play-external', 'regenerate-thumbnails']) {
+      await electron.emitMenuAction(action);
+    }
+    expect(copyTextToClipboard).not.toHaveBeenCalled();
+    expect(electron.api.openInExplorer).not.toHaveBeenCalled();
+    expect(electron.api.openVideo).not.toHaveBeenCalled();
+    expect(electron.api.generateThumbnails).not.toHaveBeenCalled();
+    expect(electron.api.saveCacheAtomic).not.toHaveBeenCalled();
+  });
+
+  test('Video menu still targets the open Review video outside the grid filter', async () => {
+    const store = getStoreApi();
+    const video = makeVideo('a', { status: 'keep' });
+    store.setState({ directory: 'D:\\Media' });
+    store.getState().setVideos([video]);
+    store.getState().setStatusFilter('pending');
+    store.getState().enterReviewAndPlay('a', ['a']);
+    render(<App />);
+    expect(store.getState().filteredVideos).toEqual([]);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 1 }));
+    await electron.emitMenuAction('copy-path');
+    expect(copyTextToClipboard).toHaveBeenCalledWith(video.path);
   });
 
   test('prevents duplicate detection while metadata is still updating and explains why', async () => {

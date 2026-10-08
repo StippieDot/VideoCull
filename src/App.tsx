@@ -839,10 +839,10 @@ export default function App() {
         state.setSortOrder(action === 'sort-order:asc' ? 'asc' : 'desc');
         return;
       }
-      // The Video menu acts on the video open in Review, or on the videos selected in the grid.
+      // Grid selection cleanup runs in an effect; resolve menu targets against the current filter immediately.
       const activeVideos = state.reviewMode
         ? state.videos.filter((video) => video.path === state.activeReviewVideoPath)
-        : state.videos.filter((video) => state.gridSelectionIds.has(video.id));
+        : state.filteredVideos.filter((video) => state.gridSelectionIds.has(video.id));
       const activeVideoPath = activeVideos.length === 1 ? activeVideos[0].path : null;
       switch (action) {
         case 'copy-path': {

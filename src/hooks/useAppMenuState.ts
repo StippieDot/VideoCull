@@ -14,7 +14,9 @@ export default function useAppMenuState(isPrivate: boolean) {
   const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const duplicatesEnabled = useStore((s) => s.settings.duplicates.enabled);
   const activeVideoCount = useStore((s) => (
-    s.reviewMode ? (s.activeReviewVideoPath ? 1 : 0) : s.gridSelectionIds.size
+    s.reviewMode ? (s.activeReviewVideoPath ? 1 : 0)
+      : s.gridSelectionIds.size === 0 ? 0
+        : s.filteredVideos.reduce((count, video) => count + (s.gridSelectionIds.has(video.id) ? 1 : 0), 0)
   ));
   const isGenerating = useStore((s) => s.isGenerating);
   const sortBy = useStore((s) => s.sortBy);
