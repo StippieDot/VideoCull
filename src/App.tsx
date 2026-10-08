@@ -842,7 +842,8 @@ export default function App() {
       // Grid selection cleanup runs in an effect; resolve menu targets against the current filter immediately.
       const activeVideos = state.reviewMode
         ? state.videos.filter((video) => video.path === state.activeReviewVideoPath)
-        : state.filteredVideos.filter((video) => state.gridSelectionIds.has(video.id));
+        : state.duplicateGroupsMode ? []
+          : state.filteredVideos.filter((video) => state.gridSelectionIds.has(video.id));
       const activeVideoPath = activeVideos.length === 1 ? activeVideos[0].path : null;
       switch (action) {
         case 'copy-path': {

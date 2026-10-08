@@ -682,6 +682,39 @@ describe('App renderer behavior', () => {
     expect(electron.api.saveCacheAtomic).not.toHaveBeenCalled();
   });
 
+  test('Video menu ignores the hidden grid selection in duplicate view and restores it on return', async () => {
+    const store = getStoreApi();
+    const videos = [makeVideo('a'), makeVideo('b')];
+    store.setState({ directory: 'D:\\Media' });
+    store.getState().setVideos(videos);
+    store.getState().setGridSelectionIds(new Set(['a']));
+    render(<App />);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 1 }));
+    act(() => store.getState().setDuplicateGroups([makeDuplicateGroup()]));
+    expect(screen.queryByTestId('grid-state')).toBeNull();
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 0 }));
+    for (const action of ['copy-path', 'reveal-video', 'play-external', 'regenerate-thumbnails']) {
+      await electron.emitMenuAction(action);
+    }
+    expect(copyTextToClipboard).not.toHaveBeenCalled();
+    expect(electron.api.openInExplorer).not.toHaveBeenCalled();
+    expect(electron.api.openVideo).not.toHaveBeenCalled();
+    expect(electron.api.generateThumbnails).not.toHaveBeenCalled();
+    expect(electron.api.saveCacheAtomic).not.toHaveBeenCalled();
+
+    act(() => store.getState().enterReviewAndPlay('b', ['a', 'b']));
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 1 }));
+    await electron.emitMenuAction('copy-path');
+    expect(copyTextToClipboard).toHaveBeenLastCalledWith(videos[1].path);
+    act(() => store.getState().setReviewMode(false));
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 0 }));
+    act(() => store.getState().setDuplicateGroupsMode(false));
+    expect(Array.from(store.getState().gridSelectionIds)).toEqual(['a']);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 1 }));
+    await electron.emitMenuAction('copy-path');
+    expect(copyTextToClipboard).toHaveBeenLastCalledWith(videos[0].path);
+  });
+
   test('Video menu still targets the open Review video outside the grid filter', async () => {
     const store = getStoreApi();
     const video = makeVideo('a', { status: 'keep' });
