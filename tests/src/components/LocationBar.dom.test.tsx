@@ -83,6 +83,27 @@ test('a › list offers all of the folder before it, then each folder one level 
   expect(vi.mocked(actions.filterToPath).mock.calls).toEqual([[null], [`${ROOT}\\Clips`], [`${ROOT}\\Trips`]]);
 });
 
+test.each(['\\\\nas\\share', '\\\\nas\\share\\', '\\\\nas\\share\\Trips', '\\\\nas\\share\\Trips\\'])('lists and navigates distinct subfolders of UNC parent %s', (parent) => {
+  const base = parent.replace(/[\\/]+$/, '');
+  const videos = [
+    makeVideo('own', {}, base),
+    makeVideo('a', { status: 'keep' }, `${base}\\Clips`),
+    makeVideo('b', {}, `${base}\\Trips`),
+    makeVideo('c', {}, `${base}\\Trips\\June`),
+  ];
+  expect(listSubfolders(videos, parent)).toEqual([
+    { path: `${base}\\Clips`, label: 'Clips', count: 1, toReview: 0 },
+    { path: `${base}\\Trips`, label: 'Trips', count: 2, toReview: 2 },
+  ]);
+  const actions = actionsMock();
+  const menu = buildSubfolderMenu(videos, parent, { directories: [base], filterPath: null }, actions);
+  const children = menu.items.filter((item) => item.type === 'item' && item.key !== 'all');
+  expect(labels(children)).toEqual(['Clips', 'Trips']);
+  children.forEach((item) => item.type === 'item' && item.onSelect());
+  expect(actions.filterToPath).toHaveBeenNthCalledWith(1, `${base}\\Clips`);
+  expect(actions.filterToPath).toHaveBeenNthCalledWith(2, `${base}\\Trips`);
+});
+
 test('the video menu describes the video and only narrows review when it can', () => {
   const video = makeVideo('clip', { sizeBytes: 1024 * 1024, durationSecs: 983, width: 1920, height: 1080 });
   const menu = buildVideoMenu(video, false, actionsMock());
@@ -160,6 +181,29 @@ describe('LocationBar', () => {
     expect(buttonNames()).toEqual([
       'D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips, filtered', 'Clear folder filter', 'Folders in Trips', 'June', 'June actions',
     ]);
+  });
+
+  test('an exact-folder filter keeps child navigation available while respecting the other filters', () => {
+    const videos = [
+      ...VIDEOS,
+      makeVideo('d', {}, `${ROOT}\\Trips\\June`),
+      makeVideo('e', { status: 'keep' }, `${ROOT}\\Trips\\Hidden`),
+    ];
+    useStore.setState({ videos, filteredVideos: videos });
+    useStore.getState().setStatusFilter('pending');
+    useStore.getState().setFolderFilter({ path: `${ROOT}\\Trips`, includeSubfolders: false });
+    render(<LocationBar sessionTitle="Media" appActions={appActions()} />);
+    expect(shownIds()).toEqual(['b']);
+    expect(screen.getByRole('button', { name: 'Folders in Trips' })).toBeTruthy();
+
+    act(() => useStore.getState().setVideoStatus('d', 'keep'));
+    expect(screen.queryByRole('button', { name: 'Folders in Trips' })).toBeNull();
+    act(() => useStore.getState().setVideoStatus('d', 'pending'));
+    act(() => screen.getByRole('button', { name: 'Folders in Trips' }).click());
+    expect(screen.queryByRole('menuitemradio', { name: /^Hidden/ })).toBeNull();
+    act(() => screen.getByRole('menuitemradio', { name: /^June/ }).click());
+    expect(useStore.getState().folderFilter).toEqual({ path: `${ROOT}\\Trips\\June`, includeSubfolders: true });
+    expect(shownIds()).toEqual(['d']);
   });
 
   test('selecting a folder in the path filters to it, and Alt+Left / Alt+Right step through the filters', () => {

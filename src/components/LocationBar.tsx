@@ -307,7 +307,7 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [browsable, filterHistory]);
-  const filteredVideos = useStore((s) => s.filteredVideos);
+  const browsableVideos = useStore(videosOutsideFolderFilter);
   const rootCount = useStore((s) => s.directories.length);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   // A folder picked from the "…" list; its own menu then replaces the list.
@@ -317,8 +317,8 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
 
   const lastFolder = location?.browsable ? location.segments[location.segments.length - 1]?.path ?? null : null;
   const lastHasSubfolders = useMemo(
-    () => lastFolder !== null && hasSubfolders(filteredVideos, lastFolder),
-    [filteredVideos, lastFolder],
+    () => lastFolder !== null && hasSubfolders(browsableVideos, lastFolder),
+    [browsableVideos, lastFolder],
   );
   // Middle parts hide only while the full path does not fit.
   const [hiddenCount, setHiddenCount] = useState(0);
@@ -372,8 +372,8 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
   const menu = useMemo(() => {
     if (!openControl || !location) return null;
     return buildMenu(hiddenPick ? { type: 'segment', segment: hiddenPick, last: false } : openControl, location, actions, setHiddenPick);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- filteredVideos invalidates the counts read from the store
-  }, [actions, filteredVideos, hiddenPick, location, openControl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- browsableVideos invalidates the counts read from the store
+  }, [actions, browsableVideos, hiddenPick, location, openControl]);
 
   if (!location) return <div className="title-bar-title">{sessionTitle}</div>;
 

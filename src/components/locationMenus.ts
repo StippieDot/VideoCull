@@ -106,7 +106,8 @@ export function hasSubfolders(videos: Video[], parent: string): boolean {
 
 /** Subfolders of `parent` that hold videos, also further down, with what is in them. */
 export function listSubfolders(videos: Video[], parent: string): FolderEntry[] {
-  const prefixLength = normalizeFolder(parent).length + 1;
+  // Normalization collapses UNC separators; slicing needs the original path length.
+  const prefixLength = parent.replace(/[\\/]+$/, '').length + 1;
   const children = new Map<string, { path: string; label: string; videos: Video[] }>();
   for (const video of videos) {
     const folder = getFolderPath(video);
