@@ -2,10 +2,11 @@
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { StrictMode, useEffect } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import type { ComponentType, UIEventHandler } from 'react';
 import { vi } from 'vitest';
 import GridMode, { __test__ } from '../../../src/components/GridMode';
+import CommandPalette from '../../../src/components/CommandPalette';
 import useStore from '../../../src/store';
 import { makeVideo } from '../../helpers/videoFactory';
 
@@ -95,6 +96,7 @@ describe('GridMode search', () => {
         saveReviewState: vi.fn().mockResolvedValue(true),
         openVideo: vi.fn().mockResolvedValue(true),
         openInExplorer: vi.fn().mockResolvedValue(true),
+        getCommands: vi.fn().mockResolvedValue([]),
       },
     });
     const store = getStoreApi();
@@ -209,6 +211,26 @@ describe('GridMode search', () => {
     view.unmount();
 
     expect(__test__.hasActiveRowRuntime()).toBe(false);
+  });
+
+  test.each(['trip', ''])('closing the palette preserves grid search %j and selection', async (query) => {
+    Element.prototype.scrollIntoView = vi.fn();
+    useStore.getState().setSearchQuery(query);
+    useStore.getState().setGridSelectionIds(new Set(['trip']));
+    function GridWithPalette() {
+      const [open, setOpen] = useState(true);
+      return <>
+        <GridMode onReviewFolder={vi.fn()} onRegenerateThumbnails={vi.fn().mockResolvedValue(undefined)} />
+        {open && <CommandPalette onClose={() => setOpen(false)} />}
+      </>;
+    }
+    render(<GridWithPalette />);
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
+    });
+    expect(screen.queryByRole('dialog', { name: 'Quick open' })).toBeNull();
+    expect(useStore.getState().searchQuery).toBe(query);
+    expect(Array.from(useStore.getState().gridSelectionIds)).toEqual(['trip']);
   });
 
   test.each(['folder', 'video'] as const)('does not replay a consumed %s jump on remount and accepts another jump to the same target', (kind) => {

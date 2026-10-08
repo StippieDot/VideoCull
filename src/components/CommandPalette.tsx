@@ -229,6 +229,7 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
       run(activeRow, { shift: event.shiftKey, ctrl: event.ctrlKey });
     } else if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       onClose();
     }
   };
