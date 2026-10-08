@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event';
 import useStore from '../../src/store';
 import { resetPerfDevMock } from '../helpers/perfDevMock';
-import { makeVideo } from '../helpers/videoFactory';
+import { makeDuplicateGroup, makeVideo } from '../helpers/videoFactory';
 import type {
   DuplicateProgress,
   ThumbReadyEvent,
@@ -585,6 +585,40 @@ describe('App renderer behavior', () => {
     expect(useStore.getState().settings.duplicates.comparisonMode).toBe('phash');
   });
 
+  test.each([
+    { previous: 'phash', method: 'visual', otherLabel: 'pHash' },
+    { previous: 'visual', method: 'phash', otherLabel: 'Visual Similarity' },
+  ] as const)('records $method for automatic duplicate runs after $previous', async ({ previous, method, otherLabel }) => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    const videos = ['a', 'b'].map((id) => makeVideo(id, {
+      metadataVersion: 2,
+      thumbnails: Array.from({ length: 6 }, (_, index) => `thumb_${index + 1}.jpg`),
+    }));
+    electron.api.scanDirectory.mockResolvedValue(videos);
+    electron.api.findDuplicates.mockResolvedValue({
+      status: 'ok', groups: [makeDuplicateGroup()], videos,
+      stats: { groupCount: 1, duplicateVideoCount: 2, exactGroupCount: 0, similarityGroupCount: 1 },
+    });
+    store.setState({
+      directory: 'D:\\Media', directories: ['D:\\Media'], videos, filteredVideos: videos,
+      lastDuplicateMethod: previous,
+      settings: {
+        ...initialState.settings,
+        duplicates: { ...initialState.settings.duplicates, enabled: true, runAfterScan: true, comparisonMode: method },
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(store.getState().lastDuplicateMethod).toBe(method));
+    expect(electron.api.findDuplicates).toHaveBeenCalledWith(expect.any(Array), {
+      settings: expect.objectContaining({ comparisonMode: method }),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicates' }));
+    expect(screen.getByRole('menuitem', { name: `Find Again with ${otherLabel}` })).toBeTruthy();
+  });
+
   test('prevents duplicate detection while metadata is still updating and explains why', async () => {
     const store = getStoreApi();
     const initialState = store.getInitialState();
@@ -1001,6 +1035,32 @@ describe('App renderer behavior', () => {
     expect(gridAfter.parentElement?.getAttribute('style')).toContain('display: flex');
     expect(gridAfter.parentElement?.getAttribute('style')).toContain('visibility: visible');
     expect(gridAfter.parentElement?.getAttribute('aria-hidden')).toBe('false');
+  });
+
+  test('Show Folder in Grid leaves duplicate review and mounts the grid with a pending folder jump', async () => {
+    const store = getStoreApi();
+    const videos = ['a', 'b'].map((id) => makeVideo(id, {}, 'D:\\Media\\Trips'));
+    electron.api.scanDirectory.mockResolvedValue(videos);
+    store.setState({ directory: 'D:\\Media', directories: ['D:\\Media'], videos, filteredVideos: videos });
+    render(<App />);
+    await waitFor(() => expect(store.getState().isScanning).toBe(false));
+    act(() => {
+      store.getState().setDuplicateGroups([makeDuplicateGroup()]);
+      store.getState().enterReviewAndPlay('a', ['a', 'b']);
+    });
+    expect(screen.getByTestId('duplicate-groups')).toBeTruthy();
+    expect(screen.getByTestId('review-mode')).toBeTruthy();
+    expect(screen.queryByTestId('grid-state')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'a.mp4' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Folder in Grid' }));
+
+    expect(store.getState().reviewMode).toBe(false);
+    expect(store.getState().duplicateGroupsMode).toBe(false);
+    expect(store.getState().gridFolderJump?.folderPath).toBe('D:\\Media\\Trips');
+    expect(screen.getByTestId('grid-state')).toBeTruthy();
+    expect(screen.queryByTestId('review-mode')).toBeNull();
+    expect(screen.queryByTestId('duplicate-groups')).toBeNull();
   });
 
   test('keeps duplicate results laid out while review mode is open so virtual scrolling survives', () => {

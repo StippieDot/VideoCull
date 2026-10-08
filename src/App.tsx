@@ -627,6 +627,7 @@ export default function App() {
             const result = await window.electronAPI.findDuplicates(currentVideos, { settings: duplicateConfig });
             if (scanId === scanIdRef.current && duplicateRunId === duplicateRunIdRef.current && result.status === 'ok') {
               applyDuplicateResult(result);
+              useStore.getState().setLastDuplicateMethod(duplicateConfig.comparisonMode);
             }
             if (duplicateRunId === duplicateRunIdRef.current) {
               setIsFindingDuplicates(false);

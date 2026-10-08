@@ -223,6 +223,7 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
       openRecent: (folder) => appRef.current.openRecent(folder),
       showFolderInGrid: (folder) => {
         store().setReviewMode(false);
+        store().setDuplicateGroupsMode(false);
         store().requestGridFolderJump(folder);
       },
       findDuplicates: () => appRef.current.findDuplicates(),
