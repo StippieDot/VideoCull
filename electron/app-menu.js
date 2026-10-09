@@ -133,172 +133,201 @@ function normalizeRendererMenuState(input) {
  * @returns {Electron.MenuItemConstructorOptions[]}
  */
 function buildMenuTemplate(state, actions) {
-  const { send } = actions;
   // Disabled submenus still display their labels, so private paths must be omitted entirely.
   if (state.isPrivate) state = { ...state, folders: [], recentFolders: [] };
 
   /** @type {Electron.MenuItemConstructorOptions[]} */
   const template = [
-    {
-      label: 'File',
-      submenu: [
-        { label: 'Open Folder...', accelerator: 'CmdOrCtrl+O', click: () => send('open-directory') },
-        { label: 'Add Folder to Session...', enabled: state.hasSession, click: () => send('add-folder') },
-        openRecentItem(state, send),
-        { type: 'separator' },
-        { label: 'Rescan', accelerator: 'F5', enabled: state.hasSession, click: () => send('rescan-directory') },
-        revealFolderItem(state, send, 'Reveal Folder in Explorer'),
-        { label: 'Close Session', enabled: state.hasSession, click: () => send('close-session') },
-        { type: 'separator' },
-        { label: 'Export Report...', accelerator: 'CmdOrCtrl+Shift+E', enabled: state.canExport, click: () => send('export-report') },
-        { type: 'separator' },
-        { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: () => send('open-settings') },
-        { type: 'separator' },
-        {
-          // No shortcut: it discards every review decision, and Ctrl+Shift+R is "hard refresh" muscle memory.
-          label: 'Clear Cache and Reload...',
-          enabled: state.hasSession,
-          click: () => send('clear-cache'),
-        },
-        { type: 'separator' },
-        { role: 'quit', label: 'Exit' },
-      ],
-    },
-    {
-      label: 'Actions',
-      submenu: [
-        { label: 'Undo', accelerator: 'CmdOrCtrl+Z', enabled: state.canUndo, click: () => send('undo') },
-        { type: 'separator' },
-        { label: 'Find Duplicates', enabled: state.canFindDuplicates, click: () => send('find-duplicates') },
-        {
-          label: 'Pause Processing',
-          type: 'checkbox',
-          checked: state.paused,
-          enabled: state.canPauseProcessing,
-          click: (item) => actions.setPaused(item.checked),
-        },
-        {
-          label: 'When Processing Finishes',
-          enabled: state.processing,
-          submenu: /** @type {const} */ ([['none', 'Do Nothing'], ['sleep', 'Sleep'], ['shutdown', 'Shut Down']]).map(([action, label]) => ({
-            label,
-            type: /** @type {const} */ ('radio'),
-            checked: state.finishAction === action,
-            click: () => actions.setFinishAction(action),
-          })),
-        },
-        { type: 'separator' },
-        {
-          label: state.markedCount > 0 ? `Delete Marked Videos (${state.markedCount})...` : 'Delete Marked Videos...',
-          accelerator: 'CmdOrCtrl+Backspace',
-          enabled: state.markedCount > 0,
-          click: () => send('delete-all'),
-        },
-      ],
-    },
-    {
-      label: 'View',
-      submenu: [
-        { label: 'Command Palette...', accelerator: 'CmdOrCtrl+K', click: () => send('open-command-palette') },
-        { label: 'Go to Folder...', accelerator: 'CmdOrCtrl+G', enabled: state.hasSession, click: () => send('go-to-folder') },
-        { type: 'separator' },
-        {
-          label: 'Sort By',
-          enabled: state.hasSession,
-          submenu: [
-            ...state.sortOptions.map((field) => ({
-              label: SORT_LABELS[/** @type {keyof typeof SORT_LABELS} */ (field)],
-              type: /** @type {const} */ ('radio'),
-              checked: state.sortBy === field,
-              click: () => send(`sort:${field}`),
-            })),
-            { type: 'separator' },
-            { label: 'Ascending', type: 'radio', checked: state.sortOrder === 'asc', click: () => send('sort-order:asc') },
-            { label: 'Descending', type: 'radio', checked: state.sortOrder === 'desc', click: () => send('sort-order:desc') },
-          ],
-        },
-        {
-          label: 'Group by Folder',
-          type: 'checkbox',
-          checked: state.groupByFolder,
-          enabled: state.hasSession,
-          click: () => send('toggle-group-by-folder'),
-        },
-        { label: 'Clear All Filters', enabled: state.filtersActive, click: () => send('clear-filters') },
-        { type: 'separator' },
-        { label: 'Larger Cards', accelerator: 'CmdOrCtrl+Plus', enabled: state.hasSession, click: () => send('zoom-in') },
-        { label: 'Larger Cards', accelerator: 'CmdOrCtrl+=', visible: false, enabled: state.hasSession, click: () => send('zoom-in') },
-        { label: 'Smaller Cards', accelerator: 'CmdOrCtrl+-', enabled: state.hasSession, click: () => send('zoom-out') },
-        { type: 'separator' },
-        {
-          label: 'Privacy Screen',
-          type: 'checkbox',
-          checked: state.isPrivate,
-          // Shift+Esc is handled by the renderer, which also works while the privacy screen is up.
-          accelerator: 'Shift+Escape',
-          registerAccelerator: false,
-          click: () => send('toggle-privacy'),
-        },
-        ...(state.muteAvailable ? [{
-          label: 'Mute In-App Playback',
-          type: /** @type {const} */ ('checkbox'),
-          checked: state.muted,
-          click: () => send('toggle-mute'),
-        }] : []),
-        { label: 'Toggle Dark / Light Theme', click: () => send('toggle-theme') },
-        { role: 'togglefullscreen', label: 'Full Screen' },
-        // Reloading drops the open session and review position, so it is a development tool only.
-        ...(state.isDev ? /** @type {Electron.MenuItemConstructorOptions[]} */ ([
-          { type: 'separator' },
-          { role: 'reload' },
-          { role: 'toggleDevTools' },
-        ]) : []),
-      ],
-    },
-    {
-      label: 'Video',
-      submenu: [
-        { label: 'Play Externally', accelerator: 'CmdOrCtrl+P', enabled: state.activeVideoCount === 1, click: () => send('play-external') },
-        { label: 'Reveal in Explorer', accelerator: 'CmdOrCtrl+E', enabled: state.activeVideoCount === 1, click: () => send('reveal-video') },
-        {
-          label: state.activeVideoCount > 1 ? `Copy Paths (${state.activeVideoCount})` : 'Copy Path',
-          enabled: state.activeVideoCount > 0,
-          click: () => send('copy-path'),
-        },
-        { type: 'separator' },
-        {
-          label: state.activeVideoCount > 1 ? `Regenerate Thumbnails (${state.activeVideoCount})` : 'Regenerate Thumbnails',
-          enabled: state.activeVideoCount > 0 && state.canRegenerateThumbnails,
-          click: () => send('regenerate-thumbnails'),
-        },
-      ],
-    },
-    {
-      label: 'Help',
-      submenu: [
-        { label: 'Documentation', accelerator: 'F1', click: () => send('open-documentation') },
-        { label: 'Online Help', click: actions.openHelpWebsite },
-        { label: 'Keyboard Shortcuts', click: () => send('show-shortcuts') },
-        { type: 'separator' },
-        { label: 'Release Notes', click: actions.openReleaseNotes },
-        { label: 'Report a Problem...', click: actions.reportProblem },
-        { label: 'Open Log Folder', click: actions.openLogFolder },
-        { type: 'separator' },
-        ...(state.updatesEnabled ? [{ label: 'Check for Updates...', click: () => send('check-updates') }] : []),
-        {
-          label: 'Support VideoCull',
-          submenu: [
-            { label: 'GitHub Sponsors', click: actions.openSponsors },
-            { label: 'PayPal', click: actions.openPayPal },
-          ],
-        },
-        { label: 'About VideoCull', click: () => send('open-about') },
-      ],
-    },
+    fileMenu(state, actions),
+    actionsMenu(state, actions),
+    viewMenu(state, actions),
+    videoMenu(state, actions),
+    helpMenu(state, actions),
   ];
 
   const withIds = addCommandIds(template, []);
   return state.isPrivate ? withIds.map(disableForPrivacy) : withIds;
+}
+
+/** @param {MenuState} state @param {MenuActions} actions @returns {Electron.MenuItemConstructorOptions} */
+function fileMenu(state, actions) {
+  const { send } = actions;
+  return {
+    label: 'File',
+    submenu: [
+      { label: 'Open Folder...', accelerator: 'CmdOrCtrl+O', click: () => send('open-directory') },
+      { label: 'Add Folder to Session...', enabled: state.hasSession, click: () => send('add-folder') },
+      openRecentItem(state, send),
+      { type: 'separator' },
+      { label: 'Rescan', accelerator: 'F5', enabled: state.hasSession, click: () => send('rescan-directory') },
+      revealFolderItem(state, send, 'Reveal Folder in Explorer'),
+      { label: 'Close Session', enabled: state.hasSession, click: () => send('close-session') },
+      { type: 'separator' },
+      { label: 'Export Report...', accelerator: 'CmdOrCtrl+Shift+E', enabled: state.canExport, click: () => send('export-report') },
+      { type: 'separator' },
+      { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: () => send('open-settings') },
+      { type: 'separator' },
+      {
+        // No shortcut: it discards every review decision, and Ctrl+Shift+R is "hard refresh" muscle memory.
+        label: 'Clear Cache and Reload...',
+        enabled: state.hasSession,
+        click: () => send('clear-cache'),
+      },
+      { type: 'separator' },
+      { role: 'quit', label: 'Exit' },
+    ],
+  };
+}
+
+/** @param {MenuState} state @param {MenuActions} actions @returns {Electron.MenuItemConstructorOptions} */
+function actionsMenu(state, actions) {
+  const { send } = actions;
+  return {
+    label: 'Actions',
+    submenu: [
+      { label: 'Undo', accelerator: 'CmdOrCtrl+Z', enabled: state.canUndo, click: () => send('undo') },
+      { type: 'separator' },
+      { label: 'Find Duplicates', enabled: state.canFindDuplicates, click: () => send('find-duplicates') },
+      {
+        label: 'Pause Processing',
+        type: 'checkbox',
+        checked: state.paused,
+        enabled: state.canPauseProcessing,
+        click: (item) => actions.setPaused(item.checked),
+      },
+      {
+        label: 'When Processing Finishes',
+        enabled: state.processing,
+        submenu: /** @type {const} */ ([['none', 'Do Nothing'], ['sleep', 'Sleep'], ['shutdown', 'Shut Down']]).map(([action, label]) => ({
+          label,
+          type: /** @type {const} */ ('radio'),
+          checked: state.finishAction === action,
+          click: () => actions.setFinishAction(action),
+        })),
+      },
+      { type: 'separator' },
+      {
+        label: state.markedCount > 0 ? `Delete Marked Videos (${state.markedCount})...` : 'Delete Marked Videos...',
+        accelerator: 'CmdOrCtrl+Backspace',
+        enabled: state.markedCount > 0,
+        click: () => send('delete-all'),
+      },
+    ],
+  };
+}
+
+/** @param {MenuState} state @param {MenuActions} actions @returns {Electron.MenuItemConstructorOptions} */
+function viewMenu(state, actions) {
+  const { send } = actions;
+  return {
+    label: 'View',
+    submenu: [
+      { label: 'Command Palette...', accelerator: 'CmdOrCtrl+K', click: () => send('open-command-palette') },
+      { label: 'Go to Folder...', accelerator: 'CmdOrCtrl+G', enabled: state.hasSession, click: () => send('go-to-folder') },
+      { type: 'separator' },
+      {
+        label: 'Sort By',
+        enabled: state.hasSession,
+        submenu: [
+          ...state.sortOptions.map((field) => ({
+            label: SORT_LABELS[/** @type {keyof typeof SORT_LABELS} */ (field)],
+            type: /** @type {const} */ ('radio'),
+            checked: state.sortBy === field,
+            click: () => send(`sort:${field}`),
+          })),
+          { type: 'separator' },
+          { label: 'Ascending', type: 'radio', checked: state.sortOrder === 'asc', click: () => send('sort-order:asc') },
+          { label: 'Descending', type: 'radio', checked: state.sortOrder === 'desc', click: () => send('sort-order:desc') },
+        ],
+      },
+      {
+        label: 'Group by Folder',
+        type: 'checkbox',
+        checked: state.groupByFolder,
+        enabled: state.hasSession,
+        click: () => send('toggle-group-by-folder'),
+      },
+      { label: 'Clear All Filters', enabled: state.filtersActive, click: () => send('clear-filters') },
+      { type: 'separator' },
+      { label: 'Larger Cards', accelerator: 'CmdOrCtrl+Plus', enabled: state.hasSession, click: () => send('zoom-in') },
+      { label: 'Larger Cards', accelerator: 'CmdOrCtrl+=', visible: false, enabled: state.hasSession, click: () => send('zoom-in') },
+      { label: 'Smaller Cards', accelerator: 'CmdOrCtrl+-', enabled: state.hasSession, click: () => send('zoom-out') },
+      { type: 'separator' },
+      {
+        label: 'Privacy Screen',
+        type: 'checkbox',
+        checked: state.isPrivate,
+        // Shift+Esc is handled by the renderer, which also works while the privacy screen is up.
+        accelerator: 'Shift+Escape',
+        registerAccelerator: false,
+        click: () => send('toggle-privacy'),
+      },
+      ...(state.muteAvailable ? [{
+        label: 'Mute In-App Playback',
+        type: /** @type {const} */ ('checkbox'),
+        checked: state.muted,
+        click: () => send('toggle-mute'),
+      }] : []),
+      { label: 'Toggle Dark / Light Theme', click: () => send('toggle-theme') },
+      { role: 'togglefullscreen', label: 'Full Screen' },
+      // Reloading drops the open session and review position, so it is a development tool only.
+      ...(state.isDev ? /** @type {Electron.MenuItemConstructorOptions[]} */ ([
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'toggleDevTools' },
+      ]) : []),
+    ],
+  };
+}
+
+/** @param {MenuState} state @param {MenuActions} actions @returns {Electron.MenuItemConstructorOptions} */
+function videoMenu(state, actions) {
+  const { send } = actions;
+  return {
+    label: 'Video',
+    submenu: [
+      { label: 'Play Externally', accelerator: 'CmdOrCtrl+P', enabled: state.activeVideoCount === 1, click: () => send('play-external') },
+      { label: 'Reveal in Explorer', accelerator: 'CmdOrCtrl+E', enabled: state.activeVideoCount === 1, click: () => send('reveal-video') },
+      {
+        label: state.activeVideoCount > 1 ? `Copy Paths (${state.activeVideoCount})` : 'Copy Path',
+        enabled: state.activeVideoCount > 0,
+        click: () => send('copy-path'),
+      },
+      { type: 'separator' },
+      {
+        label: state.activeVideoCount > 1 ? `Regenerate Thumbnails (${state.activeVideoCount})` : 'Regenerate Thumbnails',
+        enabled: state.activeVideoCount > 0 && state.canRegenerateThumbnails,
+        click: () => send('regenerate-thumbnails'),
+      },
+    ],
+  };
+}
+
+/** @param {MenuState} state @param {MenuActions} actions @returns {Electron.MenuItemConstructorOptions} */
+function helpMenu(state, actions) {
+  const { send } = actions;
+  return {
+    label: 'Help',
+    submenu: [
+      { label: 'Documentation', accelerator: 'F1', click: () => send('open-documentation') },
+      { label: 'Online Help', click: actions.openHelpWebsite },
+      { label: 'Keyboard Shortcuts', click: () => send('show-shortcuts') },
+      { type: 'separator' },
+      { label: 'Release Notes', click: actions.openReleaseNotes },
+      { label: 'Report a Problem...', click: actions.reportProblem },
+      { label: 'Open Log Folder', click: actions.openLogFolder },
+      { type: 'separator' },
+      ...(state.updatesEnabled ? [{ label: 'Check for Updates...', click: () => send('check-updates') }] : []),
+      {
+        label: 'Support VideoCull',
+        submenu: [
+          { label: 'GitHub Sponsors', click: actions.openSponsors },
+          { label: 'PayPal', click: actions.openPayPal },
+        ],
+      },
+      { label: 'About VideoCull', click: () => send('open-about') },
+    ],
+  };
 }
 
 /**
