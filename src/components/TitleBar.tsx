@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import useStore from '../store';
 import usePowerState from '../hooks/usePowerState';
 import useProcessingPauseState from '../hooks/useProcessingPauseState';
-import type { TaskbarProgress } from '../types';
+import type { PowerState, ProcessingPauseState, TaskbarProgress } from '../types';
 import videoCullIcon from '../assets/videocull-icon.png';
 import { openAppMenuAt, runAppCommand } from '../appCommands';
 import { formatRecentPath, formatSize, plural } from '../utils';
@@ -119,37 +119,8 @@ function MenuLabelText({ label, accessKey, showAccessKey }: { label: string; acc
   );
 }
 
-/**
- * Replaces the Windows title bar and menu bar. The menus themselves stay native: each button opens
- * the matching application menu, so enabled states and shortcuts come from one place. Windows draws
- * the window buttons on the right (titleBarOverlay).
- */
-export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActions }: {
-  isPrivate: boolean;
-  onOpenCommandPalette: () => void;
-  locationActions: LocationBarAppActions;
-}) {
-  const directories = useStore((s) => s.directories);
-  // Compared field by field, so the bar only re-renders when processing progress changes.
-  const processingInputs = useStore(useShallow((s) => ({
-    isGenerating: s.isGenerating,
-    genProgress: s.genProgress,
-    isFindingDuplicates: s.isFindingDuplicates,
-    duplicateProgress: s.duplicateProgress,
-    isScanning: s.isScanning,
-    scanProgress: s.scanProgress,
-  })));
-  const jobs = useMemo(() => listProcessingJobs(processingInputs), [processingInputs]);
-  const power = usePowerState();
-  const pauseStatus = useProcessingPauseState().status;
-  const canPause = processingInputs.isGenerating || processingInputs.isFindingDuplicates;
-  const paused = canPause && pauseStatus !== 'running';
-  const timeLeft = useTimeLeft(jobs, paused);
-  useTaskbarProgress(jobs, paused);
-  const status = jobs[0] ?? null;
-  const statusDetail = status?.detail ?? '';
-  const pillRef = useRef<HTMLButtonElement>(null);
-  const marked = useStore(useShallow((s) => ({ count: s.stats.delete, size: s.stats.deleteSize })));
+/** The File / Actions / View / Video / Help buttons; each opens the matching native menu below it. */
+function AppMenuButtons() {
   const [openMenu, setOpenMenu] = useState<MenuLabel | null>(null);
   const [altHeld, setAltHeld] = useState(false);
   const buttonRefs = useRef(new Map<MenuLabel, HTMLButtonElement>());
@@ -165,37 +136,6 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
       setOpenMenu(null);
     }
   };
-
-  const [panelAt, setPanelAt] = useState<{ x: number; y: number } | null>(null);
-  const togglePanel = () => {
-    const rect = pillRef.current?.parentElement?.getBoundingClientRect();
-    setPanelAt((open) => (open || !rect ? null : { x: rect.left, y: rect.bottom + 4 }));
-  };
-  const closePanel = useCallback((refocus: boolean) => {
-    setPanelAt(null);
-    if (refocus) pillRef.current?.focus();
-  }, []);
-  const FinishGlyph = FINISH_ACTION_GLYPHS[power.finishAction];
-  const panelItems: AppMenuItem[] = [
-    ...(canPause ? [{
-      key: 'pause',
-      label: paused ? 'Resume Processing' : 'Pause Processing',
-      icon: paused ? Play : Pause,
-      disabled: pauseStatus === 'pausing',
-      onSelect: () => void window.electronAPI?.setProcessingPaused(!paused),
-    }] : []),
-    ...(power.processing ? [
-      { type: 'separator' as const, key: 'sep-finish' },
-      { type: 'heading' as const, key: 'finish', label: 'When processing finishes' },
-      ...FINISH_ACTIONS.map(([action, label]): AppMenuItem => ({
-        key: action,
-        label,
-        radio: true,
-        checked: power.finishAction === action,
-        onSelect: () => void runAppCommand(`Actions > When Processing Finishes > ${label}`),
-      })),
-    ] : []),
-  ];
   const openRef = useRef(open);
   openRef.current = open;
 
@@ -227,6 +167,156 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
     };
   }, []);
 
+  return (
+    <nav className="title-bar-menus" aria-label="Application menu">
+      {MENUS.map(({ label, accessKey }) => (
+        <button
+          key={label}
+          ref={(element) => {
+            if (element) buttonRefs.current.set(label, element);
+            else buttonRefs.current.delete(label);
+          }}
+          type="button"
+          className={`title-bar-menu-button${openMenu === label ? ' open' : ''}`}
+          aria-haspopup="menu"
+          aria-expanded={openMenu === label}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => void open(label)}
+        >
+          <MenuLabelText label={label} accessKey={accessKey} showAccessKey={altHeld} />
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+interface ProcessingStatusProps {
+  status: ProcessingJob;
+  jobs: ProcessingJob[];
+  paused: boolean;
+  pauseStatus: ProcessingPauseState['status'];
+  canPause: boolean;
+  power: PowerState;
+  timeLeft: Map<ProcessingJob['id'], string>;
+}
+
+/** The status button with its pause button, and the panel listing every running job. */
+function ProcessingStatus({ status, jobs, paused, pauseStatus, canPause, power, timeLeft }: ProcessingStatusProps) {
+  const pillRef = useRef<HTMLButtonElement>(null);
+  const [panelAt, setPanelAt] = useState<{ x: number; y: number } | null>(null);
+  const togglePanel = () => {
+    const rect = pillRef.current?.parentElement?.getBoundingClientRect();
+    setPanelAt((open) => (open || !rect ? null : { x: rect.left, y: rect.bottom + 4 }));
+  };
+  const closePanel = useCallback((refocus: boolean) => {
+    setPanelAt(null);
+    if (refocus) pillRef.current?.focus();
+  }, []);
+  const FinishGlyph = FINISH_ACTION_GLYPHS[power.finishAction];
+  const statusDetail = status.detail ?? '';
+  const panelItems: AppMenuItem[] = [
+    ...(canPause ? [{
+      key: 'pause',
+      label: paused ? 'Resume Processing' : 'Pause Processing',
+      icon: paused ? Play : Pause,
+      disabled: pauseStatus === 'pausing',
+      onSelect: () => void window.electronAPI?.setProcessingPaused(!paused),
+    }] : []),
+    ...(power.processing ? [
+      { type: 'separator' as const, key: 'sep-finish' },
+      { type: 'heading' as const, key: 'finish', label: 'When processing finishes' },
+      ...FINISH_ACTIONS.map(([action, label]): AppMenuItem => ({
+        key: action,
+        label,
+        radio: true,
+        checked: power.finishAction === action,
+        onSelect: () => void runAppCommand(`Actions > When Processing Finishes > ${label}`),
+      })),
+    ] : []),
+  ];
+
+  return (
+    <>
+      <div className="title-bar-status-pill">
+        <button
+          ref={pillRef}
+          type="button"
+          className="title-bar-status-button"
+          title={[status.label, statusDetail, paused ? 'Paused' : ''].filter(Boolean).join(' · ')}
+          aria-haspopup="menu"
+          aria-expanded={panelAt !== null}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={togglePanel}
+        >
+          <ProgressRing fraction={status.fraction} paused={paused} />
+          <span className="title-bar-status" role="status">
+            <span className="title-bar-status-label">{status.label}</span>
+            {statusDetail && <span className="title-bar-status-detail">{statusDetail}</span>}
+            {paused && <span className="title-bar-status-paused">Paused</span>}
+          </span>
+          {jobs.length > 1 && <span className="title-bar-status-more" aria-label={`and ${jobs.length - 1} more`}>+{jobs.length - 1}</span>}
+          {FinishGlyph && (
+            <FinishGlyph size={12} className="title-bar-status-finish" aria-label={power.finishAction === 'sleep' ? 'Then sleep' : 'Then shut down'} />
+          )}
+        </button>
+        {canPause && <button
+          type="button"
+          className={`title-bar-icon-button${paused ? ' paused' : ''}`}
+          title={pauseStatus === 'running' ? 'Pause processing' : pauseStatus === 'pausing' ? 'Pausing...' : 'Resume processing'}
+          aria-label={pauseStatus === 'running' ? 'Pause processing' : 'Resume processing'}
+          disabled={pauseStatus === 'pausing'}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => void window.electronAPI?.setProcessingPaused(pauseStatus === 'running')}
+        >
+          {pauseStatus === 'running' ? <Pause size={14} /> : <Play size={14} />}
+        </button>}
+      </div>
+      {panelAt && (
+        <AppMenu
+          label="Processing"
+          content={jobs.map((job) => <JobRow key={job.id} job={job} timeLeft={timeLeft.get(job.id)} paused={paused} />)}
+          items={panelItems}
+          className="processing-panel"
+          x={panelAt.x}
+          y={panelAt.y}
+          onClose={closePanel}
+          keepOpenWithin=".title-bar-status-button"
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Replaces the Windows title bar and menu bar. The menus themselves stay native: each button opens
+ * the matching application menu, so enabled states and shortcuts come from one place. Windows draws
+ * the window buttons on the right (titleBarOverlay).
+ */
+export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActions }: {
+  isPrivate: boolean;
+  onOpenCommandPalette: () => void;
+  locationActions: LocationBarAppActions;
+}) {
+  const directories = useStore((s) => s.directories);
+  // Compared field by field, so the bar only re-renders when processing progress changes.
+  const processingInputs = useStore(useShallow((s) => ({
+    isGenerating: s.isGenerating,
+    genProgress: s.genProgress,
+    isFindingDuplicates: s.isFindingDuplicates,
+    duplicateProgress: s.duplicateProgress,
+    isScanning: s.isScanning,
+    scanProgress: s.scanProgress,
+  })));
+  const jobs = useMemo(() => listProcessingJobs(processingInputs), [processingInputs]);
+  const power = usePowerState();
+  const pauseStatus = useProcessingPauseState().status;
+  const canPause = processingInputs.isGenerating || processingInputs.isFindingDuplicates;
+  const paused = canPause && pauseStatus !== 'running';
+  const timeLeft = useTimeLeft(jobs, paused);
+  useTaskbarProgress(jobs, paused);
+  const status = jobs[0] ?? null;
+  const marked = useStore(useShallow((s) => ({ count: s.stats.delete, size: s.stats.deleteSize })));
+
   const sessionTitle = isPrivate || directories.length === 0
     ? 'VideoCull'
     : directories.length === 1
@@ -237,25 +327,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
     <header className="title-bar">
       <div className="title-bar-start">
         <img className="title-bar-icon" src={videoCullIcon} alt="" draggable={false} />
-        <nav className="title-bar-menus" aria-label="Application menu">
-          {MENUS.map(({ label, accessKey }) => (
-            <button
-              key={label}
-              ref={(element) => {
-                if (element) buttonRefs.current.set(label, element);
-                else buttonRefs.current.delete(label);
-              }}
-              type="button"
-              className={`title-bar-menu-button${openMenu === label ? ' open' : ''}`}
-              aria-haspopup="menu"
-              aria-expanded={openMenu === label}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => void open(label)}
-            >
-              <MenuLabelText label={label} accessKey={accessKey} showAccessKey={altHeld} />
-            </button>
-          ))}
-        </nav>
+        <AppMenuButtons />
       </div>
       <div className="title-bar-center">
         {isPrivate ? (
@@ -274,40 +346,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
       )}
       <div className="title-bar-actions">
         {status && !isPrivate && (
-          <div className="title-bar-status-pill">
-            <button
-              ref={pillRef}
-              type="button"
-              className="title-bar-status-button"
-              title={[status.label, statusDetail, paused ? 'Paused' : ''].filter(Boolean).join(' · ')}
-              aria-haspopup="menu"
-              aria-expanded={panelAt !== null}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={togglePanel}
-            >
-              <ProgressRing fraction={status.fraction} paused={paused} />
-              <span className="title-bar-status" role="status">
-                <span className="title-bar-status-label">{status.label}</span>
-                {statusDetail && <span className="title-bar-status-detail">{statusDetail}</span>}
-                {paused && <span className="title-bar-status-paused">Paused</span>}
-              </span>
-              {jobs.length > 1 && <span className="title-bar-status-more" aria-label={`and ${jobs.length - 1} more`}>+{jobs.length - 1}</span>}
-              {FinishGlyph && (
-                <FinishGlyph size={12} className="title-bar-status-finish" aria-label={power.finishAction === 'sleep' ? 'Then sleep' : 'Then shut down'} />
-              )}
-            </button>
-            {canPause && <button
-              type="button"
-              className={`title-bar-icon-button${paused ? ' paused' : ''}`}
-              title={pauseStatus === 'running' ? 'Pause processing' : pauseStatus === 'pausing' ? 'Pausing...' : 'Resume processing'}
-              aria-label={pauseStatus === 'running' ? 'Pause processing' : 'Resume processing'}
-              disabled={pauseStatus === 'pausing'}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => void window.electronAPI?.setProcessingPaused(pauseStatus === 'running')}
-            >
-              {pauseStatus === 'running' ? <Pause size={14} /> : <Play size={14} />}
-            </button>}
-          </div>
+          <ProcessingStatus status={status} jobs={jobs} paused={paused} pauseStatus={pauseStatus} canPause={canPause} power={power} timeLeft={timeLeft} />
         )}
         {marked.count > 0 && !isPrivate && (
           <button
@@ -334,18 +373,6 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
           >
             <Search size={14} />
           </button>
-        )}
-        {panelAt && status && !isPrivate && (
-          <AppMenu
-            label="Processing"
-            content={jobs.map((job) => <JobRow key={job.id} job={job} timeLeft={timeLeft.get(job.id)} paused={paused} />)}
-            items={panelItems}
-            className="processing-panel"
-            x={panelAt.x}
-            y={panelAt.y}
-            onClose={closePanel}
-            keepOpenWithin=".title-bar-status-button"
-          />
         )}
       </div>
     </header>
