@@ -94,21 +94,9 @@ function leaveToGrid() {
 
 const splitLabel = (label: string) => label.split(/\s*[\\/]\s*/);
 
-/** Find and run any menu command, go to a folder or find a video (Ctrl+K; Ctrl+G starts with `/`). */
-export default function CommandPalette({ onClose, initialQuery = '' }: { onClose: () => void; initialQuery?: string }) {
+/** The menu's commands, fetched once when the palette opens. */
+function useCommands(): AppCommand[] {
   const [commands, setCommands] = useState<AppCommand[]>([]);
-  const [query, setQuery] = useState(initialQuery);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const listRef = useRef<HTMLUListElement>(null);
-  const { folders, videos, directories } = useMemo(() => {
-    const state = useStore.getState();
-    return {
-      folders: listGridFolders(videosOutsideFolderFilter(state), state.directories),
-      videos: state.filteredVideos,
-      directories: state.directories,
-    };
-  }, []);
-
   useEffect(() => {
     let cancelled = false;
     window.electronAPI?.getCommands().then((list) => {
@@ -121,92 +109,123 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
       cancelled = true;
     };
   }, []);
+  return commands;
+}
 
-  const rows = useMemo(() => {
-    const { source, text, words } = parseQuery(query);
-    const limit = (max: number) => (source ? max : SECTION_LIMIT);
-    const result: Row[] = [];
-    if (!source || source === 'commands') {
-      const found = byRecent(filterCommands(commands, text), (command) => `command:${command.id}`, recentPicks);
-      for (const command of found.slice(0, limit(Infinity))) {
-        result.push({
-          key: `command:${command.id}`,
-          section: SECTION_TITLES.commands,
-          label: command.path[command.path.length - 1],
-          parent: command.path.slice(0, -1).join(' › '),
-          detail: command.accelerator ? formatAccelerator(command.accelerator) : undefined,
-          checked: command.checked === true,
-          disabled: !command.enabled,
-          hint: 'Enter to run',
-          run: () => {
-            // Close first: many commands open a dialog of their own.
-            onClose();
-            void runAppCommand(command.id);
-          },
-        });
-      }
+interface PaletteSources {
+  commands: AppCommand[];
+  folders: ReturnType<typeof listGridFolders>;
+  videos: Video[];
+  directories: string[];
+}
+
+/** The rows for a query: menu commands, folders and videos, each section limited unless it was asked for. */
+function buildRows(query: string, { commands, folders, videos, directories }: PaletteSources, onClose: () => void): Row[] {
+  const { source, text, words } = parseQuery(query);
+  const limit = (max: number) => (source ? max : SECTION_LIMIT);
+  const result: Row[] = [];
+  if (!source || source === 'commands') {
+    const found = byRecent(filterCommands(commands, text), (command) => `command:${command.id}`, recentPicks);
+    for (const command of found.slice(0, limit(Infinity))) {
+      result.push({
+        key: `command:${command.id}`,
+        section: SECTION_TITLES.commands,
+        label: command.path[command.path.length - 1],
+        parent: command.path.slice(0, -1).join(' › '),
+        detail: command.accelerator ? formatAccelerator(command.accelerator) : undefined,
+        checked: command.checked === true,
+        disabled: !command.enabled,
+        hint: 'Enter to run',
+        run: () => {
+          // Close first: many commands open a dialog of their own.
+          onClose();
+          void runAppCommand(command.id);
+        },
+      });
     }
-    if (!source || source === 'folders') {
-      for (const folder of rankFolders(folders, words, recentPicks).slice(0, limit(Infinity))) {
-        const parts = splitLabel(folder.label);
-        result.push({
-          key: `folder:${folder.path}`,
-          section: SECTION_TITLES.folders,
-          label: parts[parts.length - 1],
-          parent: parts.slice(0, -1).join(' › '),
-          detail: folder.toReview > 0
-            ? `${folder.toReview.toLocaleString()} to review`
-            : `${folder.count.toLocaleString()} ${folder.count === 1 ? 'video' : 'videos'}`,
-          muted: folder.toReview === 0,
-          hint: 'Enter to go to the folder · Shift+Enter to filter to it',
-          run: ({ shift }) => {
-            onClose();
+  }
+  if (!source || source === 'folders') {
+    for (const folder of rankFolders(folders, words, recentPicks).slice(0, limit(Infinity))) {
+      const parts = splitLabel(folder.label);
+      result.push({
+        key: `folder:${folder.path}`,
+        section: SECTION_TITLES.folders,
+        label: parts[parts.length - 1],
+        parent: parts.slice(0, -1).join(' › '),
+        detail: folder.toReview > 0
+          ? `${folder.toReview.toLocaleString()} to review`
+          : `${folder.count.toLocaleString()} ${folder.count === 1 ? 'video' : 'videos'}`,
+        muted: folder.toReview === 0,
+        hint: 'Enter to go to the folder · Shift+Enter to filter to it',
+        run: ({ shift }) => {
+          onClose();
+          leaveToGrid();
+          const state = useStore.getState();
+          if (shift) state.setFolderFilter({ path: folder.path, includeSubfolders: true });
+          else if (!isFolderShownByFilter(folder.path, state.folderFilter)) state.setFolderFilter(null);
+          state.requestGridFolderJump(folder.path);
+        },
+      });
+    }
+  }
+  if (!source || source === 'videos') {
+    for (const video of findVideos(videos, words, limit(VIDEO_LIMIT))) {
+      result.push({
+        key: `video:${video.id}`,
+        section: SECTION_TITLES.videos,
+        label: video.filename,
+        parent: splitLabel(getFolderLabel(video, directories)).join(' › '),
+        hint: 'Enter to select it in the grid · Ctrl+Enter to review it',
+        run: ({ ctrl }) => {
+          onClose();
+          const state = useStore.getState();
+          if (!ctrl) {
             leaveToGrid();
-            const state = useStore.getState();
-            if (shift) state.setFolderFilter({ path: folder.path, includeSubfolders: true });
-            else if (!isFolderShownByFilter(folder.path, state.folderFilter)) state.setFolderFilter(null);
-            state.requestGridFolderJump(folder.path);
-          },
-        });
-      }
+            state.requestGridVideoJump(video.id);
+            return;
+          }
+          if (state.duplicateGroupsMode) state.setDuplicateGroupsMode(false);
+          state.enterReviewAndPlay(video.id);
+        },
+      });
     }
-    if (!source || source === 'videos') {
-      for (const video of findVideos(videos, words, limit(VIDEO_LIMIT))) {
-        result.push({
-          key: `video:${video.id}`,
-          section: SECTION_TITLES.videos,
-          label: video.filename,
-          parent: splitLabel(getFolderLabel(video, directories)).join(' › '),
-          hint: 'Enter to select it in the grid · Ctrl+Enter to review it',
-          run: ({ ctrl }) => {
-            onClose();
-            const state = useStore.getState();
-            if (!ctrl) {
-              leaveToGrid();
-              state.requestGridVideoJump(video.id);
-              return;
-            }
-            if (state.duplicateGroupsMode) state.setDuplicateGroupsMode(false);
-            state.enterReviewAndPlay(video.id);
-          },
-        });
-      }
-      if (text) {
-        result.push({
-          key: 'search',
-          section: '',
-          label: `Search videos for “${text}”`,
-          hint: 'Enter to search the grid',
-          run: () => {
-            onClose();
-            leaveToGrid();
-            useStore.getState().setSearchQuery(text);
-          },
-        });
-      }
+    if (text) {
+      result.push({
+        key: 'search',
+        section: '',
+        label: `Search videos for “${text}”`,
+        hint: 'Enter to search the grid',
+        run: () => {
+          onClose();
+          leaveToGrid();
+          useStore.getState().setSearchQuery(text);
+        },
+      });
     }
-    return result;
-  }, [commands, directories, folders, onClose, query, videos]);
+  }
+  return result;
+}
+
+/** Find and run any menu command, go to a folder or find a video (Ctrl+K; Ctrl+G starts with `/`). */
+export default function CommandPalette({ onClose, initialQuery = '' }: { onClose: () => void; initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const listRef = useRef<HTMLUListElement>(null);
+  const { folders, videos, directories } = useMemo(() => {
+    const state = useStore.getState();
+    return {
+      folders: listGridFolders(videosOutsideFolderFilter(state), state.directories),
+      videos: state.filteredVideos,
+      directories: state.directories,
+    };
+  }, []);
+
+  const commands = useCommands();
+
+  const rows = useMemo(
+    () => buildRows(query, { commands, folders, videos, directories }, onClose),
+    [commands, directories, folders, onClose, query, videos],
+  );
 
   const safeIndex = Math.min(activeIndex, Math.max(0, rows.length - 1));
   const activeRow = rows[safeIndex];
