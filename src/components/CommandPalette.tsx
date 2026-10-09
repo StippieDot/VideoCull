@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Search } from 'lucide-react';
 import useStore, { videosOutsideFolderFilter } from '../store';
 import type { AppCommand, Video } from '../types';
+import { runAppCommand } from '../appCommands';
 import { getFolderLabel, isFolderShownByFilter } from '../utils';
 import { listGridFolders, type FolderEntry } from './locationMenus';
 import './CommandPalette.css';
@@ -110,8 +111,11 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
 
   useEffect(() => {
     let cancelled = false;
-    void window.electronAPI?.getCommands().then((list) => {
+    window.electronAPI?.getCommands().then((list) => {
       if (!cancelled) setCommands(list);
+    }, (err) => {
+      console.warn('[app] Failed to load the command list:', err);
+      useStore.getState().pushToast({ title: 'Commands unavailable', detail: 'The command list could not be loaded.', kind: 'error', dedupeKey: 'command-list-failed' });
     });
     return () => {
       cancelled = true;
@@ -137,7 +141,7 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
           run: () => {
             // Close first: many commands open a dialog of their own.
             onClose();
-            void window.electronAPI?.runCommand(command.id);
+            void runAppCommand(command.id);
           },
         });
       }

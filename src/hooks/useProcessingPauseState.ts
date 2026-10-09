@@ -11,8 +11,10 @@ export default function useProcessingPauseState(): ProcessingPauseState {
       receivedEvent = true;
       setPauseState(state);
     });
-    void window.electronAPI.getProcessingPauseState().then((state) => {
+    window.electronAPI.getProcessingPauseState().then((state) => {
       if (!receivedEvent) setPauseState(state);
+    }, (err) => {
+      console.warn('[app] Failed to read the processing pause state:', err);
     });
     return unsubscribe;
   }, []);

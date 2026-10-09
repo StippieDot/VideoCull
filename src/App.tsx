@@ -451,6 +451,16 @@ export default function App() {
       void findDuplicatesRef.current({ restart: true });
     };
     const state = useStore.getState();
+    // Switching saves a setting; do not claim a scan that the run itself would refuse to start.
+    if (state.videos.length < 2 || !state.settings.duplicates.enabled || isMetadataRunning(state.isGenerating, state.genProgress.phase)) {
+      pushToast({
+        title: 'Duplicate detection unavailable',
+        detail: 'It needs at least two videos, duplicate detection enabled and finished metadata.',
+        kind: 'info',
+        dedupeKey: 'duplicates-switch-unavailable',
+      });
+      return;
+    }
     const previous = state.lastDuplicateMethod ?? state.settings.duplicates.comparisonMode;
     const next = otherDuplicateMethod(state);
     useMethod(next);
@@ -814,7 +824,7 @@ export default function App() {
       ? window.electronAPI.onDuplicateProgress((progress) => setDuplicateProgress(progress))
       : () => {};
 
-    const unsub4 = window.electronAPI.onMenuAction(async (action) => {
+    const handleMenuAction = async (action: string) => {
       if (action === 'toggle-privacy') {
         setIsPrivate((v) => !v);
         return;
@@ -984,6 +994,18 @@ export default function App() {
           break;
         }
       }
+    };
+    // The IPC listener ignores the returned promise, so a failed dialog or scan would otherwise vanish.
+    const unsub4 = window.electronAPI.onMenuAction((action) => {
+      handleMenuAction(action).catch((err) => {
+        console.warn(`[app] Menu action "${action}" failed:`, err);
+        useStore.getState().pushToast({
+          title: 'Menu action failed',
+          detail: 'The action could not be completed. See the log for details.',
+          kind: 'error',
+          dedupeKey: 'menu-action-failed',
+        });
+      });
     });
 
     const handleKeyDown = (e: KeyboardEvent) => {

@@ -6,6 +6,7 @@ import usePowerState from '../hooks/usePowerState';
 import useProcessingPauseState from '../hooks/useProcessingPauseState';
 import type { TaskbarProgress } from '../types';
 import videoCullIcon from '../assets/videocull-icon.png';
+import { openAppMenuAt, runAppCommand } from '../appCommands';
 import { formatRecentPath, formatSize } from '../utils';
 import AppMenu, { type AppMenuItem } from './AppMenu';
 import { formatTimeLeft, listProcessingJobs, TimeLeftEstimator, type ProcessingJob } from './processingStatus';
@@ -159,7 +160,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
     const rect = button.getBoundingClientRect();
     setOpenMenu(label);
     try {
-      await window.electronAPI.openAppMenu(label, rect.left, rect.bottom);
+      await openAppMenuAt(label, rect.left, rect.bottom);
     } finally {
       setOpenMenu(null);
     }
@@ -191,7 +192,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
         label,
         radio: true,
         checked: power.finishAction === action,
-        onSelect: () => void window.electronAPI?.runCommand(`Actions > When Processing Finishes > ${label}`),
+        onSelect: () => void runAppCommand(`Actions > When Processing Finishes > ${label}`),
       })),
     ] : []),
   ];
@@ -315,7 +316,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
             title={`Delete ${marked.count.toLocaleString()} marked ${marked.count === 1 ? 'video' : 'videos'} (${formatSize(marked.size)})… (Ctrl+Backspace)`}
             aria-label={`Delete ${marked.count.toLocaleString()} marked ${marked.count === 1 ? 'video' : 'videos'}`}
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() => void window.electronAPI?.runCommand('Actions > Delete Marked Videos')}
+            onClick={() => void runAppCommand('Actions > Delete Marked Videos')}
           >
             <Trash2 size={13} aria-hidden="true" />
             {marked.count.toLocaleString()}

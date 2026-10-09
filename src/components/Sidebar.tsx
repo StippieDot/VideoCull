@@ -5,6 +5,7 @@ import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store
 import { beginDevInteraction } from '../perf-dev';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
+import { runAppCommand } from '../appCommands';
 import { formatDeleteConfirmation, formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import { deleteWithPermanentReview } from '../deletion';
 import AppMenu, { type AppMenuItem } from './AppMenu';
@@ -867,7 +868,7 @@ export default function Sidebar({
       key: 'add',
       label: 'Add Folder to Session...',
       icon: FolderPlus,
-      onSelect: () => void window.electronAPI?.runCommand('File > Add Folder to Session'),
+      onSelect: () => void runAppCommand('File > Add Folder to Session'),
     },
     { type: 'separator', key: 'sep-session' },
     { key: 'rescan', label: 'Rescan', icon: RefreshCw, detail: 'F5', disabled: isScanning, onSelect: onRescan },
