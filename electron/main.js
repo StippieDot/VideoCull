@@ -21,6 +21,7 @@ const { processingPause } = require('./processing-pause');
 const { createPowerManager } = require('./power-manager');
 const { runPowerCommand } = require('./system-power');
 const { buildMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('./app-menu');
+const { runMenuCommand, openMenuAt, applyTaskbarProgress } = require('./menu-commands');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
@@ -297,7 +298,7 @@ function folderDisplayName(folderPath) {
 
 // â”€â”€ Window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // The title bar can show the Windows 11 Mica material; the rest of the window stays opaque.
-const micaSupported = process.platform === 'win32' && supportsMica(require('os').release());
+const micaSupported = process.platform === 'win32' && supportsMica(os.release());
 let useMica = false;
 let currentTheme = 'dark';
 
@@ -547,6 +548,18 @@ app.whenReady().then(async () => {
 
 let rendererMenuState = EMPTY_RENDERER_MENU_STATE;
 
+function openExternalLink(url) {
+  shell.openExternal(url).catch((err) => log.warn(`[menu] Could not open ${url}:`, err));
+}
+
+function openFolderPath(folderPath) {
+  // openPath reports failure by resolving to an error message instead of rejecting.
+  shell.openPath(folderPath).then(
+    (error) => { if (error) log.warn(`[menu] Could not open ${folderPath}: ${error}`); },
+    (err) => log.warn(`[menu] Could not open ${folderPath}:`, err),
+  );
+}
+
 /** The app menu is rebuilt whenever its state changes; the state changes rarely. */
 function setApplicationMenu() {
   const power = powerManager.getState();
@@ -558,61 +571,50 @@ function setApplicationMenu() {
     paused: processingPause.getState().status !== 'running',
     finishAction: power.finishAction,
   }, {
-    send: (action) => sendToRenderer('menu-action', action),
+    send: (action) => {
+      if (!sendToRenderer('menu-action', action)) log.warn(`[menu] Action "${action}" was not delivered to the window.`);
+    },
     setFinishAction: (action) => {
       if (action === 'none') powerManager.cancelFinishAction();
       else powerManager.setFinishAction(action);
     },
     setPaused: (paused) => (paused ? processingPause.pause() : processingPause.resume()),
-    openReleaseNotes: () => void shell.openExternal(`${product.repository.url}/releases`),
-    reportProblem: () => void shell.openExternal(`${product.repository.url}/issues`),
-    openLogFolder: () => void shell.openPath(path.dirname(log.transports.file.getFile().path)),
-    openHelpWebsite: () => void shell.openExternal(`${product.website}/support/`),
-    openSponsors: () => void shell.openExternal(`https://github.com/sponsors/${product.publisher}`),
-    openPayPal: () => void shell.openExternal('https://paypal.me/stippiedot'),
+    openReleaseNotes: () => openExternalLink(`${product.repository.url}/releases`),
+    reportProblem: () => openExternalLink(`${product.repository.url}/issues`),
+    openLogFolder: () => openFolderPath(path.dirname(log.transports.file.getFile().path)),
+    openHelpWebsite: () => openExternalLink(`${product.website}/support/`),
+    openSponsors: () => openExternalLink(`https://github.com/sponsors/${product.publisher}`),
+    openPayPal: () => openExternalLink('https://paypal.me/stippiedot'),
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 // Opens an app menu or submenu by its command id (app-menu.js) at a window position (the title bar
 // buttons). Resolves when the menu closes.
-ipcMain.handle('open-app-menu', (_event, id, x, y) => new Promise((resolve) => {
-  const item = typeof id === 'string' ? Menu.getApplicationMenu()?.getMenuItemById(id) : null;
-  if (!item?.submenu || !mainWindow || mainWindow.isDestroyed() || !Number.isFinite(x) || !Number.isFinite(y)) {
-    resolve(false);
-    return;
-  }
-  item.submenu.popup({ window: mainWindow, x: Math.round(x), y: Math.round(y), callback: () => resolve(true) });
-}));
+ipcMain.handle('open-app-menu', (_event, id, x, y) => openMenuAt(Menu.getApplicationMenu(), id, mainWindow, x, y));
 
 // The command palette lists and runs the app menu's items, so both always offer the same commands.
 ipcMain.handle('get-commands', () => listCommands(Menu.getApplicationMenu()?.items ?? []));
 
 ipcMain.handle('run-command', (_event, id) => {
-  const item = typeof id === 'string' ? Menu.getApplicationMenu()?.getMenuItemById(id) : null;
-  if (!item || !item.enabled || !item.visible || item.submenu || !mainWindow || mainWindow.isDestroyed()) return false;
-  item.click(undefined, mainWindow, mainWindow.webContents);
-  return true;
-});
-
-// Progress on the taskbar button, so processing can be followed while the window is minimised.
-ipcMain.on('set-taskbar-progress', (_event, progress) => {
-  if (!mainWindow || mainWindow.isDestroyed() || !progress || typeof progress !== 'object') return;
-  const { mode, fraction } = progress;
-  if (mode === 'normal' || mode === 'paused') {
-    if (!Number.isFinite(fraction)) return;
-    mainWindow.setProgressBar(Math.min(1, Math.max(0, fraction)), { mode });
-  } else if (mode === 'indeterminate') {
-    // Windows shows the moving bar for any value above 1 in this mode.
-    mainWindow.setProgressBar(2, { mode: 'indeterminate' });
-  } else {
-    mainWindow.setProgressBar(-1);
+  try {
+    return runMenuCommand(Menu.getApplicationMenu(), id, mainWindow);
+  } catch (err) {
+    log.error(`[menu] Command "${String(id)}" failed:`, err);
+    return false;
   }
 });
 
+// Progress on the taskbar button, so processing can be followed while the window is minimised.
+ipcMain.on('set-taskbar-progress', (_event, progress) => applyTaskbarProgress(mainWindow, progress));
+
 ipcMain.on('set-menu-state', (_event, state) => {
-  rendererMenuState = normalizeRendererMenuState(state);
-  setApplicationMenu();
+  try {
+    rendererMenuState = normalizeRendererMenuState(state);
+    setApplicationMenu();
+  } catch (err) {
+    log.error('[menu] Could not apply the menu state:', err);
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -2976,7 +2978,8 @@ ipcMain.handle('save-config', async (_event, config) => {
     await fs.writeFile(configPath, JSON.stringify(normalizedConfig, null, 2), 'utf8');
     applyNativeTheme(theme);
     powerManager.setKeepAwake(normalizedConfig.keepAwakeWhileProcessing !== false);
-    if (micaSupported && (normalizedConfig.micaTitleBar !== false) !== useMica) applyWindowMaterial(normalizedConfig.micaTitleBar !== false);
+    const wantsMica = normalizedConfig.micaTitleBar !== false;
+    if (micaSupported && wantsMica !== useMica) applyWindowMaterial(wantsMica);
     return true;
   } catch (e) {
     log.error('[save-config] Error saving config:', e);

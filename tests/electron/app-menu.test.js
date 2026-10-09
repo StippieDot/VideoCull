@@ -203,3 +203,22 @@ test('the command palette lists runnable items, not submenus, separators, hidden
   });
   assert.equal(commands.find((command) => command.id === 'File > Open Folder').accelerator, 'CmdOrCtrl+O');
 });
+
+test('the ids the title bar and sidebar run exist in the menu', () => {
+  const template = menu({ hasSession: true, markedCount: 3, processing: true });
+  const ids = [];
+  (function collect(items) {
+    for (const entry of items) {
+      if (entry.id) ids.push(entry.id);
+      if (Array.isArray(entry.submenu)) collect(entry.submenu);
+    }
+  })(template);
+  for (const id of [
+    'File', 'Actions', 'View', 'Video', 'Help',
+    'File > Add Folder to Session',
+    'Actions > Delete Marked Videos',
+    'Actions > When Processing Finishes > Do Nothing',
+    'Actions > When Processing Finishes > Sleep',
+    'Actions > When Processing Finishes > Shut Down',
+  ]) assert.ok(ids.includes(id), `missing menu id: ${id}`);
+});
