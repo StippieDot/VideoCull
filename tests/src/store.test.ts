@@ -4,7 +4,7 @@ import { makeDuplicateGroup as makeGroup, makeVideo } from '../helpers/videoFact
 
 type FilterState = Pick<VideoStore,
   'videos' | 'searchQuery' | 'statusFilter' | 'minSizeFilter' | 'maxSizeFilter' | 'minDurationFilter' | 'maxDurationFilter' |
-  'folderFilterPath' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' |
+  'folderFilter' | 'minRatingFilter' | 'favoritesFilter' | 'incompatibleFilter' | 'duplicateFilter' |
   'sortBy' | 'sortOrder' | 'groupByFolder' | 'folderSortBy' | 'folderSortOrder'
 >;
 
@@ -17,7 +17,7 @@ function makeFilterState(overrides: Partial<FilterState> = {}): FilterState {
     maxSizeFilter: null,
     minDurationFilter: 0,
     maxDurationFilter: null,
-    folderFilterPath: null,
+    folderFilter: null,
     minRatingFilter: 0,
     favoritesFilter: false,
     incompatibleFilter: false,
@@ -276,4 +276,26 @@ describe('directory identity', () => {
       'D:\\Clips\\',
     ])).toEqual(['C:\\Media', 'D:\\Clips']);
   });
+});
+
+test('the title bar path filter keeps a folder and everything below it, not folders that only start alike', () => {
+  const videos = [
+    makeVideo('top', {}, 'P:\\AI'),
+    makeVideo('deep', {}, 'P:\\AI\\Traingon\\Holiday'),
+    makeVideo('alike', {}, 'P:\\AI Extra'),
+    makeVideo('other', {}, 'P:\\Downloads'),
+  ];
+  const filtered = __test__.computeFiltered(makeFilterState({ videos, folderFilter: { path: 'P:\\AI', includeSubfolders: true } }));
+  expect(filtered.map((video) => video.id).sort()).toEqual(['deep', 'top']);
+  // A drive root is written with its separator.
+  expect(__test__.computeFiltered(makeFilterState({ videos, folderFilter: { path: 'P:\\', includeSubfolders: true } }))).toHaveLength(4);
+  // Without subfolders, only the folder's own videos.
+  const exact = __test__.computeFiltered(makeFilterState({ videos, folderFilter: { path: 'P:\\AI', includeSubfolders: false } }));
+  expect(exact.map((video) => video.id)).toEqual(['top']);
+  // Letter case and a drive root's trailing separator do not matter either.
+  expect(__test__.computeFiltered(makeFilterState({ videos, folderFilter: { path: 'p:\\ai', includeSubfolders: false } }))
+    .map((video) => video.id)).toEqual(['top']);
+  const onRoot = [makeVideo('root', {}, 'P:'), ...videos];
+  expect(__test__.computeFiltered(makeFilterState({ videos: onRoot, folderFilter: { path: 'P:\\', includeSubfolders: false } }))
+    .map((video) => video.id)).toEqual(['root']);
 });

@@ -2,6 +2,7 @@ import { installDevPerfGlobal, startLongTaskObserver } from './perf-dev';
 import { applyDocumentTheme, getPreloadedColorTheme } from './theme';
 
 applyDocumentTheme(getPreloadedColorTheme());
+if (window.electronAPI?.usesMica) document.documentElement.classList.add('mica');
 
 function disableReactDevUserTiming() {
   if (!import.meta.env.DEV) return;

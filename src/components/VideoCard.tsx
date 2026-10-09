@@ -5,6 +5,7 @@ import ThumbnailStrip from './ThumbnailStrip';
 import { formatSize, formatDuration, formatCodecLabel, formatFps, formatResolutionLabel, isWebSupported } from '../utils';
 import { Check, SkipForward, Square, CheckSquare, Trash2, Play, Heart, Star } from 'lucide-react';
 import './VideoCard.css';
+import { openVideoExternally } from '../appCommands';
 
 interface VideoCardProps {
   video: Video;
@@ -86,7 +87,7 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
     if (canPlayInReview && !e.ctrlKey) {
       enterReviewAndPlay(video.id);
     } else if (window.electronAPI) {
-      window.electronAPI.openVideo(video.path);
+      openVideoExternally(video.path);
     }
   };
 

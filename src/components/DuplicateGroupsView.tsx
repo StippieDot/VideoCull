@@ -30,7 +30,6 @@ import {
   buildDuplicateGalleryRows,
   buildDuplicateRowsRows,
   computeDuplicateGalleryLayout,
-  DUPLICATE_GALLERY_CARD_HEIGHT,
   DUPLICATE_GALLERY_CARD_GAP,
   DUPLICATE_GALLERY_ROW_PADDING,
   DUPLICATE_GROUP_GAP,
@@ -45,6 +44,7 @@ import {
 } from './contextMenuBuilders';
 import { Ban, Check, CheckCircle2, Play, SkipForward, Trash2 } from 'lucide-react';
 import './DuplicateGroupsView.css';
+import { openVideoExternally, revealInExplorer } from '../appCommands';
 
 type MetricState = 'best' | 'equal' | 'worse';
 type MetricFlags = Record<string, MetricState>;
@@ -101,6 +101,8 @@ type DuplicateGalleryCardProps = {
   onToggleSelection: (video: Video) => void;
   onPlayVideo: (videoId: string, scopeIds: string[]) => void;
   onOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+  /** Reports the frame shape of a loaded thumbnail, which sets the row height. */
+  onThumbnailAspect: (videoId: string, aspect: number) => void;
 };
 
 type DuplicateRowRuntimeData = {
@@ -115,6 +117,7 @@ type DuplicateRowRuntimeData = {
   handlePlayVideo: (videoId: string, scopeIds: string[]) => void;
   handleOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
   handleOpenGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
+  reportThumbnailAspect: (videoId: string, aspect: number) => void;
 };
 
 type DuplicateRowRenderSignals = {
@@ -325,8 +328,12 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
   );
 });
 
+/** Frame shape of each video's loaded thumbnails, kept for the session so rows keep their height. */
+const thumbnailAspects = new Map<string, number>();
+
 const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   video,
+  onThumbnailAspect,
   groupVideoIds,
   groupId,
   isSelected,
@@ -334,8 +341,23 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   onPlayVideo,
   onOpenVideoContextMenu,
 }: DuplicateGalleryCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = cardRef.current;
+    if (!element) return;
+    const handleLoad = (event: Event) => {
+      const image = event.target;
+      if (image instanceof HTMLImageElement && image.classList.contains('thumb-img') && image.naturalHeight > 0) {
+        onThumbnailAspect(video.id, image.naturalWidth / image.naturalHeight);
+      }
+    };
+    // Image load events do not bubble, but an ancestor still sees them while capturing.
+    element.addEventListener('load', handleLoad, true);
+    return () => element.removeEventListener('load', handleLoad, true);
+  }, [onThumbnailAspect, video.id]);
+
   return (
-    <div onContextMenu={(event) => onOpenVideoContextMenu(event, groupId, video.id)}>
+    <div ref={cardRef} className="duplicate-gallery-card" onContextMenu={(event) => onOpenVideoContextMenu(event, groupId, video.id)}>
       <VideoCard
         video={video}
         showSelectionControls
@@ -477,10 +499,11 @@ function DuplicateVirtualRowRenderer({
               <div
                 key={video.id}
                 className="duplicate-card-grid-cell"
-                style={{ height: DUPLICATE_GALLERY_CARD_HEIGHT }}
+                style={{ height: row.cardHeight }}
               >
                 <DuplicateGalleryCard
                   video={video}
+                  onThumbnailAspect={runtime.reportThumbnailAspect}
                   groupId={groupView.group.id}
                   groupVideoIds={groupView.group.videoIds}
                   isSelected={runtime.selectedIds.has(video.id)}
@@ -510,7 +533,6 @@ function DuplicateGroupsView() {
   const duplicateMinSimilarity = useStore((s) => s.duplicateMinSimilarity);
   const duplicateSortBy = useStore((s) => s.duplicateSortBy);
   const duplicateSortOrder = useStore((s) => s.duplicateSortOrder);
-  const duplicateScrollTop = useStore((s) => s.duplicateScrollTop);
   const setDuplicateGroups = useStore((s) => s.setDuplicateGroups);
   const setManualDuplicateKeeper = useStore((s) => s.setManualDuplicateKeeper);
   const setDuplicateScrollTop = useStore((s) => s.setDuplicateScrollTop);
@@ -895,6 +917,19 @@ function DuplicateGroupsView() {
     }
   }, [groupViewsById, pushToast, setManualDuplicateKeeper, videosById]);
 
+  // Phone videos often report their size before rotation, so the loaded thumbnails correct it.
+  const [thumbnailAspectVersion, setThumbnailAspectVersion] = useState(0);
+  const aspectFrameRef = useRef(0);
+  useEffect(() => () => window.cancelAnimationFrame(aspectFrameRef.current), []);
+  const reportThumbnailAspect = useCallback((videoId: string, aspect: number) => {
+    const known = thumbnailAspects.get(videoId);
+    if (known && Math.abs(known - aspect) < 0.01) return;
+    thumbnailAspects.set(videoId, aspect);
+    window.cancelAnimationFrame(aspectFrameRef.current);
+    // One row update for all thumbnails that load in the same frame.
+    aspectFrameRef.current = window.requestAnimationFrame(() => setThumbnailAspectVersion((version) => version + 1));
+  }, []);
+
   const galleryLayout = useMemo(
     () => computeDuplicateGalleryLayout(dimensions.width),
     [dimensions.width]
@@ -904,8 +939,15 @@ function DuplicateGroupsView() {
     if (viewMode === 'rows') {
       return buildDuplicateRowsRows(visibleGroupViews);
     }
-    return buildDuplicateGalleryRows(visibleGroupViews, galleryLayout);
-  }, [galleryLayout, viewMode, visibleGroupViews]);
+    const aspectOf = (videoId: string) => {
+      const measured = thumbnailAspects.get(videoId);
+      if (measured) return measured;
+      const video = videosById.get(videoId);
+      return video?.width && video.height ? video.width / video.height : null;
+    };
+    return buildDuplicateGalleryRows(visibleGroupViews, galleryLayout, aspectOf);
+    // thumbnailAspectVersion: the measured shapes live outside React state.
+  }, [galleryLayout, thumbnailAspectVersion, videosById, viewMode, visibleGroupViews]);
 
   if (lastRowsRef.current !== virtualRows) {
     lastRowsRef.current = virtualRows;
@@ -934,6 +976,7 @@ function DuplicateGroupsView() {
     handlePlayVideo,
     handleOpenVideoContextMenu: openVideoContextMenu,
     handleOpenGroupContextMenu: openGroupContextMenu,
+    reportThumbnailAspect,
   }), [
     dismissGroup,
     galleryLayout.cardWidth,
@@ -941,6 +984,7 @@ function DuplicateGroupsView() {
     openGroupContextMenu,
     openVideoContextMenu,
     handlePlayVideo,
+    reportThumbnailAspect,
     selectSuggestedDuplicatesForGroup,
     selectedIds,
     toggleVideoSelection,
@@ -974,6 +1018,9 @@ function DuplicateGroupsView() {
     if (reviewMode) restoringScrollRef.current = false;
     else if (wasReviewMode) restoringScrollRef.current = true;
 
+    // Read, not subscribed: as a dependency every scroll event re-ran this and, with smooth wheel
+    // scrolling a frame ahead of the stored value, pulled the list back to where it just was.
+    const duplicateScrollTop = useStore.getState().duplicateScrollTop;
     const element = listRef.current?.element;
     if (!element) return;
     if (Math.abs(element.scrollTop - duplicateScrollTop) > 1) {
@@ -1001,7 +1048,23 @@ function DuplicateGroupsView() {
       window.cancelAnimationFrame(frameOne);
       window.cancelAnimationFrame(frameTwo);
     };
-  }, [dimensions.height, dimensions.width, duplicateScrollTop, reviewMode, viewMode, virtualRows.length]);
+  }, [dimensions.height, dimensions.width, reviewMode, viewMode, virtualRows.length]);
+
+  const handleRowsRendered = useCallback(({ startIndex }: { startIndex: number; stopIndex: number }) => {
+    const row = virtualRows[startIndex];
+    if (row) useStore.getState().setDuplicatePosition({ group: row.groupIndex, total: visibleGroupViews.length });
+  }, [virtualRows, visibleGroupViews.length]);
+  useEffect(() => () => useStore.getState().setDuplicatePosition(null), []);
+
+  const duplicateGroupJump = useStore((s) => s.duplicateGroupJump);
+  const handledGroupJumpRef = useRef(duplicateGroupJump?.id ?? 0);
+  useEffect(() => {
+    if (!duplicateGroupJump || handledGroupJumpRef.current === duplicateGroupJump.id || reviewMode) return;
+    const rowIndex = virtualRows.findIndex((row) => row.type === 'group-header' && row.groupIndex === duplicateGroupJump.index);
+    if (rowIndex < 0) return;
+    handledGroupJumpRef.current = duplicateGroupJump.id;
+    listRef.current?.scrollToRow({ index: rowIndex, align: 'start' });
+  }, [duplicateGroupJump, reviewMode, virtualRows]);
 
   const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     if (reviewMode || restoringScrollRef.current) return;
@@ -1057,10 +1120,10 @@ function DuplicateGroupsView() {
     return buildDuplicateVideoMenu({
       onPlay: () => handlePlayVideo(contextMenuVideo.id, contextMenuGroup.group.videoIds),
       onOpenExternal: () => {
-        void window.electronAPI?.openVideo(contextMenuVideo.path);
+        openVideoExternally(contextMenuVideo.path);
       },
       onReveal: () => {
-        void window.electronAPI?.openInExplorer(contextMenuVideo.path);
+        revealInExplorer(contextMenuVideo.path);
       },
       onMarkDelete: () => setVideoStatusesBatch([contextMenuVideo.id], 'delete'),
       onMarkKeep: () => setVideoStatusesBatch([contextMenuVideo.id], 'keep'),
@@ -1157,6 +1220,7 @@ function DuplicateGroupsView() {
             rowHeight={getItemSize}
             rowProps={rowRenderSignals}
             overscanCount={2}
+            onRowsRendered={handleRowsRendered}
             onScroll={handleScroll}
             style={{ height: dimensions.height, width: dimensions.width }}
           />

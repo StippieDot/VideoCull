@@ -1,20 +1,22 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import type { ColorTheme, DuplicateSortField, ProcessingPauseState, StatusFilter, ToastInput, ToastKind } from '../types';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import type { ColorTheme, DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
-import useStore from '../store';
+import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
 import { beginDevInteraction } from '../perf-dev';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
+import { revealInExplorer, runAppCommand } from '../appCommands';
 import { formatDeleteConfirmation, formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import { deleteWithPermanentReview } from '../deletion';
+import AppMenu, { type AppMenuItem } from './AppMenu';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
 import { PRODUCT } from '../product';
 import videoCullLogo from '../assets/videocull-logo.png';
 import {
-  FolderOpen, RefreshCw, Play, Trash2, Filter,
-  ArrowUpDown, HardDrive, X, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, Pause
+  FolderOpen, Folder, RefreshCw, Play, Trash2, Filter,
+  ArrowUpDown, X, Maximize2, Settings, ChevronDown,
+  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, History, FolderPlus
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -25,6 +27,8 @@ interface SidebarProps {
   onOpenSettings: () => void;
   onCloseSession: () => void;
   onFindDuplicates: () => void;
+  /** Finds duplicates again with the other comparison method, which becomes the setting. */
+  onSwitchDuplicateMethod: () => void;
   onOpenDuplicateSettings: () => void;
   onOpenDocumentation: () => void;
   onRequestPermanentDelete: (filePaths: string[]) => Promise<boolean>;
@@ -34,6 +38,11 @@ interface SidebarProps {
   onToggleGlobalMute: () => void;
   theme: ColorTheme;
   onToggleTheme: () => void;
+}
+
+/** The last part of a path; a drive root keeps its letter. */
+function folderName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
 function sameStrings(a: string[], b: string[]): boolean {
@@ -100,95 +109,12 @@ function getRangeTrackStyle(min: number, max: number, selectedMin: number, selec
   } as CSSProperties;
 }
 
-function SidebarProgressSection() {
-  const isScanning = useStore((s) => s.isScanning);
-  const scanProgress = useStore((s) => s.scanProgress);
-  const isGenerating = useStore((s) => s.isGenerating);
-  const genProgress = useStore((s) => s.genProgress);
-  const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
-  const duplicateProgress = useStore((s) => s.duplicateProgress);
-  const [pauseState, setPauseState] = useState<ProcessingPauseState>({ status: 'running' });
-
-  useEffect(() => {
-    if (!window.electronAPI?.onProcessingPauseState) return;
-    let receivedEvent = false;
-    const unsubscribe = window.electronAPI.onProcessingPauseState((state) => {
-      receivedEvent = true;
-      setPauseState(state);
-    });
-    void window.electronAPI.getProcessingPauseState().then((state) => {
-      if (!receivedEvent) setPauseState(state);
-    });
-    return unsubscribe;
-  }, []);
-
-  if (!isScanning && !isGenerating && !isFindingDuplicates) return null;
-
-  const generationLabel =
-    genProgress.phase === 'metadata'
-      ? 'Metadata...'
-      : genProgress.phase === 'media'
-        ? 'Media data...'
-        : 'Thumbnails...';
-
-  return (
-    <section className="sidebar-section">
-      {isScanning && (
-        <div className="progress-info">
-          <span className="progress-label">Scanning...</span>
-          <span className="progress-detail">{scanProgress.found} videos found</span>
-        </div>
-      )}
-      {isGenerating && (
-        <div className="progress-info">
-          <span className="progress-label">{generationLabel}</span>
-          <div className="progress-bar-track">
-            <div
-              className="progress-bar-fill"
-              style={{ width: `${genProgress.total > 0 ? (genProgress.current / genProgress.total) * 100 : 0}%` }}
-            />
-          </div>
-          <span className="progress-detail">
-            {genProgress.current} / {genProgress.total}
-          </span>
-        </div>
-      )}
-      {isFindingDuplicates && duplicateProgress && (
-        <div className="progress-info duplicate-progress-info">
-          <span className="progress-label">{duplicateProgress.stage}</span>
-          <div className="progress-bar-track">
-            <div
-              className="progress-bar-fill"
-              style={{ width: `${duplicateProgress.total > 0 ? (duplicateProgress.current / duplicateProgress.total) * 100 : 0}%` }}
-            />
-          </div>
-          <span className="progress-detail">
-            {duplicateProgress.total > 0 ? `${duplicateProgress.current} / ${duplicateProgress.total}` : 'Preparing...'}
-          </span>
-        </div>
-      )}
-      {(isGenerating || isFindingDuplicates) && (
-        <button
-          className="btn btn-outline sidebar-wide-action"
-          disabled={pauseState.status === 'pausing'}
-          onClick={() => void window.electronAPI?.setProcessingPaused(pauseState.status === 'running')}
-        >
-          {pauseState.status === 'running' ? <Pause size={14} /> : <Play size={14} />}
-          {pauseState.status === 'running'
-            ? 'Pause processing'
-            : pauseState.status === 'pausing'
-              ? 'Pausing...'
-              : 'Resume processing'}
-        </button>
-      )}
-    </section>
-  );
-}
-
 function SidebarDuplicateSection({
   onFindDuplicates,
+  onSwitchDuplicateMethod,
   onOpenDuplicateSettings,
-}: Pick<SidebarProps, 'onFindDuplicates' | 'onOpenDuplicateSettings'>) {
+}: Pick<SidebarProps, 'onFindDuplicates' | 'onSwitchDuplicateMethod' | 'onOpenDuplicateSettings'>) {
+  const otherMethod = useStore(otherDuplicateMethod);
   const duplicateSettings = useStore((s) => s.settings.duplicates);
   const statsTotal = useStore((s) => s.stats.total);
   const videoCount = useStore((s) => s.videos.length);
@@ -367,6 +293,15 @@ function SidebarDuplicateSection({
           {isFindingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Run Again'}
         </button>
 
+        <button
+          className="btn btn-outline sidebar-wide-action"
+          onClick={onSwitchDuplicateMethod}
+          disabled={duplicateDisabled && !isFindingDuplicates}
+          title={`Switch the duplicate method to ${DUPLICATE_METHOD_NAMES[otherMethod]} and run again`}
+        >
+          Run Again with {DUPLICATE_METHOD_NAMES[otherMethod]}
+        </button>
+
         <button className="btn btn-outline sidebar-wide-action" onClick={() => setDuplicateGroupsMode(false)}>
           Back to Grid
         </button>
@@ -411,9 +346,8 @@ function SidebarFiltersSection({
   onToggleFilters: () => void;
 }) {
   const statusFilter = useStore((s) => s.statusFilter);
-  const setStatusFilter = useStore((s) => s.setStatusFilter);
-  const folderFilterPath = useStore((s) => s.folderFilterPath);
-  const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
+  const folderFilter = useStore((s) => s.folderFilter);
+  const setFolderFilter = useStore((s) => s.setFolderFilter);
   const minSizeFilter = useStore((s) => s.minSizeFilter);
   const maxSizeFilter = useStore((s) => s.maxSizeFilter);
   const setSizeFilterRange = useStore((s) => s.setSizeFilterRange);
@@ -480,7 +414,7 @@ function SidebarFiltersSection({
   const incompatibleCount = sidebarAggregates.incompatibleCount;
   const hasIncompatibleVideos = incompatibleCount > 0;
   const hasExtraFilter = favoritesFilter || incompatibleFilter || duplicateFilter;
-  const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilterPath) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
+  const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilter) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
   const filteredSummary = `${filteredVideoCount} / ${videoCount}`;
   const sizeRangeStyle = getRangeTrackStyle(sizeRange.min, sizeRange.max, effectiveMinSize, effectiveMaxSize);
   const durationRangeStyle = getRangeTrackStyle(durationRange.min, durationRange.max, effectiveMinDuration, effectiveMaxDuration);
@@ -497,16 +431,7 @@ function SidebarFiltersSection({
     setDurationFilterRange(safeMin <= durationRange.min ? 0 : safeMin, safeMax >= durationRange.max ? null : safeMax);
   };
 
-  const clearFilters = () => {
-    setStatusFilter('all');
-    setFolderFilterPath(null);
-    setFavoritesFilter(false);
-    setIncompatibleFilter(false);
-    setDuplicateFilter(false);
-    setMinRatingFilter(0);
-    setSizeFilterRange(0, null);
-    setDurationFilterRange(0, null);
-  };
+  const clearFilters = useStore((s) => s.clearFilters);
 
   return (
     <section className="sidebar-section sidebar-collapsible-section">
@@ -541,6 +466,23 @@ function SidebarFiltersSection({
           <ChevronDown size={14} className={showFilters ? 'chevron-open' : ''} />
         </button>
       </div>
+
+      {/* Set from the title bar path or a folder header; shown even while the filters are folded away. */}
+      {folderFilter && (
+        <div className="filter-folder-chip-row">
+          <button
+            type="button"
+            className="pill pill-active filter-folder-chip"
+            onClick={() => setFolderFilter(null)}
+            title={`${folderFilter.path}${folderFilter.includeSubfolders ? ' and its subfolders' : ' only'}. Select to clear.`}
+            aria-label={`Clear folder filter: ${folderFilter.path}`}
+          >
+            <Folder size={12} />
+            <span className="pill-text">{formatRecentPath(folderFilter.path)}{folderFilter.includeSubfolders ? '' : ' (only)'}</span>
+            <X size={11} className="pill-clear-icon" />
+          </button>
+        </div>
+      )}
 
       {showFilters && (
         <div className="sidebar-section-content">
@@ -721,6 +663,7 @@ export default function Sidebar({
   onOpenSettings,
   onCloseSession,
   onFindDuplicates,
+  onSwitchDuplicateMethod,
   onOpenDuplicateSettings,
   onOpenDocumentation,
   onRequestPermanentDelete,
@@ -767,6 +710,8 @@ export default function Sidebar({
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [showRecents, setShowRecents] = useState(false);
+  const switcherRef = useRef<HTMLButtonElement>(null);
+  const [switcherAt, setSwitcherAt] = useState<{ x: number; y: number } | null>(null);
   const [showFilters, setShowFilters] = useState(true);
   const [showSort, setShowSort] = useState(true);
   const [showView, setShowView] = useState(true);
@@ -782,7 +727,6 @@ export default function Sidebar({
   const handleOpenRecent = async (dir: string) => {
     if (!window.electronAPI) {
       setDirectory(dir);
-      setShowRecents(false);
       return;
     }
     const result = await window.electronAPI.validateDroppedPath(dir);
@@ -813,6 +757,16 @@ export default function Sidebar({
       detail: formatRecentPath(dir),
       kind: 'info',
       dedupeKey: `recent-removed:${dir}`,
+    });
+  };
+
+  const handleClearRecents = () => {
+    const removedCount = recentDirectories.length;
+    clearRecentDirectories();
+    onNotify({
+      title: 'Recents cleared',
+      detail: `${removedCount} ${removedCount === 1 ? 'entry' : 'entries'} removed.`,
+      kind: 'info',
     });
   };
 
@@ -887,14 +841,39 @@ export default function Sidebar({
         void handleAddRecentToSession(recentContextMenu.dir);
       },
       onReveal: () => {
-        void window.electronAPI?.openInExplorer(recentContextMenu.dir);
+        revealInExplorer(recentContextMenu.dir);
       },
       onCopyPath: () => {
         void handleCopyRecentPath(recentContextMenu.dir);
       },
+      onRemove: () => handleRemoveRecent(recentContextMenu.dir),
     });
   }, [directories, recentContextMenu]);
 
+
+  const toggleSwitcher = () => {
+    const rect = switcherRef.current?.getBoundingClientRect();
+    setSwitcherAt((open) => (open || !rect ? null : { x: rect.left, y: rect.bottom + 4 }));
+  };
+  const closeSwitcher = useCallback((refocus: boolean) => {
+    setSwitcherAt(null);
+    if (refocus) switcherRef.current?.focus();
+  }, []);
+  const sessionName = directories.length > 1
+    ? `${folderName(directories[0])} + ${directories.length - 1} more`
+    : directory ? folderName(directory) : 'No folder open';
+  const switcherItems: AppMenuItem[] = [
+    { key: 'open', label: 'Open Another Folder...', icon: FolderOpen, detail: 'Ctrl+O', onSelect: () => void handleSelectDir() },
+    {
+      key: 'add',
+      label: 'Add Folder to Session...',
+      icon: FolderPlus,
+      onSelect: () => void runAppCommand('File > Add Folder to Session'),
+    },
+    { type: 'separator', key: 'sep-session' },
+    { key: 'rescan', label: 'Rescan', icon: RefreshCw, detail: 'F5', disabled: isScanning, onSelect: onRescan },
+    { key: 'close', label: 'Close Session', icon: X, onSelect: onCloseSession },
+  ];
 
   const handleBatchDelete = async () => {
     if (!window.electronAPI) return;
@@ -1016,41 +995,45 @@ export default function Sidebar({
         </div>
       </div>
 
-      <section className="sidebar-section sidebar-session-section">
-        <div className="session-card">
-          <div className="session-card-main">
-            <HardDrive size={14} />
-            <div className="session-card-copy">
-              <span className="session-label">Current folder</span>
-              <span className="session-path" title={directories.join('\n') || directory || undefined}>
-                {directories.length > 1 ? `${directories.length} folders loaded` : directory}
-              </span>
-              <label className="session-subfolders-toggle">
-                <input
-                  type="checkbox"
-                  checked={includeSubfolders}
-                  onChange={(e) => setIncludeSubfolders(e.target.checked)}
-                />
-                <span className="session-subfolders-box" />
-                <span>Include subfolders</span>
-              </label>
-            </div>
-          </div>
+      {/* One switcher for the session: the title bar shows the full path, this names the folder and holds what you do with it. */}
+      <section className="sidebar-section sidebar-session-section" aria-label="Folder">
+        <button
+          ref={switcherRef}
+          type="button"
+          className="session-switcher"
+          title={directories.join('\n') || directory || undefined}
+          aria-haspopup="menu"
+          aria-expanded={switcherAt !== null}
+          onClick={toggleSwitcher}
+        >
+          <Folder size={15} aria-hidden="true" />
+          <span className="session-switcher-name">{sessionName}</span>
+          <ChevronDown size={14} aria-hidden="true" className={switcherAt ? 'chevron-open' : ''} />
+        </button>
+        <div className="session-option-row">
+          <label className="session-subfolders-toggle">
+            <input
+              type="checkbox"
+              checked={includeSubfolders}
+              onChange={(e) => setIncludeSubfolders(e.target.checked)}
+            />
+            <span className="session-subfolders-box" />
+            <span>Include subfolders</span>
+          </label>
+          {recentDirectories.length > 1 && (
+            <button
+              type="button"
+              className={`session-recents-btn${showRecents ? ' active' : ''}`}
+              title="Recent folders"
+              aria-label="Recent folders"
+              aria-expanded={showRecents}
+              aria-controls="sidebar-recents-list"
+              onClick={() => setShowRecents((v) => !v)}
+            >
+              <History size={14} />
+            </button>
+          )}
         </div>
-
-        {recentDirectories.length > 1 && (
-          <button
-            className="recents-header-btn"
-            title="Show recent folders"
-            aria-expanded={showRecents}
-            aria-controls="sidebar-recents-list"
-            onClick={() => setShowRecents((v) => !v)}
-          >
-            <span>Recent folders</span>
-            <ChevronDown size={14} className={showRecents ? 'chevron-open' : ''} />
-          </button>
-        )}
-
         {showRecents && recentDirectories.length > 1 && (
           <div className="recents-panel">
             <ul className="recents-list" id="sidebar-recents-list">
@@ -1087,40 +1070,31 @@ export default function Sidebar({
             <button
               className="recents-clear-btn"
               onClick={() => {
-                const removedCount = recentDirectories.length;
-                clearRecentDirectories();
+                handleClearRecents();
                 setShowRecents(false);
-                onNotify({
-                  title: 'Recents cleared',
-                  detail: `${removedCount} ${removedCount === 1 ? 'entry' : 'entries'} removed.`,
-                  kind: 'info',
-                });
               }}
             >
               Clear all recent folders
             </button>
           </div>
         )}
-
-        <div className="session-action-row">
-          <button className="btn btn-primary session-action-btn" onClick={handleSelectDir}>
-            Change
-          </button>
-
-          <button className="btn btn-outline session-action-btn" onClick={onRescan} disabled={isScanning}>
-            Rescan
-          </button>
-
-          <button className="btn btn-outline btn-close-session session-action-btn" onClick={onCloseSession}>
-            Close
-          </button>
-        </div>
+        {switcherAt && (
+          <AppMenu
+            label="Folder"
+            items={switcherItems}
+            x={switcherAt.x}
+            y={switcherAt.y}
+            className="session-switcher-menu"
+            onClose={closeSwitcher}
+            keepOpenWithin=".session-switcher"
+          />
+        )}
       </section>
 
-      <SidebarProgressSection />
 
       <SidebarDuplicateSection
         onFindDuplicates={onFindDuplicates}
+        onSwitchDuplicateMethod={onSwitchDuplicateMethod}
         onOpenDuplicateSettings={onOpenDuplicateSettings}
       />
       {recentContextMenu && (

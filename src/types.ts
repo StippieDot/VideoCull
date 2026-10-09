@@ -75,8 +75,49 @@ export interface ProcessingPauseState {
   status: 'running' | 'pausing' | 'paused';
 }
 
+/** One app menu item, as listed in the command palette. */
+export interface AppCommand {
+  id: string;
+  /** Menu path, such as ['View', 'Sort By', 'Size']. */
+  path: string[];
+  accelerator: string | null;
+  enabled: boolean;
+  /** For checkbox and radio items; null otherwise. */
+  checked: boolean | null;
+}
+
+/** What the app menu can act on; items that cannot do anything are disabled. */
+export interface AppMenuState {
+  hasSession: boolean;
+  videoCount: number;
+  markedCount: number;
+  canUndo: boolean;
+  canExport: boolean;
+  canFindDuplicates: boolean;
+  canPauseProcessing: boolean;
+  /** Videos the Video menu acts on: the one open in Review, or the videos selected in the grid. */
+  activeVideoCount: number;
+  canRegenerateThumbnails: boolean;
+  sortBy: SortField;
+  sortOrder: SortOrder;
+  sortOptions: SortField[];
+  groupByFolder: boolean;
+  filtersActive: boolean;
+  muteAvailable: boolean;
+  muted: boolean;
+  isPrivate: boolean;
+  recentFolders: string[];
+  /** The folders loaded in the session. */
+  folders: string[];
+}
+
 /** What VideoCull does once the current processing has finished. Applies to one run only. */
 export type FinishAction = 'none' | 'sleep' | 'shutdown';
+
+/** Progress on the taskbar button; `fraction` is 0–1. */
+export type TaskbarProgress =
+  | { mode: 'none' | 'indeterminate' }
+  | { mode: 'normal' | 'paused'; fraction: number };
 
 export interface PowerState {
   processing: boolean;
@@ -156,6 +197,15 @@ export interface ToastInput {
 }
 
 // ── Sort & Filter ──────────────────────────────────────────────────
+/** What the application menu asks the window to do; electron/app-menu.js sends these. */
+export type MenuAction =
+  | 'add-folder' | 'check-updates' | 'clear-cache' | 'clear-filters' | 'close-session' | 'copy-path'
+  | 'delete-all' | 'export-report' | 'find-duplicates' | 'go-to-folder' | 'open-about'
+  | 'open-command-palette' | 'open-directory' | 'open-documentation' | 'open-settings' | 'play-external'
+  | 'regenerate-thumbnails' | 'rescan-directory' | 'reveal-video' | 'show-shortcuts'
+  | 'toggle-group-by-folder' | 'toggle-mute' | 'toggle-privacy' | 'toggle-theme' | 'undo' | 'zoom-in' | 'zoom-out'
+  | `sort:${SortField}` | `sort-order:${SortOrder}` | `open-recent:${string}` | `reveal-folder:${string}`;
+
 export type SortField = 'name' | 'size' | 'duration' | 'date' | 'rating' | 'resolution' | 'fps';
 export type FolderSortField = 'name' | 'size';
 export type SortOrder = 'asc' | 'desc';
@@ -238,6 +288,11 @@ export interface DuplicateResult {
 }
 
 // ── Undo Entry ─────────────────────────────────────────────────────
+export interface FolderFilter {
+  path: string;
+  includeSubfolders: boolean;
+}
+
 export interface UndoEntry {
   videoId: string;
   previousStatus: VideoStatus;
@@ -269,6 +324,8 @@ export interface AppSettings {
   skipIntroDelaySecs: number;
   hardwareAccel: boolean;
   keepAwakeWhileProcessing: boolean;
+  /** Windows 11 only; temporary while the look is evaluated. */
+  micaTitleBar: boolean;
   recentDirectories: string[];
   recentDirectoryTimestamps: Record<string, number>;
   autoUpdates: boolean;
@@ -329,7 +386,8 @@ export interface VideoStore {
   maxSizeFilter: number | null;
   minDurationFilter: number;
   maxDurationFilter: number | null;
-  folderFilterPath: string | null;
+  /** One folder of the grid, or also everything below it (the title bar path). */
+  folderFilter: FolderFilter | null;
   minRatingFilter: RatingFilter;
   favoritesFilter: boolean;
   incompatibleFilter: boolean;
@@ -348,6 +406,11 @@ export interface VideoStore {
   reviewScopeIds: string[] | null;
   reviewAutoPlay: boolean;
   activeReviewVideoPath: string | null;
+  /** Asks the grid to scroll to a folder; the id makes a repeated request for the same folder count. */
+  /** Folder of the grid's topmost visible folder header, for the title bar; null without headers. */
+  gridTopFolder: string | null;
+  gridFolderJump: { folderPath: string; id: number } | null;
+  gridVideoJump: { videoId: string; id: number } | null;
   duplicateGroupsMode: boolean;
   duplicateGroups: DuplicateGroup[];
   duplicateProgress: DuplicateProgress | null;
@@ -358,6 +421,13 @@ export interface VideoStore {
   duplicateSortBy: DuplicateSortField;
   duplicateSortOrder: SortOrder;
   duplicateScrollTop: number;
+  /** Review's place in its scope, for the title bar; null outside Review and on its finished screen. */
+  reviewPosition: { index: number; total: number } | null;
+  /** The duplicate group at the top of the list and how many are shown, for the title bar. */
+  duplicatePosition: { group: number; total: number } | null;
+  duplicateGroupJump: { index: number; id: number } | null;
+  /** The method the last duplicate run this session used; the setting may have changed since. */
+  lastDuplicateMethod: DuplicateComparisonMode | null;
   gridSelectionIds: Set<string>;
   gridSelectionAnchorId: string | null;
   // Card sizing
@@ -390,12 +460,17 @@ export interface VideoStore {
   setSizeFilterRange: (minSize: number, maxSize: number | null) => void;
   setMinDurationFilter: (seconds: number) => void;
   setDurationFilterRange: (minSeconds: number, maxSeconds: number | null) => void;
-  setFolderFilterPath: (folderPath: string | null) => void;
+  setFolderFilter: (filter: FolderFilter | null) => void;
   setMinRatingFilter: (rating: RatingFilter) => void;
   setFavoritesFilter: (val: boolean) => void;
   setIncompatibleFilter: (val: boolean) => void;
   setDuplicateFilter: (val: boolean) => void;
+  clearFilters: () => void;
   setGroupByFolder: (val: boolean) => void;
+  setGridTopFolder: (folderPath: string | null) => void;
+  requestGridFolderJump: (folderPath: string) => void;
+  /** Selects the video and scrolls the grid to it. */
+  requestGridVideoJump: (videoId: string) => void;
   setFolderSortBy: (sortBy: FolderSortField) => void;
   setFolderSortOrder: (order: SortOrder) => void;
   setIsScanning: (val: boolean) => void;
@@ -422,6 +497,11 @@ export interface VideoStore {
   setDuplicateSortBy: (sortBy: DuplicateSortField) => void;
   setDuplicateSortOrder: (order: SortOrder) => void;
   setDuplicateScrollTop: (scrollTop: number) => void;
+  setReviewPosition: (position: { index: number; total: number } | null) => void;
+  setDuplicatePosition: (position: { group: number; total: number } | null) => void;
+  /** Scrolls the duplicate list to the group at this index among the shown groups. */
+  requestDuplicateGroupJump: (index: number) => void;
+  setLastDuplicateMethod: (method: DuplicateComparisonMode) => void;
   clearDuplicateListFilters: () => void;
   setGridSelectionIds: (ids: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   setGridSelectionAnchorId: (videoId: string | null) => void;
@@ -590,10 +670,15 @@ export type LegalFileName = 'license' | 'notices';
 // ── Electron API (exposed via preload) ─────────────────────────────
 export interface ElectronAPI {
   initialTheme: ColorTheme;
+  /** The window started with the Windows 11 Mica material behind the title bar. */
+  usesMica: boolean;
+  /** Windows 11 22H2 or newer, where Mica is available. */
+  micaSupported: boolean;
   selectDirectory: () => Promise<string | null>;
   getPathForFile: (file: File) => string;
   validateDroppedPath: (droppedPath: string) => Promise<{ valid: boolean; isDirectory: boolean }>;
-  openInExplorer: (filePath: string) => Promise<void>;
+  /** Resolves false when the path was refused or could not be shown. */
+  openInExplorer: (filePath: string) => Promise<boolean>;
   scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<ScanDirectoryResult>;
   resetLoadedDirectories: () => Promise<boolean>;
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;
@@ -613,7 +698,7 @@ export interface ElectronAPI {
   findDuplicates: (videos: Video[], options?: { settings?: Partial<DuplicateSettings> }) => Promise<DuplicateResult>;
   cancelDuplicateDetection: () => Promise<boolean>;
   onDuplicateProgress: (callback: (data: DuplicateProgress) => void) => () => void;
-  onMenuAction: (callback: (action: string) => void) => () => void;
+  onMenuAction: (callback: (action: MenuAction) => void) => () => void;
   saveCache: (dirPath: string, videos: Video[]) => Promise<boolean>;
   saveCacheAtomic: (dirPath: string, videos: Video[]) => Promise<boolean>;
   saveReviewState: (dirPath: string, updates: VideoReviewUpdate[]) => Promise<boolean>;
@@ -622,11 +707,16 @@ export interface ElectronAPI {
   permanentlyDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
   exportReport: (videos: Video[], dirPaths: string[]) => Promise<'saved' | 'cancelled' | 'error'>;
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
-  setExportReportAvailable: (enabled: boolean) => void;
-  openVideo: (filePath: string) => Promise<void>;
+  setMenuState: (state: AppMenuState) => void;
+  setTaskbarProgress: (progress: TaskbarProgress) => void;
+  /** Opens the app menu or submenu with this command id, such as "File" or "Actions > When Processing Finishes". */
+  openAppMenu: (id: string, x: number, y: number) => Promise<boolean>;
+  getCommands: () => Promise<AppCommand[]>;
+  runCommand: (id: string) => Promise<boolean>;
+  /** Resolves false when the path was refused or the system could not open it. */
+  openVideo: (filePath: string) => Promise<boolean>;
   openExternalUrl: (url: string) => Promise<boolean>;
   openLegalFile: (name: LegalFileName) => Promise<boolean>;
-  setVideoFullscreen: (fullscreen: boolean) => Promise<boolean>;
   getConfig: () => Promise<AppSettings | null>;
   saveConfig: (config: AppSettings) => Promise<boolean>;
   getAutoConcurrency: (config?: AppSettings) => Promise<number>;

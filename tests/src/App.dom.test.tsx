@@ -5,13 +5,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import useStore from '../../src/store';
+import { copyTextToClipboard } from '../../src/components/ContextMenu';
 import { resetPerfDevMock } from '../helpers/perfDevMock';
-import { makeVideo } from '../helpers/videoFactory';
+import { makeDuplicateGroup, makeVideo } from '../helpers/videoFactory';
 import type {
   DuplicateProgress,
   ThumbReadyEvent,
   UpdateInfo,
   VideoStore,
+  Video,
 } from '../../src/types';
 
 vi.mock('../../src/components/Sidebar', async () => {
@@ -19,6 +21,7 @@ vi.mock('../../src/components/Sidebar', async () => {
   const storeModule = await import('../../src/store');
   const MockSidebar = (props: {
     onFindDuplicates?: () => void;
+    onSwitchDuplicateMethod?: () => void;
     onCloseSession?: () => void;
     onToggleTheme?: () => void;
   }) => {
@@ -37,6 +40,15 @@ vi.mock('../../src/components/Sidebar', async () => {
           onClick: props.onFindDuplicates,
         },
         'Find duplicates'
+      ),
+      ReactModule.createElement(
+        'button',
+        {
+          type: 'button',
+          'data-testid': 'sidebar-switch-duplicate-method',
+          onClick: props.onSwitchDuplicateMethod,
+        },
+        'Switch method'
       ),
       ReactModule.createElement(
         'button',
@@ -65,7 +77,7 @@ vi.mock('../../src/components/GridMode', async () => {
   const ReactModule = await import('react');
   const storeModule = await import('../../src/store');
   let mountCount = 0;
-  const MockGridMode = () => {
+  const MockGridMode = (props: { onReviewFolder?: (folderPath: string) => void }) => {
     const mountIdRef = ReactModule.useRef<number | null>(null);
     if (mountIdRef.current === null) {
       mountCount += 1;
@@ -75,7 +87,13 @@ vi.mock('../../src/components/GridMode', async () => {
     const text = firstVideo
       ? `thumbs:${firstVideo.thumbnails.length}|codec:${firstVideo.videoCodec ?? 'none'}|compat:${firstVideo.compatible ? 'yes' : 'no'}`
       : 'empty';
-    return ReactModule.createElement('div', { 'data-testid': 'grid-state', 'data-mount-id': String(mountIdRef.current) }, text);
+    return ReactModule.createElement(ReactModule.Fragment, null,
+      ReactModule.createElement('div', { 'data-testid': 'grid-state', 'data-mount-id': String(mountIdRef.current) }, text),
+      ReactModule.createElement('button', {
+        type: 'button',
+        'data-testid': 'grid-review-folder',
+        onClick: () => props.onReviewFolder?.('D:\\Media\\Trips'),
+      }, 'Review folder'));
   };
   return { default: MockGridMode };
 });
@@ -117,6 +135,11 @@ vi.mock('../../src/components/DuplicateGroupsView', async () => {
 
 vi.mock('../../src/components/ShortcutsHelp', () => ({
   default: () => <div data-testid="shortcuts-help">Shortcuts Help</div>,
+}));
+
+vi.mock('../../src/components/ContextMenu', () => ({
+  default: () => null,
+  copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../src/components/DocumentationModal', () => ({
@@ -167,7 +190,9 @@ function createElectronApiMock() {
     saveCache: vi.fn().mockResolvedValue(true),
     saveCacheAtomic: vi.fn().mockResolvedValue(true),
     saveReviewState: vi.fn().mockResolvedValue(true),
-    setExportReportAvailable: vi.fn(),
+    setMenuState: vi.fn(),
+    getCommands: vi.fn().mockResolvedValue([]),
+    setTaskbarProgress: vi.fn(),
     getPathForFile: vi.fn(),
     selectDirectory: vi.fn().mockResolvedValue(null),
     validateDroppedPath: vi.fn().mockResolvedValue({ valid: true, isDirectory: true }),
@@ -180,6 +205,8 @@ function createElectronApiMock() {
     scanDirectory: vi.fn().mockResolvedValue([]),
     processMetadata: vi.fn().mockResolvedValue(true),
     generateThumbnails: vi.fn().mockResolvedValue(true),
+    openInExplorer: vi.fn().mockResolvedValue(true),
+    openVideo: vi.fn().mockResolvedValue(true),
     batchDelete: vi.fn().mockResolvedValue([]),
     permanentlyDelete: vi.fn().mockResolvedValue([]),
     findDuplicates: vi.fn().mockResolvedValue({ status: 'ok', groups: [], videos: [], stats: { groupCount: 0, duplicateVideoCount: 0, exactGroupCount: 0, similarityGroupCount: 0 } }),
@@ -258,6 +285,7 @@ describe('App renderer behavior', () => {
     cleanup();
     vi.useRealTimers();
     resetPerfDevMock();
+    vi.mocked(copyTextToClipboard).mockClear();
     electron = createElectronApiMock();
     const store = getStoreApi();
     store.setState(store.getInitialState(), true);
@@ -337,6 +365,100 @@ describe('App renderer behavior', () => {
     await waitFor(() => {
       expect(screen.getByTestId('grid-state').textContent).toContain('thumbs:2|codec:h264|compat:yes');
     });
+  });
+
+  test('Review This Folder reviews only that folder and brings the earlier folder filter back afterwards', async () => {
+    const earlier = { path: 'D:\\Media', includeSubfolders: true };
+    getStoreApi().setState({
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+      videos: [makeVideo('a', {}, 'D:\\Media\\Trips')],
+      filteredVideos: [makeVideo('a', {}, 'D:\\Media\\Trips')],
+      folderFilter: earlier,
+    });
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('grid-review-folder'));
+    expect(getStoreApi().getState().folderFilter).toEqual({ path: 'D:\\Media\\Trips', includeSubfolders: false });
+    act(() => getStoreApi().getState().setReviewMode(false));
+    await waitFor(() => expect(getStoreApi().getState().folderFilter).toEqual(earlier));
+  });
+
+  test.each([{ scope: null }, { scope: ['c', 'a', 'b'] }])('narrowing mounted Review with scope $scope replaces its list and keeps the open video', async ({ scope }) => {
+    const videos = [
+      makeVideo('c', {}, 'D:\\Media\\Clips'),
+      makeVideo('a', {}, 'D:\\Media\\Trips'),
+      makeVideo('b', {}, 'D:\\Media\\Trips'),
+      makeVideo('decided', { status: 'keep' }, 'D:\\Media\\Trips'),
+    ];
+    electron.api.scanDirectory.mockResolvedValue(videos);
+    getStoreApi().setState({
+      directory: 'D:\\Media', directories: ['D:\\Media'], videos, filteredVideos: videos,
+      statusFilter: 'pending',
+    });
+    render(<App />);
+    await waitFor(() => expect(getStoreApi().getState().isScanning).toBe(false));
+    act(() => {
+      useStore.getState().setReviewScopeIds(scope);
+      useStore.getState().setReviewIndex(2);
+      useStore.getState().setReviewMode(true);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'b.mp4' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Review Only This Folder' }));
+
+    expect(useStore.getState().reviewScopeIds).toEqual(['a', 'b']);
+    expect(useStore.getState().reviewIndex).toBe(1);
+    expect(useStore.getState().activeReviewVideoPath).toBe(videos[2].path);
+    expect(useStore.getState().reviewMode).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'b.mp4' }));
+    expect(screen.getByRole('menuitem', { name: 'Review Only This Folder' })).toBeTruthy();
+  });
+
+  test('opening another folder from Review This Folder does not carry the old folder filter into it', async () => {
+    getStoreApi().setState({
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+      videos: [makeVideo('a', {}, 'D:\\Media\\Trips')],
+      filteredVideos: [makeVideo('a', {}, 'D:\\Media\\Trips')],
+      folderFilter: { path: 'D:\\Media', includeSubfolders: true },
+    });
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('grid-review-folder'));
+    // Opening another folder ends Review and clears the filter.
+    act(() => getStoreApi().getState().setDirectory('E:\\Other'));
+    await waitFor(() => expect(getStoreApi().getState().reviewMode).toBe(false));
+    expect(getStoreApi().getState().folderFilter).toBeNull();
+  });
+
+  test.each([null, { path: 'D:\\Media', includeSubfolders: true }])('a palette folder filter survives leaving Review This Folder with previous filter %j', async (previous) => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const videos = [makeVideo('a', {}, 'D:\\Media\\Trips'), makeVideo('b', {}, 'D:\\Media\\Clips')];
+    electron.api.scanDirectory.mockResolvedValue(videos);
+    getStoreApi().setState({
+      directory: 'D:\\Media', directories: ['D:\\Media'], videos, filteredVideos: videos, folderFilter: previous,
+    });
+    render(<App />);
+    await waitFor(() => expect(getStoreApi().getState().isScanning).toBe(false));
+    fireEvent.click(screen.getByTestId('grid-review-folder'));
+    await electron.emitMenuAction('go-to-folder');
+
+    const input = screen.getByRole('combobox');
+    fireEvent.change(input, { target: { value: '/clip' } });
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+    expect(getStoreApi().getState().reviewMode).toBe(false);
+    expect(getStoreApi().getState().folderFilter).toEqual({ path: 'D:\\Media\\Clips', includeSubfolders: true });
+    expect(getStoreApi().getState().filteredVideos.map((video) => video.id)).toEqual(['b']);
+  });
+
+  test.each([
+    { isScanning: true, isGenerating: false, isFindingDuplicates: false, expected: false },
+    { isScanning: true, isGenerating: true, isFindingDuplicates: false, expected: true },
+    { isScanning: false, isGenerating: false, isFindingDuplicates: true, expected: true },
+  ])('reports native menu pause availability for $isScanning/$isGenerating/$isFindingDuplicates', ({ expected, ...processing }) => {
+    getStoreApi().setState(processing);
+    render(<App />);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ canPauseProcessing: expected }));
   });
 
   test('reflects duplicate-progress events in the sidebar state', async () => {
@@ -442,6 +564,169 @@ describe('App renderer behavior', () => {
 
     expect(await screen.findByTestId('shortcuts-help')).toBeTruthy();
     expect(electron.api.onScanProgress).toHaveBeenCalledTimes(1);
+  });
+
+  test('switching the duplicate method saves it, runs again with it and can be undone', async () => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    const videos = [makeVideo('a'), makeVideo('b', { path: 'D:\\Media\\b.mp4' })];
+    store.setState({
+      ...initialState,
+      directory: 'D:\\Media',
+      videos,
+      filteredVideos: videos,
+      settings: { ...initialState.settings, duplicates: { ...initialState.settings.duplicates, comparisonMode: 'phash' } },
+    }, true);
+    const modeOfCall = (index: number) => (electron.api.findDuplicates.mock.calls[index][1] as { settings: { comparisonMode: string } }).settings.comparisonMode;
+
+    render(<App />);
+    await userEvent.click(screen.getByTestId('sidebar-find-duplicates'));
+    await waitFor(() => expect(useStore.getState().lastDuplicateMethod).toBe('phash'));
+
+    await userEvent.click(screen.getByTestId('sidebar-switch-duplicate-method'));
+    expect(modeOfCall(1)).toBe('visual');
+    expect(useStore.getState().settings.duplicates.comparisonMode).toBe('visual');
+    expect(electron.api.saveConfig).toHaveBeenCalledWith(expect.objectContaining({
+      duplicates: expect.objectContaining({ comparisonMode: 'visual' }),
+    }));
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    expect(modeOfCall(2)).toBe('phash');
+    expect(useStore.getState().settings.duplicates.comparisonMode).toBe('phash');
+  });
+
+  test.each([
+    { previous: 'phash', method: 'visual', otherLabel: 'pHash' },
+    { previous: 'visual', method: 'phash', otherLabel: 'Visual Similarity' },
+  ] as const)('records $method for automatic duplicate runs after $previous', async ({ previous, method, otherLabel }) => {
+    const store = getStoreApi();
+    const initialState = store.getInitialState();
+    const videos = ['a', 'b'].map((id) => makeVideo(id, {
+      metadataVersion: 2,
+      thumbnails: Array.from({ length: 6 }, (_, index) => `thumb_${index + 1}.jpg`),
+    }));
+    electron.api.scanDirectory.mockResolvedValue(videos);
+    electron.api.findDuplicates.mockResolvedValue({
+      status: 'ok', groups: [makeDuplicateGroup()], videos,
+      stats: { groupCount: 1, duplicateVideoCount: 2, exactGroupCount: 0, similarityGroupCount: 1 },
+    });
+    store.setState({
+      directory: 'D:\\Media', directories: ['D:\\Media'], videos, filteredVideos: videos,
+      lastDuplicateMethod: previous,
+      settings: {
+        ...initialState.settings,
+        duplicates: { ...initialState.settings.duplicates, enabled: true, runAfterScan: true, comparisonMode: method },
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(store.getState().lastDuplicateMethod).toBe(method));
+    expect(electron.api.findDuplicates).toHaveBeenCalledWith(expect.any(Array), {
+      settings: expect.objectContaining({ comparisonMode: method }),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicates' }));
+    expect(screen.getByRole('menuitem', { name: `Find Again with ${otherLabel}` })).toBeTruthy();
+  });
+
+  test.each(['status', 'rating', 'folder'] as const)('Video menu targets only visible selections after a %s filter', async (filter) => {
+    const store = getStoreApi();
+    const visible = makeVideo('a', { rating: 5 }, 'D:\\Media\\Trips');
+    const hidden = makeVideo('b', { status: 'keep' }, 'D:\\Media\\Clips');
+    store.setState({ directory: 'D:\\Media' });
+    store.getState().setVideos([visible, hidden]);
+    store.getState().setGridSelectionIds(new Set(['a', 'b']));
+    render(<App />);
+    act(() => {
+      if (filter === 'status') store.getState().setStatusFilter('pending');
+      if (filter === 'rating') store.getState().setMinRatingFilter(5);
+      if (filter === 'folder') store.getState().setFolderFilter({ path: 'D:\\Media\\Trips', includeSubfolders: false });
+    });
+    expect(store.getState().filteredVideos.map((video) => video.id)).toEqual(['a']);
+    // The mocked grid leaves selection cleanup pending, as it can be during native menu dispatch.
+    expect(Array.from(store.getState().gridSelectionIds)).toEqual(['a', 'b']);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 1 }));
+    await electron.emitMenuAction('copy-path');
+    await electron.emitMenuAction('reveal-video');
+    await electron.emitMenuAction('play-external');
+    expect(copyTextToClipboard).toHaveBeenCalledWith(visible.path);
+    expect(electron.api.openInExplorer).toHaveBeenCalledWith(visible.path);
+    expect(electron.api.openVideo).toHaveBeenCalledWith(visible.path);
+    electron.api.generateThumbnails.mockImplementation(async (videos: Video[]) => {
+      const ids = new Set(videos.map((video) => video.id));
+      store.getState().setVideos(store.getState().videos.map((video) => ids.has(video.id)
+        ? { ...video, thumbnails: Array(6).fill('thumb.jpg') } : video));
+      return true;
+    });
+    await electron.emitMenuAction('regenerate-thumbnails');
+    await waitFor(() => expect(store.getState().isGenerating).toBe(false));
+    expect(electron.api.generateThumbnails).toHaveBeenCalledTimes(1);
+    expect(electron.api.generateThumbnails.mock.calls[0][0].map((video: Video) => video.id)).toEqual(['a']);
+  });
+
+  test('Video menu does nothing when every selected grid video is hidden', async () => {
+    const store = getStoreApi();
+    store.setState({ directory: 'D:\\Media' });
+    store.getState().setVideos([makeVideo('a', { status: 'keep' })]);
+    store.getState().setGridSelectionIds(new Set(['a']));
+    store.getState().setStatusFilter('pending');
+    render(<App />);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 0 }));
+    for (const action of ['copy-path', 'reveal-video', 'play-external', 'regenerate-thumbnails']) {
+      await electron.emitMenuAction(action);
+    }
+    expect(copyTextToClipboard).not.toHaveBeenCalled();
+    expect(electron.api.openInExplorer).not.toHaveBeenCalled();
+    expect(electron.api.openVideo).not.toHaveBeenCalled();
+    expect(electron.api.generateThumbnails).not.toHaveBeenCalled();
+    expect(electron.api.saveCacheAtomic).not.toHaveBeenCalled();
+  });
+
+  test('Video menu ignores the hidden grid selection in duplicate view and restores it on return', async () => {
+    const store = getStoreApi();
+    const videos = [makeVideo('a'), makeVideo('b')];
+    store.setState({ directory: 'D:\\Media' });
+    store.getState().setVideos(videos);
+    store.getState().setGridSelectionIds(new Set(['a']));
+    render(<App />);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 1 }));
+    act(() => store.getState().setDuplicateGroups([makeDuplicateGroup()]));
+    expect(screen.queryByTestId('grid-state')).toBeNull();
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 0 }));
+    for (const action of ['copy-path', 'reveal-video', 'play-external', 'regenerate-thumbnails']) {
+      await electron.emitMenuAction(action);
+    }
+    expect(copyTextToClipboard).not.toHaveBeenCalled();
+    expect(electron.api.openInExplorer).not.toHaveBeenCalled();
+    expect(electron.api.openVideo).not.toHaveBeenCalled();
+    expect(electron.api.generateThumbnails).not.toHaveBeenCalled();
+    expect(electron.api.saveCacheAtomic).not.toHaveBeenCalled();
+
+    act(() => store.getState().enterReviewAndPlay('b', ['a', 'b']));
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 1 }));
+    await electron.emitMenuAction('copy-path');
+    expect(copyTextToClipboard).toHaveBeenLastCalledWith(videos[1].path);
+    act(() => store.getState().setReviewMode(false));
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 0 }));
+    act(() => store.getState().setDuplicateGroupsMode(false));
+    expect(Array.from(store.getState().gridSelectionIds)).toEqual(['a']);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 1 }));
+    await electron.emitMenuAction('copy-path');
+    expect(copyTextToClipboard).toHaveBeenLastCalledWith(videos[0].path);
+  });
+
+  test('Video menu still targets the open Review video outside the grid filter', async () => {
+    const store = getStoreApi();
+    const video = makeVideo('a', { status: 'keep' });
+    store.setState({ directory: 'D:\\Media' });
+    store.getState().setVideos([video]);
+    store.getState().setStatusFilter('pending');
+    store.getState().enterReviewAndPlay('a', ['a']);
+    render(<App />);
+    expect(store.getState().filteredVideos).toEqual([]);
+    expect(electron.api.setMenuState).toHaveBeenLastCalledWith(expect.objectContaining({ activeVideoCount: 1 }));
+    await electron.emitMenuAction('copy-path');
+    expect(copyTextToClipboard).toHaveBeenCalledWith(video.path);
   });
 
   test('prevents duplicate detection while metadata is still updating and explains why', async () => {
@@ -860,6 +1145,52 @@ describe('App renderer behavior', () => {
     expect(gridAfter.parentElement?.getAttribute('style')).toContain('display: flex');
     expect(gridAfter.parentElement?.getAttribute('style')).toContain('visibility: visible');
     expect(gridAfter.parentElement?.getAttribute('aria-hidden')).toBe('false');
+  });
+
+  test('Show Folder in Grid leaves duplicate review and mounts the grid with a pending folder jump', async () => {
+    const store = getStoreApi();
+    const videos = ['a', 'b'].map((id) => makeVideo(id, {}, 'D:\\Media\\Trips'));
+    electron.api.scanDirectory.mockResolvedValue(videos);
+    store.setState({ directory: 'D:\\Media', directories: ['D:\\Media'], videos, filteredVideos: videos });
+    render(<App />);
+    await waitFor(() => expect(store.getState().isScanning).toBe(false));
+    act(() => {
+      store.getState().setDuplicateGroups([makeDuplicateGroup()]);
+      store.getState().enterReviewAndPlay('a', ['a', 'b']);
+    });
+    expect(screen.getByTestId('duplicate-groups')).toBeTruthy();
+    expect(screen.getByTestId('review-mode')).toBeTruthy();
+    expect(screen.queryByTestId('grid-state')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'a.mp4' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Folder in Grid' }));
+
+    expect(store.getState().reviewMode).toBe(false);
+    expect(store.getState().duplicateGroupsMode).toBe(false);
+    expect(store.getState().gridFolderJump?.folderPath).toBe('D:\\Media\\Trips');
+    expect(screen.getByTestId('grid-state')).toBeTruthy();
+    expect(screen.queryByTestId('review-mode')).toBeNull();
+    expect(screen.queryByTestId('duplicate-groups')).toBeNull();
+  });
+
+  test('Show Folder in Grid clears a folder filter that hides the folder of the duplicate', async () => {
+    const store = getStoreApi();
+    const videos = [makeVideo('a', {}, 'D:\\Media\\Trips'), makeVideo('b', {}, 'D:\\Media\\Trips'), makeVideo('c', {}, 'D:\\Media\\Other')];
+    electron.api.scanDirectory.mockResolvedValue(videos);
+    store.setState({ directory: 'D:\\Media', directories: ['D:\\Media'], videos, filteredVideos: videos });
+    render(<App />);
+    await waitFor(() => expect(store.getState().isScanning).toBe(false));
+    act(() => {
+      store.getState().setFolderFilter({ path: 'D:\\Media\\Other', includeSubfolders: true });
+      store.getState().setDuplicateGroups([makeDuplicateGroup()]);
+      store.getState().enterReviewAndPlay('a', ['a', 'b']);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'a.mp4' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Folder in Grid' }));
+
+    expect(store.getState().folderFilter).toBeNull();
+    expect(store.getState().gridFolderJump?.folderPath).toBe('D:\\Media\\Trips');
   });
 
   test('keeps duplicate results laid out while review mode is open so virtual scrolling survives', () => {

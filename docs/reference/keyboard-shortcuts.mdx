@@ -12,17 +12,20 @@ VideoCull is built around keyboard-first review. The web tables show the default
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl + ,` | Open settings |
-| `Ctrl + O` | Open directory |
+| `Ctrl + O` | Open folder |
 | `Ctrl + F` | Search loaded videos |
 | `F5` | Rescan |
 | `Ctrl + Z` | Undo |
 | `Ctrl + Backspace` | Send marked videos to the Recycle Bin |
-| `Ctrl + Shift + R` | Clear cache and reload |
 | `Ctrl + Shift + E` | Export an HTML report |
-| `Ctrl + E` | Reveal in Explorer |
-| `Ctrl + P` | Play externally |
-| `Ctrl + +` / `Ctrl + =` / `Ctrl + -` | Zoom cards |
+| `Ctrl + E` | Reveal the open or selected video in Explorer |
+| `Ctrl + P` | Play the open or selected video externally |
+| `Ctrl + +` / `Ctrl + =` / `Ctrl + -` | Larger or smaller cards |
 | `F11` | Toggle fullscreen |
+| `Ctrl + K` | Find a command, folder or video |
+| `Ctrl + G` | Go to a folder in the grid |
+| `Ctrl + L` | Focus the path in the title bar |
+| `Alt + Left` / `Alt + Right` | Previous or next folder filter |
 | `F1` | Open documentation |
 | `Shift + ?` | Open the keyboard shortcuts reference |
 | `M` | Toggle global mute |
@@ -49,6 +52,43 @@ VideoCull is built around keyboard-first review. The web tables show the default
 | `[` / `]` | Playback speed down or up |
 | `Esc` | Stop or exit review |
 {/* /in-app-shortcuts */}
+
+## Menu bar
+
+Every command is also in the menu bar at the top of the window, and **Ctrl + K** (or the search icon in the title bar) finds and runs any of them by name, along with folders and videos (see below). Hold `Alt` to see each menu's access key, then press it to open the menu: `Alt + F` File, `Alt + A` Actions, `Alt + V` View, `Alt + D` Video, `Alt + H` Help. Commands that cannot do anything right now, such as **Rescan** without an open folder or **Reveal in Explorer** without an open or selected video, are greyed out.
+
+| Menu | Commands |
+| --- | --- |
+| File | Open Folder, Add Folder to Session, Open Recent, Rescan, Reveal Folder in Explorer, Close Session, Export Report, Settings, Clear Cache and Reload, Exit |
+| Actions | Undo, Find Duplicates, Pause Processing, When Processing Finishes, Delete Marked Videos |
+| View | Command Palette, Go to Folder, Sort By, Group by Folder, Clear All Filters, Larger and Smaller Cards, Privacy Screen, Mute In-App Playback (when enabled), Dark / Light theme, Full Screen |
+| Video | Play Externally, Reveal in Explorer, Copy Path and Regenerate Thumbnails for the video open in Review or the videos selected in the grid; Play Externally and Reveal in Explorer need exactly one video |
+| Help | Documentation, Online Help, Keyboard Shortcuts, Release Notes, Report a Problem, Open Log Folder, Check for Updates (direct download only), Support VideoCull (GitHub Sponsors or PayPal), About VideoCull |
+
+The middle of the title bar shows where you are: in the grid, the folder at the top of the screen when grouped by folder, otherwise the folder you filtered to; in Review, the path of the open video and its place among the videos you are reviewing, such as `34 / 210`; in duplicate groups, which group is at the top, such as `Group 3 of 40`, with buttons for the previous and next group. Type a number in place of the group number and press `Enter` to go to that group. Each part of the path has a menu with counts and actions for that spot:
+
+- **Grid folder:** Review This Folder, Regenerate Thumbnails, Reveal in Explorer, Copy Path and Go to Folder.
+- **Video in Review:** Reveal in Explorer, Play Externally, Copy Path, Review Only This Folder and Show Folder in Grid.
+- **Duplicate groups:** Go to Group, Find Duplicates Again, Find Again with the other comparison method, Duplicate Settings and Back to Grid, with the space you could reclaim.
+
+In the grid, select a folder in the path to show only that folder and everything below it, whatever the sort order or grouping. The folder you filtered to shows as a chip; its `×` clears the filter, and **Include Subfolders** in its menu switches to only the videos directly in it, marked **only**. Parts of the path after the filtered folder are greyed out: they only show where the grid is scrolled to. Each `›` lists the folders one level down, with how many videos each still has to review; pick one to filter to it, or **All of** at the top to step back up. Folders with nothing left to review are dimmed. With several folders loaded, the arrow at the start of the path shows all of them or one, and lists recent sessions under **Open Recent** to open instead. `Alt + Left` and `Alt + Right` step back and forward through the folders you filtered to, and **Clear All Filters** shows every folder again. A path too long for the title bar is shortened to `…` in the middle; select `…` to reach the folders it hides.
+
+The actions for a part of the path open from the `▾` after the last part, by right-clicking any part, or with `Down`, the Menu key or `Shift + F10` on a focused part. `Ctrl + L` focuses the path.
+
+**Ctrl + K** opens one search for commands, folders and videos, showing the best few of each; every typed word must appear. Start with `>` to list only commands, `/` for folders or `@` for videos. **Go to Folder** (`Ctrl + G`) opens the same search with `/` already typed: before you type, it lists the folders you picked recently, then the ones with the most left to review.
+
+- **Command:** `Enter` runs it.
+- **Folder:** `Enter` scrolls the grid to it; `Shift + Enter` filters the grid to it.
+- **Video:** `Enter` selects it and scrolls the grid to it; `Ctrl + Enter` opens it in Review.
+- **Search videos for "…"**, the last row, puts the text in the grid's search box (`Ctrl + F`), which keeps the grid narrowed as you go on.
+
+In these menus and in right-click menus, the arrow keys move through the items, a letter jumps to the next item starting with it, and `Esc` closes the menu. In the path menus, `Left` and `Right` move to the neighbouring part of the path.
+
+While videos are marked for deletion, the right side of the title bar shows how many and their total size; select it to send them to the Recycle Bin, with the usual confirmation. In a narrow window it shows only the count.
+
+While VideoCull is processing, the right side of the title bar shows what it is working on and how far it is, with a pause button. A progress line runs along the bar's bottom edge, and the taskbar button shows the progress too. A `+1` means another job runs at the same time, and a moon or power icon means the PC will sleep or shut down afterwards. Select the status for a panel with every running job and, after a few seconds, about how long each has left, plus **Pause Processing** and **When Processing Finishes**. In a narrow window the status shows only how far it is, then only a progress ring; point at it to see the full status.
+
+While the privacy screen is shown, only **Privacy Screen**, **Full Screen** and **Exit** work.
 
 ## Customization
 

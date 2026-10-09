@@ -1,5 +1,5 @@
-import { useEffect, useCallback, useRef, useState } from 'react';
-import useStore from './store';
+import { useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react';
+import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from './store';
 import { Profiler } from 'react';
 import { formatKeybind, matchesKeybind } from './keybinds';
 import { DEFAULT_KEYBINDS } from './keybind-defaults';
@@ -13,14 +13,19 @@ import ShortcutsHelp from './components/ShortcutsHelp';
 import DocumentationModal from './components/DocumentationModal';
 import StoreTransition from './components/StoreTransition';
 import FinishActionCountdown from './components/FinishActionCountdown';
+import TitleBar from './components/TitleBar';
+import CommandPalette from './components/CommandPalette';
+import { copyTextToClipboard } from './components/ContextMenu';
+import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
-import type { MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, UpdateInfo, Video } from './types';
-import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath } from './utils';
+import type { DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, MenuAction, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
+import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside } from './utils';
 import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
 import { applyDocumentTheme } from './theme';
 import './App.css';
+import { openVideoExternally, revealInExplorer } from './appCommands';
 
 const CURRENT_METADATA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
@@ -81,6 +86,8 @@ function sameStrings(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+const SORT_FIELDS = ['name', 'size', 'duration', 'date', 'rating', 'resolution', 'fps'] as const satisfies readonly SortField[];
+
 function isMetadataRunning(isGenerating: boolean, phase: string | undefined): boolean {
   return isGenerating && phase === 'metadata';
 }
@@ -105,7 +112,6 @@ export default function App() {
   const theme = useStore((s) => s.settings.theme);
   const globalMuteEnabled = useStore((s) => s.settings.features.globalMute);
   const globalMuteKeybind = useStore((s) => s.settings.keyGlobalMute);
-  const duplicateSettings = useStore((s) => s.settings.duplicates);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const isGenerating = useStore((s) => s.isGenerating);
@@ -120,7 +126,7 @@ export default function App() {
   const setDuplicateProgress = useStore((s) => s.setDuplicateProgress);
   const setIsFindingDuplicates = useStore((s) => s.setIsFindingDuplicates);
   const setDuplicateGroupsMode = useStore((s) => s.setDuplicateGroupsMode);
-  const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
+  const setFolderFilter = useStore((s) => s.setFolderFilter);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const thumbsPerVideo = useStore((s) => s.settings.thumbsPerVideo);
   const skipIntroDelaySecs = useStore((s) => s.settings.skipIntroDelaySecs);
@@ -133,10 +139,19 @@ export default function App() {
   const genProgressTotalRef = useRef(0);
   const genProgressPhaseRef = useRef<'thumbnails' | 'metadata' | 'media'>('thumbnails');
   const isPrivateRef = useRef(false);
+  // The menu listener is set up once; handlers defined further down reach it through this ref.
+  const menuHandlersRef = useRef({
+    closeSession: () => {},
+    findDuplicates: async () => {},
+    addFolderToSession: (_folderPath: string) => {},
+    openRecent: async (_folderPath: string) => {},
+    regenerateThumbnails: async (_videos: Video[]) => {},
+  });
   const showShortcutsHelpRef = useRef(false);
   const showDocumentationRef = useRef(false);
   const dragDepthRef = useRef(0);
-  const folderReviewPathRef = useRef<string | null>(null);
+  // The folder filter from before Review This Folder, restored when Review closes.
+  const folderReviewRestoreRef = useRef<{ previous: FolderFilter | null; applied: FolderFilter } | null>(null);
   const settingsSaveQueueRef = useRef(Promise.resolve());
   const previousReviewModeRef = useRef(reviewMode);
   const autoScanStateRef = useRef({
@@ -146,6 +161,9 @@ export default function App() {
   });
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  /** The text the quick-open palette starts with, or null while it is closed. */
+  const [paletteQuery, setPaletteQuery] = useState<string | null>(null);
+  const closePalette = useCallback(() => setPaletteQuery(null), []);
   const [showDocumentation, setShowDocumentation] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -365,9 +383,12 @@ export default function App() {
     }
   }, [pushToast]);
 
-  const handleFindDuplicates = useCallback(async () => {
+  /** `restart` starts over while a run is going; the main process cancels the earlier run. */
+  const handleFindDuplicates = useCallback(async ({ restart = false }: { restart?: boolean } = {}) => {
     const state = useStore.getState();
-    if (!window.electronAPI || state.videos.length < 2 || isFindingDuplicates || !duplicateSettings.enabled) return;
+    // Read at call time: a method switch updates the settings just before calling this.
+    const duplicateSettings = state.settings.duplicates;
+    if (!window.electronAPI || state.videos.length < 2 || (isFindingDuplicates && !restart) || !duplicateSettings.enabled) return;
     if (isMetadataRunning(isGenerating, genProgress.phase)) {
       pushToast({
         title: 'Metadata still updating',
@@ -397,6 +418,7 @@ export default function App() {
         const resultIds = result.videos?.map((video) => video.id) ?? [];
         if (resultIds.some((id) => !activeIds.has(id))) return;
         applyDuplicateResult(result);
+        useStore.getState().setLastDuplicateMethod(duplicateSettings.comparisonMode);
         const count = result.stats?.duplicateVideoCount ?? 0;
         pushToast({
           title: count > 0 ? 'Duplicates found' : 'No duplicates found',
@@ -413,7 +435,44 @@ export default function App() {
         setIsFindingDuplicates(false);
       }
     }
-  }, [applyDuplicateResult, duplicateSettings, genProgress.phase, isFindingDuplicates, isGenerating, pushToast, setDuplicateProgress, setIsFindingDuplicates]);
+  }, [applyDuplicateResult, genProgress.phase, isFindingDuplicates, isGenerating, pushToast, setDuplicateProgress, setIsFindingDuplicates]);
+  const findDuplicatesRef = useRef(handleFindDuplicates);
+  findDuplicatesRef.current = handleFindDuplicates;
+
+  /** Saves the other comparison method and finds duplicates again with it; the toast can switch back. */
+  const handleSwitchDuplicateMethod = useCallback(() => {
+    const useMethod = (comparisonMode: DuplicateComparisonMode) => {
+      const state = useStore.getState();
+      state.updateSettings({ duplicates: { ...state.settings.duplicates, comparisonMode } });
+      state.saveSettings().catch(() => pushToast({
+        title: 'Duplicate method not saved',
+        detail: 'It applies until VideoCull closes.',
+        kind: 'warning',
+      }));
+      void findDuplicatesRef.current({ restart: true });
+    };
+    const state = useStore.getState();
+    // Switching saves a setting; do not claim a scan that the run itself would refuse to start.
+    if (state.videos.length < 2 || !state.settings.duplicates.enabled || isMetadataRunning(state.isGenerating, state.genProgress.phase)) {
+      pushToast({
+        title: 'Duplicate detection unavailable',
+        detail: 'It needs at least two videos, duplicate detection enabled and finished metadata.',
+        kind: 'info',
+        dedupeKey: 'duplicates-switch-unavailable',
+      });
+      return;
+    }
+    const previous = state.lastDuplicateMethod ?? state.settings.duplicates.comparisonMode;
+    const next = otherDuplicateMethod(state);
+    useMethod(next);
+    pushToast({
+      title: `Finding duplicates with ${DUPLICATE_METHOD_NAMES[next]}`,
+      detail: 'Saved as the method in Duplicate Settings.',
+      kind: 'info',
+      actionLabel: 'Undo',
+      action: () => useMethod(previous),
+    });
+  }, [pushToast]);
 
   // Scan directory when selected
   const handleScan = useCallback(async (
@@ -579,6 +638,7 @@ export default function App() {
             const result = await window.electronAPI.findDuplicates(currentVideos, { settings: duplicateConfig });
             if (scanId === scanIdRef.current && duplicateRunId === duplicateRunIdRef.current && result.status === 'ok') {
               applyDuplicateResult(result);
+              useStore.getState().setLastDuplicateMethod(duplicateConfig.comparisonMode);
             }
             if (duplicateRunId === duplicateRunIdRef.current) {
               setIsFindingDuplicates(false);
@@ -765,10 +825,65 @@ export default function App() {
       ? window.electronAPI.onDuplicateProgress((progress) => setDuplicateProgress(progress))
       : () => {};
 
-    const unsub4 = window.electronAPI.onMenuAction(async (action) => {
+    const handleMenuAction = async (action: MenuAction) => {
+      if (action === 'toggle-privacy') {
+        setIsPrivate((v) => !v);
+        return;
+      }
       if (isPrivateRef.current) return;
       const state = useStore.getState();
+      if (action.startsWith('open-recent:')) {
+        await menuHandlersRef.current.openRecent(action.slice('open-recent:'.length));
+        return;
+      }
+      if (action.startsWith('reveal-folder:')) {
+        const folder = action.slice('reveal-folder:'.length);
+        if (state.directories.includes(folder)) revealInExplorer(folder);
+        return;
+      }
+      if (action.startsWith('sort:')) {
+        const field = action.slice('sort:'.length);
+        if ((SORT_FIELDS as readonly string[]).includes(field)) state.setSortBy(field as SortField);
+        return;
+      }
+      if (action === 'sort-order:asc' || action === 'sort-order:desc') {
+        state.setSortOrder(action === 'sort-order:asc' ? 'asc' : 'desc');
+        return;
+      }
+      // Grid selection cleanup runs in an effect; resolve menu targets against the current filter immediately.
+      const activeVideos = state.reviewMode
+        ? state.videos.filter((video) => video.path === state.activeReviewVideoPath)
+        : state.duplicateGroupsMode ? []
+          : state.filteredVideos.filter((video) => state.gridSelectionIds.has(video.id));
+      const activeVideoPath = activeVideos.length === 1 ? activeVideos[0].path : null;
       switch (action) {
+        case 'copy-path': {
+          if (activeVideos.length === 0) break;
+          try {
+            await copyTextToClipboard(activeVideos.map((video) => video.path).join('\n'));
+            pushToast({ title: activeVideos.length === 1 ? 'Path copied' : `${activeVideos.length} paths copied`, kind: 'success' });
+          } catch {
+            pushToast({ title: 'Copy failed', detail: 'The path could not be copied to the clipboard.', kind: 'error' });
+          }
+          break;
+        }
+        case 'regenerate-thumbnails': { void menuHandlersRef.current.regenerateThumbnails(activeVideos); break; }
+        case 'toggle-group-by-folder': { state.setGroupByFolder(!state.groupByFolder); break; }
+        case 'clear-filters': { state.clearFilters(); break; }
+        case 'toggle-mute': { toggleGlobalMute(); break; }
+        case 'add-folder': {
+          const dir = await window.electronAPI.selectDirectory();
+          if (dir) menuHandlersRef.current.addFolderToSession(dir);
+          break;
+        }
+        case 'close-session': { menuHandlersRef.current.closeSession(); break; }
+        case 'find-duplicates': { void menuHandlersRef.current.findDuplicates(); break; }
+        case 'toggle-theme': { toggleTheme(); break; }
+        case 'show-shortcuts': { setShowShortcutsHelp(true); break; }
+        case 'open-command-palette': { setPaletteQuery(''); break; }
+        case 'go-to-folder': { setPaletteQuery('/'); break; }
+        case 'open-about': { openSettings('about'); break; }
+        case 'check-updates': { openSettings('updates'); break; }
         case 'open-settings': { openSettings('interface'); break; }
         case 'open-documentation': { setShowDocumentation(true); break; }
         case 'open-directory': {
@@ -868,13 +983,11 @@ export default function App() {
         case 'zoom-in': { state.setCardScale(Math.min(state.cardScale + 0.1, 1.5)); break; }
         case 'zoom-out': { state.setCardScale(Math.max(state.cardScale - 0.1, 0.5)); break; }
         case 'reveal-video': {
-          if (state.reviewMode && state.activeReviewVideoPath)
-            window.electronAPI.openInExplorer(state.activeReviewVideoPath);
+          if (activeVideoPath) revealInExplorer(activeVideoPath);
           break;
         }
         case 'play-external': {
-          if (state.reviewMode && state.activeReviewVideoPath)
-            window.electronAPI.openVideo(state.activeReviewVideoPath);
+          if (activeVideoPath) openVideoExternally(activeVideoPath);
           break;
         }
         case 'export-report': {
@@ -882,6 +995,18 @@ export default function App() {
           break;
         }
       }
+    };
+    // The IPC listener ignores the returned promise, so a failed dialog or scan would otherwise vanish.
+    const unsub4 = window.electronAPI.onMenuAction((action) => {
+      handleMenuAction(action).catch((err) => {
+        console.warn(`[app] Menu action "${action}" failed:`, err);
+        useStore.getState().pushToast({
+          title: 'Menu action failed',
+          detail: 'The action could not be completed. See the log for details.',
+          kind: 'error',
+          dedupeKey: 'menu-action-failed',
+        });
+      });
     });
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -941,9 +1066,13 @@ export default function App() {
     };
   }, [setScanProgress, setGenProgress, setDuplicateProgress, updateVideoThumbnailsBatch, handleScan, handleDirectoryPicked, openSettings, pushToast, requestPermanentDelete, toggleGlobalMute, toggleTheme, handleExportReport]);
 
+  useAppMenuState(isPrivate);
+
+  const micaTitleBar = useStore((s) => s.settings.micaTitleBar);
   useEffect(() => {
-    window.electronAPI?.setExportReportAvailable(Boolean(directory && videoCount > 0 && !isScanning));
-  }, [directory, videoCount, isScanning]);
+    if (!window.electronAPI?.micaSupported) return;
+    document.documentElement.classList.toggle('mica', micaTitleBar);
+  }, [micaTitleBar]);
 
   useEffect(() => {
     if (!isGenerating && !isFindingDuplicates) {
@@ -952,11 +1081,17 @@ export default function App() {
   }, [isFindingDuplicates, isGenerating]);
 
   useEffect(() => {
-    if (!reviewMode && folderReviewPathRef.current) {
-      folderReviewPathRef.current = null;
-      setFolderFilterPath(null);
+    if (!reviewMode && folderReviewRestoreRef.current) {
+      const { previous, applied } = folderReviewRestoreRef.current;
+      folderReviewRestoreRef.current = null;
+      const { directories: loaded, folderFilter } = useStore.getState();
+      // An explicit filter choice made while leaving Review takes precedence over restoration.
+      if (folderFilter !== applied) return;
+      // Opening another folder also ends Review; the old session's filter would hide all of the new one.
+      if (previous && !loaded.some((root) => isFolderInside(previous.path, root))) return;
+      setFolderFilter(previous);
     }
-  }, [reviewMode, setFolderFilterPath]);
+  }, [reviewMode, setFolderFilter]);
 
   useEffect(() => {
     const key = `${directories.join('\0')}|subfolders:${includeSubfolders}`;
@@ -1035,29 +1170,33 @@ export default function App() {
     setDropModalPath(null);
   }, [dropModalPath]);
 
-  const handleDropModalAddSession = useCallback(() => {
-    if (!dropModalPath) return;
+  const addFolderToSession = useCallback((folderPath: string) => {
     const beforeDirs = useStore.getState().directories;
-    useStore.getState().addDirectory(dropModalPath);
+    useStore.getState().addDirectory(folderPath);
     const afterDirs = useStore.getState().directories;
     const changed = !sameStrings(beforeDirs, afterDirs);
-    setDropModalPath(null);
     setTimeout(() => {
       pushToast(changed
         ? {
           title: 'Folder added',
-          detail: formatRecentPath(dropModalPath),
+          detail: formatRecentPath(folderPath),
           kind: 'success',
-          dedupeKey: `folder-added:${dropModalPath}`,
+          dedupeKey: `folder-added:${folderPath}`,
         }
         : {
           title: 'Folder already covered',
-          detail: formatRecentPath(dropModalPath),
+          detail: formatRecentPath(folderPath),
           kind: 'info',
-          dedupeKey: `folder-covered:${dropModalPath}`,
+          dedupeKey: `folder-covered:${folderPath}`,
         });
     }, 50);
-  }, [dropModalPath, pushToast]);
+  }, [pushToast]);
+
+  const handleDropModalAddSession = useCallback(() => {
+    if (!dropModalPath) return;
+    setDropModalPath(null);
+    addFolderToSession(dropModalPath);
+  }, [dropModalPath, addFolderToSession]);
 
   const handleDropModalKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
@@ -1077,11 +1216,17 @@ export default function App() {
   }, []);
 
   const handleReviewFolder = useCallback((folderPath: string) => {
-    folderReviewPathRef.current = folderPath;
-    setFolderFilterPath(folderPath);
+    const applied = { path: folderPath, includeSubfolders: false };
+    folderReviewRestoreRef.current = {
+      previous: folderReviewRestoreRef.current ? folderReviewRestoreRef.current.previous : useStore.getState().folderFilter,
+      applied,
+    };
+    setFolderFilter(applied);
+    // A mounted Review keeps its snapshot until an explicit scope replaces it.
+    useStore.getState().setReviewScopeIds(useStore.getState().filteredVideos.map((video) => video.id));
     useStore.getState().setReviewIndex(0);
     useStore.getState().setReviewMode(true);
-  }, [setFolderFilterPath]);
+  }, [setFolderFilter]);
 
   const handleCloseSession = useCallback(() => {
     scanIdRef.current += 1;
@@ -1107,6 +1252,31 @@ export default function App() {
     });
   }, [pushToast, setGenProgress, setIsGenerating, setIsScanning, setScanProgress]);
 
+  const openRecentFolder = useCallback(async (folderPath: string) => {
+    if (!useStore.getState().settings.recentDirectories.includes(folderPath)) return;
+    const result = await window.electronAPI?.validateDroppedPath(folderPath);
+    if (!result?.valid || !result.isDirectory) {
+      pushToast({
+        title: 'Folder unavailable',
+        detail: formatRecentPath(folderPath),
+        kind: 'warning',
+        dedupeKey: `recent-unavailable:${folderPath}`,
+      });
+      return;
+    }
+    handleDirectoryPicked(folderPath);
+  }, [handleDirectoryPicked, pushToast]);
+
+  useLayoutEffect(() => {
+    menuHandlersRef.current = {
+      closeSession: handleCloseSession,
+      findDuplicates: handleFindDuplicates,
+      addFolderToSession,
+      openRecent: openRecentFolder,
+      regenerateThumbnails: handleRegenerateThumbnails,
+    };
+  });
+
   return (
     <div
       className={`app-layout${isDragOver ? ' drag-over' : ''}${reviewMode ? ' review-active' : ''}`}
@@ -1115,6 +1285,22 @@ export default function App() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {window.electronAPI && (
+        <TitleBar
+          isPrivate={isPrivate}
+          onOpenCommandPalette={() => setPaletteQuery('')}
+          locationActions={{
+            reviewFolder: handleReviewFolder,
+            regenerateThumbnails: (videos) => void handleRegenerateThumbnails(videos),
+            findDuplicates: () => void handleFindDuplicates(),
+            switchDuplicateMethod: handleSwitchDuplicateMethod,
+            openDuplicateSettings: () => openSettings('duplicates'),
+            openFolderSearch: () => setPaletteQuery('/'),
+            openRecent: (folder) => void openRecentFolder(folder),
+          }}
+        />
+      )}
+      {paletteQuery !== null && !isPrivate && <CommandPalette key={paletteQuery} initialQuery={paletteQuery} onClose={closePalette} />}
       <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
       <StoreTransition />
       {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
@@ -1145,6 +1331,7 @@ export default function App() {
             onOpenDocumentation={() => setShowDocumentation(true)}
             onCloseSession={() => void handleCloseSession()}
             onFindDuplicates={() => void handleFindDuplicates()}
+            onSwitchDuplicateMethod={handleSwitchDuplicateMethod}
             onOpenDuplicateSettings={() => openSettings('duplicates')}
             onRequestPermanentDelete={requestPermanentDelete}
             globalMute={globalMute}

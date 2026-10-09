@@ -1,0 +1,409 @@
+/* The app's own title bar. Its height must match TITLE_BAR_HEIGHT in electron/theme-utils.js,
+   which sizes the Windows window buttons drawn over its right end. */
+:root:has(.title-bar) {
+  --title-bar-height: 32px;
+}
+
+.title-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  /* Above Review mode, below dialogs, which dim it like the rest of the window. */
+  z-index: 1050;
+  /* Start and end columns share the room left beside the location, so it is centred on the
+     window while both fit, then shifts and shrinks; the three never overlap. */
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  height: var(--title-bar-height);
+  width: 100%;
+  /* No bottom border: Windows paints its window buttons over the right end, which would cut a
+     border short. --bg-surface must match the overlay colour in electron/theme-utils.js. */
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.title-bar-start {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding-left: 10px;
+}
+
+.title-bar-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+}
+
+.title-bar-menus {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  gap: 2px;
+}
+
+.title-bar-menu-button {
+  height: 24px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-menu-button:hover,
+.title-bar-menu-button:focus-visible,
+.title-bar-menu-button.open {
+  background: var(--bg-control);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.title-bar-access-key {
+  text-decoration: underline;
+}
+
+.title-bar-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title-bar-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+/* Processing status and pause button, left of the other title bar actions. */
+.title-bar-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  min-width: 0;
+  margin-right: 4px;
+  border-radius: 12px;
+  background: var(--bg-control);
+}
+
+/* The status itself opens the processing panel; the pause button beside it stays one click. */
+.title-bar-status-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-status-button:hover,
+.title-bar-status-button:focus-visible,
+.title-bar-status-button[aria-expanded="true"] {
+  background: var(--bg-surface-active);
+  outline: none;
+}
+
+.title-bar-status-more {
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.title-bar-status-finish {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.title-bar-status {
+  display: inline-flex;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.title-bar-status-label {
+  color: var(--text-primary);
+}
+
+.title-bar-status-paused {
+  color: var(--color-skip);
+}
+
+/* Thin progress line along the bottom edge of the bar. */
+.title-bar-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.title-bar-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.title-bar-progress-fill.paused {
+  background: var(--color-skip);
+}
+
+.title-bar-progress-fill.indeterminate {
+  width: 30%;
+  animation: title-bar-progress-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes title-bar-progress-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-bar-progress-fill.indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/* Right-hand controls. The padding keeps them clear of the window buttons Windows draws over the
+   bar's right end, and counts those buttons in this column's width so the centring includes them. */
+.title-bar-actions {
+  justify-self: end;
+  height: 100%;
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Runs the usual delete flow with its confirmation; shown only while something is marked. */
+.title-bar-marked {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  margin-right: 4px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 12px;
+  background: var(--color-delete-dim);
+  color: var(--color-delete);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-marked:hover,
+.title-bar-marked:focus-visible {
+  background: var(--color-delete);
+  color: var(--text-on-accent, #fff);
+  outline: none;
+}
+
+.title-bar-icon-button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-icon-button:hover,
+.title-bar-icon-button:focus-visible {
+  background: var(--bg-control);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.title-bar-icon-button.active {
+  color: var(--accent);
+}
+
+.title-bar-icon-button.paused {
+  color: var(--color-skip);
+}
+
+.title-bar-icon-button:disabled {
+  opacity: 0.5;
+}
+
+/* Windows 11: the title bar shows the Mica material, which only shows through transparent page
+   backgrounds. Everything below the title bar keeps its opaque background (.app-layout). */
+:root.mica,
+:root.mica body {
+  background: transparent;
+}
+
+/* A light layer of the theme colour keeps the bar close to the app's colours over a bright wallpaper. */
+:root.mica .title-bar {
+  background: color-mix(in srgb, var(--bg-surface) 20%, transparent);
+}
+
+/* Narrower windows: the stage name goes first, then the numbers, leaving a progress ring. The
+   text stays readable by screen readers (role=status), and the pill's title shows it in full. */
+.title-bar-status-ring {
+  display: none;
+  flex-shrink: 0;
+  transform: rotate(-90deg);
+}
+
+.title-bar-status-ring circle {
+  fill: none;
+  stroke-width: 2;
+}
+
+.title-bar-status-ring-track {
+  stroke: var(--border);
+}
+
+.title-bar-status-ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+
+.title-bar-status-ring.paused .title-bar-status-ring-fill {
+  stroke: var(--color-skip);
+}
+
+.title-bar-status-ring.indeterminate {
+  animation: title-bar-ring-spin 1.2s linear infinite;
+}
+
+@keyframes title-bar-ring-spin {
+  from { transform: rotate(-90deg); }
+  to { transform: rotate(270deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-bar-status-ring.indeterminate {
+    animation: none;
+  }
+}
+
+@media (max-width: 1199px) {
+  .title-bar-marked-detail {
+    display: none;
+  }
+
+  .title-bar-status-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+@media (max-width: 999px) {
+  .title-bar-status-ring {
+    display: block;
+  }
+
+  .title-bar-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+.processing-panel {
+  min-width: 280px;
+  -webkit-app-region: no-drag;
+}
+
+.processing-job {
+  padding: 8px 10px;
+}
+
+.processing-job + .app-menu-item,
+.processing-job:last-of-type {
+  margin-bottom: 4px;
+}
+
+.processing-job-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.processing-job-label {
+  color: var(--text-primary);
+}
+
+.processing-job-detail {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.processing-job-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.processing-job-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.processing-job-fill.paused {
+  background: var(--color-skip);
+}
+
+.processing-job-fill.indeterminate {
+  width: 30%;
+  animation: title-bar-progress-sweep 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processing-job-fill.indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}

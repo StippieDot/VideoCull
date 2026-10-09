@@ -1,0 +1,198 @@
+.location-bar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.location-bar-segment {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  max-width: 220px;
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+/* Parts keep their width so a path that does not fit overflows and gets shortened (LocationBar). */
+.location-bar.squeezed .location-bar-segment:not(.current) {
+  flex-shrink: 1;
+}
+
+.location-bar-segment.current {
+  max-width: 320px;
+  color: var(--text-primary);
+}
+
+/* Past the loaded or filtered folder: where the grid is scrolled to, not part of a filter. */
+.location-bar-segment.position {
+  color: var(--text-tertiary);
+}
+
+.location-bar-segment.current.position {
+  color: var(--text-secondary);
+}
+
+/* The folder the grid is filtered to, with its clear button. */
+.location-bar-chip {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  min-width: 0;
+  border-radius: 12px;
+  background: var(--accent-dim);
+}
+
+.location-bar.squeezed .location-bar-chip {
+  flex-shrink: 1;
+}
+
+.location-bar-chip .location-bar-segment {
+  border-radius: 12px 0 0 12px;
+  color: var(--text-primary);
+}
+
+.location-bar-chip .location-bar-segment svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.location-bar-count {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.location-bar-duplicates,
+.duplicate-stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.duplicate-stepper-text {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Reads as text until focused; the title bar around it drags the window. */
+.duplicate-stepper-input {
+  min-width: 0;
+  padding: 1px 3px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  -webkit-app-region: no-drag;
+}
+
+.duplicate-stepper-input:hover,
+.duplicate-stepper-input:focus {
+  border-color: var(--border-strong);
+  background: var(--bg-control);
+  outline: none;
+}
+
+.location-bar-only {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.location-bar-chip-clear {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 24px;
+  padding: 0 4px 0 0;
+  border: none;
+  border-radius: 0 12px 12px 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.location-bar-chip-clear:hover,
+.location-bar-chip-clear:focus-visible {
+  background: var(--bg-control);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.location-bar-segment:hover,
+.location-bar-segment:focus-visible,
+.location-bar-segment.open {
+  background: var(--bg-control);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.location-bar-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The `›` between path parts lists the folders one level down. */
+.location-bar-chevron {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.location-bar-chevron:hover,
+.location-bar-chevron:focus-visible,
+.location-bar-chevron.open {
+  background: var(--bg-control);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.location-bar-text {
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.location-bar-separator,
+.location-bar-ellipsis {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.location-menu {
+  min-width: 248px;
+  max-width: min(420px, calc(100vw - 16px));
+  -webkit-app-region: no-drag;
+}

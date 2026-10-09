@@ -6,12 +6,24 @@ import {
   formatDeleteConfirmation,
   formatDuration,
   formatFps,
+  isFolderShownByFilter,
   formatRecentPath,
   formatRelativeTime,
   formatResolutionLabel,
   formatSize,
+  getFolderLabel,
   isWebSupported,
 } from '../../src/utils';
+import { makeVideo } from '../helpers/videoFactory';
+
+test('folder labels are relative to the loaded folder, also when that is a drive root', () => {
+  const label = (path: string, roots: string[]) => getFolderLabel(makeVideo('x', { path }), roots);
+  expect(label('P:\\AI\\Trips\\x.mp4', ['P:\\'])).toBe('AI\\Trips');
+  expect(label('P:\\x.mp4', ['P:\\'])).toBe('Root');
+  expect(label('D:\\Media\\Trips\\x.mp4', ['D:\\Media'])).toBe('Trips');
+  expect(label('D:\\Media\\Trips\\x.mp4', ['D:\\Media', 'P:\\'])).toBe('Media / Trips');
+  expect(label('P:\\Clips\\x.mp4', ['D:\\Media', 'P:\\'])).toBe('P: / Clips');
+});
 
 test('format helpers produce user-facing strings for common values', () => {
   expect(formatSize(0)).toBe('0 B');
@@ -81,4 +93,14 @@ test('delete confirmation describes recycle bin, fallback, and empty-folder clea
     sizeBytes: 1536,
     removeEmptyFoldersAfterDelete: true,
   })).toBe('Move 2 marked videos (2 KB) to the Recycle Bin? If the Recycle Bin is unavailable, VideoCull will ask before permanently deleting. Empty source folders will be cleaned up when they are truly empty.');
+});
+
+test('a folder filter shows a folder only when its own videos pass the filter', () => {
+  const filter = { path: 'D:\\Media\\Trips', includeSubfolders: true };
+  expect(isFolderShownByFilter('D:\\Media\\Trips\\Day1', filter)).toBe(true);
+  expect(isFolderShownByFilter('d:/media/trips', filter)).toBe(true);
+  expect(isFolderShownByFilter('D:\\Media', filter)).toBe(false);
+  expect(isFolderShownByFilter('D:\\Media\\Other', filter)).toBe(false);
+  expect(isFolderShownByFilter('D:\\Media\\Trips\\Day1', { ...filter, includeSubfolders: false })).toBe(false);
+  expect(isFolderShownByFilter('D:\\Media', null)).toBe(true);
 });

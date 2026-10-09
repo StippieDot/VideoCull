@@ -20,6 +20,8 @@ const {
 const { processingPause } = require('./processing-pause');
 const { createPowerManager } = require('./power-manager');
 const { runPowerCommand } = require('./system-power');
+const { buildMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('./app-menu');
+const { runMenuCommand, openMenuAt, applyTaskbarProgress } = require('./menu-commands');
 const perfMetrics = require('./perf-metrics');
 const log = require('./logger');
 const { getCacheLocationInfo } = require('./cache-location-info');
@@ -36,7 +38,9 @@ const {
 const {
   THEME_ARGUMENT_PREFIX,
   getThemeBackgroundColor,
+  getTitleBarOverlay,
   normalizeColorTheme,
+  supportsMica,
 } = require('./theme-utils');
 const {
   configureUpdatePolicy,
@@ -97,7 +101,6 @@ let defaultCentralCacheRoot = null; // set after app ready
 let activeCacheRoots = new Set();
 let isQuitting = false;
 const activeBatchIntervals = new Set();
-let menuBarHiddenForVideoFullscreen = false;
 let scanGeneration = 0;
 let updateReadyToInstall = false;
 let downloadedUpdateVersion = null;
@@ -293,25 +296,34 @@ function folderDisplayName(folderPath) {
   return path.basename(path.resolve(folderPath)) || folderPath;
 }
 
-function setVideoFullscreenMenuState(fullscreen) {
-  if (!mainWindow || mainWindow.isDestroyed()) return false;
-  menuBarHiddenForVideoFullscreen = Boolean(fullscreen);
-  mainWindow.setAutoHideMenuBar(menuBarHiddenForVideoFullscreen);
-  mainWindow.setMenuBarVisibility(!menuBarHiddenForVideoFullscreen);
-  return true;
+// â”€â”€ Window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// The title bar can show the Windows 11 Mica material; the rest of the window stays opaque.
+const micaSupported = process.platform === 'win32' && supportsMica(os.release());
+let useMica = false;
+let currentTheme = 'dark';
+
+/** Switches Mica behind the title bar on or off (Settings > Interface), without a restart. */
+function applyWindowMaterial(enabled) {
+  useMica = micaSupported && enabled;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setBackgroundMaterial(useMica ? 'mica' : 'none');
+  mainWindow.setBackgroundColor(useMica ? '#00000000' : getThemeBackgroundColor(currentTheme));
+  mainWindow.setTitleBarOverlay(getTitleBarOverlay(currentTheme, useMica));
 }
 
-// â”€â”€ Window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function applyNativeTheme(value) {
   const theme = normalizeColorTheme(value);
+  currentTheme = theme;
   nativeTheme.themeSource = theme;
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setBackgroundColor(getThemeBackgroundColor(theme));
+    if (!useMica) mainWindow.setBackgroundColor(getThemeBackgroundColor(theme));
+    mainWindow.setTitleBarOverlay(getTitleBarOverlay(theme, useMica));
   }
   return theme;
 }
 
-function createWindow(initialTheme = 'dark') {
+function createWindow(initialTheme = 'dark', micaTitleBar = true) {
+  useMica = micaSupported && micaTitleBar;
   const theme = applyNativeTheme(initialTheme);
   const appIconPath = app.isPackaged
     ? path.join(process.resourcesPath, 'videocull.ico')
@@ -322,14 +334,24 @@ function createWindow(initialTheme = 'dark') {
     minWidth: 900,
     minHeight: 600,
     icon: appIconPath,
-    backgroundColor: getThemeBackgroundColor(theme),
+    // Mica only shows through a transparent window background; the page paints everything else.
+    backgroundColor: useMica ? '#00000000' : getThemeBackgroundColor(theme),
+    ...(useMica ? { backgroundMaterial: 'mica' } : {}),
+    // The renderer draws the title bar with the menu (TitleBar.tsx); Windows still draws the
+    // window buttons. The application menu stays set for its keyboard shortcuts.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: getTitleBarOverlay(theme, useMica),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false,
-      additionalArguments: [`${THEME_ARGUMENT_PREFIX}${theme}`],
+      additionalArguments: [
+        `${THEME_ARGUMENT_PREFIX}${theme}`,
+        ...(micaSupported ? ['--video-cull-mica-supported'] : []),
+        ...(useMica ? ['--video-cull-mica'] : []),
+      ],
     },
   });
 
@@ -362,7 +384,6 @@ function createWindow(initialTheme = 'dark') {
     }
   });
   mainWindow.on('closed', () => {
-    menuBarHiddenForVideoFullscreen = false;
     mainWindow = null;
   });
 
@@ -515,7 +536,7 @@ app.whenReady().then(async () => {
 
   const initialConfig = await readJsonFile(CONFIG_FILE, {});
   powerManager.setKeepAwake(initialConfig.keepAwakeWhileProcessing !== false);
-  createWindow(initialConfig.theme);
+  createWindow(initialConfig.theme, initialConfig.micaTitleBar !== false);
   setApplicationMenu();
   checkDistributedIndexAvailability().catch((err) => log.warn('[cache] Failed to check distributed cache locations:', err));
   if (updatesEnabled) setupAutoUpdater();
@@ -525,165 +546,75 @@ app.whenReady().then(async () => {
   app.exit(1);
 });
 
+let rendererMenuState = EMPTY_RENDERER_MENU_STATE;
+
+function openExternalLink(url) {
+  shell.openExternal(url).catch((err) => log.warn(`[menu] Could not open ${url}:`, err));
+}
+
+function openFolderPath(folderPath) {
+  // openPath reports failure by resolving to an error message instead of rejecting.
+  shell.openPath(folderPath).then(
+    (error) => { if (error) log.warn(`[menu] Could not open ${folderPath}: ${error}`); },
+    (err) => log.warn(`[menu] Could not open ${folderPath}:`, err),
+  );
+}
+
+/** The app menu is rebuilt whenever its state changes; the state changes rarely. */
 function setApplicationMenu() {
-  const isMac = process.platform === 'darwin';
-
-  const template = [
-    ...(isMac ? [{
-      label: app.name,
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    }] : []),
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'Settings...',
-          accelerator: 'CmdOrCtrl+,',
-          click: () => sendToRenderer('menu-action', 'open-settings')
-        },
-        { type: 'separator' },
-        {
-          label: 'Open Directory...',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => sendToRenderer('menu-action', 'open-directory')
-        },
-        {
-          label: 'Rescan Directory',
-          accelerator: 'F5',
-          click: () => sendToRenderer('menu-action', 'rescan-directory')
-        },
-        {
-          label: 'Clear Cache & Reload',
-          accelerator: 'CmdOrCtrl+Shift+R',
-          click: () => sendToRenderer('menu-action', 'clear-cache')
-        },
-        {
-          label: 'Export Report...',
-          id: 'export-report',
-          enabled: false,
-          accelerator: 'CmdOrCtrl+Shift+E',
-          click: () => sendToRenderer('menu-action', 'export-report')
-        },
-        { type: 'separator' },
-        isMac ? { role: 'close' } : { role: 'quit' }
-      ]
+  const power = powerManager.getState();
+  const template = buildMenuTemplate({
+    ...rendererMenuState,
+    isDev,
+    updatesEnabled,
+    processing: power.processing,
+    paused: processingPause.getState().status !== 'running',
+    finishAction: power.finishAction,
+  }, {
+    send: (action) => {
+      if (!sendToRenderer('menu-action', action)) log.warn(`[menu] Action "${action}" was not delivered to the window.`);
     },
-    {
-      label: 'Actions',
-      submenu: [
-        {
-          label: 'Undo Last Action',
-          accelerator: 'CmdOrCtrl+Z',
-          click: () => sendToRenderer('menu-action', 'undo')
-        },
-        {
-          label: 'Delete All Marked Videos',
-          accelerator: 'CmdOrCtrl+Backspace',
-          click: () => sendToRenderer('menu-action', 'delete-all')
-        },
-        { type: 'separator' },
-        {
-          label: 'When Processing Finishes',
-          id: 'finish-action',
-          enabled: false,
-          submenu: [
-            { label: 'Do Nothing', id: 'finish-action-none', type: 'radio', checked: true, click: () => powerManager.cancelFinishAction() },
-            { label: 'Sleep', id: 'finish-action-sleep', type: 'radio', click: () => powerManager.setFinishAction('sleep') },
-            { label: 'Shut Down', id: 'finish-action-shutdown', type: 'radio', click: () => powerManager.setFinishAction('shutdown') },
-          ]
-        }
-      ]
+    setFinishAction: (action) => {
+      if (action === 'none') powerManager.cancelFinishAction();
+      else powerManager.setFinishAction(action);
     },
-    {
-      label: 'View',
-      submenu: [
-        {
-          label: 'Zoom In',
-          accelerator: 'CmdOrCtrl+Plus',
-          click: () => sendToRenderer('menu-action', 'zoom-in')
-        },
-        {
-          label: 'Zoom In (Alt)',
-          accelerator: 'CmdOrCtrl+=',
-          visible: false,
-          click: () => sendToRenderer('menu-action', 'zoom-in')
-        },
-        {
-          label: 'Zoom Out',
-          accelerator: 'CmdOrCtrl+-',
-          click: () => sendToRenderer('menu-action', 'zoom-out')
-        },
-        { type: 'separator' },
-        { role: 'reload' },
-        { role: 'togglefullscreen' },
-        ...(isDev ? [{ role: 'toggledevtools' }] : [])
-      ]
-    },
-    {
-      label: 'Video',
-      submenu: [
-        {
-          label: 'Reveal in Explorer',
-          accelerator: 'CmdOrCtrl+E',
-          click: () => sendToRenderer('menu-action', 'reveal-video')
-        },
-        {
-          label: 'Play Externally',
-          accelerator: 'CmdOrCtrl+P',
-          click: () => sendToRenderer('menu-action', 'play-external')
-        }
-      ]
-    },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'Documentation',
-          accelerator: 'F1',
-          click: () => sendToRenderer('menu-action', 'open-documentation')
-        }
-      ]
-    }
-  ];
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
+    setPaused: (paused) => (paused ? processingPause.pause() : processingPause.resume()),
+    openReleaseNotes: () => openExternalLink(`${product.repository.url}/releases`),
+    reportProblem: () => openExternalLink(`${product.repository.url}/issues`),
+    openLogFolder: () => openFolderPath(path.dirname(log.transports.file.getFile().path)),
+    openHelpWebsite: () => openExternalLink(`${product.website}/support/`),
+    openSponsors: () => openExternalLink(`https://github.com/sponsors/${product.publisher}`),
+    openPayPal: () => openExternalLink('https://paypal.me/stippiedot'),
+  });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-/** Mirrors the power state in Actions > When Processing Finishes; it is only usable during processing. */
-function updateFinishActionMenu(state) {
-  const menu = Menu.getApplicationMenu();
-  const submenu = menu?.getMenuItemById('finish-action');
-  if (submenu) submenu.enabled = state.processing;
-  // Set every item: setting `checked` from code does not clear the other radio items.
-  for (const action of ['none', 'sleep', 'shutdown']) {
-    const item = menu?.getMenuItemById(`finish-action-${action}`);
-    if (item) item.checked = state.finishAction === action;
+// Opens an app menu or submenu by its command id (app-menu.js) at a window position (the title bar
+// buttons). Resolves when the menu closes.
+ipcMain.handle('open-app-menu', (_event, id, x, y) => openMenuAt(Menu.getApplicationMenu(), id, mainWindow, x, y));
+
+// The command palette lists and runs the app menu's items, so both always offer the same commands.
+ipcMain.handle('get-commands', () => listCommands(Menu.getApplicationMenu()?.items ?? []));
+
+ipcMain.handle('run-command', (_event, id) => {
+  try {
+    return runMenuCommand(Menu.getApplicationMenu(), id, mainWindow);
+  } catch (err) {
+    log.error(`[menu] Command "${String(id)}" failed:`, err);
+    return false;
   }
-}
-
-function setExportReportEnabled(enabled) {
-  const menu = Menu.getApplicationMenu();
-  const item = menu?.getMenuItemById('export-report');
-  if (item) item.enabled = enabled;
-}
-
-ipcMain.on('set-export-report-available', (_event, enabled) => {
-  setExportReportEnabled(Boolean(enabled));
 });
 
-ipcMain.handle('set-video-fullscreen', (_event, fullscreen) => {
-  return setVideoFullscreenMenuState(Boolean(fullscreen));
+// Progress on the taskbar button, so processing can be followed while the window is minimised.
+ipcMain.on('set-taskbar-progress', (_event, progress) => applyTaskbarProgress(mainWindow, progress));
+
+ipcMain.on('set-menu-state', (_event, state) => {
+  try {
+    rendererMenuState = normalizeRendererMenuState(state);
+    setApplicationMenu();
+  } catch (err) {
+    log.error('[menu] Could not apply the menu state:', err);
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -1115,7 +1046,7 @@ const powerManager = createPowerManager({
     }
   },
   onStateChange: (state) => {
-    updateFinishActionMenu(state);
+    setApplicationMenu();
     sendToRenderer('power-state', state);
   },
 });
@@ -1131,6 +1062,7 @@ ipcMain.handle('cancel-finish-action', () => powerManager.cancelFinishAction());
 
 processingPause.subscribe((state) => {
   powerManager.pauseChanged();
+  setApplicationMenu();
   sendToRenderer('processing-pause-state', state);
 });
 
@@ -2964,8 +2896,11 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
 
 // 8. Open video in default system player
 ipcMain.handle('open-video', async (_event, filePath) => {
-  if (!await isValidLoadedPath(filePath)) return;
-  await shell.openPath(filePath);
+  if (!await isValidLoadedPath(filePath)) return false;
+  // openPath reports failure by resolving to an error message instead of rejecting.
+  const error = await shell.openPath(filePath);
+  if (error) log.warn(`[open-video] Could not open ${filePath}: ${error}`);
+  return error === '';
 });
 
 ipcMain.handle('get-distribution-info', () => ({
@@ -3046,6 +2981,8 @@ ipcMain.handle('save-config', async (_event, config) => {
     await fs.writeFile(configPath, JSON.stringify(normalizedConfig, null, 2), 'utf8');
     applyNativeTheme(theme);
     powerManager.setKeepAwake(normalizedConfig.keepAwakeWhileProcessing !== false);
+    const wantsMica = normalizedConfig.micaTitleBar !== false;
+    if (micaSupported && wantsMica !== useMica) applyWindowMaterial(wantsMica);
     return true;
   } catch (e) {
     log.error('[save-config] Error saving config:', e);
@@ -3061,8 +2998,9 @@ ipcMain.handle('open-in-explorer', async (_event, filePath) => {
     loadedDirectories: currentScanDirs,
     isPathWithinAnyDir,
   });
-  if (!allowed) return;
+  if (!allowed) return false;
   shell.showItemInFolder(filePath);
+  return true;
 });
 
 // 11. App version

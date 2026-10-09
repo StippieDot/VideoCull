@@ -100,6 +100,27 @@ describe('findConflict', () => {
   });
 });
 
+describe('findConflict with fixed shortcuts', () => {
+  test('rejects a binding the menu or window already uses', () => {
+    const allBinds = makeAllBinds();
+    expect(findConflict('keySearch', kb('k', { ctrl: true }), allBinds)).toBe('Find a command, folder or video');
+    expect(findConflict('keySearch', kb('o', { ctrl: true }), allBinds)).toBe('Open folder');
+    expect(findConflict('keySearch', kb('z', { ctrl: true }), allBinds)).toBe('Undo last action');
+    expect(findConflict('keySearch', kb('arrowleft', { alt: true }), allBinds)).toBe('Previous / next folder filter');
+  });
+
+  test('a fixed review-only shortcut only conflicts inside review mode', () => {
+    const allBinds = makeAllBinds();
+    expect(findConflict('keySearch', kb('escape'), allBinds)).toBeNull();
+    expect(findConflict('keyKeep', kb('escape'), allBinds)).toBe('Stop playing / Exit review');
+  });
+
+  test('no default binding collides with a fixed shortcut', () => {
+    const allBinds = makeAllBinds();
+    for (const shortcut of ALL_SHORTCUTS) expect(findConflict(shortcut.id, allBinds[shortcut.id], allBinds)).toBeNull();
+  });
+});
+
 describe('fixed shortcut metadata', () => {
   test('keeps the help entries needed by the shortcut reference UI', () => {
     expect(FIXED_SHORTCUTS).toEqual(

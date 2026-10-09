@@ -15,6 +15,7 @@ import { beginDevInteraction, completeDevInteractionOnNextPaint, recordDevCounte
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildReviewVideoMenu } from './contextMenuBuilders';
 import './ReviewMode.css';
+import { openVideoExternally, revealInExplorer } from '../appCommands';
 
 const REVIEW_MAX_MEDIA_WIDTH = 1950;
 const REVIEW_ASPECT_RATIO = 16 / 9;
@@ -168,7 +169,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
   const setReviewIndex = useStore((s) => s.setReviewIndex);
   const setReviewMode = useStore((s) => s.setReviewMode);
   const setActiveReviewVideoPath = useStore((s) => s.setActiveReviewVideoPath);
-  const folderFilterPath = useStore((s) => s.folderFilterPath);
+  const folderFilterPath = useStore((s) => s.folderFilter?.path ?? null);
   const setVideoStatus = useStore((s) => s.setVideoStatus);
   const undo = useStore((s) => s.undo);
   const undoStack = useStore((s) => s.undoStack);
@@ -191,15 +192,15 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const shortcutsBlocked = keyboardBlocked || isSettingsModalOpen || contextMenu !== null;
 
-  const scopeIdsRef = useRef<string[] | null>(null);
-  if (scopeIdsRef.current === null) {
-    scopeIdsRef.current = reviewScopeIds ?? useStore.getState().filteredVideos.map((item) => item.id);
-  }
+  // Keep the filtered snapshot until an explicit action starts a different review scope.
+  const scopeIds = useMemo(() => (
+    reviewScopeIds ?? useStore.getState().filteredVideos.map((item) => item.id)
+  ), [reviewScopeIds]);
 
   const videosById = useMemo(() => new Map(allVideos.map((item) => [item.id, item])), [allVideos]);
   const reviewScope = useMemo(() => (
-    buildReviewScope(videosById, scopeIdsRef.current ?? [])
-  ), [videosById]);
+    buildReviewScope(videosById, scopeIds)
+  ), [videosById, scopeIds]);
   const { reviewVideos, pendingIndexes, decidedCount, remainingCount, progressPct, summary } = reviewScope;
 
   const scopeLabel = useMemo(() => {
@@ -253,26 +254,11 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
     return () => setActiveReviewVideoPath(null);
   }, [setActiveReviewVideoPath]);
 
+  const hasVideo = video !== null;
   useEffect(() => {
-    if (!isPlaying || !window.electronAPI?.setVideoFullscreen) return;
-
-    const syncMenuBar = () => {
-      const fullscreenElement = document.fullscreenElement;
-      const isVideoFullscreen = Boolean(
-        fullscreenElement &&
-        videoRef.current &&
-        fullscreenElement.contains(videoRef.current)
-      );
-      void window.electronAPI.setVideoFullscreen(isVideoFullscreen);
-    };
-
-    document.addEventListener('fullscreenchange', syncMenuBar);
-    syncMenuBar();
-    return () => {
-      document.removeEventListener('fullscreenchange', syncMenuBar);
-      void window.electronAPI?.setVideoFullscreen(false);
-    };
-  }, [isPlaying, video?.id]);
+    useStore.getState().setReviewPosition(hasVideo ? { index: reviewIndex, total } : null);
+  }, [hasVideo, reviewIndex, total]);
+  useEffect(() => () => useStore.getState().setReviewPosition(null), []);
 
   // One-shot autoplay: only the initially play-clicked video should auto-play.
   useEffect(() => {
@@ -423,7 +409,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
     if (canPlayInReview) {
       setIsPlaying((prev) => !prev);
     } else if (window.electronAPI) {
-      window.electronAPI.openVideo(video.path);
+      openVideoExternally(video.path);
     }
   }, [video, canPlayInReview]);
 
@@ -474,6 +460,8 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       // Stand down while the keybind recorder is capturing
       if (document.body.hasAttribute('data-capturing-keybind')) return;
+      // This capture listener runs before an open menu's own keys: Escape there closes the menu, not Review.
+      if (e.target instanceof Element && e.target.closest('[role="menu"]')) return;
 
       const s = useStore.getState().settings;
 
@@ -531,7 +519,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       // Context-independent shortcuts
       if (matchesKeybind(e, s.keyExternalPlayer)) {
         e.preventDefault();
-        if (window.electronAPI && video?.path) window.electronAPI.openVideo(video.path);
+        if (window.electronAPI && video?.path) openVideoExternally(video.path);
         return;
       }
       if (s.features.nextUndecided && matchesKeybind(e, s.keyNextUndecided)) {
@@ -600,10 +588,10 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
 
   const contextMenuItems = buildReviewVideoMenu({
     onOpenExternal: () => {
-      void window.electronAPI?.openVideo(video.path);
+      openVideoExternally(video.path);
     },
     onReveal: () => {
-      void window.electronAPI?.openInExplorer(video.path);
+      revealInExplorer(video.path);
     },
     onCopyPath: () => {
       void handleCopyPath();
@@ -660,7 +648,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
                   <div className="review-decode-error-overlay">
                     <p>Audio codec not supported by the built-in player</p>
                     <div className="review-decode-error-actions">
-                      <button onClick={() => { void window.electronAPI.openVideo(video.path); }}>
+                      <button onClick={() => { openVideoExternally(video.path); }}>
                         Open in external player
                       </button>
                       <button onClick={() => setAudioDecodeError(false)}>Dismiss</button>

@@ -67,15 +67,18 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
   { keys: ['Esc'], description: 'Stop playing / Exit review', group: 'Review mode' },
   { keys: ['Ctrl+,'],          description: 'Open settings',         group: 'Global' },
   { keys: ['Ctrl+O'],          description: 'Open folder',           group: 'Global' },
-  { keys: ['F5'],              description: 'Rescan directory',      group: 'Global' },
-  { keys: ['Ctrl+Shift+R'],    description: 'Clear cache and reload', group: 'Global' },
+  { keys: ['F5'],              description: 'Rescan',                group: 'Global' },
   { keys: ['Ctrl+Shift+E'],    description: 'Export report',         group: 'Global' },
   { keys: ['Ctrl+Z'],          description: 'Undo last action',      group: 'Global' },
   { keys: ['Ctrl+Backspace'],  description: 'Delete marked videos',  group: 'Global' },
-  { keys: ['Ctrl++', 'Ctrl+='], description: 'Zoom in',              group: 'Global' },
-  { keys: ['Ctrl+-'],          description: 'Zoom out',              group: 'Global' },
+  { keys: ['Ctrl++', 'Ctrl+='], description: 'Larger cards',         group: 'Global' },
+  { keys: ['Ctrl+-'],          description: 'Smaller cards',         group: 'Global' },
   { keys: ['Ctrl+E'],          description: 'Reveal in Explorer',    group: 'Global' },
   { keys: ['Ctrl+P'],          description: 'Play externally',      group: 'Global' },
+  { keys: ['Ctrl+K'],          description: 'Find a command, folder or video', group: 'Global' },
+  { keys: ['Ctrl+G'],          description: 'Go to folder',          group: 'Global' },
+  { keys: ['Ctrl+L'],          description: 'Focus the path',        group: 'Global' },
+  { keys: ['Alt+Left', 'Alt+Right'], description: 'Previous / next folder filter', group: 'Global' },
   { keys: ['F1'],              description: 'Open documentation',    group: 'Global' },
   { keys: ['F11'],             description: 'Toggle fullscreen',     group: 'Global' },
   { keys: ['Shift+Esc'],       description: 'Toggle privacy screen', group: 'Global' },
@@ -173,5 +176,12 @@ export function findConflict(
 
     return def.description;
   }
-  return null;
+
+  // Fixed shortcuts are taken by the menu or the window before a configurable binding can fire.
+  const pressed = formatKeybind(currentBind).replace('←', 'Left').replace('→', 'Right').toLowerCase();
+  const fixed = FIXED_SHORTCUTS.find((shortcut) => (
+    (shortcut.group === 'Global' || shortcut.group === currentDef.group)
+    && shortcut.keys.some((keys) => keys.toLowerCase() === pressed)
+  ));
+  return fixed?.description ?? null;
 }

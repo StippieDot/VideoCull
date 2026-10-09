@@ -40,7 +40,7 @@ test('duplicate rerun preserves manual keeper and ignored-pair behavior', async 
     await expect(page.getByText('Selected keeper updated')).toBeVisible();
     await expect(betaRow).toContainText('Selected keeper');
 
-    await page.getByRole('button', { name: 'Run Again' }).click();
+    await page.getByRole('button', { name: 'Run Again', exact: true }).click();
     await expect(betaRow).toContainText('Selected keeper');
 
     await page.getByRole('button', { name: 'Dismiss group' }).click();

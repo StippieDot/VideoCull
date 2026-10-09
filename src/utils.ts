@@ -1,3 +1,5 @@
+import type { FolderFilter, Video } from './types';
+
 /**
  * Format bytes to a human-readable string.
  */
@@ -179,4 +181,76 @@ export function formatResolutionLabel(width: number | null | undefined, height: 
 export function formatFps(fps: number | null | undefined): string {
   if (!fps) return '';
   return `${Number.isInteger(fps) ? fps : fps.toFixed(2)}fps`;
+}
+
+/** "1 video", "3 videos". */
+export function plural(count: number, word: string): string {
+  return `${count.toLocaleString()} ${word}${count === 1 ? '' : 's'}`;
+}
+
+/** Grid folder header text: the folder relative to its loaded root. */
+export function getFolderLabel(video: Video, rootDirs: string[]): string {
+  const sep = video.path.includes('/') ? '/' : '\\';
+  const dir = video.path.substring(0, video.path.lastIndexOf(sep));
+
+  if (rootDirs.length === 0) return dir;
+
+  // A drive root is loaded as "P:\" while its videos' folders read "P:" and "P:\Clips".
+  const rootDir = rootDirs.map((root) => root.replace(/[\\/]+$/, '')).find((root) => dir === root || dir.startsWith(root + sep));
+  if (!rootDir) return dir;
+
+  const rootName = rootDir.split(/[/\\]/).filter(Boolean).slice(-1)[0] || rootDir;
+  if (dir === rootDir) return rootDirs.length > 1 ? `${rootName} / Root` : 'Root';
+
+  const relative = dir.substring(rootDir.length + 1);
+  if (rootDirs.length <= 1) return relative || 'Root';
+  return relative ? `${rootName} / ${relative}` : `${rootName} / Root`;
+}
+
+const folderPaths = new WeakMap<Video, string>();
+
+export function getFolderPath(video: Video): string {
+  let folder = folderPaths.get(video);
+  if (folder === undefined) {
+    const sep = video.path.includes('/') ? '/' : '\\';
+    folder = video.path.substring(0, video.path.lastIndexOf(sep));
+    folderPaths.set(video, folder);
+  }
+  return folder;
+}
+
+// Sessions hold far fewer folders than videos, so each folder string is normalized once.
+// ponytail: grows by one entry per distinct folder seen; clear it per session if that ever matters.
+const normalizedFolders = new Map<string, string>();
+
+/** A folder in a form where equal folders compare equal. */
+export function normalizeFolder(value: string): string {
+  let normalized = normalizedFolders.get(value);
+  if (normalized === undefined) {
+    normalized = value.replace(/[\\/]+/g, '\\').replace(/\\$/, '').toLowerCase();
+    normalizedFolders.set(value, normalized);
+  }
+  return normalized;
+}
+
+/** Tests whether a folder is `ancestor` or lies below it; Windows paths, so case and separators do not matter. */
+export function folderInsideTest(ancestor: string): (folder: string) => boolean {
+  const base = normalizeFolder(ancestor);
+  const prefix = `${base}\\`;
+  return (folder) => {
+    const target = normalizeFolder(folder);
+    return target === base || target.startsWith(prefix);
+  };
+}
+
+export function isFolderInside(folder: string, ancestor: string): boolean {
+  return folderInsideTest(ancestor)(folder);
+}
+
+/** Whether a folder's own videos are shown with this filter; a narrower filter hides its ancestors' videos. */
+export function isFolderShownByFilter(folder: string, filter: FolderFilter | null): boolean {
+  if (!filter) return true;
+  return filter.includeSubfolders
+    ? isFolderInside(folder, filter.path)
+    : normalizeFolder(folder) === normalizeFolder(filter.path);
 }

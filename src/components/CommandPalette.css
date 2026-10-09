@@ -1,0 +1,116 @@
+.command-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1150;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: calc(var(--title-bar-height, 0px) + 56px);
+  background: var(--bg-overlay-soft);
+}
+
+.command-palette {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(460px, calc(100vh - 140px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--bg-popover);
+  box-shadow: var(--glass-shadow);
+}
+
+.command-palette-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-tertiary);
+}
+
+.command-palette-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.command-palette-results {
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.command-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: default;
+}
+
+.command-palette-item.active {
+  background: var(--accent-dim);
+}
+
+.command-palette-item.disabled {
+  color: var(--text-tertiary);
+}
+
+.command-palette-check {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  color: var(--accent);
+}
+
+.command-palette-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-palette-parent {
+  color: var(--text-tertiary);
+}
+
+.command-palette-item kbd {
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.command-palette-empty {
+  padding: 14px 10px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.command-palette-section {
+  padding: 8px 10px 4px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.command-palette-results > li:first-child .command-palette-section {
+  padding-top: 2px;
+}
+
+.command-palette-footer {
+  padding: 7px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-tertiary);
+  font-size: 11px;
+}

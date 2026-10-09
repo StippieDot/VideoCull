@@ -7,7 +7,7 @@ import { vi } from 'vitest';
 import Sidebar from '../../../src/components/Sidebar';
 import useStore from '../../../src/store';
 import { resetPerfDevMock } from '../../helpers/perfDevMock';
-import { makeVideo } from '../../helpers/videoFactory';
+import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
 
 vi.mock('../../../src/perf-dev', async () => await import('../../helpers/perfDevMock'));
 
@@ -59,6 +59,7 @@ function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}) {
       onOpenSettings={vi.fn()}
       onCloseSession={vi.fn()}
       onFindDuplicates={vi.fn()}
+      onSwitchDuplicateMethod={vi.fn()}
       onOpenDuplicateSettings={vi.fn()}
       onOpenDocumentation={vi.fn()}
       onRequestPermanentDelete={vi.fn().mockResolvedValue(false)}
@@ -125,6 +126,25 @@ describe('Sidebar recent folder behavior', () => {
     });
 
     expect(screen.queryByRole('button', { name: /clear all recent folders/i })).toBeNull();
+  });
+
+  test('the folder switcher names the folder and holds the session actions', async () => {
+    installElectronApiMock();
+    const onRescan = vi.fn();
+    const onCloseSession = vi.fn();
+    useStore.setState({ directory: 'D:\\Media\\Current', directories: ['D:\\Media\\Current', 'E:\\Clips'] });
+    renderSidebar({ onRescan, onCloseSession });
+
+    const switcher = screen.getByRole('button', { name: 'Current + 1 more' });
+    await userEvent.click(switcher);
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Open Another Folder...Ctrl+O', 'Add Folder to Session...', 'RescanF5', 'Close Session',
+    ]);
+    await userEvent.click(screen.getByRole('menuitem', { name: /Rescan/ }));
+    expect(onRescan).toHaveBeenCalledTimes(1);
+    await userEvent.click(switcher);
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Close Session' }));
+    expect(onCloseSession).toHaveBeenCalledTimes(1);
   });
 
   test('reveals a recent folder through the sidebar context menu', async () => {
@@ -246,6 +266,41 @@ describe('Sidebar recent folder behavior', () => {
     expect(keepButton.getAttribute('aria-pressed')).toBe('true');
   });
 
+  test('shows the folder filter as a chip that clears it', async () => {
+    const video = makeVideo('a', {}, 'D:\\Media\\Trips');
+    useStore.setState({
+      directory: 'D:\Media',
+      directories: ['D:\Media'],
+      videos: [video],
+      filteredVideos: [video],
+      stats: { ...useStore.getState().stats, total: 1, pending: 1 },
+      folderFilter: { path: 'D:\\Media\\Trips', includeSubfolders: false },
+    });
+    renderSidebar();
+    const chip = screen.getByRole('button', { name: 'Clear folder filter: D:\\Media\\Trips' });
+    expect(chip.textContent).toBe('Media / Trips (only)');
+    await userEvent.click(chip);
+    expect(useStore.getState().folderFilter).toBeNull();
+  });
+
+  test('in duplicate groups it offers to run again with the other method', async () => {
+    const onSwitchDuplicateMethod = vi.fn();
+    const videos = [makeVideo('a'), makeVideo('b')];
+    useStore.setState({
+      directory: 'D:\Media',
+      directories: ['D:\Media'],
+      videos,
+      filteredVideos: videos,
+      stats: { ...useStore.getState().stats, total: 2, pending: 2 },
+      duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })],
+      duplicateGroupsMode: true,
+      lastDuplicateMethod: 'visual',
+    });
+    renderSidebar({ onSwitchDuplicateMethod });
+    await userEvent.click(screen.getByRole('button', { name: 'Run Again with pHash' }));
+    expect(onSwitchDuplicateMethod).toHaveBeenCalledTimes(1);
+  });
+
   test('opens documentation from the sidebar header button', async () => {
     const onOpenDocumentation = vi.fn();
     useStore.setState({
@@ -281,32 +336,5 @@ describe('Sidebar recent folder behavior', () => {
     renderSidebar();
 
     expect((screen.getByRole('button', { name: /scanning/i }) as HTMLButtonElement).disabled).toBe(true);
-  });
-});
-
-describe('Sidebar processing controls', () => {
-  beforeEach(() => {
-    resetPerfDevMock();
-    const store = getStoreApi();
-    store.setState(store.getInitialState(), true);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  test('offers resume while media processing is paused', async () => {
-    const electronAPI = installElectronApiMock();
-    electronAPI.getProcessingPauseState.mockResolvedValue({ status: 'paused' });
-    useStore.setState({
-      isGenerating: true,
-      genProgress: { current: 2, total: 5, phase: 'thumbnails' },
-    });
-
-    renderSidebar();
-    const resume = await screen.findByRole('button', { name: 'Resume processing' });
-    await userEvent.click(resume);
-
-    expect(electronAPI.setProcessingPaused).toHaveBeenCalledWith(false);
   });
 });

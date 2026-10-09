@@ -2,15 +2,18 @@
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ComponentType } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
+import type { ComponentType, UIEventHandler } from 'react';
 import { vi } from 'vitest';
 import GridMode, { __test__ } from '../../../src/components/GridMode';
+import CommandPalette from '../../../src/components/CommandPalette';
 import useStore from '../../../src/store';
 import { makeVideo } from '../../helpers/videoFactory';
 
 const virtualListState = vi.hoisted(() => ({
   element: { scrollTop: 0 },
   visibleRows: { startIndex: 0, stopIndex: 0 },
+  scrollToRow: vi.fn(),
 }));
 
 vi.mock('react-window', () => ({
@@ -19,19 +22,23 @@ vi.mock('react-window', () => ({
     rowComponent: RowComponent,
     listRef,
     onRowsRendered,
+    onScroll,
   }: {
     rowCount: number;
     rowComponent: ComponentType<{ index: number; style: Record<string, unknown>; ariaAttributes: Record<string, unknown> }>;
     listRef?: { current: unknown };
+    onScroll?: UIEventHandler<HTMLDivElement>;
     onRowsRendered?: (
       visibleRows: { startIndex: number; stopIndex: number },
       allRows: { startIndex: number; stopIndex: number }
     ) => void;
   }) => {
-    if (listRef) listRef.current = { element: virtualListState.element };
-    onRowsRendered?.(virtualListState.visibleRows, virtualListState.visibleRows);
+    if (listRef) listRef.current = { element: virtualListState.element, scrollToRow: virtualListState.scrollToRow };
+    useEffect(() => {
+      onRowsRendered?.(virtualListState.visibleRows, virtualListState.visibleRows);
+    }, [onRowsRendered]);
     return (
-      <div data-testid="virtual-list">
+      <div data-testid="virtual-list" onScroll={onScroll}>
         {Array.from({ length: rowCount }, (_, index) => (
           <RowComponent key={index} index={index} style={{}} ariaAttributes={{}} />
         ))}
@@ -77,6 +84,10 @@ describe('GridMode search', () => {
   beforeEach(() => {
     virtualListState.element.scrollTop = 0;
     virtualListState.visibleRows = { startIndex: 0, stopIndex: 0 };
+    virtualListState.scrollToRow.mockReset();
+    virtualListState.scrollToRow.mockImplementation(({ index }: { index: number }) => {
+      virtualListState.element.scrollTop = index * 256;
+    });
     Object.assign(globalThis, { ResizeObserver: ResizeObserverStub });
     Object.assign(window, {
       electronAPI: {
@@ -85,6 +96,7 @@ describe('GridMode search', () => {
         saveReviewState: vi.fn().mockResolvedValue(true),
         openVideo: vi.fn().mockResolvedValue(true),
         openInExplorer: vi.fn().mockResolvedValue(true),
+        getCommands: vi.fn().mockResolvedValue([]),
       },
     });
     const store = getStoreApi();
@@ -199,6 +211,80 @@ describe('GridMode search', () => {
     view.unmount();
 
     expect(__test__.hasActiveRowRuntime()).toBe(false);
+  });
+
+  test.each(['trip', ''])('closing the palette preserves grid search %j and selection', async (query) => {
+    Element.prototype.scrollIntoView = vi.fn();
+    useStore.getState().setSearchQuery(query);
+    useStore.getState().setGridSelectionIds(new Set(['trip']));
+    function GridWithPalette() {
+      const [open, setOpen] = useState(true);
+      return <>
+        <GridMode onReviewFolder={vi.fn()} onRegenerateThumbnails={vi.fn().mockResolvedValue(undefined)} />
+        {open && <CommandPalette onClose={() => setOpen(false)} />}
+      </>;
+    }
+    render(<GridWithPalette />);
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
+    });
+    expect(screen.queryByRole('dialog', { name: 'Quick open' })).toBeNull();
+    expect(useStore.getState().searchQuery).toBe(query);
+    expect(Array.from(useStore.getState().gridSelectionIds)).toEqual(['trip']);
+  });
+
+  test.each(['folder', 'video'] as const)('does not replay a consumed %s jump on remount and accepts another jump to the same target', (kind) => {
+    useStore.getState().setGroupByFolder(false);
+    const jump = () => {
+      if (kind === 'folder') useStore.getState().requestGridFolderJump('D:\\Media');
+      else useStore.getState().requestGridVideoJump('trip');
+    };
+    const view = renderGrid();
+    act(jump);
+    expect(virtualListState.scrollToRow).toHaveBeenCalledTimes(1);
+    fireEvent.scroll(screen.getByTestId('virtual-list'), { target: { scrollTop: 640 } });
+    view.unmount();
+    virtualListState.element.scrollTop = 0;
+
+    renderGrid();
+
+    expect(virtualListState.scrollToRow).toHaveBeenCalledTimes(1);
+    expect(virtualListState.element.scrollTop).toBe(640);
+    act(jump);
+    expect(virtualListState.scrollToRow).toHaveBeenCalledTimes(2);
+  });
+
+  test.each(['folder', 'video'] as const)('handles a new %s jump requested before the grid mounts', (kind) => {
+    if (kind === 'folder') useStore.getState().requestGridFolderJump('D:\\Media');
+    else useStore.getState().requestGridVideoJump('trip');
+
+    renderGrid();
+
+    expect(virtualListState.scrollToRow).toHaveBeenCalledTimes(1);
+    expect(virtualListState.scrollToRow).toHaveBeenCalledWith(expect.objectContaining({ align: kind === 'folder' ? 'start' : 'center' }));
+  });
+
+  test.each(['folder', 'video'] as const)('keeps an unmatched %s jump pending until its target appears', (kind) => {
+    if (kind === 'folder') useStore.getState().requestGridFolderJump('D:\\Media\\Other');
+    else useStore.getState().requestGridVideoJump('other');
+    renderGrid();
+    expect(virtualListState.scrollToRow).not.toHaveBeenCalled();
+
+    act(() => useStore.getState().setVideos([
+      ...useStore.getState().videos,
+      makeVideo('other', {}, 'D:\\Media\\Other'),
+    ]));
+
+    expect(virtualListState.scrollToRow).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(['folder', 'video'] as const)('consumes a pending %s jump once under StrictMode', (kind) => {
+    if (kind === 'folder') useStore.getState().requestGridFolderJump('D:\\Media');
+    else useStore.getState().requestGridVideoJump('trip');
+
+    render(<StrictMode><GridMode onReviewFolder={vi.fn()} onRegenerateThumbnails={vi.fn().mockResolvedValue(undefined)} /></StrictMode>);
+
+    expect(virtualListState.scrollToRow).toHaveBeenCalledTimes(1);
   });
 
   test('defers hidden grid data updates until review closes', async () => {

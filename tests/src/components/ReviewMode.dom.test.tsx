@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps, ReactNode } from 'react';
 import { vi } from 'vitest';
 import ReviewMode from '../../../src/components/ReviewMode';
+import CommandPalette from '../../../src/components/CommandPalette';
 import useStore from '../../../src/store';
 import { resetPerfDevMock } from '../../helpers/perfDevMock';
 import { makeVideo } from '../../helpers/videoFactory';
@@ -48,7 +49,7 @@ function installElectronApiMock() {
     openVideo: vi.fn().mockResolvedValue(true),
     openInExplorer: vi.fn().mockResolvedValue(true),
     saveReviewState: vi.fn().mockResolvedValue(true),
-    setVideoFullscreen: vi.fn().mockResolvedValue(true),
+    getCommands: vi.fn().mockResolvedValue([]),
   };
   Object.assign(window, { electronAPI });
   return electronAPI;
@@ -95,6 +96,22 @@ describe('ReviewMode behavior', () => {
       expect(useStore.getState().videos.find((video) => video.id === 'alpha')?.status).toBe('keep');
       expect(screen.getByText('beta.mp4')).toBeTruthy();
     });
+  });
+
+  test('names the folder it reviews, also when filtered to a folder and its subfolders', () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\Trips\\alpha.mp4' });
+    const beta = makeVideo('beta', { path: 'D:\\Media\\Clips\\beta.mp4' });
+    useStore.setState({
+      videos: [alpha, beta],
+      filteredVideos: [alpha],
+      folderFilter: { path: 'D:\\Media\\Trips', includeSubfolders: true },
+      reviewMode: true,
+      // Past the last video: the finished screen, headed with the scope.
+      reviewIndex: 1,
+    });
+
+    render(<ReviewMode />);
+    expect(screen.getByRole('heading', { name: 'Trips' })).toBeTruthy();
   });
 
   test('opens the file in the external player when the video cannot play in review', async () => {
@@ -191,6 +208,36 @@ describe('ReviewMode behavior', () => {
 
     expect(screen.getByText('beta.mp4')).toBeTruthy();
     expect(screen.queryByText('alpha.mp4')).toBeNull();
+  });
+
+  test('the palette changes the scope of an already mounted Review player', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const videos = ['alpha', 'beta', 'gamma'].map((id) => makeVideo(id));
+    useStore.setState({
+      videos, filteredVideos: videos, reviewMode: true, reviewIndex: 0,
+      reviewScopeIds: ['beta', 'gamma'], duplicateGroupsMode: true,
+    });
+    const { container } = render(<>
+      <ReviewMode />
+      <CommandPalette initialQuery="@alpha" onClose={vi.fn()} />
+    </>);
+    expect(container.querySelector('.review-filename')?.textContent).toBe('beta.mp4');
+
+    await act(async () => fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter', ctrlKey: true }));
+    expect(container.querySelector('.review-filename')?.textContent).toBe('alpha.mp4');
+    expect(useStore.getState().activeReviewVideoPath).toBe(videos[0].path);
+    expect(useStore.getState().reviewPosition).toEqual({ index: 0, total: 3 });
+  });
+
+  test('an unscoped Review keeps its snapshot when filters change after a decision', () => {
+    const videos = ['alpha', 'beta'].map((id) => makeVideo(id));
+    useStore.setState({ videos, filteredVideos: videos, statusFilter: 'pending', reviewMode: true, reviewScopeIds: null });
+    render(<ReviewMode />);
+
+    act(() => useStore.getState().setVideoStatus('alpha', 'keep'));
+    expect(useStore.getState().filteredVideos.map((video) => video.id)).toEqual(['beta']);
+    expect(screen.getByText('alpha.mp4')).toBeTruthy();
+    expect(useStore.getState().reviewPosition).toEqual({ index: 0, total: 2 });
   });
 
   test('uses centered preview layout until playback starts', async () => {

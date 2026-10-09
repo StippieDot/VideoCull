@@ -14,7 +14,7 @@ import type { Video } from '../types';
 import useStore from '../store';
 import useActiveValue from '../hooks/useActiveValue';
 import VideoCard from './VideoCard';
-import { formatSize, isWebSupported } from '../utils';
+import { formatSize, getFolderLabel, getFolderPath, isFolderInside, isWebSupported } from '../utils';
 import { matchesKeybind } from '../keybinds';
 import { Check, ChevronDown, RefreshCw, Search, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
@@ -24,6 +24,7 @@ import {
   buildLibraryGridVideoMenu,
 } from './contextMenuBuilders';
 import './GridMode.css';
+import { openVideoExternally, revealInExplorer } from '../appCommands';
 
 const BASE_CARD_WIDTH = 450;
 const BASE_CARD_HEIGHT = 360;
@@ -96,33 +97,6 @@ interface GridScrollAnchor {
 
 let gridRowRuntime: GridRowData | null = null;
 let gridRowRuntimeOwner: symbol | null = null;
-
-function getFolderLabel(video: Video, rootDirs: string[]): string {
-  const sep = video.path.includes('/') ? '/' : '\\';
-  const dir = video.path.substring(0, video.path.lastIndexOf(sep));
-
-  if (rootDirs.length === 0) return dir;
-
-  const rootDir = rootDirs.find((root) => dir === root || dir.startsWith(root + sep));
-  if (!rootDir) return dir;
-
-  if (dir === rootDir) {
-    const rootName = rootDir.split(/[/\\]/).filter(Boolean).slice(-1)[0] || rootDir;
-    return rootDirs.length > 1 ? `${rootName} / Root` : 'Root';
-  }
-
-  const relative = dir.startsWith(rootDir + sep)
-    ? dir.substring(rootDir.length + 1)
-    : dir;
-  if (rootDirs.length <= 1) return relative || 'Root';
-  const rootName = rootDir.split(/[/\\]/).filter(Boolean).slice(-1)[0] || rootDir;
-  return relative ? `${rootName} / ${relative}` : `${rootName} / Root`;
-}
-
-function getFolderPath(video: Video): string {
-  const sep = video.path.includes('/') ? '/' : '\\';
-  return video.path.substring(0, video.path.lastIndexOf(sep));
-}
 
 function formatFolderSize(bytes: number): string {
   return formatSize(bytes).replace(/\.0\s/, ' ').replace(/\s/g, '');
@@ -360,7 +334,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const setVideoStatusesBatch = useStore((s) => s.setVideoStatusesBatch);
   const pushToast = useStore((s) => s.pushToast);
-  const setFolderFilterPath = useStore((s) => s.setFolderFilterPath);
+  const setFolderFilter = useStore((s) => s.setFolderFilter);
   const selectedIds = useStore((s) => s.gridSelectionIds);
   const selectionAnchorId = useStore((s) => s.gridSelectionAnchorId);
   const setGridSelectionIds = useStore((s) => s.setGridSelectionIds);
@@ -663,7 +637,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     if (canPlayInReview && !event.ctrlKey) {
       useStore.getState().enterReviewAndPlay(video.id);
     } else if (window.electronAPI) {
-      window.electronAPI.openVideo(video.path);
+      openVideoExternally(video.path);
     }
   }, [compatibilityCheckEnabled, persistCurrentScroll]);
 
@@ -791,7 +765,47 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
 
   const handleRowsRendered = useCallback((visibleRows: { startIndex: number; stopIndex: number }) => {
     visibleRowsRef.current = visibleRows;
-  }, []);
+    let topHeader: HeaderRow | null = null;
+    for (const index of headerIndexes) {
+      if (index > visibleRows.startIndex) break;
+      topHeader = rows[index] as HeaderRow;
+    }
+    useStore.getState().setGridTopFolder(topHeader?.folderPath ?? null);
+  }, [headerIndexes, rows]);
+
+  useEffect(() => {
+    if (headerIndexes.length === 0) useStore.getState().setGridTopFolder(null);
+  }, [headerIndexes]);
+
+  // Go to Folder (Ctrl+G): scroll to the first header (or, ungrouped, the first video) in the
+  // folder or below it, so a folder without videos of its own lands on its first subfolder.
+  // Clear consumed jumps so a remount cannot replay them; keep unmatched targets pending.
+  const gridFolderJump = useStore((s) => s.gridFolderJump);
+  useEffect(() => {
+    if (!gridFolderJump || !gridActive || useStore.getState().gridFolderJump !== gridFolderJump) return;
+    const target = gridFolderJump.folderPath;
+    const rowIndex = rows.findIndex((row) => (
+      row.type === 'header'
+        ? isFolderInside(row.folderPath, target)
+        : headerIndexes.length === 0 && row.videoIds.some((id) => {
+          const video = videosById.get(id);
+          return video !== undefined && isFolderInside(getFolderPath(video), target);
+        })
+    ));
+    if (rowIndex < 0 || !listRef.current) return;
+    listRef.current.scrollToRow({ index: rowIndex, align: 'start' });
+    persistedGridScroll = { directory, offset: getRowTop(rowIndex) };
+    useStore.setState({ gridFolderJump: null });
+  }, [directory, getRowTop, gridActive, gridFolderJump, headerIndexes, rows, videosById]);
+
+  const gridVideoJump = useStore((s) => s.gridVideoJump);
+  useEffect(() => {
+    if (!gridVideoJump || !gridActive || useStore.getState().gridVideoJump !== gridVideoJump) return;
+    const rowIndex = rows.findIndex((row) => row.type !== 'header' && row.videoIds.includes(gridVideoJump.videoId));
+    if (rowIndex < 0 || !listRef.current) return;
+    listRef.current.scrollToRow({ index: rowIndex, align: 'center' });
+    useStore.setState({ gridVideoJump: null });
+  }, [gridActive, gridVideoJump, rows]);
 
   const handleNextFolder = useCallback(() => {
     if (headerIndexes.length === 0) return;
@@ -890,9 +904,9 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         persistCurrentScroll();
         onReviewFolder(contextMenuFolder.folderPath);
       },
-      onFilterToFolder: () => setFolderFilterPath(contextMenuFolder.folderPath),
+      onFilterToFolder: () => setFolderFilter({ path: contextMenuFolder.folderPath, includeSubfolders: false }),
       onRevealFolder: () => {
-        void window.electronAPI?.openInExplorer(contextMenuFolder.folderPath);
+        revealInExplorer(contextMenuFolder.folderPath);
       },
       onCopyFolderPath: () => {
         void handleCopyPath(contextMenuFolder.folderPath);
@@ -904,7 +918,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         void onRegenerateThumbnails(folderVideos);
       },
     });
-  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, setFolderFilterPath, setVideoStatusesBatch, videosById]);
+  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, setFolderFilter, setVideoStatusesBatch, videosById]);
 
   const videoContextMenuItems = useMemo(() => {
     if (!contextMenuVideo) return [];
@@ -914,10 +928,10 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         handleCardPlay(contextMenuVideo, syntheticEvent);
       },
       onOpenExternal: () => {
-        void window.electronAPI?.openVideo(contextMenuVideo.path);
+        openVideoExternally(contextMenuVideo.path);
       },
       onReveal: () => {
-        void window.electronAPI?.openInExplorer(contextMenuVideo.path);
+        revealInExplorer(contextMenuVideo.path);
       },
       onResetPending: () => setVideoStatusesBatch([contextMenuVideo.id], 'pending'),
       onRegenerateThumbnails: () => {

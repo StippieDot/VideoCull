@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const initialThemeArgument = process.argv.find((value) => value.startsWith('--video-cull-theme='));
 const initialTheme = initialThemeArgument?.slice('--video-cull-theme='.length) === 'light' ? 'light' : 'dark';
+const usesMica = process.argv.includes('--video-cull-mica');
+const micaSupported = process.argv.includes('--video-cull-mica-supported');
 
 /**
  * @template T
@@ -20,6 +22,8 @@ function subscribe(channel, callback) {
 /** @type {import('../src/types').ElectronAPI} */
 const electronAPI = {
   initialTheme: initialTheme,
+  usesMica: usesMica,
+  micaSupported: micaSupported,
 
   // Directory
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
@@ -92,11 +96,14 @@ const electronAPI = {
   permanentlyDelete: (filePaths) => ipcRenderer.invoke('permanently-delete', filePaths),
   exportReport: (videos, dirPaths) => ipcRenderer.invoke('export-report', videos, dirPaths),
   chooseReportScope: () => ipcRenderer.invoke('choose-report-scope'),
-  setExportReportAvailable: (enabled) => ipcRenderer.send('set-export-report-available', enabled),
+  setMenuState: (state) => ipcRenderer.send('set-menu-state', state),
+  setTaskbarProgress: (progress) => ipcRenderer.send('set-taskbar-progress', progress),
+  openAppMenu: (id, x, y) => ipcRenderer.invoke('open-app-menu', id, x, y),
+  getCommands: () => ipcRenderer.invoke('get-commands'),
+  runCommand: (id) => ipcRenderer.invoke('run-command', id),
   openVideo: (filePath) => ipcRenderer.invoke('open-video', filePath),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   openLegalFile: (name) => ipcRenderer.invoke('open-legal-file', name),
-  setVideoFullscreen: (fullscreen) => ipcRenderer.invoke('set-video-fullscreen', fullscreen),
 
   // Menu events
   onMenuAction: (callback) => subscribe('menu-action', callback),
