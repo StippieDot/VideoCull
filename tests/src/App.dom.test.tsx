@@ -1173,6 +1173,26 @@ describe('App renderer behavior', () => {
     expect(screen.queryByTestId('duplicate-groups')).toBeNull();
   });
 
+  test('Show Folder in Grid clears a folder filter that hides the folder of the duplicate', async () => {
+    const store = getStoreApi();
+    const videos = [makeVideo('a', {}, 'D:\\Media\\Trips'), makeVideo('b', {}, 'D:\\Media\\Trips'), makeVideo('c', {}, 'D:\\Media\\Other')];
+    electron.api.scanDirectory.mockResolvedValue(videos);
+    store.setState({ directory: 'D:\\Media', directories: ['D:\\Media'], videos, filteredVideos: videos });
+    render(<App />);
+    await waitFor(() => expect(store.getState().isScanning).toBe(false));
+    act(() => {
+      store.getState().setFolderFilter({ path: 'D:\\Media\\Other', includeSubfolders: true });
+      store.getState().setDuplicateGroups([makeDuplicateGroup()]);
+      store.getState().enterReviewAndPlay('a', ['a', 'b']);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'a.mp4' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show Folder in Grid' }));
+
+    expect(store.getState().folderFilter).toBeNull();
+    expect(store.getState().gridFolderJump?.folderPath).toBe('D:\\Media\\Trips');
+  });
+
   test('keeps duplicate results laid out while review mode is open so virtual scrolling survives', () => {
     const store = getStoreApi();
     const initialState = store.getInitialState();

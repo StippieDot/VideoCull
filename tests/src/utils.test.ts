@@ -6,6 +6,7 @@ import {
   formatDeleteConfirmation,
   formatDuration,
   formatFps,
+  isFolderShownByFilter,
   formatRecentPath,
   formatRelativeTime,
   formatResolutionLabel,
@@ -92,4 +93,14 @@ test('delete confirmation describes recycle bin, fallback, and empty-folder clea
     sizeBytes: 1536,
     removeEmptyFoldersAfterDelete: true,
   })).toBe('Move 2 marked videos (2 KB) to the Recycle Bin? If the Recycle Bin is unavailable, VideoCull will ask before permanently deleting. Empty source folders will be cleaned up when they are truly empty.');
+});
+
+test('a folder filter shows a folder only when its own videos pass the filter', () => {
+  const filter = { path: 'D:\\Media\\Trips', includeSubfolders: true };
+  expect(isFolderShownByFilter('D:\\Media\\Trips\\Day1', filter)).toBe(true);
+  expect(isFolderShownByFilter('d:/media/trips', filter)).toBe(true);
+  expect(isFolderShownByFilter('D:\\Media', filter)).toBe(false);
+  expect(isFolderShownByFilter('D:\\Media\\Other', filter)).toBe(false);
+  expect(isFolderShownByFilter('D:\\Media\\Trips\\Day1', { ...filter, includeSubfolders: false })).toBe(false);
+  expect(isFolderShownByFilter('D:\\Media', null)).toBe(true);
 });

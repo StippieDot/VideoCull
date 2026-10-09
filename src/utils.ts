@@ -1,4 +1,4 @@
-import type { Video } from './types';
+import type { FolderFilter, Video } from './types';
 
 /**
  * Format bytes to a human-readable string.
@@ -245,4 +245,12 @@ export function folderInsideTest(ancestor: string): (folder: string) => boolean 
 
 export function isFolderInside(folder: string, ancestor: string): boolean {
   return folderInsideTest(ancestor)(folder);
+}
+
+/** Whether a folder's own videos are shown with this filter; a narrower filter hides its ancestors' videos. */
+export function isFolderShownByFilter(folder: string, filter: FolderFilter | null): boolean {
+  if (!filter) return true;
+  return filter.includeSubfolders
+    ? isFolderInside(folder, filter.path)
+    : normalizeFolder(folder) === normalizeFolder(filter.path);
 }

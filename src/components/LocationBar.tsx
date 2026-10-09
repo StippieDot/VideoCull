@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { ChevronDown, ChevronRight, Copy, Film, Filter, Folder, X } from 'lucide-react';
 import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod, videosOutsideFolderFilter } from '../store';
 import type { FolderFilter, Video } from '../types';
-import { isFolderInside, normalizeFolder } from '../utils';
+import { isFolderInside, isFolderShownByFilter, normalizeFolder } from '../utils';
 import AppMenu from './AppMenu';
 import { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail } from './contextMenuBuilders';
@@ -224,6 +224,8 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
       showFolderInGrid: (folder) => {
         store().setReviewMode(false);
         store().setDuplicateGroupsMode(false);
+        // A duplicate can come from outside the folder filter; the jump needs the folder's row in the grid.
+        if (!isFolderShownByFilter(folder, store().folderFilter)) store().setFolderFilter(null);
         store().requestGridFolderJump(folder);
       },
       findDuplicates: () => appRef.current.findDuplicates(),
