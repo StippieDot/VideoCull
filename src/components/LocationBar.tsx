@@ -237,6 +237,60 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
   }, [navigate]);
 }
 
+/**
+ * Ctrl+L focuses the path, as the address bar in Explorer or a browser; Alt+Left / Alt+Right step
+ * back and forward through the folder filters chosen in it.
+ */
+function useLocationKeys(navRef: React.RefObject<HTMLElement | null>, browsable: boolean, filterHistory: ReturnType<typeof useFilterHistory>) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const { target } = event;
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'l') {
+        const buttons = navRef.current?.querySelectorAll<HTMLButtonElement>('.location-bar-segment');
+        const lastButton = buttons?.[buttons.length - 1];
+        if (!lastButton) return;
+        event.preventDefault();
+        lastButton.focus();
+      } else if (browsable && event.altKey && !event.ctrlKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault();
+        filterHistory.step(event.key === 'ArrowLeft' ? -1 : 1);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navRef, browsable, filterHistory]);
+}
+
+/** The bar's controls, with middle folders hidden behind "…" only while the full path does not fit. */
+function useFittingControls(navRef: React.RefObject<HTMLElement | null>, location: Location | null, hasRoots: boolean, lastHasSubfolders: boolean) {
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  // The status pill narrows the centre of the title bar while processing (TitleBar.css).
+  const processing = useStore((s) => s.isGenerating || s.isScanning || s.isFindingDuplicates);
+  useLayoutEffect(() => setHiddenCount(0), [location, windowWidth, processing]);
+  const maxHidden = Math.max(0, (location?.segments.length ?? 0) - 2);
+  const controls = useMemo(
+    () => (location ? buildControls(location, hasRoots, lastHasSubfolders, hiddenCount) : []),
+    [hiddenCount, hasRoots, lastHasSubfolders, location],
+  );
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav || !location || hiddenCount >= maxHidden) return;
+    const overflow = nav.scrollWidth - nav.clientWidth;
+    if (overflow <= 0) return;
+    const fits = hiddenCount === 0 ? partsToHide(nav, controls, location.segments, overflow) : null;
+    // A miss (or no layout to measure) falls back to hiding one more part per render.
+    setHiddenCount(fits !== null && fits > 0 ? Math.min(fits, maxHidden) : hiddenCount + 1);
+  });
+  return { controls, hiddenCount, maxHidden };
+}
+
 function buildMenu(
   control: Control,
   location: Location,
@@ -290,26 +344,7 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
   const navRef = useRef<HTMLElement>(null);
   const actions = useLocationActions(appActions, filterHistory.navigate);
   const browsable = location?.browsable ?? false;
-  // Ctrl+L focuses the path, as the address bar in Explorer or a browser; Alt+Left / Alt+Right step
-  // back and forward through the folder filters chosen in it.
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const { target } = event;
-      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
-      if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'l') {
-        const buttons = navRef.current?.querySelectorAll<HTMLButtonElement>('.location-bar-segment');
-        const lastButton = buttons?.[buttons.length - 1];
-        if (!lastButton) return;
-        event.preventDefault();
-        lastButton.focus();
-      } else if (browsable && event.altKey && !event.ctrlKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-        event.preventDefault();
-        filterHistory.step(event.key === 'ArrowLeft' ? -1 : 1);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [browsable, filterHistory]);
+  useLocationKeys(navRef, browsable, filterHistory);
   const browsableVideos = useStore(videosOutsideFolderFilter);
   const rootCount = useStore((s) => s.directories.length);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -323,31 +358,7 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
     () => lastFolder !== null && hasSubfolders(browsableVideos, lastFolder),
     [browsableVideos, lastFolder],
   );
-  // Middle parts hide only while the full path does not fit.
-  const [hiddenCount, setHiddenCount] = useState(0);
-  const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-  // The status pill narrows the centre of the title bar while processing (TitleBar.css).
-  const processing = useStore((s) => s.isGenerating || s.isScanning || s.isFindingDuplicates);
-  useLayoutEffect(() => setHiddenCount(0), [location, windowWidth, processing]);
-  const maxHidden = Math.max(0, (location?.segments.length ?? 0) - 2);
-  const controls = useMemo(
-    () => (location ? buildControls(location, rootCount > 1, lastHasSubfolders, hiddenCount) : []),
-    [hiddenCount, lastHasSubfolders, location, rootCount],
-  );
-  useLayoutEffect(() => {
-    const nav = navRef.current;
-    if (!nav || !location || hiddenCount >= maxHidden) return;
-    const overflow = nav.scrollWidth - nav.clientWidth;
-    if (overflow <= 0) return;
-    const fits = hiddenCount === 0 ? partsToHide(nav, controls, location.segments, overflow) : null;
-    // A miss (or no layout to measure) falls back to hiding one more part per render.
-    setHiddenCount(fits !== null && fits > 0 ? Math.min(fits, maxHidden) : hiddenCount + 1);
-  });
+  const { controls, hiddenCount, maxHidden } = useFittingControls(navRef, location, rootCount > 1, lastHasSubfolders);
 
   // The location can change under an open menu (a filter chosen, the next video); close it then.
   useEffect(() => setOpenIndex(null), [location]);
@@ -440,87 +451,19 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
       aria-label="Location"
       title={fullPath}
     >
-      {controls.map((control, index) => {
-        const open = openIndex === index ? ' open' : '';
-        switch (control.type) {
-          case 'segment': {
-            const { segment, last } = control;
-            const browsing = location.browsable && segment.kind === 'folder';
-            const only = segment.filtered && location.filter?.includeSubfolders === false;
-            const name = segment.filtered ? `${segment.label}, filtered${only ? ', this folder only' : ''}` : segment.label;
-            const button = (
-              <button
-                key={index}
-                {...buttonProps(index, name, browsing && !segment.filtered ? () => filterTo(segment, index) : undefined)}
-                className={`location-bar-segment${last ? ' current' : ''}${segment.position ? ' position' : ''}${open}`}
-                title={segment.position ? `Scrolled to: ${segment.path}` : undefined}
-              >
-                {segment.filtered && <Filter size={11} aria-hidden="true" />}
-                <span className="location-bar-label">{segment.label}</span>
-                {only && <span className="location-bar-only">only</span>}
-                {segment.kind === 'video' && <ReviewCount />}
-                {last && !location.browsable && <ChevronDown size={12} aria-hidden="true" />}
-              </button>
-            );
-            if (segment.kind === 'duplicates') {
-              return (
-                <span key={index} className="location-bar-duplicates">
-                  {button}
-                  <DuplicateStepper />
-                </span>
-              );
-            }
-            if (!segment.filtered) return button;
-            return (
-              <span key={index} className="location-bar-chip">
-                {button}
-                <button
-                  type="button"
-                  className="location-bar-chip-clear"
-                  aria-label="Clear folder filter"
-                  title="Clear folder filter"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => filterHistory.navigate(null)}
-                >
-                  <X size={11} aria-hidden="true" />
-                </button>
-              </span>
-            );
-          }
-          case 'actions':
-            return (
-              <button key={index} {...buttonProps(index, `${control.segment.label} actions`)} className={`location-bar-chevron location-bar-actions${open}`}>
-                <ChevronDown size={12} aria-hidden="true" />
-              </button>
-            );
-          case 'subfolders':
-            return (
-              <button
-                key={index}
-                {...buttonProps(index, `Folders in ${splitPath(control.parent).pop()?.label ?? control.parent}`)}
-                className={`location-bar-chevron${open}`}
-              >
-                <ChevronRight size={12} aria-hidden="true" />
-              </button>
-            );
-          case 'roots':
-            return (
-              <button key={index} {...buttonProps(index, 'Loaded folders')} className={`location-bar-chevron${open}`}>
-                <ChevronDown size={12} aria-hidden="true" />
-              </button>
-            );
-          case 'text':
-            return <span key={index} className="location-bar-text">{sessionTitle}</span>;
-          case 'ellipsis':
-            return (
-              <button key={index} {...buttonProps(index, 'Hidden folders')} className={`location-bar-segment${open}`}>
-                <span className="location-bar-label">…</span>
-              </button>
-            );
-          default:
-            return <Fragment key={index}><ChevronRight size={12} className="location-bar-separator" aria-hidden="true" /></Fragment>;
-        }
-      })}
+      {controls.map((control, index) => (
+        <LocationControl
+          key={index}
+          control={control}
+          index={index}
+          isOpen={openIndex === index}
+          location={location}
+          sessionTitle={sessionTitle}
+          buttonProps={buttonProps}
+          filterTo={filterTo}
+          clearFilter={() => filterHistory.navigate(null)}
+        />
+      ))}
       {menu && anchor && (
         <AppMenu
           key={`${openIndex}:${hiddenPick?.path ?? ''}`}
@@ -542,6 +485,97 @@ export default function LocationBar({ sessionTitle, appActions }: { sessionTitle
       )}
     </nav>
   );
+}
+
+interface LocationControlProps {
+  control: Control;
+  index: number;
+  isOpen: boolean;
+  location: Location;
+  sessionTitle: string;
+  buttonProps: (index: number, label: string, onActivate?: () => void) => React.ButtonHTMLAttributes<HTMLButtonElement> & { ref: (element: HTMLButtonElement | null) => void };
+  filterTo: (segment: Segment, index: number) => void;
+  clearFilter: () => void;
+}
+
+function LocationControl({ control, index, isOpen, location, sessionTitle, buttonProps, filterTo, clearFilter }: LocationControlProps) {
+  const open = isOpen ? ' open' : '';
+  switch (control.type) {
+    case 'segment': {
+      const { segment, last } = control;
+      const browsing = location.browsable && segment.kind === 'folder';
+      const only = segment.filtered && location.filter?.includeSubfolders === false;
+      const name = segment.filtered ? `${segment.label}, filtered${only ? ', this folder only' : ''}` : segment.label;
+      const button = (
+        <button
+          {...buttonProps(index, name, browsing && !segment.filtered ? () => filterTo(segment, index) : undefined)}
+          className={`location-bar-segment${last ? ' current' : ''}${segment.position ? ' position' : ''}${open}`}
+          title={segment.position ? `Scrolled to: ${segment.path}` : undefined}
+        >
+          {segment.filtered && <Filter size={11} aria-hidden="true" />}
+          <span className="location-bar-label">{segment.label}</span>
+          {only && <span className="location-bar-only">only</span>}
+          {segment.kind === 'video' && <ReviewCount />}
+          {last && !location.browsable && <ChevronDown size={12} aria-hidden="true" />}
+        </button>
+      );
+      if (segment.kind === 'duplicates') {
+        return (
+          <span className="location-bar-duplicates">
+            {button}
+            <DuplicateStepper />
+          </span>
+        );
+      }
+      if (!segment.filtered) return button;
+      return (
+        <span className="location-bar-chip">
+          {button}
+          <button
+            type="button"
+            className="location-bar-chip-clear"
+            aria-label="Clear folder filter"
+            title="Clear folder filter"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => clearFilter()}
+          >
+            <X size={11} aria-hidden="true" />
+          </button>
+        </span>
+      );
+    }
+    case 'actions':
+      return (
+        <button {...buttonProps(index, `${control.segment.label} actions`)} className={`location-bar-chevron location-bar-actions${open}`}>
+          <ChevronDown size={12} aria-hidden="true" />
+        </button>
+      );
+    case 'subfolders':
+      return (
+        <button
+          {...buttonProps(index, `Folders in ${splitPath(control.parent).pop()?.label ?? control.parent}`)}
+          className={`location-bar-chevron${open}`}
+        >
+          <ChevronRight size={12} aria-hidden="true" />
+        </button>
+      );
+    case 'roots':
+      return (
+        <button {...buttonProps(index, 'Loaded folders')} className={`location-bar-chevron${open}`}>
+          <ChevronDown size={12} aria-hidden="true" />
+        </button>
+      );
+    case 'text':
+      return <span className="location-bar-text">{sessionTitle}</span>;
+    case 'ellipsis':
+      return (
+        <button {...buttonProps(index, 'Hidden folders')} className={`location-bar-segment${open}`}>
+          <span className="location-bar-label">…</span>
+        </button>
+      );
+    default:
+      return <Fragment><ChevronRight size={12} className="location-bar-separator" aria-hidden="true" /></Fragment>;
+  }
 }
 
 /** Width the "…" and the chevron before it take once parts are hidden. */
