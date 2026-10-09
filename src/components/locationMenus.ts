@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import type { DuplicateGroup, FolderFilter, Video, VideoStatus } from '../types';
 import { trimSeparators, type AppMenuItem } from './AppMenu';
-import { formatDuration, formatResolutionLabel, formatSize, getFolderLabel, getFolderPath, isFolderInside, normalizeFolder } from '../utils';
+import { formatDuration, formatResolutionLabel, formatSize, folderInsideTest, getFolderLabel, getFolderPath, isFolderInside, normalizeFolder, plural } from '../utils';
 
 export type LocationMenuItem = AppMenuItem;
 
@@ -72,10 +72,6 @@ function countToReview(videos: Video[]): number {
   return videos.filter((video) => video.status === 'pending').length;
 }
 
-function plural(count: number, word: string): string {
-  return `${count.toLocaleString()} ${word}${count === 1 ? '' : 's'}`;
-}
-
 /** "212 videos · 40 to review · 3.2 GB" for everything in the folder and its subfolders. */
 export function describeFolder(videos: Video[], folder: string): string {
   const inside = videos.filter((video) => isInsideFolder(video, folder));
@@ -98,9 +94,10 @@ function folderDetail(entry: FolderEntry): string {
 /** Whether any video lies in a folder below `parent`. */
 export function hasSubfolders(videos: Video[], parent: string): boolean {
   const base = normalizeFolder(parent);
+  const inside = folderInsideTest(parent);
   return videos.some((video) => {
-    const folder = normalizeFolder(getFolderPath(video));
-    return folder !== base && folder.startsWith(`${base}\\`);
+    const folder = getFolderPath(video);
+    return inside(folder) && normalizeFolder(folder) !== base;
   });
 }
 

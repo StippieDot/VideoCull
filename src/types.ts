@@ -699,7 +699,6 @@ export interface ElectronAPI {
   chooseReportScope: () => Promise<'all' | 'filtered' | null>;
   setMenuState: (state: AppMenuState) => void;
   setTaskbarProgress: (progress: TaskbarProgress) => void;
-  /** Opens an app menu or submenu, given by its label path, at a window position; resolves when it closes. */
   /** Opens the app menu or submenu with this command id, such as "File" or "Actions > When Processing Finishes". */
   openAppMenu: (id: string, x: number, y: number) => Promise<boolean>;
   getCommands: () => Promise<AppCommand[]>;

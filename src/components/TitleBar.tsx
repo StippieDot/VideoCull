@@ -7,7 +7,7 @@ import useProcessingPauseState from '../hooks/useProcessingPauseState';
 import type { TaskbarProgress } from '../types';
 import videoCullIcon from '../assets/videocull-icon.png';
 import { openAppMenuAt, runAppCommand } from '../appCommands';
-import { formatRecentPath, formatSize } from '../utils';
+import { formatRecentPath, formatSize, plural } from '../utils';
 import AppMenu, { type AppMenuItem } from './AppMenu';
 import { formatTimeLeft, listProcessingJobs, TimeLeftEstimator, type ProcessingJob } from './processingStatus';
 import LocationBar, { type LocationBarAppActions } from './LocationBar';
@@ -313,8 +313,8 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
           <button
             type="button"
             className="title-bar-marked"
-            title={`Delete ${marked.count.toLocaleString()} marked ${marked.count === 1 ? 'video' : 'videos'} (${formatSize(marked.size)})… (Ctrl+Backspace)`}
-            aria-label={`Delete ${marked.count.toLocaleString()} marked ${marked.count === 1 ? 'video' : 'videos'}`}
+            title={`Delete ${plural(marked.count, 'marked video')} (${formatSize(marked.size)})… (Ctrl+Backspace)`}
+            aria-label={`Delete ${plural(marked.count, 'marked video')}`}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => void runAppCommand('Actions > Delete Marked Videos')}
           >

@@ -183,6 +183,11 @@ export function formatFps(fps: number | null | undefined): string {
   return `${Number.isInteger(fps) ? fps : fps.toFixed(2)}fps`;
 }
 
+/** "1 video", "3 videos". */
+export function plural(count: number, word: string): string {
+  return `${count.toLocaleString()} ${word}${count === 1 ? '' : 's'}`;
+}
+
 /** Grid folder header text: the folder relative to its loaded root. */
 export function getFolderLabel(video: Video, rootDirs: string[]): string {
   const sep = video.path.includes('/') ? '/' : '\\';
@@ -194,16 +199,11 @@ export function getFolderLabel(video: Video, rootDirs: string[]): string {
   const rootDir = rootDirs.map((root) => root.replace(/[\\/]+$/, '')).find((root) => dir === root || dir.startsWith(root + sep));
   if (!rootDir) return dir;
 
-  if (dir === rootDir) {
-    const rootName = rootDir.split(/[/\\]/).filter(Boolean).slice(-1)[0] || rootDir;
-    return rootDirs.length > 1 ? `${rootName} / Root` : 'Root';
-  }
-
-  const relative = dir.startsWith(rootDir + sep)
-    ? dir.substring(rootDir.length + 1)
-    : dir;
-  if (rootDirs.length <= 1) return relative || 'Root';
   const rootName = rootDir.split(/[/\\]/).filter(Boolean).slice(-1)[0] || rootDir;
+  if (dir === rootDir) return rootDirs.length > 1 ? `${rootName} / Root` : 'Root';
+
+  const relative = dir.substring(rootDir.length + 1);
+  if (rootDirs.length <= 1) return relative || 'Root';
   return relative ? `${rootName} / ${relative}` : `${rootName} / Root`;
 }
 
