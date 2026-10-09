@@ -428,4 +428,4 @@ function escapeMenuLabel(/** @type {string} */ label) {
   return label.replace(/&/g, '&&');
 }
 
-module.exports = { buildMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE };
+module.exports = { SORT_LABELS, buildMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE };

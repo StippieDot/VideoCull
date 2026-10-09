@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
-const { buildMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('../../electron/app-menu');
+const fs = require('node:fs');
+const path = require('node:path');
+const { SORT_LABELS, buildMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('../../electron/app-menu');
 
 const actions = {
   send: () => {},
@@ -221,4 +223,20 @@ test('the ids the title bar and sidebar run exist in the menu', () => {
     'Actions > When Processing Finishes > Sleep',
     'Actions > When Processing Finishes > Shut Down',
   ]) assert.ok(ids.includes(id), `missing menu id: ${id}`);
+});
+
+const typesSource = fs.readFileSync(path.join(__dirname, '../../src/types.ts'), 'utf8');
+const stringsOf = (text) => [...text.matchAll(/'([a-z-]+)'/g)].map((match) => match[1]);
+
+test('every sort field the grid knows has a menu label', () => {
+  const fields = stringsOf(typesSource.match(/export type SortField = ([^;]+);/)[1]);
+  assert.deepEqual(Object.keys(SORT_LABELS).sort(), [...fields].sort());
+});
+
+test('every plain action the menu sends is a MenuAction the window understands', () => {
+  const declared = new Set(stringsOf(typesSource.match(/export type MenuAction =([^;]+);/)[1]));
+  const menuSource = fs.readFileSync(path.join(__dirname, '../../electron/app-menu.js'), 'utf8');
+  const sent = [...menuSource.matchAll(/send\('([a-z-]+)'\)/g)].map((match) => match[1]);
+  assert.ok(sent.length > 20);
+  for (const action of sent) assert.ok(declared.has(action), `MenuAction is missing "${action}"`);
 });

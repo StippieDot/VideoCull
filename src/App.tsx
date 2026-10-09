@@ -18,7 +18,7 @@ import CommandPalette from './components/CommandPalette';
 import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
-import type { DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
+import type { DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, MenuAction, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
 import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside } from './utils';
 import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
@@ -824,7 +824,7 @@ export default function App() {
       ? window.electronAPI.onDuplicateProgress((progress) => setDuplicateProgress(progress))
       : () => {};
 
-    const handleMenuAction = async (action: string) => {
+    const handleMenuAction = async (action: MenuAction) => {
       if (action === 'toggle-privacy') {
         setIsPrivate((v) => !v);
         return;

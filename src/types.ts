@@ -197,6 +197,15 @@ export interface ToastInput {
 }
 
 // ── Sort & Filter ──────────────────────────────────────────────────
+/** What the application menu asks the window to do; electron/app-menu.js sends these. */
+export type MenuAction =
+  | 'add-folder' | 'check-updates' | 'clear-cache' | 'clear-filters' | 'close-session' | 'copy-path'
+  | 'delete-all' | 'export-report' | 'find-duplicates' | 'go-to-folder' | 'open-about'
+  | 'open-command-palette' | 'open-directory' | 'open-documentation' | 'open-settings' | 'play-external'
+  | 'regenerate-thumbnails' | 'rescan-directory' | 'reveal-video' | 'show-shortcuts'
+  | 'toggle-group-by-folder' | 'toggle-mute' | 'toggle-privacy' | 'toggle-theme' | 'undo' | 'zoom-in' | 'zoom-out'
+  | `sort:${SortField}` | `sort-order:${SortOrder}` | `open-recent:${string}` | `reveal-folder:${string}`;
+
 export type SortField = 'name' | 'size' | 'duration' | 'date' | 'rating' | 'resolution' | 'fps';
 export type FolderSortField = 'name' | 'size';
 export type SortOrder = 'asc' | 'desc';
@@ -688,7 +697,7 @@ export interface ElectronAPI {
   findDuplicates: (videos: Video[], options?: { settings?: Partial<DuplicateSettings> }) => Promise<DuplicateResult>;
   cancelDuplicateDetection: () => Promise<boolean>;
   onDuplicateProgress: (callback: (data: DuplicateProgress) => void) => () => void;
-  onMenuAction: (callback: (action: string) => void) => () => void;
+  onMenuAction: (callback: (action: MenuAction) => void) => () => void;
   saveCache: (dirPath: string, videos: Video[]) => Promise<boolean>;
   saveCacheAtomic: (dirPath: string, videos: Video[]) => Promise<boolean>;
   saveReviewState: (dirPath: string, updates: VideoReviewUpdate[]) => Promise<boolean>;
