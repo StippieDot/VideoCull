@@ -55,11 +55,15 @@ test('items that cannot do anything are disabled', () => {
   assert.equal(item(empty, 'Video', 'Reveal in Explorer').enabled, false);
   assert.equal(item(empty, 'Actions', 'When Processing Finishes').enabled, false);
 
-  const session = menu({ hasSession: true, videoCount: 3, markedCount: 2, activeVideoCount: 1, processing: true });
+  const session = menu({ hasSession: true, videoCount: 3, markedCount: 2, canDeleteMarked: true, activeVideoCount: 1, processing: true });
   assert.equal(item(session, 'File', 'Rescan').enabled, true);
   assert.equal(item(session, 'Actions', 'Delete Marked Videos (2)...').enabled, true);
   assert.equal(item(session, 'Video', 'Reveal in Explorer').enabled, true);
   assert.equal(item(session, 'Actions', 'When Processing Finishes').enabled, true);
+
+  // The delete handler waits for a running scan, so the menu must not offer it then.
+  const scanning = menu({ hasSession: true, videoCount: 3, markedCount: 2, canDeleteMarked: false });
+  assert.equal(item(scanning, 'Actions', 'Delete Marked Videos (2)...').enabled, false);
 });
 
 test('the Video menu acts on one video, or copies and regenerates for a selection', () => {

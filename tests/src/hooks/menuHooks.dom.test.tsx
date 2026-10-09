@@ -48,6 +48,12 @@ describe('useAppMenuState', () => {
     act(() => useStore.setState({ isScanning: true }));
     expect(lastState(setMenuState)).toMatchObject({ canExport: false, canRegenerateThumbnails: false });
 
+    act(() => useStore.setState({ stats: { ...useStore.getState().stats, delete: 2 } }));
+    expect(lastState(setMenuState).canDeleteMarked).toBe(false);
+    act(() => useStore.setState({ isScanning: false }));
+    expect(lastState(setMenuState).canDeleteMarked).toBe(true);
+    act(() => useStore.setState({ isScanning: true }));
+
     act(() => useStore.setState({ isScanning: false, videos: [videos[0]], filteredVideos: [videos[0]] }));
     expect(lastState(setMenuState).canFindDuplicates).toBe(false);
   });

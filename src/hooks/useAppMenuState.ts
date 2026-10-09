@@ -38,6 +38,7 @@ export default function useAppMenuState(isPrivate: boolean) {
       markedCount,
       canUndo,
       canExport: Boolean(directory && videoCount > 0 && !isScanning),
+      canDeleteMarked: markedCount > 0 && !isScanning,
       canFindDuplicates: duplicatesEnabled && videoCount >= 2 && !isFindingDuplicates && !metadataRunning,
       canPauseProcessing: isGenerating || isFindingDuplicates,
       activeVideoCount,

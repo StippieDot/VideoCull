@@ -232,6 +232,13 @@
   outline: none;
 }
 
+/* Deleting waits for a running scan, so the list it would delete from is complete. */
+.title-bar-marked:disabled {
+  opacity: 0.5;
+  background: var(--color-delete-dim);
+  color: var(--color-delete);
+}
+
 .title-bar-icon-button {
   display: grid;
   place-items: center;

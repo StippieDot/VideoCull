@@ -132,6 +132,18 @@ describe('TitleBar', () => {
     expect(api.runCommand).toHaveBeenCalledWith('Actions > Delete Marked Videos');
   });
 
+  test('the delete button waits for a running scan', () => {
+    const api = installElectronApiMock({ processing: false, finishAction: 'none', countdown: null });
+    useStore.setState({ isScanning: true, stats: { ...useStore.getState().stats, delete: 2, deleteSize: 2048 } });
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
+    const marked = screen.getByRole('button', { name: 'Delete 2 marked videos' }) as HTMLButtonElement;
+    expect(marked.disabled).toBe(true);
+    act(() => marked.click());
+    expect(api.runCommand).not.toHaveBeenCalled();
+    act(() => useStore.setState({ isScanning: false }));
+    expect(marked.disabled).toBe(false);
+  });
+
   test('behind the privacy screen neither the folder nor the processing status is shown', async () => {
     installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
     render(<TitleBar isPrivate onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);

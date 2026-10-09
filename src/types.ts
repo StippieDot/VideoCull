@@ -93,6 +93,8 @@ export interface AppMenuState {
   markedCount: number;
   canUndo: boolean;
   canExport: boolean;
+  /** Marked videos exist and no scan is running, which is when the delete handler acts. */
+  canDeleteMarked: boolean;
   canFindDuplicates: boolean;
   canPauseProcessing: boolean;
   /** Videos the Video menu acts on: the one open in Review, or the videos selected in the grid. */

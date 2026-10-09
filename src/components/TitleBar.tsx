@@ -352,6 +352,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
           <button
             type="button"
             className="title-bar-marked"
+            disabled={processingInputs.isScanning}
             title={`Delete ${plural(marked.count, 'marked video')} (${formatSize(marked.size)})… (Ctrl+Backspace)`}
             aria-label={`Delete ${plural(marked.count, 'marked video')}`}
             onMouseDown={(event) => event.preventDefault()}

@@ -95,7 +95,8 @@
 .drop-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 210;
+  /* Above the fixed title bar (1050), so a dialog that waits for an answer also blocks its menus. */
+  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
