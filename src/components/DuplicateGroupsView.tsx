@@ -44,6 +44,7 @@ import {
 } from './contextMenuBuilders';
 import { Ban, Check, CheckCircle2, Play, SkipForward, Trash2 } from 'lucide-react';
 import './DuplicateGroupsView.css';
+import { openVideoExternally, revealInExplorer } from '../appCommands';
 
 type MetricState = 'best' | 'equal' | 'worse';
 type MetricFlags = Record<string, MetricState>;
@@ -1119,10 +1120,10 @@ function DuplicateGroupsView() {
     return buildDuplicateVideoMenu({
       onPlay: () => handlePlayVideo(contextMenuVideo.id, contextMenuGroup.group.videoIds),
       onOpenExternal: () => {
-        void window.electronAPI?.openVideo(contextMenuVideo.path);
+        openVideoExternally(contextMenuVideo.path);
       },
       onReveal: () => {
-        void window.electronAPI?.openInExplorer(contextMenuVideo.path);
+        revealInExplorer(contextMenuVideo.path);
       },
       onMarkDelete: () => setVideoStatusesBatch([contextMenuVideo.id], 'delete'),
       onMarkKeep: () => setVideoStatusesBatch([contextMenuVideo.id], 'keep'),

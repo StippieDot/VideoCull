@@ -24,6 +24,7 @@ import {
   buildLibraryGridVideoMenu,
 } from './contextMenuBuilders';
 import './GridMode.css';
+import { openVideoExternally, revealInExplorer } from '../appCommands';
 
 const BASE_CARD_WIDTH = 450;
 const BASE_CARD_HEIGHT = 360;
@@ -636,7 +637,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     if (canPlayInReview && !event.ctrlKey) {
       useStore.getState().enterReviewAndPlay(video.id);
     } else if (window.electronAPI) {
-      window.electronAPI.openVideo(video.path);
+      openVideoExternally(video.path);
     }
   }, [compatibilityCheckEnabled, persistCurrentScroll]);
 
@@ -905,7 +906,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       },
       onFilterToFolder: () => setFolderFilter({ path: contextMenuFolder.folderPath, includeSubfolders: false }),
       onRevealFolder: () => {
-        void window.electronAPI?.openInExplorer(contextMenuFolder.folderPath);
+        revealInExplorer(contextMenuFolder.folderPath);
       },
       onCopyFolderPath: () => {
         void handleCopyPath(contextMenuFolder.folderPath);
@@ -927,10 +928,10 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         handleCardPlay(contextMenuVideo, syntheticEvent);
       },
       onOpenExternal: () => {
-        void window.electronAPI?.openVideo(contextMenuVideo.path);
+        openVideoExternally(contextMenuVideo.path);
       },
       onReveal: () => {
-        void window.electronAPI?.openInExplorer(contextMenuVideo.path);
+        revealInExplorer(contextMenuVideo.path);
       },
       onResetPending: () => setVideoStatusesBatch([contextMenuVideo.id], 'pending'),
       onRegenerateThumbnails: () => {

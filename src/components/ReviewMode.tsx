@@ -15,6 +15,7 @@ import { beginDevInteraction, completeDevInteractionOnNextPaint, recordDevCounte
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildReviewVideoMenu } from './contextMenuBuilders';
 import './ReviewMode.css';
+import { openVideoExternally, revealInExplorer } from '../appCommands';
 
 const REVIEW_MAX_MEDIA_WIDTH = 1950;
 const REVIEW_ASPECT_RATIO = 16 / 9;
@@ -408,7 +409,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
     if (canPlayInReview) {
       setIsPlaying((prev) => !prev);
     } else if (window.electronAPI) {
-      window.electronAPI.openVideo(video.path);
+      openVideoExternally(video.path);
     }
   }, [video, canPlayInReview]);
 
@@ -518,7 +519,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       // Context-independent shortcuts
       if (matchesKeybind(e, s.keyExternalPlayer)) {
         e.preventDefault();
-        if (window.electronAPI && video?.path) window.electronAPI.openVideo(video.path);
+        if (window.electronAPI && video?.path) openVideoExternally(video.path);
         return;
       }
       if (s.features.nextUndecided && matchesKeybind(e, s.keyNextUndecided)) {
@@ -587,10 +588,10 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
 
   const contextMenuItems = buildReviewVideoMenu({
     onOpenExternal: () => {
-      void window.electronAPI?.openVideo(video.path);
+      openVideoExternally(video.path);
     },
     onReveal: () => {
-      void window.electronAPI?.openInExplorer(video.path);
+      revealInExplorer(video.path);
     },
     onCopyPath: () => {
       void handleCopyPath();
@@ -647,7 +648,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
                   <div className="review-decode-error-overlay">
                     <p>Audio codec not supported by the built-in player</p>
                     <div className="review-decode-error-actions">
-                      <button onClick={() => { void window.electronAPI.openVideo(video.path); }}>
+                      <button onClick={() => { openVideoExternally(video.path); }}>
                         Open in external player
                       </button>
                       <button onClick={() => setAudioDecodeError(false)}>Dismiss</button>

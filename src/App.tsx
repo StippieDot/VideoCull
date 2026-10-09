@@ -25,6 +25,7 @@ import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } f
 import { Volume2, VolumeX } from 'lucide-react';
 import { applyDocumentTheme } from './theme';
 import './App.css';
+import { openVideoExternally, revealInExplorer } from './appCommands';
 
 const CURRENT_METADATA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
@@ -837,7 +838,7 @@ export default function App() {
       }
       if (action.startsWith('reveal-folder:')) {
         const folder = action.slice('reveal-folder:'.length);
-        if (state.directories.includes(folder)) window.electronAPI.openInExplorer(folder);
+        if (state.directories.includes(folder)) revealInExplorer(folder);
         return;
       }
       if (action.startsWith('sort:')) {
@@ -982,11 +983,11 @@ export default function App() {
         case 'zoom-in': { state.setCardScale(Math.min(state.cardScale + 0.1, 1.5)); break; }
         case 'zoom-out': { state.setCardScale(Math.max(state.cardScale - 0.1, 0.5)); break; }
         case 'reveal-video': {
-          if (activeVideoPath) window.electronAPI.openInExplorer(activeVideoPath);
+          if (activeVideoPath) revealInExplorer(activeVideoPath);
           break;
         }
         case 'play-external': {
-          if (activeVideoPath) window.electronAPI.openVideo(activeVideoPath);
+          if (activeVideoPath) openVideoExternally(activeVideoPath);
           break;
         }
         case 'export-report': {

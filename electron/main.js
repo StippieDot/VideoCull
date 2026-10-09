@@ -2896,8 +2896,11 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
 
 // 8. Open video in default system player
 ipcMain.handle('open-video', async (_event, filePath) => {
-  if (!await isValidLoadedPath(filePath)) return;
-  await shell.openPath(filePath);
+  if (!await isValidLoadedPath(filePath)) return false;
+  // openPath reports failure by resolving to an error message instead of rejecting.
+  const error = await shell.openPath(filePath);
+  if (error) log.warn(`[open-video] Could not open ${filePath}: ${error}`);
+  return error === '';
 });
 
 ipcMain.handle('get-distribution-info', () => ({
@@ -2995,8 +2998,9 @@ ipcMain.handle('open-in-explorer', async (_event, filePath) => {
     loadedDirectories: currentScanDirs,
     isPathWithinAnyDir,
   });
-  if (!allowed) return;
+  if (!allowed) return false;
   shell.showItemInFolder(filePath);
+  return true;
 });
 
 // 11. App version

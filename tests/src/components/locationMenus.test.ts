@@ -1,3 +1,4 @@
+import { describe, expect, test } from 'vitest';
 import { collapseSegments, hasSubfolders, listSubfolders, splitPath } from '../../../src/components/locationMenus';
 import { makeVideo } from '../../helpers/videoFactory';
 

@@ -5,7 +5,7 @@ import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store
 import { beginDevInteraction } from '../perf-dev';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
-import { runAppCommand } from '../appCommands';
+import { revealInExplorer, runAppCommand } from '../appCommands';
 import { formatDeleteConfirmation, formatSize, formatRelativeTime, formatRecentPath } from '../utils';
 import { deleteWithPermanentReview } from '../deletion';
 import AppMenu, { type AppMenuItem } from './AppMenu';
@@ -841,7 +841,7 @@ export default function Sidebar({
         void handleAddRecentToSession(recentContextMenu.dir);
       },
       onReveal: () => {
-        void window.electronAPI?.openInExplorer(recentContextMenu.dir);
+        revealInExplorer(recentContextMenu.dir);
       },
       onCopyPath: () => {
         void handleCopyRecentPath(recentContextMenu.dir);

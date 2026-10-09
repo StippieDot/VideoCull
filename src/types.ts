@@ -677,7 +677,8 @@ export interface ElectronAPI {
   selectDirectory: () => Promise<string | null>;
   getPathForFile: (file: File) => string;
   validateDroppedPath: (droppedPath: string) => Promise<{ valid: boolean; isDirectory: boolean }>;
-  openInExplorer: (filePath: string) => Promise<void>;
+  /** Resolves false when the path was refused or could not be shown. */
+  openInExplorer: (filePath: string) => Promise<boolean>;
   scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<ScanDirectoryResult>;
   resetLoadedDirectories: () => Promise<boolean>;
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;
@@ -712,7 +713,8 @@ export interface ElectronAPI {
   openAppMenu: (id: string, x: number, y: number) => Promise<boolean>;
   getCommands: () => Promise<AppCommand[]>;
   runCommand: (id: string) => Promise<boolean>;
-  openVideo: (filePath: string) => Promise<void>;
+  /** Resolves false when the path was refused or the system could not open it. */
+  openVideo: (filePath: string) => Promise<boolean>;
   openExternalUrl: (url: string) => Promise<boolean>;
   openLegalFile: (name: LegalFileName) => Promise<boolean>;
   getConfig: () => Promise<AppSettings | null>;

@@ -10,6 +10,7 @@ import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenu
 import { PRODUCT } from '../product';
 import videoCullIcon from '../assets/videocull-icon.png';
 import './EmptyState.css';
+import { revealInExplorer } from '../appCommands';
 
 interface EmptyStateProps {
   onNotify: (toast: ToastInput | string, kind?: ToastKind) => void;
@@ -149,7 +150,7 @@ export default function EmptyState({ onNotify, onOpenDocumentation, onToggleThem
         void handleAddRecentToSession(contextMenu.dir);
       },
       onReveal: () => {
-        void window.electronAPI?.openInExplorer(contextMenu.dir);
+        revealInExplorer(contextMenu.dir);
       },
       onCopyPath: () => {
         void handleCopyRecentPath(contextMenu.dir);

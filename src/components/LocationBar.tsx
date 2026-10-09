@@ -21,6 +21,7 @@ import {
   type PathSegment,
 } from './locationMenus';
 import './LocationBar.css';
+import { openVideoExternally, revealInExplorer } from '../appCommands';
 
 /** What only the app shell can do; LocationBar does the rest itself. */
 export interface LocationBarAppActions {
@@ -211,14 +212,14 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
         if (filter) navigate({ ...filter, includeSubfolders });
       },
       regenerateThumbnails: (videos) => appRef.current.regenerateThumbnails(videos),
-      reveal: (path) => void window.electronAPI?.openInExplorer(path),
+      reveal: (path) => revealInExplorer(path),
       copyPath: (path) => {
         copyTextToClipboard(path).then(
           () => store().pushToast({ title: 'Path copied', detail: buildCopyPathSuccessDetail(path), kind: 'success' }),
           () => store().pushToast({ title: 'Copy failed', detail: 'The path could not be copied to the clipboard.', kind: 'error' }),
         );
       },
-      playExternally: (path) => void window.electronAPI?.openVideo(path),
+      playExternally: (path) => openVideoExternally(path),
       openFolderSearch: () => appRef.current.openFolderSearch(),
       openRecent: (folder) => appRef.current.openRecent(folder),
       showFolderInGrid: (folder) => {
