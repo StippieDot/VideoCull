@@ -240,3 +240,20 @@ test('every plain action the menu sends is a MenuAction the window understands',
   assert.ok(sent.length > 20);
   for (const action of sent) assert.ok(declared.has(action), `MenuAction is missing "${action}"`);
 });
+
+test('the command palette lists items below a disabled submenu as disabled', () => {
+  const toItems = (template) => template.map((entry) => ({
+    type: entry.type ?? (entry.submenu ? 'submenu' : 'normal'),
+    visible: entry.visible !== false,
+    label: entry.label ?? '',
+    id: entry.id,
+    enabled: entry.enabled !== false,
+    checked: entry.checked ?? false,
+    submenu: Array.isArray(entry.submenu) ? { items: toItems(entry.submenu) } : null,
+  }));
+  const commands = listCommands(toItems(menu({ hasSession: false, processing: false })));
+  const byId = (id) => commands.find((command) => command.id === id);
+  assert.equal(byId('View > Sort By > Name').enabled, false);
+  assert.equal(byId('Actions > When Processing Finishes > Sleep').enabled, false);
+  assert.equal(byId('View > Toggle Dark / Light Theme').enabled, true);
+});

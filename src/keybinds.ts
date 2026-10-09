@@ -176,5 +176,12 @@ export function findConflict(
 
     return def.description;
   }
-  return null;
+
+  // Fixed shortcuts are taken by the menu or the window before a configurable binding can fire.
+  const pressed = formatKeybind(currentBind).replace('←', 'Left').replace('→', 'Right').toLowerCase();
+  const fixed = FIXED_SHORTCUTS.find((shortcut) => (
+    (shortcut.group === 'Global' || shortcut.group === currentDef.group)
+    && shortcut.keys.some((keys) => keys.toLowerCase() === pressed)
+  ));
+  return fixed?.description ?? null;
 }

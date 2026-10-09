@@ -390,21 +390,22 @@ function addCommandIds(items, parents) {
  */
 
 /**
- * Every runnable item of a built menu, for the command palette.
- * @param {Electron.MenuItem[]} items @param {string[]} [parents]
+ * Every runnable item of a built menu, for the command palette. Items below a disabled submenu are
+ * listed as disabled, because the menu would not let the user reach them.
+ * @param {Electron.MenuItem[]} items @param {string[]} [parents] @param {boolean} [ancestorsEnabled]
  * @returns {AppCommand[]}
  */
-function listCommands(items, parents = []) {
+function listCommands(items, parents = [], ancestorsEnabled = true) {
   return items.flatMap((item) => {
     if (item.type === 'separator' || !item.visible || !item.label || !item.id) return [];
     const path = [...parents, item.label.replace(/&&/g, '&')];
-    if (item.submenu) return listCommands(item.submenu.items, path);
+    if (item.submenu) return listCommands(item.submenu.items, path, ancestorsEnabled && item.enabled);
     if (item.id === COMMAND_PALETTE_ID) return [];
     return [{
       id: item.id,
       path,
       accelerator: typeof item.accelerator === 'string' ? item.accelerator : null,
-      enabled: item.enabled,
+      enabled: ancestorsEnabled && item.enabled,
       checked: item.type === 'checkbox' || item.type === 'radio' ? item.checked : null,
     }];
   });

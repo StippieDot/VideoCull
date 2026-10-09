@@ -2,9 +2,24 @@
 // free of the electron module so the guards can be tested with plain fakes.
 
 /**
- * @typedef {{ enabled: boolean, visible: boolean, submenu?: { popup: (options: object) => void }, click: (...args: unknown[]) => void }} MenuItemLike
- * @typedef {{ getMenuItemById: (id: string) => MenuItemLike | null }} MenuLike
+ * @typedef {{ id?: string, enabled: boolean, visible: boolean, submenu?: { items: MenuItemLike[], popup: (options: object) => void }, click: (...args: unknown[]) => void }} MenuItemLike
+ * @typedef {{ items: MenuItemLike[], getMenuItemById: (id: string) => MenuItemLike | null }} MenuLike
  */
+
+/**
+ * The first item with this id, and whether it can be used: its own state and that of every
+ * submenu above it. Electron leaves the children of a disabled submenu enabled themselves.
+ * @param {MenuItemLike[]} items @param {string} id @param {boolean} [ancestorsUsable]
+ * @returns {{ item: MenuItemLike, usable: boolean } | null}
+ */
+function findMenuItem(items, id, ancestorsUsable = true) {
+  for (const item of items) {
+    if (item.id === id) return { item, usable: ancestorsUsable && item.enabled && item.visible };
+    const found = item.submenu && findMenuItem(item.submenu.items, id, ancestorsUsable && item.enabled && item.visible);
+    if (found) return found;
+  }
+  return null;
+}
 
 function liveWindow(/** @type {any} */ window) {
   return window && !window.isDestroyed() ? window : null;
@@ -18,9 +33,9 @@ function liveWindow(/** @type {any} */ window) {
  */
 function runMenuCommand(menu, id, window) {
   const target = liveWindow(window);
-  const item = typeof id === 'string' ? menu?.getMenuItemById(id) : null;
-  if (!item || !target || !item.enabled || !item.visible || item.submenu) return false;
-  item.click(undefined, target, target.webContents);
+  const found = typeof id === 'string' && menu ? findMenuItem(menu.items, id) : null;
+  if (!found || !target || !found.usable || found.item.submenu) return false;
+  found.item.click(undefined, target, target.webContents);
   return true;
 }
 

@@ -12,7 +12,10 @@ function fakeWindow({ destroyed = false } = {}) {
 }
 
 function fakeMenu(items) {
-  return { getMenuItemById: (id) => items[id] ?? null };
+  return {
+    items: Object.entries(items).map(([id, item]) => Object.assign(item, { id })),
+    getMenuItemById: (id) => items[id] ?? null,
+  };
 }
 
 function fakeItem(overrides = {}) {
@@ -32,7 +35,7 @@ test('run-command refuses what the menu would not let the user click', () => {
   const cases = {
     disabled: fakeItem({ enabled: false }),
     hidden: fakeItem({ visible: false }),
-    submenu: fakeItem({ submenu: { popup() {} } }),
+    submenu: fakeItem({ submenu: { items: [], popup() {} } }),
   };
   for (const [name, item] of Object.entries(cases)) {
     assert.equal(runMenuCommand(fakeMenu({ id: item }), 'id', window), false, name);
@@ -90,4 +93,17 @@ test('taskbar progress ignores a missing fraction, shows the moving bar and clea
   applyTaskbarProgress(window, null);
   applyTaskbarProgress(fakeWindow({ destroyed: true }), { mode: 'none' });
   assert.deepEqual(window.calls, [[2, { mode: 'indeterminate' }], [-1]]);
+});
+
+test('run-command refuses an enabled item below a disabled submenu', () => {
+  const window = fakeWindow();
+  const child = fakeItem({ id: 'Actions > When Processing Finishes > Sleep' });
+  const parent = fakeItem({ id: 'Actions > When Processing Finishes', enabled: false, submenu: { items: [child], popup() {} } });
+  const menu = { items: [{ id: 'Actions', enabled: true, visible: true, submenu: { items: [parent], popup() {} } }] };
+  assert.equal(runMenuCommand(menu, child.id, window), false);
+  assert.equal(child.clicks.length, 0);
+
+  parent.enabled = true;
+  assert.equal(runMenuCommand(menu, child.id, window), true);
+  assert.equal(child.clicks.length, 1);
 });
