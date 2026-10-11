@@ -522,20 +522,56 @@
 }
 
 /* Filter Pills */
+/* The section's flex gap spaces the chip from the header and the content, so the row adds none. */
 .filter-folder-chip-row {
   display: flex;
-  padding: 0 0 8px;
 }
 
-.filter-folder-chip {
+.filter-folder-chip-row + .sidebar-section-content {
+  padding-top: 0;
+}
+
+/* A quiet, full-width row in the same shape as the filter buttons below it, not a glowing pill. */
+.pill.filter-folder-chip {
+  width: 100%;
   max-width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  box-shadow: none;
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: left;
+}
+
+.pill.filter-folder-chip:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-hover);
+  transform: none;
+}
+
+.filter-folder-chip > svg:first-child {
+  color: var(--accent);
 }
 
 .filter-folder-chip .pill-text {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.filter-folder-chip .pill-clear-icon {
+  flex: 0 0 auto;
+  opacity: 0.6;
+}
+
+.filter-folder-chip:hover .pill-clear-icon {
+  opacity: 1;
 }
 
 .filter-pills {
