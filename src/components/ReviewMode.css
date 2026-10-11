@@ -821,10 +821,7 @@
   --media-control-radius: var(--radius-sm);
   /* The skin fades the controls in 0.1s, which reads as a snap. */
   --media-duration-controls: 0.2s;
-}
-
-/* With persistent controls the backdrop is always shown, so confine it to the strip behind the
-   control bar instead of dimming the whole video. */
-.review-mode.review-playing.review-controls-persistent .review-video-skin .video-controls-backdrop {
-  background-image: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent calc(var(--media-spacing) * 28));
+  /* The skin dims the whole video behind the controls, and always does with persistent controls.
+     There is no title overlay in Review, so only the strip behind the control bar needs a scrim. */
+  --media-controls-gradient: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent calc(var(--media-spacing) * 28));
 }
