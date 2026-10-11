@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest';
 import {
   calcThumbGrid,
+  describeThumbnailWork,
   detectVideoCompatibility,
   formatCodecLabel,
   formatDeleteConfirmation,
@@ -103,4 +104,12 @@ test('a folder filter shows a folder only when its own videos pass the filter', 
   expect(isFolderShownByFilter('D:\\Media\\Other', filter)).toBe(false);
   expect(isFolderShownByFilter('D:\\Media\\Trips\\Day1', { ...filter, includeSubfolders: false })).toBe(false);
   expect(isFolderShownByFilter('D:\\Media', null)).toBe(true);
+});
+
+test('describeThumbnailWork only calls it a rebuild when videos already had thumbnails', () => {
+  expect(describeThumbnailWork(3, 0, 12)).toBe('Thumbnails were created for 3 videos.');
+  expect(describeThumbnailWork(1, 0, 12)).toBe('Thumbnails were created for 1 video.');
+  expect(describeThumbnailWork(0, 2, 12)).toBe('2 videos were rebuilt to 12 frames.');
+  expect(describeThumbnailWork(0, 1, 5)).toBe('1 video was rebuilt to 5 frames.');
+  expect(describeThumbnailWork(4, 2, 12)).toBe('2 videos were rebuilt to 12 frames and 4 videos got new thumbnails.');
 });

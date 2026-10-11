@@ -254,3 +254,12 @@ export function isFolderShownByFilter(folder: string, filter: FolderFilter | nul
     ? isFolderInside(folder, filter.path)
     : normalizeFolder(folder) === normalizeFolder(filter.path);
 }
+
+const videoCountLabel = (count: number) => `${count} ${count === 1 ? 'video' : 'videos'}`;
+
+/** Says what actually happened: first-time thumbnails, rebuilt ones, or both. */
+export function describeThumbnailWork(createdCount: number, rebuiltCount: number, thumbsPerVideo: number): string {
+  if (rebuiltCount === 0) return `Thumbnails were created for ${videoCountLabel(createdCount)}.`;
+  const rebuilt = `${videoCountLabel(rebuiltCount)} ${rebuiltCount === 1 ? 'was' : 'were'} rebuilt to ${thumbsPerVideo} frames`;
+  return createdCount === 0 ? `${rebuilt}.` : `${rebuilt} and ${videoCountLabel(createdCount)} got new thumbnails.`;
+}

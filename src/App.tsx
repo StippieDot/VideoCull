@@ -19,7 +19,7 @@ import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, MenuAction, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
-import { detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside } from './utils';
+import { describeThumbnailWork, detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside } from './utils';
 import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
@@ -590,6 +590,9 @@ export default function App() {
       ));
       if (thumbnailTasks.length > 0) {
         const thumbnailTaskIds = new Set(thumbnailTasks.map((v) => v.id));
+        // Videos that already had some frames are rebuilt; the rest are getting their first set.
+        const rebuiltCount = thumbnailTasks.filter((v) => (v.thumbnails?.length ?? 0) > 0).length;
+        const createdCount = thumbnailTasks.length - rebuiltCount;
         let completedTasks = 0;
         genProgressBaseRef.current = 0;
         genProgressTotalRef.current = thumbnailTasks.length;
@@ -620,8 +623,8 @@ export default function App() {
               dedupeKey: `thumbs-incomplete:${dirPaths.join('|')}`,
             }
             : {
-              title: 'Thumbnails updated',
-              detail: `${thumbnailTasks.length} ${thumbnailTasks.length === 1 ? 'video was' : 'videos were'} rebuilt to ${thumbsPerVideo} frames.`,
+              title: createdCount > 0 && rebuiltCount === 0 ? 'Thumbnails created' : 'Thumbnails updated',
+              detail: describeThumbnailWork(createdCount, rebuiltCount, thumbsPerVideo),
               kind: 'success',
               dedupeKey: `thumbs-updated:${dirPaths.join('|')}`,
             });
