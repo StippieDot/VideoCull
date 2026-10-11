@@ -522,13 +522,15 @@
 }
 
 /* Filter Pills */
-/* The section's flex gap spaces the chip from the header and the content, so the row adds none. */
+/* Collapsible sections have no flex gap, so the row spaces itself from the header. The content below
+   keeps its own top padding, which makes both gaps equal. */
 .filter-folder-chip-row {
   display: flex;
+  padding-top: 12px;
 }
 
 .filter-folder-chip-row + .sidebar-section-content {
-  padding-top: 0;
+  padding-top: 12px;
 }
 
 /* A quiet, full-width row in the same shape as the filter buttons below it, not a glowing pill. */
