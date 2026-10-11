@@ -1,9 +1,10 @@
 name: Test
 
 on:
+  # Branches are covered by their pull request; running on both started every check twice.
   push:
     branches:
-      - '**'
+      - main
   pull_request:
 
 jobs:
