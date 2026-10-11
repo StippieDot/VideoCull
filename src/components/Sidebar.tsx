@@ -414,6 +414,7 @@ function SidebarFiltersSection({
   const duplicateCount = sidebarAggregates.duplicateCount;
   const incompatibleCount = sidebarAggregates.incompatibleCount;
   const hasIncompatibleVideos = incompatibleCount > 0;
+  const hasQuickFilters = features.favorites || features.ratings || (features.compatibilityCheck && hasIncompatibleVideos);
   const hasExtraFilter = favoritesFilter || incompatibleFilter || duplicateFilter;
   const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilter) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
   const filteredSummary = `${filteredVideoCount} / ${videoCount}`;
@@ -453,7 +454,7 @@ function SidebarFiltersSection({
             title="Clear all filters"
             aria-label="Clear all filters"
           >
-            <X size={13} />
+            Clear all
           </button>
         )}
         <button
@@ -487,40 +488,43 @@ function SidebarFiltersSection({
 
       {showFilters && (
         <div className="sidebar-section-content">
-          {(features.favorites || (features.compatibilityCheck && hasIncompatibleVideos)) && (
-            <div className="filter-pills filter-pills-extra">
-              {features.favorites && (
-                <button
-                  className={`pill ${favoritesFilter ? 'pill-active' : ''}`}
-                  onClick={() => setFavoritesFilter(!favoritesFilter)}
-                  title={favoritesFilter ? 'Clear favorites filter' : 'Show only favorite videos'}
-                >
-                  <Heart size={12} /> Favorites
-                  {favoritesFilter && <X size={11} className="pill-clear-icon" />}
-                </button>
-              )}
-              {features.compatibilityCheck && hasIncompatibleVideos && (
-                <button
-                  className={`pill pill-delete ${incompatibleFilter ? 'pill-active' : ''}`}
-                  onClick={() => setIncompatibleFilter(!incompatibleFilter)}
-                  title={incompatibleFilter ? 'Clear incompatible filter' : 'Show only videos that need the external player'}
-                >
-                  <AlertTriangle size={12} />
-                  <span className="pill-text">Incompatible</span>
-                  {incompatibleFilter ? <X size={11} className="pill-clear-icon" /> : <span className="pill-count">{incompatibleCount}</span>}
-                </button>
-              )}
-              {duplicateCount > 0 && (
-                <button
-                  className={`pill ${duplicateFilter ? 'pill-active' : ''}`}
-                  onClick={() => setDuplicateFilter(!duplicateFilter)}
-                  title={duplicateFilter ? 'Clear duplicates filter' : 'Show only duplicate videos'}
-                >
-                  <CopyCheck size={12} />
-                  <span className="pill-text">Duplicates</span>
-                  {duplicateFilter ? <X size={11} className="pill-clear-icon" /> : <span className="pill-count">{duplicateCount}</span>}
-                </button>
-              )}
+          {hasQuickFilters && (
+            <div className="filter-group">
+              <span className="filter-group-title">Show only</span>
+            {(features.favorites || (features.compatibilityCheck && hasIncompatibleVideos)) && (
+              <div className="filter-pills filter-pills-extra">
+                {features.favorites && (
+                  <button
+                    className={`pill ${favoritesFilter ? 'pill-active' : ''}`}
+                    onClick={() => setFavoritesFilter(!favoritesFilter)}
+                    title={favoritesFilter ? 'Clear favorites filter' : 'Show only favorite videos'}
+                  >
+                    <Heart size={12} /> Favorites
+                    {favoritesFilter && <X size={11} className="pill-clear-icon" />}
+                  </button>
+                )}
+                {features.compatibilityCheck && hasIncompatibleVideos && (
+                  <button
+                    className={`pill pill-delete ${incompatibleFilter ? 'pill-active' : ''}`}
+                    onClick={() => setIncompatibleFilter(!incompatibleFilter)}
+                    title={incompatibleFilter ? 'Clear incompatible filter' : 'Show only videos that need the external player'}
+                  >
+                    <AlertTriangle size={12} />
+                    <span className="pill-text">Incompatible</span>
+                    {incompatibleFilter ? <X size={11} className="pill-clear-icon" /> : <span className="pill-count">{incompatibleCount}</span>}
+                  </button>
+                )}
+                {duplicateCount > 0 && (
+                  <button
+                    className={`pill ${duplicateFilter ? 'pill-active' : ''}`}
+                    onClick={() => setDuplicateFilter(!duplicateFilter)}
+                    title={duplicateFilter ? 'Clear duplicates filter' : 'Show only duplicate videos'}
+                  >
+                    <CopyCheck size={12} />
+                    <span className="pill-text">Duplicates</span>
+                    {duplicateFilter ? <X size={11} className="pill-clear-icon" /> : <span className="pill-count">{duplicateCount}</span>}
+                  </button>
+                )}
             </div>
           )}
 
@@ -558,98 +562,104 @@ function SidebarFiltersSection({
             </div>
           )}
 
-          <div className="filter-field">
-            <div className="filter-field-heading">
-              <span className="filter-input-label">File size</span>
-              {hasSizeFilter && (
-                <button
-                  type="button"
-                  className="filter-reset-btn"
-                  onClick={() => setSizeFilterRange(0, null)}
-                  title="Reset file size filter"
-                  aria-label="Reset file size filter"
-                >
-                  <X size={12} />
-                </button>
-              )}
             </div>
-            <div className="range-filter">
-              <div className="range-values">
-                <span>{formatSliderSize(effectiveMinSize)}</span>
-                <span>{formatSliderSize(effectiveMaxSize)}</span>
-              </div>
-              <div className="range-slider" style={sizeRangeStyle}>
-                <input
-                  className="range-input"
-                  type="range"
-                  min={sizeRange.min}
-                  max={sizeRange.max}
-                  step={sizeRange.step}
-                  value={effectiveMinSize}
-                  disabled={!hasSizeRange}
-                  onChange={(e) => updateSizeRange(Number(e.target.value), effectiveMaxSize)}
-                  aria-label="Minimum file size"
-                />
-                <input
-                  className="range-input"
-                  type="range"
-                  min={sizeRange.min}
-                  max={sizeRange.max}
-                  step={sizeRange.step}
-                  value={effectiveMaxSize}
-                  disabled={!hasSizeRange}
-                  onChange={(e) => updateSizeRange(effectiveMinSize, Number(e.target.value))}
-                  aria-label="Maximum file size"
-                />
-              </div>
-            </div>
-          </div>
+          )}
 
-          <div className="filter-field">
-            <div className="filter-field-heading">
-              <span className="filter-input-label">Duration</span>
-              {hasDurationFilter && (
-                <button
-                  type="button"
-                  className="filter-reset-btn"
-                  onClick={() => setDurationFilterRange(0, null)}
-                  title="Reset duration filter"
-                  aria-label="Reset duration filter"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-            <div className="range-filter">
-              <div className="range-values">
-                <span>{formatDurationInput(effectiveMinDuration)}</span>
-                <span>{formatDurationInput(effectiveMaxDuration)}</span>
+          <div className="filter-group">
+            <span className="filter-group-title">Refine</span>
+            <div className="filter-field">
+              <div className="filter-field-heading">
+                <span className="filter-input-label">File size</span>
+                {hasSizeFilter && (
+                  <button
+                    type="button"
+                    className="filter-reset-btn"
+                    onClick={() => setSizeFilterRange(0, null)}
+                    title="Reset file size filter"
+                    aria-label="Reset file size filter"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </div>
-              <div className="range-slider" style={durationRangeStyle}>
-                <input
-                  className="range-input"
-                  type="range"
-                  min={durationRange.min}
-                  max={durationRange.max}
-                  step={durationRange.step}
-                  value={effectiveMinDuration}
-                  disabled={!hasDurationRange}
-                  onChange={(e) => updateDurationRange(Number(e.target.value), effectiveMaxDuration)}
-                  aria-label="Minimum duration"
-                />
-                <input
-                  className="range-input"
-                  type="range"
-                  min={durationRange.min}
-                  max={durationRange.max}
-                  step={durationRange.step}
-                  value={effectiveMaxDuration}
-                  disabled={!hasDurationRange}
-                  onChange={(e) => updateDurationRange(effectiveMinDuration, Number(e.target.value))}
-                  aria-label="Maximum duration"
-                />
+              <div className="range-filter">
+                <div className="range-values">
+                  <span>{formatSliderSize(effectiveMinSize)}</span>
+                  <span>{formatSliderSize(effectiveMaxSize)}</span>
+                </div>
+                <div className="range-slider" style={sizeRangeStyle}>
+                  <input
+                    className="range-input"
+                    type="range"
+                    min={sizeRange.min}
+                    max={sizeRange.max}
+                    step={sizeRange.step}
+                    value={effectiveMinSize}
+                    disabled={!hasSizeRange}
+                    onChange={(e) => updateSizeRange(Number(e.target.value), effectiveMaxSize)}
+                    aria-label="Minimum file size"
+                  />
+                  <input
+                    className="range-input"
+                    type="range"
+                    min={sizeRange.min}
+                    max={sizeRange.max}
+                    step={sizeRange.step}
+                    value={effectiveMaxSize}
+                    disabled={!hasSizeRange}
+                    onChange={(e) => updateSizeRange(effectiveMinSize, Number(e.target.value))}
+                    aria-label="Maximum file size"
+                  />
+                </div>
               </div>
             </div>
+
+            <div className="filter-field">
+              <div className="filter-field-heading">
+                <span className="filter-input-label">Duration</span>
+                {hasDurationFilter && (
+                  <button
+                    type="button"
+                    className="filter-reset-btn"
+                    onClick={() => setDurationFilterRange(0, null)}
+                    title="Reset duration filter"
+                    aria-label="Reset duration filter"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+              <div className="range-filter">
+                <div className="range-values">
+                  <span>{formatDurationInput(effectiveMinDuration)}</span>
+                  <span>{formatDurationInput(effectiveMaxDuration)}</span>
+                </div>
+                <div className="range-slider" style={durationRangeStyle}>
+                  <input
+                    className="range-input"
+                    type="range"
+                    min={durationRange.min}
+                    max={durationRange.max}
+                    step={durationRange.step}
+                    value={effectiveMinDuration}
+                    disabled={!hasDurationRange}
+                    onChange={(e) => updateDurationRange(Number(e.target.value), effectiveMaxDuration)}
+                    aria-label="Minimum duration"
+                  />
+                  <input
+                    className="range-input"
+                    type="range"
+                    min={durationRange.min}
+                    max={durationRange.max}
+                    step={durationRange.step}
+                    value={effectiveMaxDuration}
+                    disabled={!hasDurationRange}
+                    onChange={(e) => updateDurationRange(effectiveMinDuration, Number(e.target.value))}
+                    aria-label="Maximum duration"
+                  />
+                </div>
+              </div>
+          </div>
           </div>
         </div>
       )}

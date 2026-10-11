@@ -282,16 +282,18 @@
 }
 
 .filter-clear-all-btn {
-  width: 24px;
   height: 24px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  padding: 0 9px;
   border-radius: 6px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .filter-clear-all-btn:hover {
@@ -545,6 +547,8 @@
 .stat-skipped .stat-value { color: var(--color-skip); }
 .stat-delete .stat-value { color: var(--color-delete); }
 .stat-pending .stat-value { color: var(--text-secondary); }
+/* Accent, so the total reads as different from the grey Pending count. */
+.stat-total .stat-value { color: var(--accent-hover); }
 
 /* Filter Pills */
 /* Collapsible sections have no flex gap, so the row spaces itself from the header. The content below
@@ -1367,4 +1371,25 @@
   background: var(--bg-surface-hover);
   border-color: var(--border-hover);
   color: var(--text-primary);
+}
+
+/* Groups inside the expanded Filters section. */
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filter-group + .filter-group {
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.filter-group-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
 }
