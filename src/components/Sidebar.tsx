@@ -3,6 +3,7 @@ import type { ColorTheme, DuplicateSortField, StatusFilter, ToastInput, ToastKin
 import type { SortField } from '../types';
 import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
 import { beginDevInteraction } from '../perf-dev';
+import { usePersistedFlag } from '../hooks/usePersistedFlag';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { revealInExplorer, runAppCommand } from '../appCommands';
@@ -712,9 +713,9 @@ export default function Sidebar({
   const [showRecents, setShowRecents] = useState(false);
   const switcherRef = useRef<HTMLButtonElement>(null);
   const [switcherAt, setSwitcherAt] = useState<{ x: number; y: number } | null>(null);
-  const [showFilters, setShowFilters] = useState(true);
-  const [showSort, setShowSort] = useState(true);
-  const [showView, setShowView] = useState(true);
+  const [showFilters, setShowFilters] = usePersistedFlag('sidebar.filters-open', true);
+  const [showSort, setShowSort] = usePersistedFlag('sidebar.sort-open', true);
+  const [showView, setShowView] = usePersistedFlag('sidebar.view-open', true);
   const [recentContextMenu, setRecentContextMenu] = useState<{ x: number; y: number; dir: string } | null>(null);
   const [unavailableRecents, setUnavailableRecents] = useState<Set<string>>(() => new Set());
 
