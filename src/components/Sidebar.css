@@ -1226,14 +1226,19 @@
 }
 
 /* Settings Footer */
+/* Pinned to the bottom of the scrolling sidebar so Delete and Review stay in reach. The background
+   must be opaque, or the sections scrolling underneath show through. */
 .sidebar-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   margin-top: auto;
   padding: 14px 18px 16px;
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: linear-gradient(180deg, rgba(var(--bg-app-rgb), 0), var(--bg-sidebar) 18px);
+  background: var(--bg-sidebar);
 }
 
 .sidebar-footer-row {
