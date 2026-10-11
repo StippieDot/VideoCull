@@ -1134,12 +1134,6 @@ export default function Sidebar({
               </button>
             ))}
           </div>
-          {stats.deleteSize > 0 && (
-            <p className="delete-size-note">
-              <Trash2 size={13} />
-              {formatSize(stats.deleteSize)} to free up
-            </p>
-          )}
         </section>
       )}
 
@@ -1290,8 +1284,8 @@ export default function Sidebar({
           <div className="sidebar-delete-card">
             <Trash2 size={16} aria-hidden="true" />
             <span className="sidebar-delete-summary">
-              <span className="sidebar-delete-count">{stats.delete.toLocaleString()} marked for deletion</span>
-              <span className="sidebar-delete-size">{formatSize(stats.deleteSize)}</span>
+              <span className="sidebar-delete-count">{stats.delete.toLocaleString()} marked</span>
+              <span className="sidebar-delete-size">{formatSize(stats.deleteSize)} to free up</span>
             </span>
             <button
               type="button"

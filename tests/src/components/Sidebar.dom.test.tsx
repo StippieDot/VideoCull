@@ -266,7 +266,7 @@ describe('Sidebar recent folder behavior', () => {
     expect(keepButton.getAttribute('aria-pressed')).toBe('true');
   });
 
-  test('shows how much of the library has been reviewed and the space to free up', () => {
+  test('shows how much of the library has been reviewed', () => {
     useStore.setState({
       stats: { total: 8, pending: 6, keep: 1, skipped: 0, delete: 1, totalSize: 4096, deleteSize: 1024 ** 3 },
     });
@@ -274,7 +274,6 @@ describe('Sidebar recent folder behavior', () => {
     renderSidebar();
 
     expect(screen.getByText('25% reviewed')).toBeTruthy();
-    expect(screen.getByText(/1\.0 GB to free up/)).toBeTruthy();
   });
 
   test('shows the folder filter as a chip that clears it', async () => {

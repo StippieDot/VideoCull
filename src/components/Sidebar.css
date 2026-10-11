@@ -546,14 +546,6 @@
 .stat-delete .stat-value { color: var(--color-delete); }
 .stat-pending .stat-value { color: var(--text-secondary); }
 
-.delete-size-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--color-delete);
-}
-
 /* Filter Pills */
 /* Collapsible sections have no flex gap, so the row spaces itself from the header. The content below
    keeps its own top padding, which makes both gaps equal. */
