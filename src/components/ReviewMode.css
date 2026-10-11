@@ -595,7 +595,7 @@
   height: 4px;
 }
 .review-bookmark-bar::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 

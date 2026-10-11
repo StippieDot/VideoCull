@@ -43,6 +43,9 @@
   --glass-glow: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 4px rgba(124, 109, 240, 0.15);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
   --blur-md: blur(24px);
+  /* Brighter than --border, which almost vanishes against the dark background. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.34);
   --blur-lg: blur(48px);
   --blur-sm: blur(12px);
   
@@ -117,6 +120,8 @@
   --border-active: rgba(103, 86, 209, 0.68);
   --border-strong: rgba(30, 27, 52, 0.28);
 
+  --scrollbar-thumb: var(--border);
+  --scrollbar-thumb-hover: var(--border-hover);
   --glass-glow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -1px 3px rgba(103, 86, 209, 0.08);
   --glass-shadow: 0 8px 28px rgba(35, 29, 66, 0.12);
 
@@ -172,11 +177,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* ── Selection ──────────────────────────────────────────────────────── */

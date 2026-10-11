@@ -13,7 +13,8 @@
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
+  /* Stops short of the 8px scrollbar so its track and thumb stay visible and easy to grab. */
+  right: 8px;
   height: 50px;
   display: flex;
   align-items: center;
