@@ -1164,49 +1164,53 @@ export default function Sidebar({
               {groupByFolder ? (
                 <div className="sort-nested-options">
                   <div className="sort-group">
-                    <span className="sort-label">Folder order</span>
-                    <div className="sort-row">
-                      <select
-                        className="sidebar-select"
-                        value={folderSortBy}
-                        onChange={(e) => setFolderSortBy(e.target.value as 'name' | 'size')}
-                      >
-                        <option value="name">Name</option>
-                        <option value="size">Size</option>
-                      </select>
+                    <div className="sort-group-heading">
+                      <span className="sort-label">Folders</span>
                       <button
-                        className="btn btn-icon"
+                        className="sort-order-btn"
                         onClick={() => setFolderSortOrder(folderSortOrder === 'asc' ? 'desc' : 'asc')}
-                        title={folderSortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                        title={`Folder order: ${folderSortOrder === 'asc' ? 'ascending' : 'descending'}`}
+                        aria-label={`Folder order: ${folderSortOrder === 'asc' ? 'ascending' : 'descending'}`}
                       >
-                        <ArrowUpDown size={14} style={{ transform: folderSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+                        <ArrowUpDown size={12} style={{ transform: folderSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
                       </button>
                     </div>
+                    <select
+                      className="sidebar-select"
+                      aria-label="Folder order"
+                      value={folderSortBy}
+                      onChange={(e) => setFolderSortBy(e.target.value as 'name' | 'size')}
+                    >
+                      <option value="name">Name</option>
+                      <option value="size">Size</option>
+                    </select>
                   </div>
                   <div className="sort-group">
-                    <span className="sort-label">Within folder</span>
-                    <div className="sort-row">
-                      <select
-                        className="sidebar-select"
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as SortField)}
-                      >
-                        <option value="name">Name</option>
-                        <option value="size">Size</option>
-                        <option value="duration">Duration</option>
-                        <option value="date">Date</option>
-                        {features.ratings && <option value="rating">Rating</option>}
-                        {features.codecBadges && <option value="resolution">Resolution</option>}
-                        {features.codecBadges && <option value="fps">FPS</option>}
-                      </select>
+                    <div className="sort-group-heading">
+                      <span className="sort-label">Videos</span>
                       <button
-                        className="btn btn-icon"
+                        className="sort-order-btn"
                         onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                        title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                        title={`Video order: ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
+                        aria-label={`Video order: ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
                       >
-                        <ArrowUpDown size={14} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+                        <ArrowUpDown size={12} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
                       </button>
                     </div>
+                    <select
+                      className="sidebar-select"
+                      aria-label="Video order"
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as SortField)}
+                    >
+                      <option value="name">Name</option>
+                      <option value="size">Size</option>
+                      <option value="duration">Duration</option>
+                      <option value="date">Date</option>
+                      {features.ratings && <option value="rating">Rating</option>}
+                      {features.codecBadges && <option value="resolution">Resolution</option>}
+                      {features.codecBadges && <option value="fps">FPS</option>}
+                    </select>
                   </div>
                 </div>
               ) : (
