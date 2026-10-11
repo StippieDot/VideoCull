@@ -1238,7 +1238,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--bg-sidebar);
+  /* --bg-sidebar is translucent, so it is laid over the solid app color. */
+  background: linear-gradient(var(--bg-sidebar), var(--bg-sidebar)), var(--bg-app);
 }
 
 .sidebar-footer-row {
