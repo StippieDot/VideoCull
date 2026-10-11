@@ -781,45 +781,59 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
+/* A bound the user has moved reads brighter than one left open. */
+.range-value-set {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* The native thumb's centre travels from half a thumb in to half a thumb short of the far end, so
+   the track and the fill are inset the same way and meet the thumbs exactly. */
 .range-slider {
+  --range-thumb: 16px;
+  --range-travel: calc(100% - var(--range-thumb));
   position: relative;
-  height: 22px;
-  --range-thumb-inset: 26px;
+  height: 24px;
+}
+
+.range-slider::before,
+.range-slider::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  height: 4px;
+  border-radius: 999px;
 }
 
 .range-slider::before {
-  content: "";
-  position: absolute;
-  left: var(--range-thumb-inset);
-  right: var(--range-thumb-inset);
-  top: 9px;
-  height: 4px;
-  border-radius: 999px;
+  left: calc(var(--range-thumb) / 2);
+  right: calc(var(--range-thumb) / 2);
   background: var(--bg-surface-hover);
 }
 
 .range-slider::after {
-  content: "";
-  position: absolute;
-  left: var(--range-fill-left, var(--range-thumb-inset));
-  right: var(--range-fill-right, var(--range-thumb-inset));
-  top: 9px;
-  height: 4px;
-  border-radius: 999px;
+  left: calc(var(--range-thumb) / 2 + var(--range-travel) * var(--range-start, 0));
+  right: calc(var(--range-thumb) / 2 + var(--range-travel) * (1 - var(--range-end, 1)));
   background: var(--accent);
   opacity: var(--range-fill-visible, 1);
 }
 
-.range-input {
+/* The global input rule gives every input a border and 10px of padding. On a slider that insets the
+   thumb's travel, so the track and fill no longer line up with it. */
+.range-input,
+.range-input:focus {
   position: absolute;
   inset: 0;
   width: 100%;
   margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   appearance: none;
   -webkit-appearance: none;
   background: transparent;
@@ -828,24 +842,38 @@
 }
 
 .range-input::-webkit-slider-thumb {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  border: 2px solid var(--bg-sidebar);
-  background: var(--accent);
-  cursor: pointer;
+  border: 3px solid var(--accent);
+  background: var(--bg-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: grab;
   pointer-events: auto;
   -webkit-appearance: none;
+  transition: transform 120ms ease-out, box-shadow 120ms ease-out;
 }
 
 .range-input::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
   border-radius: 50%;
-  border: 2px solid var(--bg-sidebar);
-  background: var(--accent);
-  cursor: pointer;
+  border: 3px solid var(--accent);
+  background: var(--bg-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: grab;
   pointer-events: auto;
+}
+
+.range-input:hover::-webkit-slider-thumb,
+.range-input:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 4px var(--accent-dim);
+}
+
+.range-input:active::-webkit-slider-thumb {
+  cursor: grabbing;
 }
 
 .range-input:disabled::-webkit-slider-thumb {

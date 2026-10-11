@@ -4,6 +4,8 @@ import type { SortField } from '../types';
 import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
 import { beginDevInteraction } from '../perf-dev';
 import { usePersistedFlag } from '../hooks/usePersistedFlag';
+import { snapBytes, snapSeconds } from './rangeScale';
+import RangeSlider from './RangeSlider';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { revealInExplorer, runAppCommand } from '../appCommands';
@@ -50,8 +52,10 @@ function sameStrings(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+/** How strongly the size and duration tracks favour small values; see rangeScale. */
+const SIZE_CURVE = 2.5;
+const DURATION_CURVE = 2;
 const BYTE_UNITS = [1, 1024, 1024 ** 2, 1024 ** 3, 1024 ** 4];
-const RANGE_THUMB_INSET = 26;
 
 function roundUpNice(value: number): number {
   if (value <= 0) return 0;
@@ -93,21 +97,11 @@ function formatSliderSize(bytes: number): string {
 function getRangeTrackStyle(min: number, max: number, selectedMin: number, selectedMax: number): CSSProperties {
   const span = max - min;
   if (span <= 0) {
-    return { '--range-fill-left': '0%', '--range-fill-right': '100%', '--range-fill-visible': '0' } as CSSProperties;
+    return { '--range-start': 0, '--range-end': 1, '--range-fill-visible': 0 } as CSSProperties;
   }
-  const start = ((selectedMin - min) / span) * 100;
-  const end = ((selectedMax - min) / span) * 100;
-  const clampedStart = Math.max(0, Math.min(100, start));
-  const clampedEnd = Math.max(0, Math.min(100, end));
-  const hasVisibleFill = clampedEnd > clampedStart;
-  const leftInset = RANGE_THUMB_INSET - (clampedStart / 100) * RANGE_THUMB_INSET * 2;
-  const rightPercent = 100 - clampedEnd;
-  const rightInset = RANGE_THUMB_INSET - (rightPercent / 100) * RANGE_THUMB_INSET * 2;
-  return {
-    '--range-fill-left': `calc(${clampedStart}% + ${leftInset}px)`,
-    '--range-fill-right': `calc(${rightPercent}% + ${rightInset}px)`,
-    '--range-fill-visible': hasVisibleFill ? '1' : '0',
-  } as CSSProperties;
+  const start = Math.max(0, Math.min(1, (selectedMin - min) / span));
+  const end = Math.max(0, Math.min(1, (selectedMax - min) / span));
+  return { '--range-start': start, '--range-end': end, '--range-fill-visible': end > start ? 1 : 0 } as CSSProperties;
 }
 
 function SidebarDuplicateSection({
@@ -385,13 +379,11 @@ function SidebarFiltersSection({
   const sizeRange = {
     min: 0,
     max: sizeRangeMax,
-    step: sizeRangeMax > 0 ? Math.max(1, Math.floor(sizeRangeMax / 120)) : 1,
   };
   const durationRangeMax = roundUpDurationSeconds(Math.ceil(sidebarAggregates.maxDurationSeconds));
   const durationRange = {
     min: 0,
     max: durationRangeMax,
-    step: durationRangeMax >= 60 * 60 ? 60 : durationRangeMax >= 10 * 60 ? 15 : 1,
   };
 
   const effectiveMinSize = sizeRange.max > sizeRange.min
@@ -417,8 +409,6 @@ function SidebarFiltersSection({
   const hasExtraFilter = favoritesFilter || incompatibleFilter || duplicateFilter;
   const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilter) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
   const filteredSummary = `${filteredVideoCount} / ${videoCount}`;
-  const sizeRangeStyle = getRangeTrackStyle(sizeRange.min, sizeRange.max, effectiveMinSize, effectiveMaxSize);
-  const durationRangeStyle = getRangeTrackStyle(durationRange.min, durationRange.max, effectiveMinDuration, effectiveMaxDuration);
 
   const updateSizeRange = (nextMin: number, nextMax: number) => {
     const safeMin = clamp(Math.min(nextMin, nextMax), sizeRange.min, sizeRange.max);
@@ -539,36 +529,19 @@ function SidebarFiltersSection({
                 </button>
               )}
             </div>
-            <div className="range-filter">
-              <div className="range-values">
-                <span>{formatSliderSize(effectiveMinSize)}</span>
-                <span>{formatSliderSize(effectiveMaxSize)}</span>
-              </div>
-              <div className="range-slider" style={sizeRangeStyle}>
-                <input
-                  className="range-input"
-                  type="range"
-                  min={sizeRange.min}
-                  max={sizeRange.max}
-                  step={sizeRange.step}
-                  value={effectiveMinSize}
-                  disabled={!hasSizeRange}
-                  onChange={(e) => updateSizeRange(Number(e.target.value), effectiveMaxSize)}
-                  aria-label="Minimum file size"
-                />
-                <input
-                  className="range-input"
-                  type="range"
-                  min={sizeRange.min}
-                  max={sizeRange.max}
-                  step={sizeRange.step}
-                  value={effectiveMaxSize}
-                  disabled={!hasSizeRange}
-                  onChange={(e) => updateSizeRange(effectiveMinSize, Number(e.target.value))}
-                  aria-label="Maximum file size"
-                />
-              </div>
-            </div>
+            <RangeSlider
+              min={sizeRange.min}
+              max={sizeRange.max}
+              low={effectiveMinSize}
+              high={effectiveMaxSize}
+              curve={SIZE_CURVE}
+              snap={snapBytes}
+              format={formatSliderSize}
+              onChange={updateSizeRange}
+              lowLabel="Minimum file size"
+              highLabel="Maximum file size"
+              disabled={!hasSizeRange}
+            />
           </div>
 
           <div className="filter-field">
@@ -586,36 +559,19 @@ function SidebarFiltersSection({
                 </button>
               )}
             </div>
-            <div className="range-filter">
-              <div className="range-values">
-                <span>{formatDurationInput(effectiveMinDuration)}</span>
-                <span>{formatDurationInput(effectiveMaxDuration)}</span>
-              </div>
-              <div className="range-slider" style={durationRangeStyle}>
-                <input
-                  className="range-input"
-                  type="range"
-                  min={durationRange.min}
-                  max={durationRange.max}
-                  step={durationRange.step}
-                  value={effectiveMinDuration}
-                  disabled={!hasDurationRange}
-                  onChange={(e) => updateDurationRange(Number(e.target.value), effectiveMaxDuration)}
-                  aria-label="Minimum duration"
-                />
-                <input
-                  className="range-input"
-                  type="range"
-                  min={durationRange.min}
-                  max={durationRange.max}
-                  step={durationRange.step}
-                  value={effectiveMaxDuration}
-                  disabled={!hasDurationRange}
-                  onChange={(e) => updateDurationRange(effectiveMinDuration, Number(e.target.value))}
-                  aria-label="Maximum duration"
-                />
-              </div>
-            </div>
+            <RangeSlider
+              min={durationRange.min}
+              max={durationRange.max}
+              low={effectiveMinDuration}
+              high={effectiveMaxDuration}
+              curve={DURATION_CURVE}
+              snap={snapSeconds}
+              format={formatDurationInput}
+              onChange={updateDurationRange}
+              lowLabel="Minimum duration"
+              highLabel="Maximum duration"
+              disabled={!hasDurationRange}
+            />
           </div>
 
           {features.ratings && (
