@@ -259,11 +259,22 @@ describe('Sidebar recent folder behavior', () => {
 
     renderSidebar();
 
-    const keepButton = screen.getByRole('button', { name: /2Keep/i });
+    const keepButton = screen.getByRole('button', { name: /Keep.*2/i });
     await userEvent.click(keepButton);
 
     expect(useStore.getState().statusFilter).toBe('keep');
     expect(keepButton.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('shows how much of the library has been reviewed and the space to free up', () => {
+    useStore.setState({
+      stats: { total: 8, pending: 6, keep: 1, skipped: 0, delete: 1, totalSize: 4096, deleteSize: 1024 ** 3 },
+    });
+
+    renderSidebar();
+
+    expect(screen.getByText('25% reviewed')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Delete.*1\.0 GB to free up.*1/i })).toBeTruthy();
   });
 
   test('shows the folder filter as a chip that clears it', async () => {

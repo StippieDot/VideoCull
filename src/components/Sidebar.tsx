@@ -955,6 +955,7 @@ export default function Sidebar({
     { key: 'skipped', label: 'Skipped', value: stats.skipped, className: 'stat-skipped' },
     { key: 'delete', label: 'Delete', value: stats.delete, className: 'stat-delete' },
   ];
+  const reviewedPercent = stats.total > 0 ? Math.round(((stats.total - stats.pending) / stats.total) * 100) : 0;
   const reviewLabel = filteredVideoCount === videoCount
     ? `Review ${filteredVideoCount} ${filteredVideoCount === 1 ? 'video' : 'videos'}`
     : `Review ${filteredVideoCount} filtered`;
@@ -1109,28 +1110,34 @@ export default function Sidebar({
 
       {stats.total > 0 && !duplicateGroupsMode && (
         <section className="sidebar-section sidebar-library-section">
-          <h3 className="sidebar-section-title">Status</h3>
-          <div className="stat-grid status-filter-grid">
+          <div className="status-heading">
+            <h3 className="sidebar-section-title">Status</h3>
+            <span className="status-reviewed">{reviewedPercent}% reviewed</span>
+          </div>
+          <div className="status-bar" aria-hidden="true">
+            {statusStatItems.filter((item) => item.key !== 'all' && item.value > 0).map((item) => (
+              <span key={item.key} className={`status-bar-segment ${item.className}`} style={{ flexGrow: item.value }} />
+            ))}
+          </div>
+          <div className="status-list">
             {statusStatItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
-                className={`stat-item ${item.className} ${statusFilter === item.key ? 'stat-active' : ''}`}
+                className={`status-row ${item.className} ${statusFilter === item.key ? 'status-row-active' : ''}`}
                 onClick={() => setStatusFilter(item.key)}
                 aria-pressed={statusFilter === item.key}
                 title={`Show ${item.label.toLowerCase()} videos`}
               >
-                <span className="stat-value">{item.value}</span>
-                <span className="stat-label">{item.label}</span>
+                <span className="status-dot" aria-hidden="true" />
+                <span className="status-label">{item.label}</span>
+                {item.key === 'delete' && stats.deleteSize > 0 && (
+                  <span className="status-note">{formatSize(stats.deleteSize)} to free up</span>
+                )}
+                <span className="status-count">{item.value.toLocaleString()}</span>
               </button>
             ))}
           </div>
-          {stats.deleteSize > 0 && (
-            <p className="delete-size-note">
-              <Trash2 size={13} />
-              {formatSize(stats.deleteSize)} to free up
-            </p>
-          )}
         </section>
       )}
 

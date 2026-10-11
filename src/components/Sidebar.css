@@ -454,72 +454,105 @@
   accent-color: var(--accent);
 }
 
-/* Stats Grid */
-.stat-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+/* Status */
+.status-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.status-filter-grid {
+.status-reviewed {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Proportions of the library by review status. */
+.status-bar {
+  display: flex;
   gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
   background: var(--bg-app);
 }
 
-.stat-item {
-  background: var(--bg-surface);
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 7px 8px;
-  text-align: center;
-  transition: var(--transition);
-  cursor: pointer;
+.status-bar-segment {
+  flex-basis: 0;
+  min-width: 3px;
+  background: var(--status-color);
 }
 
-.stat-item:hover {
+.status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.status-row {
+  --status-color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.status-row:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
 }
 
-.stat-active {
-  border-color: var(--accent);
+.status-row-active {
   background: var(--accent-dim);
-  box-shadow: inset 0 0 0 1px var(--border);
-}
-
-.stat-total {
-  grid-column: 1 / -1;
-}
-
-.stat-value {
-  display: block;
-  font-size: 17px;
-  font-weight: 700;
+  border-color: var(--accent);
   color: var(--text-primary);
 }
-.stat-label {
-  display: block;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-tertiary);
-  margin-top: 2px;
-}
-.stat-keep .stat-value { color: var(--color-keep); }
-.stat-skipped .stat-value { color: var(--color-skip); }
-.stat-delete .stat-value { color: var(--color-delete); }
-.stat-pending .stat-value { color: var(--text-secondary); }
 
-.delete-size-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--status-color);
+}
+
+.status-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.status-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
   color: var(--color-delete);
 }
+
+.status-count {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.stat-total { --status-color: var(--accent); }
+.stat-pending { --status-color: var(--text-tertiary); }
+.stat-keep { --status-color: var(--color-keep); }
+.stat-skipped { --status-color: var(--color-skip); }
+.stat-delete { --status-color: var(--color-delete); }
 
 /* Filter Pills */
 /* Collapsible sections have no flex gap, so the row spaces itself from the header. The content below
