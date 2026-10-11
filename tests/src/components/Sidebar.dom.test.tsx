@@ -259,7 +259,7 @@ describe('Sidebar recent folder behavior', () => {
 
     renderSidebar();
 
-    const keepButton = screen.getByRole('button', { name: /Keep.*2/i });
+    const keepButton = screen.getByRole('button', { name: /2Keep/i });
     await userEvent.click(keepButton);
 
     expect(useStore.getState().statusFilter).toBe('keep');
@@ -274,7 +274,7 @@ describe('Sidebar recent folder behavior', () => {
     renderSidebar();
 
     expect(screen.getByText('25% reviewed')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Delete.*1\.0 GB to free up.*1/i })).toBeTruthy();
+    expect(screen.getByText(/1\.0 GB to free up/)).toBeTruthy();
   });
 
   test('shows the folder filter as a chip that clears it', async () => {

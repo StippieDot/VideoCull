@@ -1119,25 +1119,27 @@ export default function Sidebar({
               <span key={item.key} className={`status-bar-segment ${item.className}`} style={{ flexGrow: item.value }} />
             ))}
           </div>
-          <div className="status-list">
+          <div className="stat-grid status-filter-grid">
             {statusStatItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
-                className={`status-row ${item.className} ${statusFilter === item.key ? 'status-row-active' : ''}`}
+                className={`stat-item ${item.className} ${statusFilter === item.key ? 'stat-active' : ''}`}
                 onClick={() => setStatusFilter(item.key)}
                 aria-pressed={statusFilter === item.key}
                 title={`Show ${item.label.toLowerCase()} videos`}
               >
-                <span className="status-dot" aria-hidden="true" />
-                <span className="status-label">{item.label}</span>
-                {item.key === 'delete' && stats.deleteSize > 0 && (
-                  <span className="status-note">{formatSize(stats.deleteSize)} to free up</span>
-                )}
-                <span className="status-count">{item.value.toLocaleString()}</span>
+                <span className="stat-value">{item.value}</span>
+                <span className="stat-label">{item.label}</span>
               </button>
             ))}
           </div>
+          {stats.deleteSize > 0 && (
+            <p className="delete-size-note">
+              <Trash2 size={13} />
+              {formatSize(stats.deleteSize)} to free up
+            </p>
+          )}
         </section>
       )}
 
@@ -1285,18 +1287,22 @@ export default function Sidebar({
 
       <div className="sidebar-footer">
         {stats.total > 0 && stats.delete > 0 && (
-          <button
-            className="btn btn-danger sidebar-delete-btn"
-            onClick={handleBatchDelete}
-            disabled={isDeleting || isScanning}
-          >
-            <Trash2 size={16} />
-            {isScanning
-              ? 'Scanning...'
-              : isDeleting
-              ? 'Deleting...'
-              : `Delete ${stats.delete} videos (${formatSize(stats.deleteSize)})`}
-          </button>
+          <div className="sidebar-delete-card">
+            <Trash2 size={16} aria-hidden="true" />
+            <span className="sidebar-delete-summary">
+              <span className="sidebar-delete-count">{stats.delete.toLocaleString()} marked for deletion</span>
+              <span className="sidebar-delete-size">{formatSize(stats.deleteSize)}</span>
+            </span>
+            <button
+              type="button"
+              className="sidebar-delete-btn"
+              onClick={handleBatchDelete}
+              disabled={isDeleting || isScanning}
+              aria-label={isScanning || isDeleting ? undefined : `Delete ${stats.delete} videos (${formatSize(stats.deleteSize)})`}
+            >
+              {isScanning ? 'Scanning...' : isDeleting ? 'Deleting...' : 'Delete'}
+            </button>
+          </div>
         )}
 
         <div className="sidebar-footer-row">
