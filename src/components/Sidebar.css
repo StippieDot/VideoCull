@@ -281,15 +281,20 @@
   background: var(--accent-dim);
 }
 
+.filter-clear-row {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+}
+
 .filter-clear-all-btn {
-  height: 24px;
-  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  padding: 0 9px;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 0;
   border-radius: 6px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: transparent;
   color: var(--text-tertiary);
   font-size: 11px;
   font-weight: 600;
@@ -1373,23 +1378,9 @@
   color: var(--text-primary);
 }
 
-/* Groups inside the expanded Filters section. */
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.filter-group + .filter-group {
-  margin-top: 8px;
+/* Separates the toggles above from the range sliders; absent when there is nothing above. */
+.filter-field-divided:not(:first-child) {
+  margin-top: 4px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
-}
-
-.filter-group-title {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-tertiary);
 }
