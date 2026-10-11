@@ -445,6 +445,17 @@ function SidebarFiltersSection({
             <span className={hasAnyFilter ? 'filter-count filter-count-active' : 'filter-count'}>{filteredSummary}</span>
           </span>
         </button>
+        {hasAnyFilter && (
+          <button
+            type="button"
+            className="filter-clear-all-btn"
+            onClick={clearFilters}
+            title="Clear all filters, including the folder"
+            aria-label="Clear all filters"
+          >
+            <X size={13} />
+          </button>
+        )}
         <button
           type="button"
           className="filter-chevron-btn"
@@ -456,20 +467,6 @@ function SidebarFiltersSection({
           <ChevronDown size={14} className={showFilters ? 'chevron-open' : ''} />
         </button>
       </div>
-
-      {hasAnyFilter && (
-        <div className="filter-clear-row">
-          <button
-            type="button"
-            className="filter-clear-all-btn"
-            onClick={clearFilters}
-            title="Clear every filter, including the folder"
-            aria-label="Clear all filters"
-          >
-            <X size={11} /> Clear all filters
-          </button>
-        </div>
-      )}
 
       {/* Set from the title bar path or a folder header; shown even while the filters are folded away. */}
       {folderFilter && (

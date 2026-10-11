@@ -260,11 +260,15 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .filter-count {
-  min-width: 48px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 2px 6px;
   border-radius: 999px;
   background: var(--bg-surface);
@@ -281,24 +285,17 @@
   background: var(--accent-dim);
 }
 
-.filter-clear-row {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 10px;
-}
-
 .filter-clear-all-btn {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border: 0;
+  justify-content: center;
   border-radius: 6px;
-  background: transparent;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   color: var(--text-tertiary);
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 .filter-clear-all-btn:hover {
