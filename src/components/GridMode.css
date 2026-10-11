@@ -13,8 +13,7 @@
   position: absolute;
   top: 0;
   left: 0;
-  /* Stops short of the 8px scrollbar so its track and thumb stay visible and easy to grab. */
-  right: 8px;
+  right: 0;
   height: 50px;
   display: flex;
   align-items: center;
@@ -42,6 +41,12 @@
     rgba(var(--bg-app-rgb), 0) 100%
   );
   pointer-events: none;
+}
+
+/* The toolbar covers the top of the list, so the scrollbar starts below it instead of running underneath,
+   where it would be hidden and hard to grab. The toolbar keeps its full width, so it has no seam. */
+.grid-list::-webkit-scrollbar-track {
+  margin-top: 50px;
 }
 
 .grid-toolbar > * {

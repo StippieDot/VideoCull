@@ -978,6 +978,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       ) : (
         <List
           listRef={listRef}
+          className="grid-list"
           rowCount={rows.length}
           rowComponent={Row}
           rowHeight={getItemSize}
