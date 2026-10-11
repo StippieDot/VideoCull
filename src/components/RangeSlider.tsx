@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { RANGE_STEPS, positionToValue, valueToPosition } from './rangeScale';
 
 interface RangeSliderProps {
@@ -20,8 +20,15 @@ interface RangeSliderProps {
 export default function RangeSlider({
   min, max, low, high, curve, snap, format, onChange, lowLabel, highLabel, disabled = false,
 }: RangeSliderProps) {
-  const lowPosition = valueToPosition(low, max, curve);
-  const highPosition = valueToPosition(high, max, curve);
+  // The value is snapped, so neighbouring track positions can map back to the same value. Controlling
+  // the thumb from the value alone would reset it after every arrow key. The raw position is kept
+  // for as long as it still describes the value shown; any other change of the value wins.
+  const [raw, setRaw] = useState<{ low: number; high: number } | null>(null);
+  const describes = (position: number | undefined, value: number) => (
+    position !== undefined && positionToValue(position, max, curve, snap) === value
+  );
+  const lowPosition = describes(raw?.low, low) ? raw!.low : valueToPosition(low, max, curve);
+  const highPosition = describes(raw?.high, high) ? raw!.high : valueToPosition(high, max, curve);
   const style = {
     '--range-start': lowPosition / RANGE_STEPS,
     '--range-end': highPosition / RANGE_STEPS,
@@ -29,6 +36,7 @@ export default function RangeSlider({
   } as CSSProperties;
 
   const update = (nextLowPosition: number, nextHighPosition: number) => {
+    setRaw({ low: nextLowPosition, high: nextHighPosition });
     onChange(
       positionToValue(nextLowPosition, max, curve, snap),
       positionToValue(nextHighPosition, max, curve, snap),
