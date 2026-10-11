@@ -44,8 +44,8 @@
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
   --blur-md: blur(24px);
   /* Brighter than --border, which almost vanishes against the dark background. */
-  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
-  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.34);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.13);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.24);
   --blur-lg: blur(48px);
   --blur-sm: blur(12px);
   
