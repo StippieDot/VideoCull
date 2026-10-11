@@ -815,3 +815,21 @@
     font-size: calc(var(--media-spacing) * 3.75);
   }
 }
+
+/* Player surfaces use the app's glass look. They sit over video, so they stay dark in both themes. */
+.review-video-skin {
+  --media-controls: rgba(10, 10, 16, 0.5);
+  --media-popover: rgba(16, 16, 24, 0.72);
+  --media-border: var(--border-strong);
+  --media-backdrop-filter-surface: var(--blur-sm) saturate(150%);
+  --media-backdrop-filter-dialog: var(--blur-md) saturate(150%);
+  --media-popup-radius: var(--radius-md);
+  --media-menu-item-radius: var(--radius-sm);
+  --media-control-corner-shape: squircle;
+  --media-control-radius: var(--radius-sm);
+  /* Keeps icons readable over bright footage. */
+  --media-controls-gradient: linear-gradient(to top, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.45) 100%);
+  /* Calmer show/hide of the controls than the skin's 0.1s snap. */
+  --media-duration-controls: 0.2s;
+  --media-hidden-blur: 4px;
+}
