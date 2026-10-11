@@ -24,6 +24,8 @@ All notable changes to VideoCull will be documented here.
 - The sidebar's folder card is now one button with the folder's name, which opens **Open Another Folder**, **Add Folder to Session**, **Rescan** and **Close Session**; the full path is in the title bar. Recent folders open from a small button beside **Include subfolders**, and their right-click menu can also remove a folder from the list.
 - Duplicate gallery cards are narrower and sized to show 16:9 thumbnails without black bars; rows of portrait videos grow to show their thumbnails in full.
 - Filtering, sorting and the folder lists are faster in large sessions.
+- The sidebar remembers which sections are collapsed, shows how much of the library is reviewed above the status tiles, keeps **Delete** and **Review** pinned to the bottom with a summary of the marked videos, and shows the folder and video sort controls side by side. The rating filter is one line under Duration, the folder filter is spaced like the other filter buttons, and the extra filter buttons no longer cut off their labels.
+- The file size and duration sliders now line up with their thumbs, give smaller values more room on the track, and snap to the values shown in their labels.
 
 ### Fixed
 - Scrolling up through duplicate groups no longer jumps back to where it was.

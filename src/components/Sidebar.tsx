@@ -3,6 +3,9 @@ import type { ColorTheme, DuplicateSortField, StatusFilter, ToastInput, ToastKin
 import type { SortField } from '../types';
 import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
 import { beginDevInteraction } from '../perf-dev';
+import { usePersistedFlag } from '../hooks/usePersistedFlag';
+import { snapBytes, snapSeconds } from './rangeScale';
+import RangeSlider from './RangeSlider';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { revealInExplorer, runAppCommand } from '../appCommands';
@@ -49,8 +52,10 @@ function sameStrings(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+/** How strongly the size and duration tracks favour small values; see rangeScale. */
+const SIZE_CURVE = 2.5;
+const DURATION_CURVE = 2;
 const BYTE_UNITS = [1, 1024, 1024 ** 2, 1024 ** 3, 1024 ** 4];
-const RANGE_THUMB_INSET = 26;
 
 function roundUpNice(value: number): number {
   if (value <= 0) return 0;
@@ -92,21 +97,11 @@ function formatSliderSize(bytes: number): string {
 function getRangeTrackStyle(min: number, max: number, selectedMin: number, selectedMax: number): CSSProperties {
   const span = max - min;
   if (span <= 0) {
-    return { '--range-fill-left': '0%', '--range-fill-right': '100%', '--range-fill-visible': '0' } as CSSProperties;
+    return { '--range-start': 0, '--range-end': 1, '--range-fill-visible': 0 } as CSSProperties;
   }
-  const start = ((selectedMin - min) / span) * 100;
-  const end = ((selectedMax - min) / span) * 100;
-  const clampedStart = Math.max(0, Math.min(100, start));
-  const clampedEnd = Math.max(0, Math.min(100, end));
-  const hasVisibleFill = clampedEnd > clampedStart;
-  const leftInset = RANGE_THUMB_INSET - (clampedStart / 100) * RANGE_THUMB_INSET * 2;
-  const rightPercent = 100 - clampedEnd;
-  const rightInset = RANGE_THUMB_INSET - (rightPercent / 100) * RANGE_THUMB_INSET * 2;
-  return {
-    '--range-fill-left': `calc(${clampedStart}% + ${leftInset}px)`,
-    '--range-fill-right': `calc(${rightPercent}% + ${rightInset}px)`,
-    '--range-fill-visible': hasVisibleFill ? '1' : '0',
-  } as CSSProperties;
+  const start = Math.max(0, Math.min(1, (selectedMin - min) / span));
+  const end = Math.max(0, Math.min(1, (selectedMax - min) / span));
+  return { '--range-start': start, '--range-end': end, '--range-fill-visible': end > start ? 1 : 0 } as CSSProperties;
 }
 
 function SidebarDuplicateSection({
@@ -384,13 +379,11 @@ function SidebarFiltersSection({
   const sizeRange = {
     min: 0,
     max: sizeRangeMax,
-    step: sizeRangeMax > 0 ? Math.max(1, Math.floor(sizeRangeMax / 120)) : 1,
   };
   const durationRangeMax = roundUpDurationSeconds(Math.ceil(sidebarAggregates.maxDurationSeconds));
   const durationRange = {
     min: 0,
     max: durationRangeMax,
-    step: durationRangeMax >= 60 * 60 ? 60 : durationRangeMax >= 10 * 60 ? 15 : 1,
   };
 
   const effectiveMinSize = sizeRange.max > sizeRange.min
@@ -416,8 +409,6 @@ function SidebarFiltersSection({
   const hasExtraFilter = favoritesFilter || incompatibleFilter || duplicateFilter;
   const hasAnyFilter = statusFilter !== 'all' || Boolean(folderFilter) || hasExtraFilter || hasRatingFilter || hasSizeFilter || hasDurationFilter;
   const filteredSummary = `${filteredVideoCount} / ${videoCount}`;
-  const sizeRangeStyle = getRangeTrackStyle(sizeRange.min, sizeRange.max, effectiveMinSize, effectiveMaxSize);
-  const durationRangeStyle = getRangeTrackStyle(durationRange.min, durationRange.max, effectiveMinDuration, effectiveMaxDuration);
 
   const updateSizeRange = (nextMin: number, nextMax: number) => {
     const safeMin = clamp(Math.min(nextMin, nextMax), sizeRange.min, sizeRange.max);
@@ -449,7 +440,7 @@ function SidebarFiltersSection({
             type="button"
             className="filter-clear-all-btn"
             onClick={clearFilters}
-            title="Clear all filters"
+            title="Clear all filters, including the folder"
             aria-label="Clear all filters"
           >
             <X size={13} />
@@ -523,8 +514,68 @@ function SidebarFiltersSection({
             </div>
           )}
 
+          <div className="filter-field filter-field-divided">
+            <div className="filter-field-heading">
+              <span className="filter-input-label">File size</span>
+              {hasSizeFilter && (
+                <button
+                  type="button"
+                  className="filter-reset-btn"
+                  onClick={() => setSizeFilterRange(0, null)}
+                  title="Reset file size filter"
+                  aria-label="Reset file size filter"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            <RangeSlider
+              min={sizeRange.min}
+              max={sizeRange.max}
+              low={effectiveMinSize}
+              high={effectiveMaxSize}
+              curve={SIZE_CURVE}
+              snap={snapBytes}
+              format={formatSliderSize}
+              onChange={updateSizeRange}
+              lowLabel="Minimum file size"
+              highLabel="Maximum file size"
+              disabled={!hasSizeRange}
+            />
+          </div>
+
+          <div className="filter-field">
+            <div className="filter-field-heading">
+              <span className="filter-input-label">Duration</span>
+              {hasDurationFilter && (
+                <button
+                  type="button"
+                  className="filter-reset-btn"
+                  onClick={() => setDurationFilterRange(0, null)}
+                  title="Reset duration filter"
+                  aria-label="Reset duration filter"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            <RangeSlider
+              min={durationRange.min}
+              max={durationRange.max}
+              low={effectiveMinDuration}
+              high={effectiveMaxDuration}
+              curve={DURATION_CURVE}
+              snap={snapSeconds}
+              format={formatDurationInput}
+              onChange={updateDurationRange}
+              lowLabel="Minimum duration"
+              highLabel="Maximum duration"
+              disabled={!hasDurationRange}
+            />
+          </div>
+
           {features.ratings && (
-            <div className="filter-field">
+            <div className="filter-field filter-field-inline">
               <span className="filter-input-label">
                 <Star size={11} /> Rating
               </span>
@@ -556,100 +607,6 @@ function SidebarFiltersSection({
               </div>
             </div>
           )}
-
-          <div className="filter-field">
-            <div className="filter-field-heading">
-              <span className="filter-input-label">File size</span>
-              {hasSizeFilter && (
-                <button
-                  type="button"
-                  className="filter-reset-btn"
-                  onClick={() => setSizeFilterRange(0, null)}
-                  title="Reset file size filter"
-                  aria-label="Reset file size filter"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-            <div className="range-filter">
-              <div className="range-values">
-                <span>{formatSliderSize(effectiveMinSize)}</span>
-                <span>{formatSliderSize(effectiveMaxSize)}</span>
-              </div>
-              <div className="range-slider" style={sizeRangeStyle}>
-                <input
-                  className="range-input"
-                  type="range"
-                  min={sizeRange.min}
-                  max={sizeRange.max}
-                  step={sizeRange.step}
-                  value={effectiveMinSize}
-                  disabled={!hasSizeRange}
-                  onChange={(e) => updateSizeRange(Number(e.target.value), effectiveMaxSize)}
-                  aria-label="Minimum file size"
-                />
-                <input
-                  className="range-input"
-                  type="range"
-                  min={sizeRange.min}
-                  max={sizeRange.max}
-                  step={sizeRange.step}
-                  value={effectiveMaxSize}
-                  disabled={!hasSizeRange}
-                  onChange={(e) => updateSizeRange(effectiveMinSize, Number(e.target.value))}
-                  aria-label="Maximum file size"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="filter-field">
-            <div className="filter-field-heading">
-              <span className="filter-input-label">Duration</span>
-              {hasDurationFilter && (
-                <button
-                  type="button"
-                  className="filter-reset-btn"
-                  onClick={() => setDurationFilterRange(0, null)}
-                  title="Reset duration filter"
-                  aria-label="Reset duration filter"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-            <div className="range-filter">
-              <div className="range-values">
-                <span>{formatDurationInput(effectiveMinDuration)}</span>
-                <span>{formatDurationInput(effectiveMaxDuration)}</span>
-              </div>
-              <div className="range-slider" style={durationRangeStyle}>
-                <input
-                  className="range-input"
-                  type="range"
-                  min={durationRange.min}
-                  max={durationRange.max}
-                  step={durationRange.step}
-                  value={effectiveMinDuration}
-                  disabled={!hasDurationRange}
-                  onChange={(e) => updateDurationRange(Number(e.target.value), effectiveMaxDuration)}
-                  aria-label="Minimum duration"
-                />
-                <input
-                  className="range-input"
-                  type="range"
-                  min={durationRange.min}
-                  max={durationRange.max}
-                  step={durationRange.step}
-                  value={effectiveMaxDuration}
-                  disabled={!hasDurationRange}
-                  onChange={(e) => updateDurationRange(effectiveMinDuration, Number(e.target.value))}
-                  aria-label="Maximum duration"
-                />
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </section>
@@ -712,9 +669,9 @@ export default function Sidebar({
   const [showRecents, setShowRecents] = useState(false);
   const switcherRef = useRef<HTMLButtonElement>(null);
   const [switcherAt, setSwitcherAt] = useState<{ x: number; y: number } | null>(null);
-  const [showFilters, setShowFilters] = useState(true);
-  const [showSort, setShowSort] = useState(true);
-  const [showView, setShowView] = useState(true);
+  const [showFilters, setShowFilters] = usePersistedFlag('sidebar.filters-open', true);
+  const [showSort, setShowSort] = usePersistedFlag('sidebar.sort-open', true);
+  const [showView, setShowView] = usePersistedFlag('sidebar.view-open', true);
   const [recentContextMenu, setRecentContextMenu] = useState<{ x: number; y: number; dir: string } | null>(null);
   const [unavailableRecents, setUnavailableRecents] = useState<Set<string>>(() => new Set());
 
@@ -954,6 +911,7 @@ export default function Sidebar({
     { key: 'skipped', label: 'Skipped', value: stats.skipped, className: 'stat-skipped' },
     { key: 'delete', label: 'Delete', value: stats.delete, className: 'stat-delete' },
   ];
+  const reviewedPercent = stats.total > 0 ? Math.round(((stats.total - stats.pending) / stats.total) * 100) : 0;
   const reviewLabel = filteredVideoCount === videoCount
     ? `Review ${filteredVideoCount} ${filteredVideoCount === 1 ? 'video' : 'videos'}`
     : `Review ${filteredVideoCount} filtered`;
@@ -1108,7 +1066,15 @@ export default function Sidebar({
 
       {stats.total > 0 && !duplicateGroupsMode && (
         <section className="sidebar-section sidebar-library-section">
-          <h3 className="sidebar-section-title">Status</h3>
+          <div className="status-heading">
+            <h3 className="sidebar-section-title">Status</h3>
+            <span className="status-reviewed">{reviewedPercent}% reviewed</span>
+          </div>
+          <div className="status-bar" aria-hidden="true">
+            {statusStatItems.filter((item) => item.key !== 'all' && item.value > 0).map((item) => (
+              <span key={item.key} className={`status-bar-segment ${item.className}`} style={{ flexGrow: item.value }} />
+            ))}
+          </div>
           <div className="stat-grid status-filter-grid">
             {statusStatItems.map((item) => (
               <button
@@ -1124,12 +1090,6 @@ export default function Sidebar({
               </button>
             ))}
           </div>
-          {stats.deleteSize > 0 && (
-            <p className="delete-size-note">
-              <Trash2 size={13} />
-              {formatSize(stats.deleteSize)} to free up
-            </p>
-          )}
         </section>
       )}
 
@@ -1163,49 +1123,53 @@ export default function Sidebar({
               {groupByFolder ? (
                 <div className="sort-nested-options">
                   <div className="sort-group">
-                    <span className="sort-label">Folder order</span>
-                    <div className="sort-row">
-                      <select
-                        className="sidebar-select"
-                        value={folderSortBy}
-                        onChange={(e) => setFolderSortBy(e.target.value as 'name' | 'size')}
-                      >
-                        <option value="name">Name</option>
-                        <option value="size">Size</option>
-                      </select>
+                    <div className="sort-group-heading">
+                      <span className="sort-label">Folders</span>
                       <button
-                        className="btn btn-icon"
+                        className="sort-order-btn"
                         onClick={() => setFolderSortOrder(folderSortOrder === 'asc' ? 'desc' : 'asc')}
-                        title={folderSortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                        title={`Folder order: ${folderSortOrder === 'asc' ? 'ascending' : 'descending'}`}
+                        aria-label={`Folder order: ${folderSortOrder === 'asc' ? 'ascending' : 'descending'}`}
                       >
-                        <ArrowUpDown size={14} style={{ transform: folderSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+                        <ArrowUpDown size={12} style={{ transform: folderSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
                       </button>
                     </div>
+                    <select
+                      className="sidebar-select"
+                      aria-label="Folder order"
+                      value={folderSortBy}
+                      onChange={(e) => setFolderSortBy(e.target.value as 'name' | 'size')}
+                    >
+                      <option value="name">Name</option>
+                      <option value="size">Size</option>
+                    </select>
                   </div>
                   <div className="sort-group">
-                    <span className="sort-label">Within folder</span>
-                    <div className="sort-row">
-                      <select
-                        className="sidebar-select"
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as SortField)}
-                      >
-                        <option value="name">Name</option>
-                        <option value="size">Size</option>
-                        <option value="duration">Duration</option>
-                        <option value="date">Date</option>
-                        {features.ratings && <option value="rating">Rating</option>}
-                        {features.codecBadges && <option value="resolution">Resolution</option>}
-                        {features.codecBadges && <option value="fps">FPS</option>}
-                      </select>
+                    <div className="sort-group-heading">
+                      <span className="sort-label">Videos</span>
                       <button
-                        className="btn btn-icon"
+                        className="sort-order-btn"
                         onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                        title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                        title={`Video order: ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
+                        aria-label={`Video order: ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
                       >
-                        <ArrowUpDown size={14} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+                        <ArrowUpDown size={12} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
                       </button>
                     </div>
+                    <select
+                      className="sidebar-select"
+                      aria-label="Video order"
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as SortField)}
+                    >
+                      <option value="name">Name</option>
+                      <option value="size">Size</option>
+                      <option value="duration">Duration</option>
+                      <option value="date">Date</option>
+                      {features.ratings && <option value="rating">Rating</option>}
+                      {features.codecBadges && <option value="resolution">Resolution</option>}
+                      {features.codecBadges && <option value="fps">FPS</option>}
+                    </select>
                   </div>
                 </div>
               ) : (
@@ -1273,18 +1237,22 @@ export default function Sidebar({
 
       <div className="sidebar-footer">
         {stats.total > 0 && stats.delete > 0 && (
-          <button
-            className="btn btn-danger sidebar-delete-btn"
-            onClick={handleBatchDelete}
-            disabled={isDeleting || isScanning}
-          >
-            <Trash2 size={16} />
-            {isScanning
-              ? 'Scanning...'
-              : isDeleting
-              ? 'Deleting...'
-              : `Delete ${stats.delete} videos (${formatSize(stats.deleteSize)})`}
-          </button>
+          <div className="sidebar-delete-card">
+            <Trash2 size={16} aria-hidden="true" />
+            <span className="sidebar-delete-summary">
+              <span className="sidebar-delete-count">{stats.delete.toLocaleString()} marked</span>
+              <span className="sidebar-delete-size">{formatSize(stats.deleteSize)} to free up</span>
+            </span>
+            <button
+              type="button"
+              className="sidebar-delete-btn"
+              onClick={handleBatchDelete}
+              disabled={isDeleting || isScanning}
+              aria-label={isScanning || isDeleting ? undefined : `Delete ${stats.delete} videos (${formatSize(stats.deleteSize)})`}
+            >
+              {isScanning ? 'Scanning...' : isDeleting ? 'Deleting...' : 'Delete'}
+            </button>
+          </div>
         )}
 
         <div className="sidebar-footer-row">

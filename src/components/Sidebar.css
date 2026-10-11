@@ -260,11 +260,15 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .filter-count {
-  min-width: 48px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 2px 6px;
   border-radius: 999px;
   background: var(--bg-surface);
@@ -454,7 +458,40 @@
   accent-color: var(--accent);
 }
 
-/* Stats Grid */
+/* Status */
+.status-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.status-reviewed {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Proportions of the library by review status. */
+.status-bar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bg-app);
+}
+
+.status-bar-segment {
+  flex-basis: 0;
+  min-width: 3px;
+}
+.status-bar-segment.stat-pending { background: var(--text-tertiary); }
+.status-bar-segment.stat-keep { background: var(--color-keep); }
+.status-bar-segment.stat-skipped { background: var(--color-skip); }
+.status-bar-segment.stat-delete { background: var(--color-delete); }
+
+/* Status tiles */
 .stat-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -512,30 +549,62 @@
 .stat-skipped .stat-value { color: var(--color-skip); }
 .stat-delete .stat-value { color: var(--color-delete); }
 .stat-pending .stat-value { color: var(--text-secondary); }
-
-.delete-size-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--color-delete);
-}
+/* Accent, so the total reads as different from the grey Pending count. */
+.stat-total .stat-value { color: var(--accent-hover); }
 
 /* Filter Pills */
+/* Collapsible sections have no flex gap, so the row spaces itself from the header. The content below
+   keeps its own top padding, which makes both gaps equal. */
 .filter-folder-chip-row {
   display: flex;
-  padding: 0 0 8px;
+  padding-top: 12px;
 }
 
-.filter-folder-chip {
+.filter-folder-chip-row + .sidebar-section-content {
+  padding-top: 12px;
+}
+
+/* A quiet, full-width row in the same shape as the filter buttons below it, not a glowing pill. */
+.pill.filter-folder-chip {
+  width: 100%;
   max-width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  box-shadow: none;
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: left;
+}
+
+.pill.filter-folder-chip:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-hover);
+  transform: none;
+}
+
+.filter-folder-chip > svg:first-child {
+  color: var(--accent);
 }
 
 .filter-folder-chip .pill-text {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.filter-folder-chip .pill-clear-icon {
+  flex: 0 0 auto;
+  opacity: 0.6;
+}
+
+.filter-folder-chip:hover .pill-clear-icon {
+  opacity: 1;
 }
 
 .filter-pills {
@@ -594,13 +663,15 @@
   color: var(--text-on-accent);
 }
 
+/* Buttons keep their full labels and wrap onto a new row instead of truncating. */
 .filter-pills-extra {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
 .filter-pills-extra .pill {
-  grid-column: auto;
+  flex: 1 1 auto;
   gap: 5px;
   padding: 5px 7px;
   font-size: 11px;
@@ -617,6 +688,10 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.filter-pills-extra .pill-text {
+  overflow: visible;
 }
 
 .pill-count {
@@ -706,45 +781,59 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
+/* A bound the user has moved reads brighter than one left open. */
+.range-value-set {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* The native thumb's centre travels from half a thumb in to half a thumb short of the far end, so
+   the track and the fill are inset the same way and meet the thumbs exactly. */
 .range-slider {
+  --range-thumb: 16px;
+  --range-travel: calc(100% - var(--range-thumb));
   position: relative;
-  height: 22px;
-  --range-thumb-inset: 26px;
+  height: 24px;
+}
+
+.range-slider::before,
+.range-slider::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  height: 4px;
+  border-radius: 999px;
 }
 
 .range-slider::before {
-  content: "";
-  position: absolute;
-  left: var(--range-thumb-inset);
-  right: var(--range-thumb-inset);
-  top: 9px;
-  height: 4px;
-  border-radius: 999px;
+  left: calc(var(--range-thumb) / 2);
+  right: calc(var(--range-thumb) / 2);
   background: var(--bg-surface-hover);
 }
 
 .range-slider::after {
-  content: "";
-  position: absolute;
-  left: var(--range-fill-left, var(--range-thumb-inset));
-  right: var(--range-fill-right, var(--range-thumb-inset));
-  top: 9px;
-  height: 4px;
-  border-radius: 999px;
+  left: calc(var(--range-thumb) / 2 + var(--range-travel) * var(--range-start, 0));
+  right: calc(var(--range-thumb) / 2 + var(--range-travel) * (1 - var(--range-end, 1)));
   background: var(--accent);
   opacity: var(--range-fill-visible, 1);
 }
 
-.range-input {
+/* The global input rule gives every input a border and 10px of padding. On a slider that insets the
+   thumb's travel, so the track and fill no longer line up with it. */
+.range-input,
+.range-input:focus {
   position: absolute;
   inset: 0;
   width: 100%;
   margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   appearance: none;
   -webkit-appearance: none;
   background: transparent;
@@ -753,24 +842,38 @@
 }
 
 .range-input::-webkit-slider-thumb {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  border: 2px solid var(--bg-sidebar);
-  background: var(--accent);
-  cursor: pointer;
+  border: 3px solid var(--accent);
+  background: var(--bg-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: grab;
   pointer-events: auto;
   -webkit-appearance: none;
+  transition: transform 120ms ease-out, box-shadow 120ms ease-out;
 }
 
 .range-input::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
   border-radius: 50%;
-  border: 2px solid var(--bg-sidebar);
-  background: var(--accent);
-  cursor: pointer;
+  border: 3px solid var(--accent);
+  background: var(--bg-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: grab;
   pointer-events: auto;
+}
+
+.range-input:hover::-webkit-slider-thumb,
+.range-input:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 4px var(--accent-dim);
+}
+
+.range-input:active::-webkit-slider-thumb {
+  cursor: grabbing;
 }
 
 .range-input:disabled::-webkit-slider-thumb {
@@ -787,10 +890,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  padding: 4px 0;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   border: 0;
@@ -841,15 +943,12 @@
 }
 
 .filter-star-clear {
-  position: absolute;
-  right: 0;
-  opacity: 0;
-  pointer-events: none;
+  display: none;
+  margin-left: 2px;
 }
 
 .filter-star-row.has-rating .filter-star-clear {
-  opacity: 1;
-  pointer-events: auto;
+  display: inline-flex;
 }
 
 /* Sort Row */
@@ -866,10 +965,41 @@
   background: var(--bg-app);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
+  padding: 8px 10px 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.sort-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+}
+
+.sort-order-btn {
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.sort-order-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.sort-nested-options .sidebar-select {
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 .sort-group {
@@ -1157,14 +1287,20 @@
 }
 
 /* Settings Footer */
+/* Pinned to the bottom of the scrolling sidebar so Delete and Review stay in reach. The background
+   must be opaque, or the sections scrolling underneath show through. */
 .sidebar-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   margin-top: auto;
   padding: 14px 18px 16px;
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: linear-gradient(180deg, rgba(var(--bg-app-rgb), 0), var(--bg-sidebar) 18px);
+  /* --bg-sidebar is translucent, so it is laid over the solid app color. */
+  background: linear-gradient(var(--bg-sidebar), var(--bg-sidebar)), var(--bg-app);
 }
 
 .sidebar-footer-row {
@@ -1181,9 +1317,64 @@
   font-size: 13px;
 }
 
-.sidebar-delete-btn {
-  padding: 8px 10px;
+/* What is marked and how much it frees, with the destructive action kept small and to the side. */
+.sidebar-delete-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid rgba(255, 92, 108, 0.2);
+  border-radius: var(--radius-sm);
+  background: var(--color-delete-dim);
+  color: var(--color-delete);
+}
+
+.sidebar-delete-card > svg {
+  flex: 0 0 auto;
+}
+
+.sidebar-delete-summary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.sidebar-delete-count {
   font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-delete-size {
+  font-size: 11px;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-delete-btn {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--color-delete);
+  color: var(--text-on-accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.sidebar-delete-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.sidebar-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .settings-icon-btn {
@@ -1206,4 +1397,18 @@
   background: var(--bg-surface-hover);
   border-color: var(--border-hover);
   color: var(--text-primary);
+}
+
+/* Separates the toggles above from the range sliders; absent when there is nothing above. */
+.filter-field-divided:not(:first-child) {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* A label with its control on the same line. */
+.filter-field-inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
 }
