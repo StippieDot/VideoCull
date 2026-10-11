@@ -35,12 +35,15 @@ export default function RangeSlider({
     '--range-fill-visible': highPosition > lowPosition ? 1 : 0,
   } as CSSProperties;
 
-  const update = (nextLowPosition: number, nextHighPosition: number) => {
-    setRaw({ low: nextLowPosition, high: nextHighPosition });
-    onChange(
-      positionToValue(nextLowPosition, max, curve, snap),
-      positionToValue(nextHighPosition, max, curve, snap),
-    );
+  // Only the thumb that moved is converted. Converting the other one would round-trip its value
+  // through the track's resolution and snapping, and could nudge a bound the user did not touch.
+  const moveLow = (position: number) => {
+    setRaw({ low: position, high: highPosition });
+    onChange(positionToValue(position, max, curve, snap), high);
+  };
+  const moveHigh = (position: number) => {
+    setRaw({ low: lowPosition, high: position });
+    onChange(low, positionToValue(position, max, curve, snap));
   };
 
   // When both thumbs meet, the one on top must be the one that can still move away from that spot.
@@ -62,7 +65,7 @@ export default function RangeSlider({
           value={lowPosition}
           disabled={disabled}
           style={{ zIndex: lowOnTop ? 2 : 1 }}
-          onChange={(e) => update(Math.min(Number(e.target.value), highPosition), highPosition)}
+          onChange={(e) => moveLow(Math.min(Number(e.target.value), highPosition))}
           aria-label={lowLabel}
           aria-valuetext={format(low)}
         />
@@ -75,7 +78,7 @@ export default function RangeSlider({
           value={highPosition}
           disabled={disabled}
           style={{ zIndex: lowOnTop ? 1 : 2 }}
-          onChange={(e) => update(lowPosition, Math.max(Number(e.target.value), lowPosition))}
+          onChange={(e) => moveHigh(Math.max(Number(e.target.value), lowPosition))}
           aria-label={highLabel}
           aria-valuetext={format(high)}
         />

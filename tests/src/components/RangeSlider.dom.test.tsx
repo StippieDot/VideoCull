@@ -31,6 +31,16 @@ describe('RangeSlider', () => {
     expect(onChange).toHaveBeenCalledWith(250, 1000);
   });
 
+  test('moving one thumb leaves the other bound exactly as it was', () => {
+    const onChange = renderSlider(0, 777);
+    fireEvent.change(screen.getByLabelText('Minimum'), { target: { value: '100' } });
+    expect(onChange).toHaveBeenCalledWith(10, 777);
+
+    onChange.mockClear();
+    fireEvent.change(screen.getByLabelText('Maximum'), { target: { value: '990' } });
+    expect(onChange).toHaveBeenCalledWith(0, 975);
+  });
+
   test('the low thumb cannot pass the high thumb', () => {
     const onChange = renderSlider(0, 250);
     fireEvent.change(screen.getByLabelText('Minimum'), { target: { value: '900' } });
