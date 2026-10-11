@@ -862,10 +862,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  padding: 4px 0;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   border: 0;
@@ -916,15 +915,12 @@
 }
 
 .filter-star-clear {
-  position: absolute;
-  right: 0;
-  opacity: 0;
-  pointer-events: none;
+  display: none;
+  margin-left: 2px;
 }
 
 .filter-star-row.has-rating .filter-star-clear {
-  opacity: 1;
-  pointer-events: auto;
+  display: inline-flex;
 }
 
 /* Sort Row */
@@ -1380,4 +1376,11 @@
   margin-top: 4px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
+}
+
+/* A label with its control on the same line. */
+.filter-field-inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
 }

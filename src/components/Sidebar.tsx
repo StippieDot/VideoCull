@@ -524,40 +524,6 @@ function SidebarFiltersSection({
             </div>
           )}
 
-          {features.ratings && (
-            <div className="filter-field">
-              <span className="filter-input-label">
-                <Star size={11} /> Rating
-              </span>
-              <div className={`filter-star-row ${minRatingFilter > 0 ? 'has-rating' : ''}`} aria-label="Minimum rating filter">
-                {([1, 2, 3, 4, 5] as const).map((rating) => (
-                  <button
-                    key={rating}
-                    type="button"
-                    className={`filter-star-btn ${minRatingFilter >= rating ? 'active' : ''}`}
-                    onClick={() => setMinRatingFilter(minRatingFilter === rating ? 0 : rating)}
-                    title={rating === 1 ? 'Show 1+ star videos' : `Show ${rating}+ star videos`}
-                    aria-label={rating === 1 ? 'Show 1 or more star videos' : `Show ${rating} or more star videos`}
-                    aria-pressed={minRatingFilter >= rating}
-                  >
-                    <Star size={15} fill={minRatingFilter >= rating ? 'currentColor' : 'none'} />
-                  </button>
-                ))}
-                {minRatingFilter > 0 && (
-                  <button
-                    type="button"
-                    className="filter-star-clear"
-                    onClick={() => setMinRatingFilter(0)}
-                    title="Clear rating filter"
-                    aria-label="Clear rating filter"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
           <div className="filter-field filter-field-divided">
             <div className="filter-field-heading">
               <span className="filter-input-label">File size</span>
@@ -651,6 +617,40 @@ function SidebarFiltersSection({
               </div>
             </div>
           </div>
+
+          {features.ratings && (
+            <div className="filter-field filter-field-inline">
+              <span className="filter-input-label">
+                <Star size={11} /> Rating
+              </span>
+              <div className={`filter-star-row ${minRatingFilter > 0 ? 'has-rating' : ''}`} aria-label="Minimum rating filter">
+                {([1, 2, 3, 4, 5] as const).map((rating) => (
+                  <button
+                    key={rating}
+                    type="button"
+                    className={`filter-star-btn ${minRatingFilter >= rating ? 'active' : ''}`}
+                    onClick={() => setMinRatingFilter(minRatingFilter === rating ? 0 : rating)}
+                    title={rating === 1 ? 'Show 1+ star videos' : `Show ${rating}+ star videos`}
+                    aria-label={rating === 1 ? 'Show 1 or more star videos' : `Show ${rating} or more star videos`}
+                    aria-pressed={minRatingFilter >= rating}
+                  >
+                    <Star size={15} fill={minRatingFilter >= rating ? 'currentColor' : 'none'} />
+                  </button>
+                ))}
+                {minRatingFilter > 0 && (
+                  <button
+                    type="button"
+                    className="filter-star-clear"
+                    onClick={() => setMinRatingFilter(0)}
+                    title="Clear rating filter"
+                    aria-label="Clear rating filter"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
