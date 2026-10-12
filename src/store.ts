@@ -1425,12 +1425,18 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── View ──
   setReviewMode: (reviewMode: boolean) => {
     const state = get();
+    // Freeze the scope on entry. ReviewMode snapshots the filtered list too; if the store kept
+    // following the live list, a status filter (e.g. Pending) would drop each decided video and the
+    // index would resolve to a different video than the one on screen.
+    const reviewScopeIds = reviewMode
+      ? state.reviewScopeIds ?? state.filteredVideos.map((video) => video.id)
+      : null;
     const activeVideo = reviewMode
-      ? getVideoByReviewIndex(state.videos, state.reviewScopeIds, state.filteredVideos, state.reviewIndex)
+      ? getVideoByReviewIndex(state.videos, reviewScopeIds, state.filteredVideos, state.reviewIndex)
       : null;
     set({
       reviewMode,
-      reviewScopeIds: reviewMode ? state.reviewScopeIds : null,
+      reviewScopeIds,
       activeReviewVideoPath: reviewMode ? activeVideo?.path ?? state.activeReviewVideoPath : null,
     });
   },

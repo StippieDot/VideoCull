@@ -410,6 +410,20 @@ describe('useStore public behavior', () => {
     expect(state.gridSelectionAnchorId).toBeNull();
   });
 
+  test('review keeps its entry scope when a status filter drops decided videos', () => {
+    useStore.getState().setVideos([
+      makeVideo('a', { path: 'D:\\Media\\a.mp4' }),
+      makeVideo('b', { path: 'D:\\Media\\b.mp4' }),
+    ]);
+    useStore.getState().setStatusFilter('pending');
+    useStore.getState().setReviewMode(true);
+    useStore.getState().setVideoStatus('a', 'keep');
+    useStore.getState().setReviewIndex(1);
+
+    expect(useStore.getState().filteredVideos.map((video) => video.id)).toEqual(['b']);
+    expect(useStore.getState().activeReviewVideoPath).toBe('D:\\Media\\b.mp4');
+  });
+
   test('ignored duplicate pair settings are normalized and persisted through the public settings actions', async () => {
     useStore.getState().addIgnoredDuplicatePairs(['ABCDEFABCDEFABCD|0011223344556677', 'bad']);
     await flushMicrotasks();
