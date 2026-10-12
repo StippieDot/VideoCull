@@ -6,8 +6,8 @@ import {
   Check, Trash2, SkipForward, Undo2, X, Play,
   ChevronLeft, ChevronRight, HardDrive, Clock, Calendar, Bookmark, RotateCcw, Heart, Star
 } from 'lucide-react';
-import '@videojs/react/video/minimal-skin.css';
-import { MinimalVideoSkin, Video, VideoPlayer as VideoJsPlayer } from '@videojs/react/video';
+import '@videojs/react/video/neutral-skin.css';
+import { NeutralVideoSkin, Video, VideoPlayer as VideoJsPlayer } from '@videojs/react/video';
 import { Hotkey, type HotkeyProps } from '@videojs/react';
 import { isWebSupported } from '../utils';
 import { matchesKeybind, formatKeybind } from '../keybinds';
@@ -139,7 +139,7 @@ const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
   muted: boolean;
 }) => (
   <VideoJsPlayer>
-    <MinimalVideoSkin className="review-video-skin">
+    <NeutralVideoSkin className="review-video-skin">
       <Video
         ref={videoRef}
         className="video-player"
@@ -152,7 +152,7 @@ const VideoPlayer = memo(({ videoUrl, videoRef, muted }: {
         <track kind="chapters" label="Bookmarks" default />
       </Video>
       <PlayerHotkeys />
-    </MinimalVideoSkin>
+    </NeutralVideoSkin>
   </VideoJsPlayer>
 ),(prev, next) => prev.videoUrl === next.videoUrl && prev.videoRef === next.videoRef);
 

@@ -21,7 +21,7 @@ vi.mock('@videojs/react/video', () => ({
     videoSkinRender();
     return children;
   },
-  MinimalVideoSkin: ({ children, className }: { children: ReactNode; className?: string }) => (
+  NeutralVideoSkin: ({ children, className }: { children: ReactNode; className?: string }) => (
     <div
       className={className}
       tabIndex={0}

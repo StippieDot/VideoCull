@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { render } from '@testing-library/react';
-import { MinimalVideoSkin, Video, VideoPlayer } from '@videojs/react/video';
+import { NeutralVideoSkin, Video, VideoPlayer } from '@videojs/react/video';
 
 // ReviewMode.dom.test.tsx mocks the player, so this renders the real skin to catch
 // @videojs/react releases that rename the DOM ReviewMode.tsx and ReviewMode.css rely on.
@@ -9,9 +9,9 @@ describe('review player skin contract', () => {
   function renderSkin() {
     const { container } = render(
       <VideoPlayer>
-        <MinimalVideoSkin className="review-video-skin">
+        <NeutralVideoSkin className="review-video-skin">
           <Video src="clip.mp4" />
-        </MinimalVideoSkin>
+        </NeutralVideoSkin>
       </VideoPlayer>,
     );
     return container.querySelector<HTMLElement>('.review-video-skin');
