@@ -43,6 +43,7 @@ All notable changes to VideoCull will be documented here.
 - The thumbnail notice says thumbnails were created, not rebuilt, when videos had none before.
 - Scrolling up through duplicate groups no longer jumps back to where it was.
 - Portrait videos in the duplicate gallery no longer run into the next group.
+- The file size slider can be moved with the arrow keys past every size it snaps to, instead of springing back to the same spot.
 
 ### Removed
 - The interface reload (`Ctrl + R`) is no longer in the released app, and **Clear Cache and Reload** no longer has a shortcut; it sits at the bottom of the File menu.

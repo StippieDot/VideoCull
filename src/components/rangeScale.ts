@@ -20,12 +20,15 @@ export function positionToValue(position: number, max: number, curve: number, sn
   return Math.min(max, Math.max(0, snap(raw)));
 }
 
-/** Two significant digits in the binary unit shown to the user, so the label matches the filter. */
+/**
+ * Two significant digits in the binary unit shown to the user, so the label matches the filter.
+ * Whole bytes, because the store keeps whole bytes: a fractional result would never equal what was saved.
+ */
 export function snapBytes(bytes: number): number {
   if (bytes < 1024) return Math.round(bytes);
   const unit = 1024 ** Math.min(4, Math.floor(Math.log(bytes) / Math.log(1024)));
   const scaled = bytes / unit;
-  return (scaled < 10 ? Math.round(scaled * 10) / 10 : Math.round(scaled)) * unit;
+  return Math.round((scaled < 10 ? Math.round(scaled * 10) / 10 : Math.round(scaled)) * unit);
 }
 
 /** Whole seconds for short clips, coarser steps as the duration grows. */

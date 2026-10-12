@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import RangeSlider from '../../../src/components/RangeSlider';
-import { snapSeconds } from '../../../src/components/rangeScale';
+import { snapBytes, snapSeconds } from '../../../src/components/rangeScale';
 
 function renderSlider(low: number, high: number, onChange = vi.fn()) {
   render(
@@ -90,6 +90,34 @@ describe('RangeSlider', () => {
       const high = screen.getByLabelText('Maximum') as HTMLInputElement;
       fireEvent.change(high, { target: { value: '999' } });
       expect(high.value).toBe('999');
+    });
+
+    test('a byte range stored as whole bytes lets the thumb keep moving across a snapped plateau', () => {
+      const max = 9 * 1024 ** 3;
+      function ByteRange() {
+        const [low, setLow] = useState(0);
+        return (
+          <RangeSlider
+            min={0}
+            max={max}
+            low={low}
+            high={max}
+            curve={2.5}
+            snap={snapBytes}
+            format={(value) => `${value}`}
+            // The store floors to whole bytes, like setSizeFilterRange.
+            onChange={(nextLow) => setLow(Math.floor(nextLow))}
+            lowLabel="Minimum"
+            highLabel="Maximum"
+          />
+        );
+      }
+      render(<ByteRange />);
+      const low = screen.getByLabelText('Minimum') as HTMLInputElement;
+      for (let position = 424; position <= 440; position += 1) {
+        fireEvent.change(low, { target: { value: String(position) } });
+        expect(low.value).toBe(String(position));
+      }
     });
 
     test('a value set from outside replaces the remembered position', () => {

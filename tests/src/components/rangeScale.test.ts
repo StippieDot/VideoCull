@@ -35,4 +35,12 @@ describe('range scale', () => {
     expect(snapSeconds(333)).toBe(335);
     expect(snapSeconds(7290)).toBe(7320);
   });
+
+  test('snapped byte values are whole bytes, like the ones the store keeps', () => {
+    expect(snapBytes(1.1 * GB)).toBe(1181116006);
+    for (let position = 0; position <= RANGE_STEPS; position += 1) {
+      const value = positionToValue(position, 9 * GB, 2.5, snapBytes);
+      expect(Number.isInteger(value)).toBe(true);
+    }
+  });
 });
