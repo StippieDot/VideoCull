@@ -7,7 +7,7 @@ VideoCull is licensed under the [GNU Affero General Public License, version 3](L
 An **Extension** is a separate software module that:
 
 1. works with VideoCull only through the extension interface that VideoCull publishes for that purpose (including the data VideoCull passes to the Extension and the results the Extension returns), and
-2. does not contain, copy, or modify any other part of VideoCull's source code. Using the published interface definitions themselves is allowed.
+2. does not contain, copy, or modify any other part of VideoCull's source code. Using the published interface definitions themselves (for example type definitions or schemas) is allowed.
 
 You may combine VideoCull with an Extension, distribute the combined work (for example in the same installer or the same Microsoft Store package), and license the Extension under terms of your choice, including terms that are not open source. An Extension does not become subject to the AGPL-3.0 merely because it is combined with, loaded by, or exchanges data with VideoCull.
 
@@ -16,6 +16,7 @@ You may combine VideoCull with an Extension, distribute the combined work (for e
 - VideoCull itself, and any changes to it, remain licensed under the AGPL-3.0 as before. Whoever distributes VideoCull must still provide its source code as the AGPL-3.0 requires.
 - Code that copies, patches, or goes beyond the published extension interface is not an Extension and stays under the AGPL-3.0.
 - Reading or showing data from the user's library (such as a video's title) is not a reason for a module to count as part of VideoCull. Only reuse of VideoCull's code does.
+- This permission covers VideoCull's own code only. Third-party components that ship with VideoCull, such as FFmpeg, keep their own licenses, and those licenses still apply when they are distributed together with an Extension.
 
 ## Removing this permission
 
