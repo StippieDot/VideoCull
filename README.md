@@ -252,6 +252,6 @@ Development sessions use `%APPDATA%\VideoCull-dev`, so local settings and cache 
 
 ## License
 
-[GNU Affero General Public License v3.0](LICENSE)
+[GNU Affero General Public License v3.0](LICENSE), with an [additional permission for extensions](EXTENSION-PERMISSION.md) that lets separate extension modules use other license terms. VideoCull itself stays open source.
 
 VideoCull bundles FFmpeg and FFprobe, licensed under the GNU GPL version 3 or later. They are built from source in [VideoCull-FFmpeg](https://github.com/StippieDot/VideoCull-FFmpeg), whose releases include the complete corresponding source. **Settings › About › Third-party notices** lists every bundled component and its license.
