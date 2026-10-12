@@ -13,8 +13,14 @@ All notable changes to VideoCull will be documented here.
 - In duplicate groups, **Run Again with Visual Similarity** or **with pHash** switches the comparison method to the one the shown groups were not found with, saves it and finds duplicates again; the notice that follows can undo the switch.
 - While videos are marked for deletion, the title bar shows how many and their total size; selecting it starts the usual delete flow with its confirmation.
 - New menu commands: **Add Folder to Session**, **Open Recent**, **Close Session** and **Reveal Folder in Explorer** (File); **Find Duplicates** and **Pause Processing** (Actions); **Sort By**, **Group by Folder**, **Clear All Filters** and **Mute In-App Playback** (View); **Copy Path** and **Regenerate Thumbnails** (Video); **Keyboard Shortcuts**, **Release Notes**, **Report a Problem**, **Open Log Folder**, **Online Help** and **Support VideoCull** (Help).
+- The PC no longer goes to sleep on its own while VideoCull scans, reads video info, makes thumbnails or finds duplicates; **Keep the PC awake while processing** in Settings turns this off. **Actions > When Processing Finishes** can instead put the PC to sleep or shut it down once a run is done, after a 60-second countdown you can cancel. The choice applies to that run only. A pending update is held back when VideoCull shuts the PC down.
+- Bookmarks show as marks on the Review playback timeline.
+- Settings > About shows the license and a list of third-party notices for the bundled components.
 
 ### Changed
+- VideoCull now bundles FFmpeg 9.0.2, built from published source and licensed under the GNU GPL version 3 or later. Duplicate fingerprints made with the previous FFmpeg are recalculated, so the first duplicate run after updating takes longer.
+- VideoCull requires Windows 10 version 22H2 (build 19045) or Windows 11.
+- The Review player uses the app's glass surfaces with rounder controls and calmer control fades, and the gradient behind persistent controls is limited to the control bar. Text and controls grow less in fullscreen and wide players.
 - Menu commands that cannot do anything right now are greyed out instead of silently doing nothing. Behind the privacy screen only **Privacy Screen**, **Full Screen** and **Exit** work.
 - **Reveal in Explorer** and **Play Externally** also act on the single selected video in the grid, and **Copy Path** and **Regenerate Thumbnails** on every selected video. **Delete Marked Videos** shows how many are marked.
 - Menu names follow common Windows wording: **Open Folder**, **Larger Cards** and **Smaller Cards**; **Settings** sits next to **Exit**.
@@ -28,6 +34,13 @@ All notable changes to VideoCull will be documented here.
 - The file size and duration sliders now line up with their thumbs, give smaller values more room on the track, and snap to the values shown in their labels.
 
 ### Fixed
+- Time a video spends paused no longer counts against its thumbnail time limit.
+- Videos on slow drives get more time for their video info and are retried when it still times out.
+- Creation dates from before 1970 are kept, and a 1970 date reported for a video that has none is ignored.
+- Review keyboard shortcuts keep working without the player focused, and modal backdrops stay above the title bar.
+- Deleting marked videos is disabled while a scan runs.
+- The grid's scrollbar no longer runs behind the top toolbar, and scrollbars are easier to see in the dark theme.
+- The thumbnail notice says thumbnails were created, not rebuilt, when videos had none before.
 - Scrolling up through duplicate groups no longer jumps back to where it was.
 - Portrait videos in the duplicate gallery no longer run into the next group.
 
