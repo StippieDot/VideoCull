@@ -276,7 +276,7 @@ repository **`StippieDot/VideoCull-FFmpeg`** (GPL-3.0-or-later). Distributor bui
 Gyan publish no matching corresponding source, and MSYS2's prebuilt set (115 files, 88 packages, about 1.2 GB
 of source archives) lacks the Rust crates built into three of its DLLs and changes on every update.
 
-**Why a separate repository:** a clean licence boundary (the app can later be dual-licensed; the
+**Why a separate repository:** a clean licence boundary (the
 toolchain stays GPL and needs no contributor agreement), and the app updater only reads the VideoCull
 repository's releases, so a toolchain release can never be mistaken for an app update.
 
@@ -362,8 +362,8 @@ subtitled MKV, 0.6 s, 15 min, a truncated file and two real videos):
 
 ### 0.5 Licence Compliance for Everything We Ship
 
-**Decision:** Ships together with 0.3. Every shipped licence is compatible with AGPL-3.0 and none forbids
-selling; the gaps are missing notices, licence texts and source, not incompatibility.
+**Decision:** Ships together with 0.3. Every shipped licence is compatible with AGPL-3.0 and none restricts
+distribution; the gaps are missing notices, licence texts and source, not incompatibility.
 
 **Audit (2026-10-02, `release/win-unpacked` 2.3.2 + `license-checker --production`):**
 
@@ -406,8 +406,6 @@ selling; the gaps are missing notices, licence texts and source, not incompatibi
    "Open source under AGPL-3.0". Manual check; record the result here.
 6. **Release checklist:** the pinned `VideoCull-FFmpeg` release exists and is published (immutable);
    Store submissions use a build from a tagged commit.
-- **Contributors:** one outside contributor (1 commit). A future dual licence needs their permission (or
-  a rewrite of that change) and a CLA for new contributions.
 - **Not legal advice.** Codec **patents** (H.264/HEVC encoding) are a separate, known and accepted risk.
 
 **Tests:** `generate-notices` fails on an unknown licence or missing text, and covers every package in
