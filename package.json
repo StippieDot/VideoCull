@@ -45,11 +45,11 @@
     "electron-winstaller@5.4.0": true
   },
   "dependencies": {
-    "@videojs/react": "10.0.0-rc.4",
+    "@videojs/react": "10.0.1",
     "better-sqlite3": "^13.0.3",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.3",
-    "lucide-react": "^1.17.0",
+    "lucide-react": "^1.53.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-window": "^2.2.7",
@@ -57,18 +57,18 @@
   },
   "devDependencies": {
     "@electron/asar": "^4.3.1",
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "^1.64.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.2",
+    "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.3",
-    "electron": "^44.5.1",
+    "electron": "^44.7.0",
     "electron-builder": "^26.8.1",
     "jsdom": "^30.1.2",
     "typescript": "^7.0.2",
-    "vite": "^8.0.16",
+    "vite": "^8.3.4",
     "vitest": "^5.0.3"
   },
   "overrides": {
