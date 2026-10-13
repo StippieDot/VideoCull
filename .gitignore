@@ -46,6 +46,7 @@ testspace/
 AGENTS.md
 .claude/
 .agents/
+CONTEXT.md
 .docs/*
 .dual-graph/
 .codegraph/

@@ -659,6 +659,28 @@ loads. Deleted tags are tombstoned; unknown tags found in a folder are offered b
 **Tests:** a settings save returning `false` during create, delete or recovery; recovery alongside a
 manual edit; tombstone persistence; older versions and the other edition don't wipe tags when they save.
 
+### 3.5 Undo for Rating, Favourite and Bookmark Edits
+
+**Decision:** Every manual review edit can be undone, not only status changes. One undo entry per user
+action, and a bulk action is one entry. Undo stays in memory for the session (see Skipped Features).
+
+**Implementation notes:**
+- Today an undo entry records status only (Reference: Undo). Entries gain the previous value of the
+  changed field for each affected video: `rating`, `favorite` or `bookmarks`. They use the same entry
+  model as tag edits (3.4), so there is one undo stack.
+- Undo goes through `review-persistence` (3.3), the same path as any edit, and is saved like one. A failed
+  save of an undo is reported the same way as a failed save of the edit.
+- Bookmarks and clip definitions are saved in one update (5.2). An entry for a bookmark edit therefore
+  also records the clip changes it caused, so undoing a bookmark removal restores the clip range that
+  removal dropped.
+- Hiding the rating or favourite UI (feature toggles) doesn't change what is recorded.
+- The undo toast and shortcut text name the kind of edit ("Undo rating", "Undo bookmark").
+
+**Tests:** for each field, edit → undo → await persistence → reload → previous value restored; a bulk
+edit is one entry; undo and redo ordering with interleaved status, rating and tag edits; an undo whose
+save fails is reported; after 5.2, removing a bookmark that bounds a clip range and undoing it restores
+the bookmark and the range.
+
 ---
 
 ## Phase 4 — Processing Performance
@@ -720,6 +742,9 @@ destination exists. Needed for promoting exported clips here and for rename/move
 **Implementation notes:**
 - **Prototype question:** how to call it from Electron — an FFI module, a tiny N-API addon, or a
   PowerShell `File.Move` per batch. Compare packaging for both editions, speed and error codes.
+- **Process containment:** the chosen route must also be able to create a Windows Job Object with
+  kill-on-close, so the same native piece can later stop a process together with everything it started.
+  A route that can't is rejected, because a second native piece would then be needed.
 - **Source replacement:** a path-based MoveFileEx can't guarantee the moved file is the one checked at
   preflight. Compare with a **handle-based** rename (open source, verify identity on the handle,
   `SetFileInformationByHandle` with `FILE_RENAME_INFO`, ReplaceIfExists = false). Matters most before
@@ -1259,6 +1284,7 @@ P3  Baselines + network-cache policy (Phase 3.1) ← before tags and Phase 4
 P3  Reliable settings save (Phase 3.2) ← before tags and 6.1 stage 6
 P3  Review persistence module (Phase 3.3) ← before tags and rename
 P3  Tags (Phase 3.4)
+P3  Undo for rating, favourite and bookmark edits (Phase 3.5) ← after 3.3 and 3.4
 
 P4  Storage-aware scheduling (Phase 4.1) ← before 4.2 and Phase 8 integration
 P4  Smarter thumbnail frames (Phase 4.2)
