@@ -1,10 +1,20 @@
 const assert = require('node:assert/strict');
 
-const { createRunToken, cancelRun, __test } = require('../../electron/media-process');
+const { createRunToken, cancelRun, runFfmpeg, __test } = require('../../electron/media-process');
 const processor = require('../../electron/processor');
 
 const { runProcess, parseProbeOutput } = __test;
 const node = process.execPath;
+
+test('FFmpeg returns raw frames when bounded stdout capture is requested', async () => {
+  const stdout = await runFfmpeg([
+    '-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=32x32',
+    '-frames:v', '1', '-pix_fmt', 'gray', '-threads', '1', '-f', 'rawvideo', 'pipe:1',
+  ], createRunToken(), { timeoutMs: 10_000, maxStdoutBytes: 1024 });
+
+  assert.ok(Buffer.isBuffer(stdout));
+  assert.equal(stdout.length, 1024);
+});
 
 describe('frame extraction arguments', () => {
   // Recorded from fluent-ffmpeg 2.1.3 for the command extractFrame used to build, so thumbnails keep
@@ -47,6 +57,15 @@ describe('runProcess', () => {
     await assert.rejects(
       runProcess(node, ['-e', 'process.stderr.write("broken input"); process.exit(3)'], createRunToken()),
       /exited with code 3\nbroken input/,
+    );
+  });
+
+  test('bounds stderr while retaining the final diagnostic', async () => {
+    await assert.rejects(
+      runProcess(node, ['-e', 'process.stderr.write("discarded-prefix" + "x".repeat(64000) + "final diagnostic", () => process.exit(1))'], createRunToken()),
+      (error) => error.message.endsWith('final diagnostic')
+        && !error.message.includes('discarded-prefix')
+        && error.message.length < 16 * 1024 + 100,
     );
   });
 

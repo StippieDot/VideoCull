@@ -119,6 +119,11 @@ const electronAPI = {
   // App notifications
   reportRendererError: (payload) => ipcRenderer.send('renderer-error', payload),
   onAppNotification: (callback) => subscribe('app-notification', callback),
+
+  // Quit: main waits for the answer before it closes the cache.
+  onFlushPendingSaves: (callback) => subscribe('flush-pending-saves', async () => {
+    ipcRenderer.send('pending-saves-flushed', await callback());
+  }),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

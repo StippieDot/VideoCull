@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, nativeTheme, clipboard, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const { randomUUID } = require('crypto');
 const os = require('os');
 const { performance: nodePerformance } = require('perf_hooks');
 const { scanDirectory } = require('./scanner');
@@ -18,6 +19,7 @@ const {
   DuplicateCancelledError,
 } = require('./duplicates');
 const { processingPause } = require('./processing-pause');
+const { createRendererSaveFlush } = require('./renderer-save-flush');
 const { createPowerManager } = require('./power-manager');
 const { runPowerCommand } = require('./system-power');
 const { buildMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('./app-menu');
@@ -108,6 +110,14 @@ let updateInstallOnQuitScheduled = false;
 let updateInstallInProgress = false;
 let pendingUpdateInstallOptions = null;
 let activeDuplicateRun = null;
+
+// Only cancels. A user's pause is lifted by cancelProcessing(), which the callers that throw the
+// whole session away run as well; a targeted cancel must not undo it.
+function cancelActiveDuplicateRun() {
+  if (!activeDuplicateRun) return;
+  activeDuplicateRun.cancel();
+  activeDuplicateRun = null;
+}
 const { track: trackCacheProducer, drain: drainCacheProducers } = createProducerTracker();
 let lastEventLoopUtilization = typeof nodePerformance.eventLoopUtilization === 'function'
   ? nodePerformance.eventLoopUtilization()
@@ -383,6 +393,13 @@ function createWindow(initialTheme = 'dark', micaTitleBar = true) {
       log.error('[renderer-crash] failed to collect idle diagnostics', err);
     }
   });
+  // Closing the last window quits the app, but only after the window is gone, and by then the
+  // renderer can no longer flush its pending saves. Quit first and let the window close at the end.
+  mainWindow.on('close', (event) => {
+    if (process.platform === 'darwin' || gracefulShutdown.phase() === 'complete') return;
+    event.preventDefault();
+    app.quit();
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -648,7 +665,27 @@ const gracefulShutdown = createGracefulShutdown({
   onError: (err) => log.error('[shutdown] Graceful shutdown failed:', err),
 });
 
+const rendererSaveFlush = createRendererSaveFlush({
+  send: () => sendToRenderer('flush-pending-saves'),
+  log,
+});
+ipcMain.on('pending-saves-flushed', (_event, unsaved) => rendererSaveFlush.report(unsaved));
+let rendererFlush = 'idle';
+
 app.on('before-quit', (event) => {
+  // The renderer still holds review decisions that failed to save and are waiting for a retry. Its
+  // saves are refused once shutdown starts, so it gets to flush them first.
+  if (rendererFlush !== 'done') {
+    event.preventDefault();
+    if (rendererFlush === 'idle') {
+      rendererFlush = 'flushing';
+      void rendererSaveFlush.request().finally(() => {
+        rendererFlush = 'done';
+        app.quit();
+      });
+    }
+    return;
+  }
   const installOptions = shouldInstallUpdateOnQuit({
     scheduled: updateInstallOnQuitScheduled,
     ready: updateReadyToInstall,
@@ -691,7 +728,21 @@ async function writeJsonFile(fileName, data, rootPath = app.getPath('userData'))
   if (currentScanDiagnostics && (fileName === CACHE_INDEX_FILE || fileName === DISTRIBUTED_INDEX_FILE)) {
     currentScanDiagnostics.cacheIndexIo.writes += 1;
   }
-  await fs.writeFile(path.join(rootPath, fileName), JSON.stringify(data, null, 2), 'utf8');
+  const content = JSON.stringify(data, null, 2);
+  const targetPath = path.join(rootPath, fileName);
+  const tempPath = `${targetPath}.${process.pid}-${randomUUID()}.tmp`;
+  // Flush a sibling file before replacement so an interrupted write preserves the previous JSON.
+  const handle = await fs.open(tempPath, 'wx');
+  try {
+    await handle.writeFile(content, 'utf8');
+    await handle.sync();
+    await handle.close();
+    await fs.rename(tempPath, targetPath);
+  } catch (error) {
+    await handle.close().catch(() => {});
+    await fs.unlink(tempPath).catch(() => {});
+    throw error;
+  }
 }
 
 async function createCacheIndexBatch() {
@@ -1717,6 +1768,7 @@ ipcMain.handle('validate-dropped-path', async (_event, droppedPath) => {
 ipcMain.handle('reset-loaded-directories', async () => {
   scanGeneration += 1;
   cancelProcessing();
+  cancelActiveDuplicateRun();
   const cacheOptions = await getCacheOptions();
   const cacheFolders = await getKnownCacheFolders(Array.from(currentScanDirs));
   for (const folderPath of cacheFolders) cacheService.blockFolder(folderPath, cacheOptions);
@@ -2580,6 +2632,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   }
 
   cancelProcessing();
+  cancelActiveDuplicateRun();
   scanGeneration += 1;
   clearDuplicateSessionCache();
 
@@ -2827,6 +2880,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
 
   scanGeneration += 1;
   cancelProcessing();
+  cancelActiveDuplicateRun();
   clearDuplicateSessionCache();
   for (const folderPath of knownFolders) cacheService.blockFolder(folderPath, fromOptions);
   let transitionStarted = false;
@@ -2977,8 +3031,7 @@ ipcMain.handle('save-config', async (_event, config) => {
   try {
     const theme = normalizeColorTheme(config?.theme);
     const normalizedConfig = { ...config, theme };
-    const configPath = path.join(app.getPath('userData'), CONFIG_FILE);
-    await fs.writeFile(configPath, JSON.stringify(normalizedConfig, null, 2), 'utf8');
+    await writeJsonFile(CONFIG_FILE, normalizedConfig);
     applyNativeTheme(theme);
     powerManager.setKeepAwake(normalizedConfig.keepAwakeWhileProcessing !== false);
     const wantsMica = normalizedConfig.micaTitleBar !== false;

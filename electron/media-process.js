@@ -143,10 +143,10 @@ async function probe(filePath, token) {
 /**
  * @param {string[]} args
  * @param {MediaRunToken} token
- * @param {{ timeoutMs?: number }} [options]
+ * @param {{ timeoutMs?: number, maxStdoutBytes?: number }} [options]
  */
 async function runFfmpeg(args, token, options = {}) {
-  await runProcess(ffmpegPath, args, token, { timeoutMs: options.timeoutMs });
+  return runProcess(ffmpegPath, args, token, options);
 }
 
 module.exports = {

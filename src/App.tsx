@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react';
-import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from './store';
+import useStore, { DUPLICATE_METHOD_NAMES, flushPendingReviewSaves, otherDuplicateMethod } from './store';
 import { Profiler } from 'react';
 import { formatKeybind, matchesKeybind } from './keybinds';
 import { DEFAULT_KEYBINDS } from './keybind-defaults';
@@ -824,6 +824,9 @@ export default function App() {
     const unsubNotifications = window.electronAPI.onAppNotification
       ? window.electronAPI.onAppNotification((notification) => pushToast(notification))
       : () => {};
+    const unsubFlushPendingSaves = window.electronAPI.onFlushPendingSaves
+      ? window.electronAPI.onFlushPendingSaves(flushPendingReviewSaves)
+      : () => {};
     const unsubDuplicates = window.electronAPI.onDuplicateProgress
       ? window.electronAPI.onDuplicateProgress((progress) => setDuplicateProgress(progress))
       : () => {};
@@ -1062,6 +1065,7 @@ export default function App() {
       unsubMetadataReady();
       unsub3();
       unsubNotifications();
+      unsubFlushPendingSaves();
       unsubDuplicates();
       unsub4();
       window.removeEventListener('keydown', handleKeyDown, true);
@@ -1238,9 +1242,9 @@ export default function App() {
     setIsGenerating(false);
     setScanProgress({ found: 0, currentFile: '' });
     setGenProgress({ current: 0, total: 0 });
-    useStore.getState().setDirectory(null);
     void (async () => {
       try {
+        await useStore.getState().setDirectory(null);
         await window.electronAPI?.cancelGeneration();
         await window.electronAPI?.cancelDuplicateDetection();
         await window.electronAPI?.resetLoadedDirectories();
