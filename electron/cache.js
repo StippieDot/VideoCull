@@ -871,8 +871,9 @@ function updateVideoThumbnailMetadataBatch(db, updates) {
 
 
 /**
- * Upsert all videos in a single transaction.
- * Used for status changes and bookmark updates — no progress IPC needed.
+ * Upsert all videos in a single transaction — no progress IPC needed.
+ * Review fields (status, rating, favorite, bookmarks) of an existing row are only replaced when the
+ * file's size/date changed; use updateVideoReviewStateBatch to change a decision.
  */
 function saveCache(db, videos, options = {}) {
   const { write, stats } = createVideoBatchWriter(db, videos, options);
