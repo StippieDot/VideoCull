@@ -2,7 +2,7 @@
 
 All notable changes to VideoCull will be documented here.
 
-## [Unreleased]
+## [2.4.0] - 2026-10-16
 
 ### Added
 - One title bar in the app's style replaces the Windows title bar and the separate menu bar. The menus sit on the left, Windows still draws the minimise, maximise and close buttons in the light or dark theme, and on Windows 11 22H2 and newer the bar takes a soft tint from the desktop background, as Windows 11's own apps do; **Tint the title bar with the desktop background** in Settings > Interface > Window turns it off.
@@ -45,6 +45,15 @@ All notable changes to VideoCull will be documented here.
 - Scrolling up through duplicate groups no longer jumps back to where it was.
 - Portrait videos in the duplicate gallery no longer run into the next group.
 - The file size slider can be moved with the arrow keys past every size it snaps to, instead of springing back to the same spot.
+- Review decisions that are still being saved are finished before another folder opens or VideoCull quits, which waits up to 2 seconds for them and warns if any could not be saved. A failed save that is retried later can no longer overwrite a newer decision.
+- Settings and cache files are written through a temporary file that then replaces the old one, so an interrupted write no longer damages them.
+- A scan no longer deletes the saved decisions and thumbnails of videos in a folder where a file could not be read. Cleanup skips such folders and the scan reports the skipped files.
+- Updating thumbnails or video information no longer undoes a video's status, rating, favourite or bookmarks. They are only reset when the file's size or date changed.
+- Thumbnails made from an earlier version of a video are no longer reused after the video is replaced.
+- Duplicate detection stops when folders are closed, the cache is cleared or the cache location is moved. Reading the frames of one video is limited to 120 seconds, and a video that times out is tried again on the next run instead of being remembered as failed.
+
+### Security
+- The VideoCull window can no longer navigate away from the app's own page, open new windows or embed web content, and the app's internal channels only answer the app's own window.
 
 ### Removed
 - The interface reload (`Ctrl + R`) is no longer in the released app, and **Clear Cache and Reload** no longer has a shortcut; it sits at the bottom of the File menu.

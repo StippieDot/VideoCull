@@ -58,7 +58,7 @@ Every video gets a strip of thumbnails pulled from different points in the file.
 - Filter by exact status, minimum rating, favorites, compatibility, duplicates, file size, and duration
 - Sort by name, size, duration, date, rating, resolution, or FPS
 - Codec, resolution, FPS, favorite, rating, and compatibility badges
-- `Shift`-click batch selection with range selection, Keep, Delete, Skip, Reset, Clear, and Regenerate Thumbnails actions
+- `Shift`-click batch selection with range selection, Keep, Delete, Skip, Reset, Clear, and Regenerate Thumbnails and Metadata actions
 - Right-click quick actions for videos and folders, including reveal/copy-path, status changes, and thumbnail regeneration
 - Per-folder Review button to scope review mode to one folder
 - Drag and drop folder opening, multi-directory sessions
