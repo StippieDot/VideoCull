@@ -1268,15 +1268,19 @@ async function reconcileScannedVideosByFolder(videos, cacheOptions, {
   scanToken,
   scanCacheRoots,
   visitedFolders,
+  incompleteFolders = [],
   shouldPrune,
   diagnostics = null,
 } = {}) {
+  const folderKey = (folderPath) => path.resolve(folderPath).toLowerCase();
+  const incompleteKeys = new Set(incompleteFolders.map(folderKey));
   const groups = groupVideosByFolder(videos);
   const folderEntries = Array.from(groups.entries());
   const concurrency = getCacheLoadConcurrency(folderEntries.length);
   const updatedAt = shouldPrune ? Date.now() : null;
   const remainingVisitedFolders = shouldPrune
-    ? new Map(visitedFolders.filter(Boolean).map((folderPath) => [path.resolve(folderPath).toLowerCase(), folderPath]))
+    ? new Map(visitedFolders.filter((folderPath) => folderPath && !incompleteKeys.has(folderKey(folderPath)))
+      .map((folderPath) => [folderKey(folderPath), folderPath]))
     : new Map();
   if (diagnostics) {
     diagnostics.folderGroupCount = Math.max(diagnostics.folderGroupCount, groups.size);
@@ -1293,7 +1297,7 @@ async function reconcileScannedVideosByFolder(videos, cacheOptions, {
       const result = await cacheService.reconcileScannedFolder(folderPath, cacheOptions, folderVideos, {
         cacheRootDir: cachePaths.cacheRootDir,
         updatedAt,
-        prune: shouldPrune,
+        prune: shouldPrune && !incompleteKeys.has(folderKey(folderPath)),
       });
       assertScanCurrent(scanToken);
       rememberDuplicateSignatures(result.signatureRows);
@@ -1328,7 +1332,7 @@ async function reconcileScannedVideosByFolder(videos, cacheOptions, {
 
   const results = await mapWithConcurrency(folderEntries, concurrency, async ([folderPath, folderVideos]) => {
     const result = await runFolder(folderPath, folderVideos);
-    remainingVisitedFolders.delete(path.resolve(folderPath).toLowerCase());
+    remainingVisitedFolders.delete(folderKey(folderPath));
     await removeStaleThumbnailDirectories(result.cachePaths, result.staleVideos);
     assertScanCurrent(scanToken);
     return { folderPath, ...result };
@@ -1916,6 +1920,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
     scanToken,
     scanCacheRoots,
     visitedFolders: visitedDirs,
+    incompleteFolders: scanResult?.incompleteDirs,
     shouldPrune: cacheOptions.autoPruneMissingSubfolderCache !== false,
     diagnostics: scanDiagnostics,
   });
@@ -1962,6 +1967,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
       .slice(0, 25) ?? [],
     autoPrunedMissingCacheFolders: autoPrunedMissingCacheFolders.length,
     skippedDirectoryCount: scanSummary?.skippedDirectoryCount ?? 0,
+    skippedFileCount: scanSummary?.skippedFileCount ?? 0,
     durationMs: Math.round((scanSnapshot?.durationMs ?? 0) * 100) / 100,
     stageTimings,
     cacheDiagnostics: summarizeScanDiagnostics(scanDiagnostics),
@@ -2848,6 +2854,18 @@ ipcMain.handle('confirm-thumbnail-rebuild', async (_event, fromCount, toCount, v
   return response === 0;
 });
 
+// Persist the new cache location in main, before old caches are removed, so a crash or a failed
+// renderer settings write cannot leave settings pointing at a location that was just emptied.
+async function commitCacheLocationSettings(newSettings) {
+  // Re-read: the copy can take long enough for other settings (e.g. recent folders) to change meanwhile.
+  await writeJsonFile(CONFIG_FILE, {
+    ...await readJsonFile(CONFIG_FILE, {}),
+    cacheLocation: newSettings.cacheLocation,
+    centralCachePath: newSettings.centralCachePath,
+    perDriveCachePaths: newSettings.perDriveCachePaths,
+  });
+}
+
 ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSettings) => {
   const persistedSettings = await readJsonFile(CONFIG_FILE, {});
   if (!cacheRelevantSettingsChanged(persistedSettings, newSettings)) {
@@ -2897,6 +2915,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
     }
 
     if (response === 1) {
+      await commitCacheLocationSettings(newSettings);
       for (const folderPath of knownFolders) {
         const fromPaths = cache.resolveCachePaths(folderPath, fromOptions);
         await cacheService.deleteDb(folderPath, fromOptions);
@@ -2923,6 +2942,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
           await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
         }
         await writeJsonFile(CACHE_INDEX_FILE, { knownFolders });
+        await commitCacheLocationSettings(newSettings);
       },
       onCleanupError: (error, move) => {
         log.warn(`[cache] Migrated cache copied but source cleanup failed for ${move.source}:`, error);

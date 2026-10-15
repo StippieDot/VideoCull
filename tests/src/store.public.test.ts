@@ -452,6 +452,45 @@ describe('useStore public behavior', () => {
     });
   });
 
+  test('an older failed save never overwrites a newer saved decision', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const saved: string[] = [];
+    let failFirst!: (err: Error) => void;
+    electronAPI.saveReviewState.mockImplementationOnce(() => new Promise<boolean>((_resolve, reject) => { failFirst = reject; }));
+    electronAPI.saveReviewState.mockImplementation(async (_dir, updates) => {
+      saved.push(updates[0].changes.status);
+      return true;
+    });
+    useStore.getState().setDirectory('D:\\Media');
+    useStore.getState().setVideos([makeVideo('a', { path: 'D:\\Media\\a.mp4' })]);
+    useStore.getState().setVideoStatus('a', 'keep');
+    useStore.getState().setVideoStatus('a', 'delete');
+    failFirst(new Error('late failure'));
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(saved[saved.length - 1]).toBe('delete');
+    vi.useRealTimers();
+  });
+
+  test('quit flush waits for a first save that fails late and retries it', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let failFirst!: (err: Error) => void;
+    electronAPI.saveReviewState.mockImplementationOnce(() => new Promise<boolean>((_resolve, reject) => { failFirst = reject; }));
+    useStore.getState().setDirectory('D:\\Media');
+    useStore.getState().setVideos([makeVideo('a', { path: 'D:\\Media\\a.mp4' })]);
+    useStore.getState().setVideoStatus('a', 'keep');
+
+    const flushing = flushPendingReviewSaves();
+    failFirst(new Error('late failure'));
+    expect(await flushing).toBe(0);
+    expect(electronAPI.saveReviewState).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
   test('retries failed review-state saves independently for multiple roots', async () => {
     vi.useFakeTimers();
     vi.spyOn(console, 'error').mockImplementation(() => {});

@@ -615,6 +615,36 @@ test('updateVideoReviewStateBatch changes only requested review fields', async (
   }
 });
 
+test('saveCache with a stale snapshot does not undo review changes', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    const video = buildCachedVideo('a', path.join(folderPath, 'a.mp4'), { status: 'pending', rating: 0, thumbnails: ['t/1.jpg'] });
+    cache.saveCache(db, [video]);
+    cache.updateVideoReviewStateBatch(db, [
+      { id: 'a', changes: { status: 'keep', rating: 4, favorite: true, bookmarks: [3] } },
+    ]);
+
+    cache.saveCache(db, [{ ...video, thumbnails: [] }]);
+
+    const row = db.prepare('SELECT status, rating, favorite, bookmarks FROM videos WHERE id = ?').get('a');
+    assert.deepEqual(row, { status: 'keep', rating: 4, favorite: 1, bookmarks: '[3]' });
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM thumbnails WHERE video_id = ?').get('a').n, 0);
+
+    // A changed file is new content, so its review state is reset.
+    cache.saveCache(db, [{ ...video, date: (video.date ?? 0) + 1, status: 'pending', rating: 0, favorite: false, bookmarks: [] }]);
+    assert.deepEqual(
+      db.prepare('SELECT status, rating, favorite, bookmarks FROM videos WHERE id = ?').get('a'),
+      { status: 'pending', rating: 0, favorite: 0, bookmarks: null },
+    );
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('updateVideoReviewStateBatch rejects missing rows without partially saving the batch', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;
