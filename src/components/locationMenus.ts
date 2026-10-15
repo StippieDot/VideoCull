@@ -294,7 +294,7 @@ export function buildFolderMenu(context: FolderMenuContext, actions: LocationAct
     });
   }
   if (mode === 'grid' && folderVideos.length > 0) {
-    items.push({ type: 'item', key: 'thumbs', label: 'Regenerate Thumbnails', icon: RefreshCw, onSelect: () => actions.regenerateThumbnails(folderVideos) });
+    items.push({ type: 'item', key: 'thumbs', label: 'Regenerate Thumbnails and Metadata', icon: RefreshCw, onSelect: () => actions.regenerateThumbnails(folderVideos) });
   }
   items.push(
     SEPARATOR('sep-path'),

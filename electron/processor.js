@@ -83,6 +83,10 @@ async function getVideoMetadata(filePath, token = createRunToken()) {
   };
 }
 
+function mediaProbeOrNull(filePath, token) {
+  return getVideoMetadata(filePath, token).catch(() => null);
+}
+
 /**
  * Calculate N evenly-spaced timestamps.
  * Handles very short videos gracefully.
@@ -323,6 +327,16 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     }
   } catch {
     // Directory doesn't exist yet
+  }
+
+  if (options.forceRegenerate) {
+    // A forced rebuild also refreshes the probed metadata (and so the frame timestamps); an
+    // unreadable file keeps what it had and still gets its thumbnails attempted.
+    const meta = await mediaProbeOrNull(video.path, token);
+    if (meta) {
+      duration = meta.duration || duration;
+      ({ creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps } = meta);
+    }
   }
 
   const timestamps = calculateTimestamps(duration, THUMB_COUNT, skipDelay);

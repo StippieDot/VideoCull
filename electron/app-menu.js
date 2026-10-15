@@ -298,7 +298,7 @@ function videoMenu(state, actions) {
       },
       { type: 'separator' },
       {
-        label: state.activeVideoCount > 1 ? `Regenerate Thumbnails (${state.activeVideoCount})` : 'Regenerate Thumbnails',
+        label: state.activeVideoCount > 1 ? `Regenerate Thumbnails and Metadata (${state.activeVideoCount})` : 'Regenerate Thumbnails and Metadata',
         enabled: state.activeVideoCount > 0 && state.canRegenerateThumbnails,
         click: () => send('regenerate-thumbnails'),
       },

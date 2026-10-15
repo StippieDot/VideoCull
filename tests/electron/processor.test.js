@@ -212,6 +212,36 @@ test('a timed-out frame stops every further extraction attempt for that video', 
   }
 });
 
+test('a forced regeneration reads the metadata again and keeps the old values when the probe fails', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-thumb-force-'));
+  const originalProbe = mediaProcess.probe;
+  const originalRunFfmpeg = mediaProcess.runFfmpeg;
+  try {
+    const filePath = path.join(tempDir, 'a.mp4');
+    await fs.writeFile(filePath, 'x');
+    mediaProcess.runFfmpeg = async () => { throw new Error('no frames'); };
+    const video = { id: 'a', path: filePath, filename: 'a.mp4', thumbnails: [], durationSecs: 5, videoCodec: 'old', width: 10, height: 10 };
+    const run = async (options) => {
+      const ready = [];
+      await processVideos([video], tempDir, { thumbsPerVideo: 1, maxConcurrent: 1 }, null,
+        (id, _thumbs, durationSecs, _created, videoCodec, _a, _vb, _ab, _tb, _container, width) => ready.push({ durationSecs, videoCodec, width }),
+        options);
+      return ready;
+    };
+
+    mediaProcess.probe = async () => ({ format: { duration: 40 }, streams: [{ codec_type: 'video', codec_name: 'h264', width: 640, height: 360 }] });
+    assert.deepEqual(await run({ forceRegenerate: true }), [{ durationSecs: 40, videoCodec: 'h264', width: 640 }]);
+    assert.deepEqual(await run({}), [{ durationSecs: 5, videoCodec: 'old', width: 10 }]);
+
+    mediaProcess.probe = async () => { throw new Error('ffprobe failed'); };
+    assert.deepEqual(await run({ forceRegenerate: true }), [{ durationSecs: 5, videoCodec: 'old', width: 10 }]);
+  } finally {
+    mediaProcess.probe = originalProbe;
+    mediaProcess.runFfmpeg = originalRunFfmpeg;
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('the extraction budget counts only time spent extracting, not pauses between frames', async () => {
   const originalRunFfmpeg = mediaProcess.runFfmpeg;
   const originalNow = Date.now;

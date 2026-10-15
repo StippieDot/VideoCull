@@ -1020,7 +1020,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
               className="btn btn-ghost grid-batch-btn grid-batch-regenerate"
               onClick={handleBatchRegenerateThumbnails}
               disabled={isScanning || isGenerating}
-              title="Regenerate thumbnails for selected videos"
+              title="Regenerate thumbnails and metadata for selected videos"
             >
               <RefreshCw size={14} />
               Thumbs

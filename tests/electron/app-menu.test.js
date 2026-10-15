@@ -70,9 +70,9 @@ test('the Video menu acts on one video, or copies and regenerates for a selectio
   const selection = menu({ hasSession: true, videoCount: 3, activeVideoCount: 2, canRegenerateThumbnails: true });
   assert.equal(item(selection, 'Video', 'Reveal in Explorer').enabled, false);
   assert.equal(item(selection, 'Video', 'Copy Paths (2)').enabled, true);
-  assert.equal(item(selection, 'Video', 'Regenerate Thumbnails (2)').enabled, true);
+  assert.equal(item(selection, 'Video', 'Regenerate Thumbnails and Metadata (2)').enabled, true);
   const busy = menu({ hasSession: true, videoCount: 3, activeVideoCount: 1, canRegenerateThumbnails: false });
-  assert.equal(item(busy, 'Video', 'Regenerate Thumbnails').enabled, false);
+  assert.equal(item(busy, 'Video', 'Regenerate Thumbnails and Metadata').enabled, false);
 });
 
 test('scan-only processing allows finish actions but cannot be paused', () => {

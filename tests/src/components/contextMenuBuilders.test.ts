@@ -32,7 +32,7 @@ test('library grid video menu contains only approved items in order', () => {
     { label: 'Open in external player', disabled: false },
     { label: 'Reveal in Explorer', disabled: false },
     { label: 'Reset to pending', disabled: false },
-    { label: 'Regenerate thumbnails', disabled: false },
+    { label: 'Regenerate thumbnails and metadata', disabled: false },
     { label: 'Copy full path', disabled: false },
   ]);
 });
@@ -178,7 +178,7 @@ test('folder header menu contains only approved items in order', () => {
     { label: 'Mark all in folder as Keep', disabled: false },
     { label: 'Mark all in folder as Delete', disabled: false },
     { label: 'Reset all videos in folder to pending', disabled: false },
-    { label: 'Regenerate thumbnails for folder', disabled: false },
+    { label: 'Regenerate thumbnails and metadata for folder', disabled: false },
   ]);
 });
 

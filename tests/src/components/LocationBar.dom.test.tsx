@@ -56,11 +56,11 @@ test('the grid folder menu counts the folder and offers the folder search', () =
   const menu = buildFolderMenu(context, actionsMock());
   expect(menu.title).toBe('Trips');
   expect(menu.detail).toBe('2 videos · 1 to review · 200 B');
-  expect(labels(menu.items)).toEqual(['Review This Folder', 'Regenerate Thumbnails', 'Reveal in Explorer', 'Copy Path', 'Go to Folder...']);
+  expect(labels(menu.items)).toEqual(['Review This Folder', 'Regenerate Thumbnails and Metadata', 'Reveal in Explorer', 'Copy Path', 'Go to Folder...']);
 
   // A folder above the loaded one has no videos of its own: nothing to review.
   const parent = buildFolderMenu({ ...context, folder: 'D:\\' }, actionsMock());
-  expect(labels(parent.items)).toEqual(['Regenerate Thumbnails', 'Reveal in Explorer', 'Copy Path', 'Go to Folder...']);
+  expect(labels(parent.items)).toEqual(['Regenerate Thumbnails and Metadata', 'Reveal in Explorer', 'Copy Path', 'Go to Folder...']);
 });
 
 test('a › list offers all of the folder before it, then each folder one level down, and filters to the choice', () => {

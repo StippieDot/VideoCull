@@ -767,7 +767,7 @@ export default function App() {
           dedupeKey: `thumbs-regenerate-incomplete:${Array.from(selectedIds).join('|')}`,
         }
         : {
-          title: 'Thumbnails regenerated',
+          title: 'Thumbnails and metadata regenerated',
           detail: `${uniqueSelected.length} selected ${uniqueSelected.length === 1 ? 'video was' : 'videos were'} rebuilt.`,
           kind: 'success',
           dedupeKey: `thumbs-regenerated:${Array.from(selectedIds).join('|')}`,

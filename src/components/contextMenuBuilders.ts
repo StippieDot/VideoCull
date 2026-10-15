@@ -21,7 +21,7 @@ export function buildLibraryGridVideoMenu(actions: {
     { key: 'reveal', label: 'Reveal in Explorer', onSelect: actions.onReveal },
     separator('sep-top'),
     { key: 'reset', label: 'Reset to pending', onSelect: actions.onResetPending, tone: 'secondary' },
-    { key: 'thumbs', label: 'Regenerate thumbnails', onSelect: actions.onRegenerateThumbnails },
+    { key: 'thumbs', label: 'Regenerate thumbnails and metadata', onSelect: actions.onRegenerateThumbnails },
     separator('sep-bottom'),
     { key: 'copy', label: 'Copy full path', onSelect: actions.onCopyPath, tone: 'secondary' },
   ];
@@ -115,7 +115,7 @@ export function buildFolderHeaderMenu(actions: {
     { key: 'keep', label: 'Mark all in folder as Keep', onSelect: actions.onMarkKeep },
     { key: 'delete', label: 'Mark all in folder as Delete', onSelect: actions.onMarkDelete, tone: 'danger' },
     { key: 'reset', label: 'Reset all videos in folder to pending', onSelect: actions.onResetPending, tone: 'secondary' },
-    { key: 'thumbs', label: 'Regenerate thumbnails for folder', onSelect: actions.onRegenerateThumbnails },
+    { key: 'thumbs', label: 'Regenerate thumbnails and metadata for folder', onSelect: actions.onRegenerateThumbnails },
   ];
 }
 
