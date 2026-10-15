@@ -35,7 +35,7 @@ jobs:
 
       - name: Create SHA-256 checksum
         shell: pwsh
-        run: Get-FileHash release/VideoCull.Store.*.x64.appx -Algorithm SHA256 | Format-List Hash,Path | Out-File release/VideoCull.Store.SHA256.txt
+        run: Get-FileHash artifacts/packages/VideoCull.Store.*.x64.appx -Algorithm SHA256 | Format-List Hash,Path | Out-File artifacts/packages/VideoCull.Store.SHA256.txt
 
       - name: Upload non-official candidate artifact
         uses: actions/upload-artifact@v7
@@ -44,5 +44,5 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: |
-            release/VideoCull.Store.*.x64.appx
-            release/VideoCull.Store.SHA256.txt
+            artifacts/packages/VideoCull.Store.*.x64.appx
+            artifacts/packages/VideoCull.Store.SHA256.txt

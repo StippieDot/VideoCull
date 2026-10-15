@@ -1,5 +1,5 @@
 // @ts-check
-// Installs the pinned FFmpeg runtime (ffmpeg-toolchain.json) into vendor/ffmpeg, where development
+// Installs the pinned FFmpeg runtime (config/ffmpeg-toolchain.json) into vendor/ffmpeg, where development
 // runs and packaging pick it up. Runs on npm install; does nothing when the pinned build is already
 // in place. The archive's SHA-256 must match before anything is extracted.
 const crypto = require('node:crypto');
@@ -98,7 +98,7 @@ function extractWithTar(zipPath, targetDir) {
 
 if (require.main === module) {
   /** @type {ToolchainPin} */
-  const pin = JSON.parse(fs.readFileSync(path.join(root, 'ffmpeg-toolchain.json'), 'utf8'));
+  const pin = JSON.parse(fs.readFileSync(path.join(root, 'config', 'ffmpeg-toolchain.json'), 'utf8'));
   installPinnedFfmpeg(pin, path.join(root, 'vendor', 'ffmpeg'), {
     download,
     extract: extractWithTar,

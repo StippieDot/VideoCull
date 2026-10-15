@@ -82,6 +82,8 @@ test('custom app bindings override player bindings and release the unused defaul
     await page.keyboard.press('5');
     await expect(page.locator('button.app-global-mute[aria-label="Unmute in-app playback"]')).toBeVisible();
     expect(await video.evaluate((el: HTMLVideoElement) => el.currentTime)).toBe(0);
+    // Video.js receives the native volumechange after the app's mute control updates.
+    await expect(page.locator('.review-video-skin').getByRole('button', { name: 'Unmute', exact: true })).toBeVisible();
     await page.keyboard.press('m');
     await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.muted)).toBe(false);
     await page.keyboard.press('k');

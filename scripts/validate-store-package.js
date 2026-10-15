@@ -10,7 +10,7 @@ const expectedVersion = validateStoreVersion(
   product.microsoftStore?.lastSubmittedVersion,
   { strict: true },
 );
-const packagePath = path.join(root, 'release', `VideoCull.Store.${packageJson.version}.x64.appx`);
+const packagePath = path.join(root, 'artifacts', 'packages', `VideoCull.Store.${packageJson.version}.x64.appx`);
 const result = spawnSync('powershell.exe', [
   '-NoProfile',
   '-ExecutionPolicy',

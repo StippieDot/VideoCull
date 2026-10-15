@@ -8,10 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
 dist-ssr
-coverage
-test-results/
+/artifacts/
 *.local
 
 # Editor directories and files
@@ -38,7 +36,6 @@ build/*
 !build/appx/
 !build/appx/*.png
 !build/licenses/
-release/
 vendor/
 testspace/
 

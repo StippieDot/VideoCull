@@ -19,14 +19,14 @@
     "verify:store-installed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-installed-store-package.ps1",
     "check:brand": "node scripts/check-brand.js",
     "test": "vitest run",
-    "test:renderer": "vitest run -c vitest.renderer.config.ts",
+    "test:renderer": "vitest run -c config/vitest.renderer.config.ts",
     "test:watch": "vitest",
     "test:cache-native": "node scripts/run-electron-node-tests.js tests/electron/cache.test.js tests/electron/cache.migration.test.js",
     "test:packaging": "node --test tests/electron/build-hooks.test.js tests/electron/generate-notices.test.js tests/electron/fetch-ffmpeg.test.js",
     "coverage": "vitest run --coverage",
     "test:profile": "node --test tests/electron/profile-bootstrap.test.js tests/electron/storage-compatibility.test.js",
     "test:store": "node --test tests/electron/store-*.test.js",
-    "test:ci": "npm run check:ipc && npx tsc -p tsconfig.electron.json && npm run check:installer && npm run check:store && npm run check:brand && npm run test:packaging && npm run test:profile && npm run test:store && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
+    "test:ci": "npm run check:ipc && npx tsc -p config/tsconfig.electron.json && npm run check:installer && npm run check:store && npm run check:brand && npm run test:packaging && npm run test:profile && npm run test:store && npx tsc -p config/tsconfig.test.json --noEmit && npm run coverage",
     "test:e2e": "npm run build && playwright test",
     "test:duplicates": "vitest run tests/electron/duplicate-utils.test.js tests/electron/duplicates.test.js tests/electron/duplicate-worker.test.js tests/electron/visual-worker.test.js",
     "stress:cache-overcap": "node scripts/cache-overcap-smoke.js",
@@ -49,10 +49,10 @@
     "better-sqlite3": "^13.0.3",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.3",
-    "lucide-react": "^1.53.0",
+    "lucide-react": "^1.55.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-window": "^2.2.7",
+    "react-window": "^2.3.4",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -63,7 +63,7 @@
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.1.2",
-    "@vitest/coverage-v8": "^5.0.3",
+    "@vitest/coverage-v8": "^5.0.4",
     "electron": "^44.7.0",
     "electron-builder": "^26.8.1",
     "jsdom": "^30.1.2",
@@ -78,10 +78,10 @@
     "appId": "com.videocull.app",
     "productName": "VideoCull",
     "directories": {
-      "output": "release"
+      "output": "artifacts/packages"
     },
     "files": [
-      "dist/**/*",
+      "artifacts/renderer/**/*",
       "electron/**/*",
       "product.json",
       "node_modules/better-sqlite3/**/*",
