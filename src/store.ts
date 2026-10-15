@@ -589,6 +589,10 @@ type RetryState = {
 
 const retryStatesByDirectory = new Map<string, RetryState>();
 const reviewSavesByDirectory = new Map<string, Promise<boolean>>();
+// Highest request token already saved per `${directory}\0${videoId}:${field}`; older retries must not overwrite it.
+const savedTokenByDirectoryKey = new Map<string, number>();
+// Whole request chains (save plus its failure handling), so a quit flush sees retries queued by late failures.
+const pendingReviewRequests = new Set<Promise<unknown>>();
 let retryTokenCounter = 0;
 let finalReviewSave: Promise<number> | null = null;
 
@@ -671,9 +675,9 @@ function resetAllRetryQueues(): Promise<number> {
   finalReviewSave = (async () => {
     let unsaved = 0;
     do {
-      // Include initial writes and retries already in flight before taking the final snapshot.
-      while (reviewSavesByDirectory.size > 0) {
-        await Promise.allSettled(Array.from(reviewSavesByDirectory.values()));
+      // Include initial writes (and their failure handling) and retries in flight before taking the final snapshot.
+      while (reviewSavesByDirectory.size > 0 || pendingReviewRequests.size > 0) {
+        await Promise.allSettled([...reviewSavesByDirectory.values(), ...pendingReviewRequests]);
       }
       const saves = Array.from(retryStatesByDirectory, ([directory, state]) => {
         const updates = mergeQueuedUpdates(state);
@@ -682,7 +686,8 @@ function resetAllRetryQueues(): Promise<number> {
       });
       const counts = await Promise.all(saves);
       unsaved += counts.reduce((sum, count) => sum + count, 0);
-    } while (reviewSavesByDirectory.size > 0 || retryStatesByDirectory.size > 0);
+    } while (reviewSavesByDirectory.size > 0 || pendingReviewRequests.size > 0 || retryStatesByDirectory.size > 0);
+    savedTokenByDirectoryKey.clear();
     return unsaved;
   })().finally(() => { finalReviewSave = null; });
   return finalReviewSave;
@@ -695,6 +700,10 @@ function retryKey(videoId: string, field: ReviewStateField) {
 }
 
 function acknowledgeSavedTokens(directory: string, savedTokenByKey: Map<string, number>) {
+  for (const [key, token] of savedTokenByKey) {
+    const savedKey = `${directory}\0${key}`;
+    if ((savedTokenByDirectoryKey.get(savedKey) ?? 0) < token) savedTokenByDirectoryKey.set(savedKey, token);
+  }
   const state = retryStatesByDirectory.get(directory);
   if (!state || savedTokenByKey.size === 0 || state.queueByField.size === 0) return;
 
@@ -733,6 +742,7 @@ function enqueueRetryUpdates(directory: string, updates: VideoReviewUpdate[], to
   for (const update of updates) {
     for (const field of Object.keys(update.changes) as ReviewStateField[]) {
       const key = retryKey(update.id, field);
+      if ((savedTokenByDirectoryKey.get(`${directory}\0${key}`) ?? 0) > token) continue;
       const existing = nextQueue.get(key);
       if (!existing || existing.token <= token) {
         nextQueue.set(key, {
@@ -882,7 +892,7 @@ function persistReviewState(
   for (const [root, rootUpdates] of updatesByRoot) {
     const requestToken = nextRetryToken();
 
-    void saveReviewStateInOrder(root, rootUpdates)
+    const request = saveReviewStateInOrder(root, rootUpdates)
       .then((ok) => {
         if (ok) {
           const retryState = retryStatesByDirectory.get(root);
@@ -920,6 +930,9 @@ function persistReviewState(
         });
         enqueueRetryUpdates(root, rootUpdates, requestToken);
       });
+    pendingReviewRequests.add(request);
+    const forget = () => pendingReviewRequests.delete(request);
+    void request.then(forget, forget);
   }
 }
 
