@@ -470,7 +470,7 @@ describe('useStore public behavior', () => {
     failFirst(new Error('late failure'));
     await vi.advanceTimersByTimeAsync(5_000);
 
-    expect(saved.at(-1)).toBe('delete');
+    expect(saved[saved.length - 1]).toBe('delete');
     vi.useRealTimers();
   });
 
