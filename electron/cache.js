@@ -602,9 +602,8 @@ function createVideoBatchWriter(db, videos, options = {}) {
       END,
       duration_secs = COALESCE(excluded.duration_secs, duration_secs),
       fps = COALESCE(excluded.fps, fps),
-      status      = excluded.status,
-      rating = excluded.rating,
-      favorite = excluded.favorite,
+      -- status, rating, favorite and bookmarks are intentionally absent: only updateVideoReviewStateBatch
+      -- may change them on an existing row, so a stale full-record snapshot cannot undo a review decision.
       compatible = excluded.compatible,
       video_codec = COALESCE(excluded.video_codec, video_codec),
       audio_codec = COALESCE(excluded.audio_codec, audio_codec),
@@ -638,7 +637,6 @@ function createVideoBatchWriter(db, videos, options = {}) {
         WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN NULL
         ELSE fingerprint_failure_key
       END,
-      bookmarks   = excluded.bookmarks,
       os_thumbnail_path = COALESCE(excluded.os_thumbnail_path, os_thumbnail_path),
       duplicate_hash = excluded.duplicate_hash,
       updated_at  = excluded.updated_at
