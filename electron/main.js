@@ -2854,6 +2854,17 @@ ipcMain.handle('confirm-thumbnail-rebuild', async (_event, fromCount, toCount, v
   return response === 0;
 });
 
+// Persist the new cache location in main, before old caches are removed, so a crash or a failed
+// renderer settings write cannot leave settings pointing at a location that was just emptied.
+async function commitCacheLocationSettings(persistedSettings, newSettings) {
+  await writeJsonFile(CONFIG_FILE, {
+    ...persistedSettings,
+    cacheLocation: newSettings.cacheLocation,
+    centralCachePath: newSettings.centralCachePath,
+    perDriveCachePaths: newSettings.perDriveCachePaths,
+  });
+}
+
 ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSettings) => {
   const persistedSettings = await readJsonFile(CONFIG_FILE, {});
   if (!cacheRelevantSettingsChanged(persistedSettings, newSettings)) {
@@ -2903,6 +2914,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
     }
 
     if (response === 1) {
+      await commitCacheLocationSettings(persistedSettings, newSettings);
       for (const folderPath of knownFolders) {
         const fromPaths = cache.resolveCachePaths(folderPath, fromOptions);
         await cacheService.deleteDb(folderPath, fromOptions);
@@ -2929,6 +2941,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
           await writeJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
         }
         await writeJsonFile(CACHE_INDEX_FILE, { knownFolders });
+        await commitCacheLocationSettings(persistedSettings, newSettings);
       },
       onCleanupError: (error, move) => {
         log.warn(`[cache] Migrated cache copied but source cleanup failed for ${move.source}:`, error);
