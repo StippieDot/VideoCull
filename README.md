@@ -44,9 +44,6 @@ For a direct installation, download `VideoCull.Setup.<version>.exe` from [GitHub
 
 The direct-download edition checks GitHub Releases for updates. Both editions share `%APPDATA%\VideoCull`, including settings, review decisions, databases, and the default thumbnail cache. Run only one edition at a time and keep both updated before switching. After confirming the Store edition works, you can uninstall the direct edition without deleting the shared profile or cache.
 
-> [!IMPORTANT]
-> **Official links:** Use [videocull.app](https://videocull.app/) for the product website, [docs.videocull.app](https://docs.videocull.app/) for documentation, and this GitHub repository for source and releases.
-
 ---
 
 ## Features
@@ -254,6 +251,6 @@ Development sessions use `%APPDATA%\VideoCull-dev`, so local settings and cache 
 
 ## License
 
-[GNU Affero General Public License v3.0](LICENSE), with an [additional permission for extensions](EXTENSION-PERMISSION.md) that lets separate extension modules use other license terms. VideoCull itself stays open source.
+[GNU Affero General Public License v3.0](LICENSE), with an [additional permission for extensions](EXTENSION-PERMISSION.md) that lets separate extension modules use other license terms.
 
 VideoCull bundles FFmpeg and FFprobe, licensed under the GNU GPL version 3 or later. They are built from source in [VideoCull-FFmpeg](https://github.com/StippieDot/VideoCull-FFmpeg), whose releases include the complete corresponding source. **Settings › About › Third-party notices** lists every bundled component and its license.
