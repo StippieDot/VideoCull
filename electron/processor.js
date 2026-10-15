@@ -148,6 +148,19 @@ async function getReusableThumbnailPaths(existingNames, videoThumbDir, expectedC
   return nonempty.every(Boolean) ? completePaths : null;
 }
 
+const THUMB_SOURCE_MARKER = '.source';
+
+// Thumbnails are only reusable if they were made from the video's current contents. The marker records
+// size:mtime at generation time; folders from before the marker fall back to comparing thumbnail age.
+async function thumbnailsMatchSource(video, videoThumbDir, thumbnailPaths) {
+  const sourceKey = `${video.sizeBytes}:${video.date}`;
+  const marker = await fs.readFile(path.join(videoThumbDir, THUMB_SOURCE_MARKER), 'utf8').catch(() => null);
+  if (marker !== null) return marker === sourceKey;
+  if (!Number.isFinite(video.date)) return true;
+  const stats = await Promise.all(thumbnailPaths.map((filePath) => fs.stat(filePath)));
+  return stats.every((stat) => stat.mtimeMs >= video.date);
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -286,7 +299,8 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     if (!options.forceRegenerate) {
       const expectedCount = expectedThumbnailCount(duration, THUMB_COUNT, skipDelay);
       const reusablePaths = await getReusableThumbnailPaths(existing, videoThumbDir, expectedCount);
-      if (reusablePaths) {
+      if (reusablePaths && await thumbnailsMatchSource(video, videoThumbDir, reusablePaths)) {
+        await fs.writeFile(path.join(videoThumbDir, THUMB_SOURCE_MARKER), `${video.sizeBytes}:${video.date}`).catch(() => {});
         return {
           thumbnails: reusablePaths,
           durationSecs: duration,
@@ -350,6 +364,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
 
   if (token.cancelled) throw new Error('Cancelled');
 
+  await fs.writeFile(path.join(videoThumbDir, THUMB_SOURCE_MARKER), `${video.sizeBytes}:${video.date}`).catch(() => {});
   return { thumbnails: finalPaths, durationSecs: duration, creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps };
 }
 
@@ -535,6 +550,7 @@ module.exports = {
   getConcurrentLimit,
   METADATA_SCHEMA_VERSION,
   __test: {
+    thumbnailsMatchSource,
     toFfmpegInputPath,
     getVideoMetadata,
     buildFrameArgs,

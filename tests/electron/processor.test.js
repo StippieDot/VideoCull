@@ -53,6 +53,27 @@ test('thumbnail reuse requires the exact expected filenames and nonempty files',
   }
 });
 
+test('thumbnails are reused only when they match the current source file', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-thumb-source-'));
+
+  try {
+    const thumb = path.join(tempDir, 'thumb_01.jpg');
+    await fs.writeFile(thumb, 'one');
+    const thumbMtime = (await fs.stat(thumb)).mtimeMs;
+
+    // Legacy folder (no marker): thumbnails older than the video's mtime are stale.
+    assert.equal(await __test.thumbnailsMatchSource({ sizeBytes: 3, date: thumbMtime - 1000 }, tempDir, [thumb]), true);
+    assert.equal(await __test.thumbnailsMatchSource({ sizeBytes: 3, date: thumbMtime + 60_000 }, tempDir, [thumb]), false);
+
+    // With a marker, only the exact size:mtime it was generated from matches.
+    await fs.writeFile(path.join(tempDir, '.source'), '3:1000');
+    assert.equal(await __test.thumbnailsMatchSource({ sizeBytes: 3, date: 1000 }, tempDir, [thumb]), true);
+    assert.equal(await __test.thumbnailsMatchSource({ sizeBytes: 3, date: 2000 }, tempDir, [thumb]), false);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('cancelling metadata during a running probe cancels that probe and suppresses its callbacks', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-metadata-cancel-'));
   const videoPath = path.join(tempDir, 'clip.mp4');
