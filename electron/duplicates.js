@@ -1,9 +1,8 @@
 const path = require('path');
 const fs = require('fs/promises');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
 const { Worker } = require('worker_threads');
-const { ffmpegPath } = require('./media-tools');
+const mediaProcess = require('./media-process');
 const { createDuplicateSessionCache } = require('./duplicate-session-cache');
 const { processingPause } = require('./processing-pause');
 const {
@@ -23,6 +22,8 @@ const {
 
 const ONE_MIB = 1024 * 1024;
 const FRAME_BYTE_COUNT = 32 * 32;
+// Match thumbnails: allow slow seeks, but keep a hung decoder from holding a worker indefinitely.
+const FRAME_EXTRACTION_TIMEOUT_MS = 120_000;
 const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 const FRAME_FILTER = 'scale=32:32:flags=bicubic,setsar=1,format=gray';
 // SYNC NOTE: same literal as CACHE_UNAVAILABLE_CODE in cache-service.js, which is not required here
@@ -47,19 +48,14 @@ class DuplicateCancelledError extends Error {
 
 function createDuplicateRun() {
   return {
-    cancelled: false,
+    ...mediaProcess.createRunToken(),
     worker: null,
-    commands: new Set(),
     cancel() {
-      this.cancelled = true;
+      mediaProcess.cancelRun(this);
       processingPause.wake();
       if (this.worker) {
         try { this.worker.terminate(); } catch { /* ignore */ }
       }
-      for (const child of this.commands) {
-        try { child.kill('SIGKILL'); } catch { /* ignore */ }
-      }
-      this.commands.clear();
     },
   };
 }
@@ -361,38 +357,27 @@ async function findExactGroups(videos, duplicateState, settings, run, sendProgre
 }
 
 async function extractGrayFramesWithArgs(args, expectedFrameCount, run) {
-  return runDuplicateActivity(run, () => new Promise((resolve, reject) => {
+  return runDuplicateActivity(run, async () => {
     assertNotCancelled(run);
-    const child = spawn(ffmpegPath, args, { windowsHide: true });
-    run.commands.add(child);
-    const chunks = [];
-    let stderr = '';
-    child.stdout.on('data', (chunk) => chunks.push(chunk));
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', (err) => {
-      run.commands.delete(child);
-      reject(err);
-    });
-    child.on('close', (code) => {
-      run.commands.delete(child);
-      if (run.cancelled) {
-        reject(new DuplicateCancelledError());
-        return;
-      }
-      const buffer = Buffer.concat(chunks);
-      const expectedBytes = expectedFrameCount * FRAME_BYTE_COUNT;
-      if (code !== 0 || buffer.length < expectedBytes) {
-        reject(new Error(stderr || `FFmpeg returned ${code}`));
-        return;
-      }
-      const frames = [];
-      for (let i = 0; i < expectedFrameCount; i++) {
-        const start = i * FRAME_BYTE_COUNT;
-        frames.push(buffer.subarray(start, start + FRAME_BYTE_COUNT));
-      }
-      resolve(frames);
-    });
-  }));
+    const expectedBytes = expectedFrameCount * FRAME_BYTE_COUNT;
+    let buffer;
+    try {
+      buffer = await mediaProcess.runFfmpeg(args, run, {
+        timeoutMs: FRAME_EXTRACTION_TIMEOUT_MS,
+        maxStdoutBytes: expectedBytes,
+      });
+    } catch (error) {
+      assertNotCancelled(run);
+      throw error;
+    }
+    if (buffer.length < expectedBytes) throw new Error('FFmpeg returned 0');
+    const frames = [];
+    for (let i = 0; i < expectedFrameCount; i++) {
+      const start = i * FRAME_BYTE_COUNT;
+      frames.push(buffer.subarray(start, start + FRAME_BYTE_COUNT));
+    }
+    return frames;
+  });
 }
 
 function extractGrayFrame(videoPath, timestamp, run, executionOptions) {

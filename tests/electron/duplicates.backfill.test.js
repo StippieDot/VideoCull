@@ -10,17 +10,17 @@ const modulePaths = ['duplicates', 'media-process'].map((name) => require.resolv
 
 // FFmpeg is started through a destructured `spawn`, so the fake has to be in place while the
 // modules load. Both modules are dropped from the cache again so other tests get the real thing.
-function loadDuplicatesWithFakeFfmpeg() {
+function loadDuplicatesWithFakeFfmpeg(onStart = (child) => {
+  child.stdout.emit('data', Buffer.alloc(FRAME_BYTES));
+  child.emit('close', 0, null);
+}) {
   const realSpawn = childProcess.spawn;
   childProcess.spawn = () => {
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
     child.kill = () => setImmediate(() => child.emit('close', null, 'SIGKILL'));
-    setImmediate(() => {
-      child.stdout.emit('data', Buffer.alloc(FRAME_BYTES));
-      child.emit('close', 0, null);
-    });
+    setImmediate(() => onStart(child));
     return child;
   };
   for (const modulePath of modulePaths) delete require.cache[modulePath];
@@ -36,7 +36,7 @@ function video(id) {
   return { id, filename: `${id}.mp4`, path: `P:\\${id}.mp4`, durationSecs: 100 };
 }
 
-function backfillSetup(duplicates, cacheAccess) {
+function backfillSetup(duplicates, cacheAccess, videos = [video('a'), video('b'), video('c')]) {
   const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', sampleCount: 1 });
   const duplicateState = {
     fingerprintKey: 'key',
@@ -46,7 +46,7 @@ function backfillSetup(duplicates, cacheAccess) {
   };
   const run = duplicates.createDuplicateRun();
   const backfill = () => duplicates.__test__.backfillFingerprints(
-    [video('a'), video('b'), video('c')],
+    videos,
     duplicateState,
     settings,
     run,
@@ -64,6 +64,97 @@ function refusedWrite() {
     code: CACHE_UNAVAILABLE_CODE,
   });
 }
+
+test('excess FFmpeg output stops extraction without saving partial fingerprints', async () => {
+  const killed = [];
+  const duplicates = loadDuplicatesWithFakeFfmpeg((child) => {
+    const kill = child.kill;
+    child.kill = (signal) => { killed.push(signal); return kill(); };
+    child.stdout.emit('data', Buffer.alloc(FRAME_BYTES + 1));
+    if (killed.length === 0) child.emit('close', 0, null);
+  });
+  const saved = [];
+  const failed = [];
+  const cacheAccess = {
+    saveVideoFingerprints: async (_folder, _options, id) => { saved.push(id); },
+    markFingerprintFailure: async (_folder, _options, id) => { failed.push(id); },
+  };
+  const { backfill } = backfillSetup(duplicates, cacheAccess, [video('a')]);
+
+  await backfill();
+
+  assert.deepEqual(saved, []);
+  assert.deepEqual(failed, ['a']);
+  assert.deepEqual(killed, ['SIGKILL']);
+});
+
+test('a hung duplicate extraction is killed after 120 seconds and marked failed', async () => {
+  vi.useFakeTimers();
+  const children = [];
+  const duplicates = loadDuplicatesWithFakeFfmpeg((child) => {
+    vi.spyOn(child, 'kill');
+    children.push(child);
+  });
+  const failed = [];
+  const { run, backfill } = backfillSetup(duplicates, {
+    saveVideoFingerprints: async () => assert.fail('A hung extraction cannot save fingerprints'),
+    markFingerprintFailure: async (_folder, _options, id) => { failed.push(id); },
+  }, [video('a')]);
+  let completed = false;
+  const pending = backfill().then(() => { completed = true; }, () => {});
+  try {
+    await vi.advanceTimersByTimeAsync(119_999);
+    assert.equal(children.length, 1);
+    assert.equal(children[0].kill.mock.calls.length, 0);
+    await vi.advanceTimersByTimeAsync(2);
+    assert.deepEqual(failed, ['a']);
+    await vi.runAllTimersAsync();
+    await pending;
+    assert.equal(completed, true);
+    assert.deepEqual(children[0].kill.mock.calls, [['SIGKILL']]);
+    assert.equal(run.cancelled, false);
+  } finally {
+    run.cancel();
+    await vi.runAllTimersAsync();
+    await pending;
+    vi.useRealTimers();
+  }
+});
+
+test('cancelling extraction kills only that duplicate run and records no fingerprint failure', async () => {
+  const children = [];
+  const duplicates = loadDuplicatesWithFakeFfmpeg((child) => {
+    vi.spyOn(child, 'kill');
+    children.push(child);
+  });
+  const saved = [];
+  const failed = [];
+  const cacheAccess = {
+    saveVideoFingerprints: async (_folder, _options, id) => { saved.push(id); },
+    markFingerprintFailure: async (_folder, _options, id) => { failed.push(id); },
+  };
+  const first = backfillSetup(duplicates, cacheAccess, [video('a')]);
+  const second = backfillSetup(duplicates, cacheAccess, [video('b')]);
+  const cancelled = first.backfill().catch((error) => error);
+  const other = second.backfill();
+  try {
+    await vi.waitFor(() => assert.equal(children.length, 2));
+    first.run.cancel();
+    children[1].stdout.emit('data', Buffer.alloc(FRAME_BYTES));
+    children[1].emit('close', 0, null);
+
+    assert.ok(await cancelled instanceof duplicates.DuplicateCancelledError);
+    await other;
+    assert.deepEqual(saved, ['b']);
+    assert.deepEqual(failed, []);
+    assert.deepEqual(children[0].kill.mock.calls, [['SIGKILL']]);
+    assert.equal(children[1].kill.mock.calls.length, 0);
+  } finally {
+    first.run.cancel();
+    second.run.cancel();
+    await Promise.allSettled([cancelled, other]);
+  }
+});
 
 test('a fingerprint write refused by the cache stops the run like a cancellation', async () => {
   const duplicates = loadDuplicatesWithFakeFfmpeg();
