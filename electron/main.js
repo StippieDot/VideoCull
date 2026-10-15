@@ -80,6 +80,7 @@ const {
   thumbRelative,
   videoForDb,
 } = require('./main-helpers');
+const { isTrustedAppUrl, isTrustedIpcSender, guardIpcMain, lockWebContents } = require('./ipc-guard');
 
 const cacheService = createCacheService();
 const isE2E = process.env.VC_E2E_USE_DIST === '1';
@@ -332,6 +333,18 @@ function applyNativeTheme(value) {
   return theme;
 }
 
+const rendererTrust = {
+  isDev,
+  devPort: process.env.VITE_DEV_SERVER_PORT || 5173,
+  rendererIndexPath: path.join(__dirname, '..', 'artifacts', 'renderer', 'index.html'),
+};
+// Every channel registered below this point only answers the app's own main frame.
+guardIpcMain(
+  ipcMain,
+  (event) => isTrustedIpcSender(event, mainWindow, rendererTrust),
+  (channel, event) => log.warn('[security] Rejected IPC from untrusted sender', { channel, url: String(event?.senderFrame?.url ?? '').slice(0, 200) }),
+);
+
 function createWindow(initialTheme = 'dark', micaTitleBar = true) {
   useMica = micaSupported && micaTitleBar;
   const theme = applyNativeTheme(initialTheme);
@@ -364,6 +377,12 @@ function createWindow(initialTheme = 'dark', micaTitleBar = true) {
       ],
     },
   });
+
+  lockWebContents(
+    mainWindow.webContents,
+    (url) => isTrustedAppUrl(url, rendererTrust),
+    (url) => log.warn('[security] Blocked navigation or new window', { url: String(url).slice(0, 200) }),
+  );
 
   mainWindow.once('ready-to-show', () => {
     storeWindowReady = isWindowsStore;
@@ -405,9 +424,9 @@ function createWindow(initialTheme = 'dark', micaTitleBar = true) {
   });
 
   if (isDev) {
-    mainWindow.loadURL(`http://localhost:${process.env.VITE_DEV_SERVER_PORT || 5173}`);
+    mainWindow.loadURL(`http://localhost:${rendererTrust.devPort}`);
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'artifacts', 'renderer', 'index.html'));
+    mainWindow.loadFile(rendererTrust.rendererIndexPath);
   }
 }
 
