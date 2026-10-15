@@ -426,7 +426,7 @@ describe('App renderer behavior', () => {
 
     fireEvent.click(screen.getByTestId('grid-review-folder'));
     // Opening another folder ends Review and clears the filter.
-    act(() => getStoreApi().getState().setDirectory('E:\\Other'));
+    await act(async () => { await getStoreApi().getState().setDirectory('E:\\Other'); });
     await waitFor(() => expect(getStoreApi().getState().reviewMode).toBe(false));
     expect(getStoreApi().getState().folderFilter).toBeNull();
   });
@@ -938,6 +938,29 @@ describe('App renderer behavior', () => {
     await act(async () => {
       finishReset();
     });
+  });
+
+  test('closing the session waits for pending decisions before resetting the cache', async () => {
+    const video = makeVideo('a', { metadataVersion: 2, thumbnails: Array(6).fill('thumb.jpg') });
+    getStoreApi().setState({ directory: 'D:\\Media', directories: ['D:\\Media'], videos: [video], filteredVideos: [video] });
+    electron.api.scanDirectory.mockResolvedValue([video]);
+    render(<App />);
+    await waitFor(() => expect(getStoreApi().getState().isScanning).toBe(false));
+    electron.api.resetLoadedDirectories.mockClear();
+    electron.api.saveReviewState.mockResolvedValueOnce(false);
+    await act(async () => { useStore.getState().setVideoStatus('a', 'keep'); });
+    let finishSave!: (saved: boolean) => void;
+    electron.api.saveReviewState.mockImplementationOnce(() => new Promise<boolean>((resolve) => { finishSave = resolve; }));
+
+    await userEvent.click(screen.getByTestId('sidebar-close-session'));
+    try {
+      expect(electron.api.resetLoadedDirectories).not.toHaveBeenCalled();
+      expect(useStore.getState().directory).toBe('D:\\Media');
+    } finally {
+      await act(async () => { finishSave(true); });
+    }
+    await waitFor(() => expect(electron.api.resetLoadedDirectories).toHaveBeenCalledTimes(1));
+    expect(useStore.getState().directory).toBeNull();
   });
 
   test('rejects dropped shortcuts and shows a user-facing error toast', async () => {

@@ -1,4 +1,4 @@
-import useStore from '../../src/store';
+import useStore, { flushPendingReviewSaves } from '../../src/store';
 import type { VideoStore } from '../../src/types';
 import { makeDuplicateGroup as makeGroup, makeVideo } from '../helpers/videoFactory';
 
@@ -259,7 +259,7 @@ describe('useStore public behavior', () => {
   });
 
   describe('queued review saves when the loaded folders are replaced', () => {
-    const changeSwitchers: Array<[string, () => void]> = [
+    const changeSwitchers: Array<[string, () => Promise<void>]> = [
       ['setDirectory', () => useStore.getState().setDirectory('E:\\Other')],
       ['setDirectories', () => useStore.getState().setDirectories(['E:\\Other'])],
     ];
@@ -285,6 +285,31 @@ describe('useStore public behavior', () => {
       vi.useRealTimers();
     });
 
+    test.each(changeSwitchers)('%s keeps the old cache session until the final save finishes', async (_name, switchFolders) => {
+      electronAPI.saveReviewState.mockResolvedValueOnce(false);
+      await queueFailedSave();
+      let finishSave!: (saved: boolean) => void;
+      electronAPI.saveReviewState.mockImplementationOnce(() => new Promise<boolean>((resolve) => { finishSave = resolve; }));
+      const changedDirectories: string[] = [];
+      const unsubscribe = useStore.subscribe((state) => {
+        if (state.directory !== 'D:\\Media') changedDirectories.push(state.directory!);
+      });
+      try {
+        const switching = switchFolders();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(useStore.getState().directory).toBe('D:\\Media');
+        expect(changedDirectories).toEqual([]);
+        finishSave(true);
+        await switching;
+        await vi.advanceTimersByTimeAsync(0);
+        expect(useStore.getState().directory).toBe('E:\\Other');
+      } finally {
+        unsubscribe();
+        finishSave(true);
+        await vi.advanceTimersByTimeAsync(0);
+      }
+    });
+
     test.each(changeSwitchers)('%s saves the queued changes once more before dropping them', async (_name, switchFolders) => {
       electronAPI.saveReviewState.mockRejectedValueOnce(new Error('cache worker failed'));
       await queueFailedSave();
@@ -298,6 +323,107 @@ describe('useStore public behavior', () => {
         [{ id: 'a', path: 'D:\\Media\\a.mp4', changes: { status: 'keep' } }],
       );
       expect(droppedTitles()).not.toContain('Decisions not saved');
+    });
+
+    test('concurrent flushes wait for the same final save and report its failure', async () => {
+      electronAPI.saveReviewState.mockResolvedValueOnce(false);
+      await queueFailedSave();
+      let finishSave!: (saved: boolean) => void;
+      electronAPI.saveReviewState.mockImplementationOnce(() => new Promise<boolean>((resolve) => { finishSave = resolve; }));
+      const first = flushPendingReviewSaves();
+      let secondFinished = false;
+      const second = flushPendingReviewSaves().then((count) => { secondFinished = true; return count; });
+      try {
+        await vi.advanceTimersByTimeAsync(0);
+        expect(secondFinished).toBe(false);
+      } finally {
+        finishSave(false);
+      }
+      expect(await first).toBe(1);
+      expect(await second).toBe(1);
+      expect(electronAPI.saveReviewState).toHaveBeenCalledTimes(2);
+    });
+
+    test('a decision made during the final save cannot be overwritten by the older decision', async () => {
+      electronAPI.saveReviewState.mockResolvedValueOnce(false);
+      await queueFailedSave();
+      let storedStatus = 'pending';
+      let finishOldSave!: () => void;
+      electronAPI.saveReviewState.mockImplementation((_directory, updates) => {
+        const status = updates[0].changes.status;
+        if (status === 'keep') {
+          return new Promise<boolean>((resolve) => {
+            finishOldSave = () => { storedStatus = status; resolve(true); };
+          });
+        }
+        storedStatus = status;
+        return Promise.resolve(true);
+      });
+      const switching = useStore.getState().setDirectory('E:\\Other');
+      await vi.advanceTimersByTimeAsync(0);
+      useStore.getState().setVideoStatus('a', 'delete');
+      await vi.advanceTimersByTimeAsync(0);
+      finishOldSave();
+      await switching;
+      await flushPendingReviewSaves();
+
+      expect(storedStatus).toBe('delete');
+    });
+
+    test.each(changeSwitchers)('%s waits for an initial save and retries it before changing folders', async (_name, switchFolders) => {
+      useStore.getState().setDirectory('D:\\Media');
+      useStore.getState().setVideos([makeVideo('a', { path: 'D:\\Media\\a.mp4' })]);
+      let finishSave!: (saved: boolean) => void;
+      electronAPI.saveReviewState.mockImplementationOnce(() => new Promise<boolean>((resolve) => { finishSave = resolve; }));
+      useStore.getState().setVideoStatus('a', 'keep');
+      const switching = switchFolders();
+      expect(useStore.getState().directory).toBe('D:\\Media');
+      finishSave(false);
+      await switching;
+
+      expect(electronAPI.saveReviewState).toHaveBeenCalledTimes(2);
+      expect(useStore.getState().directory).toBe('E:\\Other');
+    });
+
+    test('switching folders waits for a running retry without writing an older decision afterward', async () => {
+      electronAPI.saveReviewState.mockResolvedValueOnce(false);
+      await queueFailedSave();
+      let finishRetry!: (saved: boolean) => void;
+      electronAPI.saveReviewState.mockImplementationOnce(() => new Promise<boolean>((resolve) => { finishRetry = resolve; }));
+      await vi.advanceTimersByTimeAsync(750);
+      useStore.getState().setVideoStatus('a', 'delete');
+      const switching = useStore.getState().setDirectory('E:\\Other');
+      expect(useStore.getState().directory).toBe('D:\\Media');
+      finishRetry(true);
+      await switching;
+
+      expect(electronAPI.saveReviewState).toHaveBeenCalledTimes(3);
+      expect(electronAPI.saveReviewState).toHaveBeenLastCalledWith(
+        'D:\\Media', [{ id: 'a', path: 'D:\\Media\\a.mp4', changes: { status: 'delete' } }],
+      );
+      expect(useStore.getState().directory).toBe('E:\\Other');
+    });
+
+    test('a retry due during a newer save does not replay the superseded decision', async () => {
+      electronAPI.saveReviewState.mockResolvedValueOnce(false);
+      await queueFailedSave();
+      let storedStatus = 'pending';
+      let finishSave!: () => void;
+      electronAPI.saveReviewState.mockImplementation((_directory, updates) => {
+        const status = updates[0].changes.status;
+        if (status === 'delete') return new Promise<boolean>((resolve) => {
+          finishSave = () => { storedStatus = status; resolve(true); };
+        });
+        storedStatus = status;
+        return Promise.resolve(true);
+      });
+      useStore.getState().setVideoStatus('a', 'delete');
+      await vi.advanceTimersByTimeAsync(750);
+      finishSave();
+      await vi.advanceTimersByTimeAsync(0);
+      await flushPendingReviewSaves();
+
+      expect(storedStatus).toBe('delete');
     });
 
     test.each(changeSwitchers)('%s warns when the last save also fails', async (_name, switchFolders) => {

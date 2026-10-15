@@ -446,9 +446,9 @@ export interface VideoStore {
   toasts: ToastNotification[];
 
   // Actions
-  setDirectory: (dir: string | null) => void;
+  setDirectory: (dir: string | null) => Promise<void>;
   addDirectory: (dir: string) => void;
-  setDirectories: (dirs: string[]) => void;
+  setDirectories: (dirs: string[]) => Promise<void>;
   setIncludeSubfolders: (val: boolean) => void;
   setVideos: (videos: Video[]) => void;
   updateVideoThumbnailsBatch: (batch: ThumbReadyEvent[]) => void;

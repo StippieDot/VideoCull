@@ -1242,9 +1242,9 @@ export default function App() {
     setIsGenerating(false);
     setScanProgress({ found: 0, currentFile: '' });
     setGenProgress({ current: 0, total: 0 });
-    useStore.getState().setDirectory(null);
     void (async () => {
       try {
+        await useStore.getState().setDirectory(null);
         await window.electronAPI?.cancelGeneration();
         await window.electronAPI?.cancelDuplicateDetection();
         await window.electronAPI?.resetLoadedDirectories();
