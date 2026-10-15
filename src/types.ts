@@ -757,6 +757,8 @@ export interface ElectronAPI {
     colno?: number | null;
   }) => void;
   onAppNotification: (callback: (data: ToastInput) => void) => () => void;
+  /** Called when the app is quitting; resolves with the number of review changes still unsaved. */
+  onFlushPendingSaves: (callback: () => Promise<number>) => () => void;
 }
 
 // ── Global augmentation ────────────────────────────────────────────

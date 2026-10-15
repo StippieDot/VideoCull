@@ -18,6 +18,7 @@ const {
   DuplicateCancelledError,
 } = require('./duplicates');
 const { processingPause } = require('./processing-pause');
+const { createRendererSaveFlush } = require('./renderer-save-flush');
 const { createPowerManager } = require('./power-manager');
 const { runPowerCommand } = require('./system-power');
 const { buildMenuTemplate, listCommands, normalizeRendererMenuState, EMPTY_RENDERER_MENU_STATE } = require('./app-menu');
@@ -391,6 +392,13 @@ function createWindow(initialTheme = 'dark', micaTitleBar = true) {
       log.error('[renderer-crash] failed to collect idle diagnostics', err);
     }
   });
+  // Closing the last window quits the app, but only after the window is gone, and by then the
+  // renderer can no longer flush its pending saves. Quit first and let the window close at the end.
+  mainWindow.on('close', (event) => {
+    if (process.platform === 'darwin' || gracefulShutdown.phase() === 'complete') return;
+    event.preventDefault();
+    app.quit();
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -656,7 +664,27 @@ const gracefulShutdown = createGracefulShutdown({
   onError: (err) => log.error('[shutdown] Graceful shutdown failed:', err),
 });
 
+const rendererSaveFlush = createRendererSaveFlush({
+  send: () => sendToRenderer('flush-pending-saves'),
+  log,
+});
+ipcMain.on('pending-saves-flushed', (_event, unsaved) => rendererSaveFlush.report(unsaved));
+let rendererFlush = 'idle';
+
 app.on('before-quit', (event) => {
+  // The renderer still holds review decisions that failed to save and are waiting for a retry. Its
+  // saves are refused once shutdown starts, so it gets to flush them first.
+  if (rendererFlush !== 'done') {
+    event.preventDefault();
+    if (rendererFlush === 'idle') {
+      rendererFlush = 'flushing';
+      void rendererSaveFlush.request().finally(() => {
+        rendererFlush = 'done';
+        app.quit();
+      });
+    }
+    return;
+  }
   const installOptions = shouldInstallUpdateOnQuit({
     scheduled: updateInstallOnQuitScheduled,
     ready: updateReadyToInstall,

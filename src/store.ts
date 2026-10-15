@@ -615,9 +615,48 @@ function resetRetryQueue(directory: string) {
   retryStatesByDirectory.delete(directory);
 }
 
-function resetAllRetryQueues() {
-  for (const directory of retryStatesByDirectory.keys()) resetRetryQueue(directory);
+function mergeQueuedUpdates(state: RetryState): VideoReviewUpdate[] {
+  const updatesByVideoId = new Map<string, VideoReviewUpdate>();
+  for (const { update } of state.queueByField.values()) {
+    const existing = updatesByVideoId.get(update.id);
+    updatesByVideoId.set(update.id, existing
+      ? { ...existing, changes: { ...existing.changes, ...update.changes } }
+      : update);
+  }
+  return Array.from(updatesByVideoId.values());
 }
+
+async function saveQueuedUpdatesOnce(directory: string, updates: VideoReviewUpdate[]): Promise<number> {
+  let saved = false;
+  try {
+    saved = Boolean(await window.electronAPI?.saveReviewState(directory, updates));
+  } catch (err) {
+    console.error('[store] Final saveReviewState before dropping the retry queue failed', err);
+  }
+  if (saved) return 0;
+  notify({
+    title: 'Decisions not saved',
+    detail: `${plural(updates.length, 'change')} could be lost for "${folderLabel(directory)}".`,
+    kind: 'error',
+    dedupeKey: `save-exhausted:${directory}`,
+  });
+  return updates.length;
+}
+
+/**
+ * Drops every retry queue, but only after one last save of what it still holds, so a folder switch
+ * or a quit does not lose decisions silently. Resolves with the number of changes left unsaved.
+ */
+function resetAllRetryQueues(): Promise<number> {
+  const saves = Array.from(retryStatesByDirectory, ([directory, state]) => {
+    const updates = mergeQueuedUpdates(state);
+    resetRetryQueue(directory);
+    return updates.length > 0 ? saveQueuedUpdatesOnce(directory, updates) : Promise.resolve(0);
+  });
+  return Promise.all(saves).then((counts) => counts.reduce((sum, count) => sum + count, 0));
+}
+
+export const flushPendingReviewSaves = resetAllRetryQueues;
 
 function retryKey(videoId: string, field: ReviewStateField) {
   return `${videoId}:${field}`;
@@ -951,7 +990,7 @@ const useStore = create<VideoStore>((set, get) => ({
 
   // ── Actions ──
   setDirectory: (dir: string | null) => {
-    resetAllRetryQueues();
+    void resetAllRetryQueues();
     // Replacing or closing the session ends the run a chosen sleep or shutdown belonged to; it must
     // not carry over to the processing of the next folder.
     void window.electronAPI?.cancelFinishAction?.();
@@ -1055,7 +1094,7 @@ const useStore = create<VideoStore>((set, get) => ({
   },
 
   setDirectories: (dirs: string[]) => {
-    resetAllRetryQueues();
+    void resetAllRetryQueues();
     const nextDirs = uniqueDirectories(dirs);
     set({
       directory: nextDirs[0] ?? null,

@@ -96,6 +96,17 @@ describe('preload electronAPI bridge', () => {
     expect(getPathForFile).toHaveBeenCalledWith({ path: 'D:\\Media\\clip.mp4' });
   });
 
+  test('answers a flush request with the number of changes the renderer could not save', async () => {
+    const flush = vi.fn().mockResolvedValue(2);
+    exposedApi.onFlushPendingSaves(flush);
+
+    expect(on).toHaveBeenCalledWith('flush-pending-saves', expect.any(Function));
+    await on.mock.calls[0][1]({});
+
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('pending-saves-flushed', 2);
+  });
+
   test('subscribes to update events and unsubscribes the same handler', () => {
     const callback = vi.fn();
     const unsubscribe = exposedApi.onUpdateStatus(callback);

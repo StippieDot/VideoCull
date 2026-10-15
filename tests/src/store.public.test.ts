@@ -258,6 +258,74 @@ describe('useStore public behavior', () => {
     vi.useRealTimers();
   });
 
+  describe('queued review saves when the loaded folders are replaced', () => {
+    const changeSwitchers: Array<[string, () => void]> = [
+      ['setDirectory', () => useStore.getState().setDirectory('E:\\Other')],
+      ['setDirectories', () => useStore.getState().setDirectories(['E:\\Other'])],
+    ];
+
+    // The store remembers toast dedupe keys for a few seconds, so each test gets its own clock.
+    let testClock = 0;
+
+    async function queueFailedSave() {
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + (testClock += 60_000));
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useStore.getState().setDirectory('D:\\Media');
+      useStore.getState().setVideos([makeVideo('a', { path: 'D:\\Media\\a.mp4' })]);
+      useStore.getState().setVideoStatus('a', 'keep');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(electronAPI.saveReviewState).toHaveBeenCalledTimes(1);
+    }
+
+    const droppedTitles = () => useStore.getState().toasts.map((toast) => toast.title);
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test.each(changeSwitchers)('%s saves the queued changes once more before dropping them', async (_name, switchFolders) => {
+      electronAPI.saveReviewState.mockRejectedValueOnce(new Error('cache worker failed'));
+      await queueFailedSave();
+
+      switchFolders();
+      await vi.advanceTimersByTimeAsync(750);
+
+      expect(electronAPI.saveReviewState).toHaveBeenCalledTimes(2);
+      expect(electronAPI.saveReviewState).toHaveBeenLastCalledWith(
+        'D:\\Media',
+        [{ id: 'a', path: 'D:\\Media\\a.mp4', changes: { status: 'keep' } }],
+      );
+      expect(droppedTitles()).not.toContain('Decisions not saved');
+    });
+
+    test.each(changeSwitchers)('%s warns when the last save also fails', async (_name, switchFolders) => {
+      electronAPI.saveReviewState
+        .mockRejectedValueOnce(new Error('cache worker failed'))
+        .mockResolvedValueOnce(false);
+      await queueFailedSave();
+
+      switchFolders();
+      await vi.advanceTimersByTimeAsync(750);
+
+      expect(droppedTitles()).toContain('Decisions not saved');
+    });
+
+    test.each(changeSwitchers)('%s does not save again when nothing is queued', async (_name, switchFolders) => {
+      useStore.getState().setDirectory('D:\\Media');
+      useStore.getState().setVideos([makeVideo('a', { path: 'D:\\Media\\a.mp4' })]);
+      useStore.getState().setVideoStatus('a', 'keep');
+      await flushMicrotasks();
+
+      switchFolders();
+      await flushMicrotasks();
+
+      expect(electronAPI.saveReviewState).toHaveBeenCalledTimes(1);
+      expect(droppedTitles()).not.toContain('Decisions not saved');
+    });
+  });
+
   test('retries failed review-state saves independently for multiple roots', async () => {
     vi.useFakeTimers();
     vi.spyOn(console, 'error').mockImplementation(() => {});
