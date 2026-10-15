@@ -502,7 +502,9 @@ async function backfillFingerprints(videos, duplicateState, settings, run, sendP
           run.cancel();
           throw new DuplicateCancelledError();
         }
-        if (!run?.cancelled) {
+        // Same rule as metadata reads: a timeout means the drive was slow, not that the video is
+        // unreadable, so it is not stored and the video is tried again on the next run.
+        if (!run?.cancelled && err?.code !== 'ETIMEDOUT') {
           try {
             await cacheAccess.markFingerprintFailure(
               path.dirname(video.path),

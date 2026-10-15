@@ -88,7 +88,7 @@ test('excess FFmpeg output stops extraction without saving partial fingerprints'
   assert.deepEqual(killed, ['SIGKILL']);
 });
 
-test('a hung duplicate extraction is killed after 120 seconds and marked failed', async () => {
+test('a hung duplicate extraction is killed after 120 seconds and not stored as a failure', async () => {
   vi.useFakeTimers();
   const children = [];
   const duplicates = loadDuplicatesWithFakeFfmpeg((child) => {
@@ -96,7 +96,7 @@ test('a hung duplicate extraction is killed after 120 seconds and marked failed'
     children.push(child);
   });
   const failed = [];
-  const { run, backfill } = backfillSetup(duplicates, {
+  const { run, duplicateState, backfill } = backfillSetup(duplicates, {
     saveVideoFingerprints: async () => assert.fail('A hung extraction cannot save fingerprints'),
     markFingerprintFailure: async (_folder, _options, id) => { failed.push(id); },
   }, [video('a')]);
@@ -107,9 +107,11 @@ test('a hung duplicate extraction is killed after 120 seconds and marked failed'
     assert.equal(children.length, 1);
     assert.equal(children[0].kill.mock.calls.length, 0);
     await vi.advanceTimersByTimeAsync(2);
-    assert.deepEqual(failed, ['a']);
     await vi.runAllTimersAsync();
     await pending;
+    // A timeout says the drive was slow, not that the video is unreadable, so it is tried again next time.
+    assert.deepEqual(failed, []);
+    assert.equal(duplicateState.failedIds.size, 0);
     assert.equal(completed, true);
     assert.deepEqual(children[0].kill.mock.calls, [['SIGKILL']]);
     assert.equal(run.cancelled, false);
