@@ -71,6 +71,9 @@
   color: var(--text-tertiary);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  /* Stops "9 / 14,946" wrapping onto two lines when the path is long. */
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .location-bar-duplicates,
