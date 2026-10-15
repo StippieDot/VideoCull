@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu, nativeTheme, clipboard, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const { randomUUID } = require('crypto');
 const os = require('os');
 const { performance: nodePerformance } = require('perf_hooks');
 const { scanDirectory } = require('./scanner');
@@ -727,7 +728,21 @@ async function writeJsonFile(fileName, data, rootPath = app.getPath('userData'))
   if (currentScanDiagnostics && (fileName === CACHE_INDEX_FILE || fileName === DISTRIBUTED_INDEX_FILE)) {
     currentScanDiagnostics.cacheIndexIo.writes += 1;
   }
-  await fs.writeFile(path.join(rootPath, fileName), JSON.stringify(data, null, 2), 'utf8');
+  const content = JSON.stringify(data, null, 2);
+  const targetPath = path.join(rootPath, fileName);
+  const tempPath = `${targetPath}.${process.pid}-${randomUUID()}.tmp`;
+  // Flush a sibling file before replacement so an interrupted write preserves the previous JSON.
+  const handle = await fs.open(tempPath, 'wx');
+  try {
+    await handle.writeFile(content, 'utf8');
+    await handle.sync();
+    await handle.close();
+    await fs.rename(tempPath, targetPath);
+  } catch (error) {
+    await handle.close().catch(() => {});
+    await fs.unlink(tempPath).catch(() => {});
+    throw error;
+  }
 }
 
 async function createCacheIndexBatch() {
@@ -3016,8 +3031,7 @@ ipcMain.handle('save-config', async (_event, config) => {
   try {
     const theme = normalizeColorTheme(config?.theme);
     const normalizedConfig = { ...config, theme };
-    const configPath = path.join(app.getPath('userData'), CONFIG_FILE);
-    await fs.writeFile(configPath, JSON.stringify(normalizedConfig, null, 2), 'utf8');
+    await writeJsonFile(CONFIG_FILE, normalizedConfig);
     applyNativeTheme(theme);
     powerManager.setKeepAwake(normalizedConfig.keepAwakeWhileProcessing !== false);
     const wantsMica = normalizedConfig.micaTitleBar !== false;
