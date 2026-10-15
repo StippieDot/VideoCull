@@ -2,6 +2,14 @@ const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 const { resolveCachePath } = require('./cache');
 
+// Refusals carry this code so callers can tell "the cache is closed for now" from a real write error.
+// SYNC NOTE: electron/duplicates.js compares against the same literal.
+const CACHE_UNAVAILABLE_CODE = 'CACHE_UNAVAILABLE';
+
+function cacheUnavailableError(message) {
+  return Object.assign(new Error(message), { code: CACHE_UNAVAILABLE_CODE });
+}
+
 function createCacheService({
   WorkerClass = Worker,
   workerPath = path.join(__dirname, 'cache-worker.js'),
@@ -72,10 +80,10 @@ function createCacheService({
 
   function request(operation, args = {}, priority = 'foreground', options = {}) {
     if (!options.internal) {
-      if (shuttingDown) return Promise.reject(new Error('Cache service is shutting down'));
-      if (transitionDepth > 0) return Promise.reject(new Error('Cache transition is in progress'));
+      if (shuttingDown) return Promise.reject(cacheUnavailableError('Cache service is shutting down'));
+      if (transitionDepth > 0) return Promise.reject(cacheUnavailableError('Cache transition is in progress'));
       if (options.scope && blockedScopes.has(options.scope)) {
-        return Promise.reject(new Error('Cache folder is unavailable during a destructive transition'));
+        return Promise.reject(cacheUnavailableError('Cache folder is unavailable during a destructive transition'));
       }
     }
     return postRequest(ensureWorker(), operation, args, priority);
@@ -91,7 +99,7 @@ function createCacheService({
   }
 
   async function beginTransition() {
-    if (shuttingDown) throw new Error('Cache service is shutting down');
+    if (shuttingDown) throw cacheUnavailableError('Cache service is shutting down');
     transitionDepth += 1;
     if (transitionDepth > 1 || !worker) return;
     try {
@@ -180,7 +188,7 @@ function createCacheService({
       const parentScope = scopeKey(parentFolder, cacheOptions);
       const targetScope = scopeKey(targetFolder, cacheOptions);
       if (blockedScopes.has(parentScope) || blockedScopes.has(targetScope)) {
-        return Promise.reject(new Error('Cache folder is unavailable during a destructive transition'));
+        return Promise.reject(cacheUnavailableError('Cache folder is unavailable during a destructive transition'));
       }
       return request(
         'moveVideos',
@@ -211,4 +219,4 @@ function createCacheService({
   };
 }
 
-module.exports = { createCacheService };
+module.exports = { createCacheService, CACHE_UNAVAILABLE_CODE };

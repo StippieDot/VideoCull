@@ -25,6 +25,9 @@ const ONE_MIB = 1024 * 1024;
 const FRAME_BYTE_COUNT = 32 * 32;
 const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 const FRAME_FILTER = 'scale=32:32:flags=bicubic,setsar=1,format=gray';
+// SYNC NOTE: same literal as CACHE_UNAVAILABLE_CODE in cache-service.js, which is not required here
+// because the cache is injected.
+const CACHE_UNAVAILABLE_CODE = 'CACHE_UNAVAILABLE';
 const duplicateSessionCache = createDuplicateSessionCache();
 
 function duplicateLog(message, detail) {
@@ -508,6 +511,12 @@ async function backfillFingerprints(videos, duplicateState, settings, run, sendP
         saved++;
       } catch (err) {
         if (err instanceof DuplicateCancelledError) throw err;
+        // The cache refuses every write while it is closed for a reset, migration or shutdown. That
+        // says nothing about this video, so stop all workers instead of marking it as failed.
+        if (err?.code === CACHE_UNAVAILABLE_CODE) {
+          run.cancel();
+          throw new DuplicateCancelledError();
+        }
         if (!run?.cancelled) {
           try {
             await cacheAccess.markFingerprintFailure(
@@ -1297,6 +1306,7 @@ module.exports = {
   forgetDuplicateVideos,
   rememberDuplicateSignatures,
   __test__: {
+    backfillFingerprints,
     buildGroups,
     buildExactRepresentativeIndex,
     buildFingerprintsFromGrayFrames,

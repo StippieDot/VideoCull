@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { test: nodeTest } = require('node:test');
 const test = globalThis.test || nodeTest;
-const { createCacheService } = require('../../electron/cache-service');
+const { createCacheService, CACHE_UNAVAILABLE_CODE } = require('../../electron/cache-service');
 
 const cacheOptions = { mode: 'centralised', defaultCentralRoot: 'D:\\Cache' };
 
@@ -216,4 +216,20 @@ test('failed transition close restores normal cache requests', async () => {
   const next = service.loadVideos('D:\\Videos', cacheOptions);
   worker.emit('message', { id: worker.messages[2].id, result: ['ok'] });
   assert.deepEqual(await next, ['ok']);
+});
+
+test('requests refused because the cache is unavailable carry a code callers can recognise', async () => {
+  const service = createService();
+  service.blockFolder('D:\\Videos', cacheOptions);
+  await assert.rejects(service.loadVideos('D:\\Videos', cacheOptions), { code: CACHE_UNAVAILABLE_CODE });
+  service.allowFolder('D:\\Videos', cacheOptions);
+
+  const transition = service.beginTransition();
+  await assert.rejects(service.loadVideos('D:\\Videos', cacheOptions), { code: CACHE_UNAVAILABLE_CODE });
+  await transition;
+  service.endTransition();
+
+  await service.shutdown();
+  await assert.rejects(service.loadVideos('D:\\Videos', cacheOptions), { code: CACHE_UNAVAILABLE_CODE });
+  await assert.rejects(service.beginTransition(), { code: CACHE_UNAVAILABLE_CODE });
 });

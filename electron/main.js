@@ -108,6 +108,14 @@ let updateInstallOnQuitScheduled = false;
 let updateInstallInProgress = false;
 let pendingUpdateInstallOptions = null;
 let activeDuplicateRun = null;
+
+// Only cancels. A user's pause is lifted by cancelProcessing(), which the callers that throw the
+// whole session away run as well; a targeted cancel must not undo it.
+function cancelActiveDuplicateRun() {
+  if (!activeDuplicateRun) return;
+  activeDuplicateRun.cancel();
+  activeDuplicateRun = null;
+}
 const { track: trackCacheProducer, drain: drainCacheProducers } = createProducerTracker();
 let lastEventLoopUtilization = typeof nodePerformance.eventLoopUtilization === 'function'
   ? nodePerformance.eventLoopUtilization()
@@ -1717,6 +1725,7 @@ ipcMain.handle('validate-dropped-path', async (_event, droppedPath) => {
 ipcMain.handle('reset-loaded-directories', async () => {
   scanGeneration += 1;
   cancelProcessing();
+  cancelActiveDuplicateRun();
   const cacheOptions = await getCacheOptions();
   const cacheFolders = await getKnownCacheFolders(Array.from(currentScanDirs));
   for (const folderPath of cacheFolders) cacheService.blockFolder(folderPath, cacheOptions);
@@ -2580,6 +2589,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   }
 
   cancelProcessing();
+  cancelActiveDuplicateRun();
   scanGeneration += 1;
   clearDuplicateSessionCache();
 
@@ -2827,6 +2837,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
 
   scanGeneration += 1;
   cancelProcessing();
+  cancelActiveDuplicateRun();
   clearDuplicateSessionCache();
   for (const folderPath of knownFolders) cacheService.blockFolder(folderPath, fromOptions);
   let transitionStarted = false;
