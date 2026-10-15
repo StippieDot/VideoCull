@@ -122,7 +122,7 @@ that causes it, with **what moves**, **why**, and **how we know it's done**.
 | Loaded roots, known paths, IDs and scan-time identities | **Main: `library-registry`** (after 2.1) | Renderer `video.path`/`id` (derived) | Identity checks happen only in main. |
 | File location and existence | **File system** | Everyone else | Checked before every destructive step. |
 | Unfinished file operations | Journal files in `userData/file-ops` (6.1) | — | Recovery runs before scans. |
-| Processing pause / run state | Main (`processing-pause.js`, run tokens) | The renderer subscribes | — |
+| Processing pause / run state | Main (`processing-pause.js`; running pipelines through `processing-runs.js` after 2.1) | The renderer subscribes | — |
 
 Two problems, both fixed inside a feature:
 - Main reads settings directly in 9 places, and a corrupt file silently becomes `{}`. Fixed by 3.2.
@@ -154,6 +154,7 @@ is a trust boundary.
 | `electron/media-tools.js` | 0.3 | `ffmpegPath` / `ffprobePath` resolution + startup check | path logic in `processor.js` / `duplicates.js` |
 | `electron/media-process.js` | 0.2 | `probe`, `runFfmpeg`, per-run cancellation | `fluent-ffmpeg` |
 | `electron/library-registry.js` | 2.1 | Loaded roots + known path → `{id, identity}` map: `reset`, `recordScanned`, `forget`, `isLoadedPath`, `identityFor`, `remap` | `main.js` globals |
+| `electron/processing-runs.js` | 2.1 | Registry of running pipeline runs: `register`, `invalidateSession`, `skipFiles`, `waitUntilIdle`, shutdown drain | `activeDuplicateRun`, `scanGeneration`, hand-mixed `trackWork` / `trackCacheProducer` wrappers in `main.js` |
 | `electron/file-ops-delete.js` | 2.1 | Trash/permanent workflow: scope filter, identity check, reasons, cache artifact cleanup, empty-folder cleanup | `main.js:1484–1540`, `:2598–2715` |
 | `src/deletion.ts` (extended) | 2.1 | `deleteMarkedVideos()` + pure `summarizeDeleteResults()` | duplicates in `App.tsx` and `Sidebar.tsx` |
 | `src/thumbnails.ts` | 2.2 | `regenerateThumbnails()` | `App.tsx:602` |
@@ -483,19 +484,32 @@ a drive without a Recycle Bin.
 - `matchesFileIdentityAtPath` returns the stat error cause instead of a bare `false`. Deletion is still
   refused whenever identity can't be confirmed.
 - Scope check and full identity check also run **before every retry**.
-- Before deleting, the Review player is unloaded and the processing run touching those files is
-  cancelled.
+- Before deleting, the Review player is unloaded. Queued processing work for those files is skipped, and
+  the delete waits up to about 10 seconds for work already in progress on them. Files still busy after
+  that report `in-use` and can be retried. Running pipelines are not cancelled as a whole.
 - **Architecture (in this order):**
   1. **`library-registry.js`:** move `currentScanDirs` and the three `knownVideo*` maps behind functions;
      all ~25 call sites in `main.js` use it. Needed now by the delete module, later by rename/move and
      the folder handoff. **Done when** `main.js` has no `knownVideoPaths`, `knownVideoIdsByPath`,
      `knownVideoIdentitiesByPath` or direct `currentScanDirs` mutation, and the registry has unit tests.
-  2. **`file-ops-delete.js`:** move `collectDeletionCacheTargets`, `removeDeletedVideoCacheArtifacts`,
+  2. **`processing-runs.js`:** one owner for running pipeline work. Scan, metadata, thumbnails and
+     duplicates register their runs (kind, folders covered, cancel function).
+     `invalidateSession()` is the only session reset. It is used by opening or closing a folder, clear
+     cache, cache migration, shutdown and a renderer crash or reload. It cancels every run, bumps the
+     scan generation, lifts a pause, cancels a chosen sleep or shutdown, and resets `library-registry`.
+     `skipFiles(paths)` and `waitUntilIdle(paths, timeoutMs)` serve delete, rename and move; they never lift
+     a pause or cancel a finish choice. Pipelines gain a way to skip given files and to report files in
+     progress. The shutdown drain moves here, replacing the hand-mixed `trackWork` / `trackCacheProducer`
+     / `isQuitting` combinations. Handlers stay registered in `main.js`. **Done when** `main.js` has no
+     `activeDuplicateRun`, no `scanGeneration += 1`, and no direct `trackCacheProducer` wrapping, and the
+     module has unit tests with fake runs (reset during each kind of run, quit order, skip and wait,
+     pause and finish choice after a reset).
+  3. **`file-ops-delete.js`:** move `collectDeletionCacheTargets`, `removeDeletedVideoCacheArtifacts`,
      `maybeRemoveEmptyDeletedVideoFolders`, `finalizeDeletedFiles` and both handler bodies **verbatim**,
      characterization tests first. Add `reason`/`code` in a separate commit. **Done when** the
      `batch-delete`/`permanently-delete` handlers are one-line delegations and `delete-safety.spec.ts`
      passes.
-  3. **Renderer:** `deleteMarkedVideos()` and `summarizeDeleteResults()` in `deletion.ts`. `App.tsx`'s
+  4. **Renderer:** `deleteMarkedVideos()` and `summarizeDeleteResults()` in `deletion.ts`. `App.tsx`'s
      menu action and `Sidebar.tsx` both call it, keeping only their own confirm and notify callbacks.
      **Done when** result counting and toast text exist once; `deletion.test.ts` covers every reason.
 
@@ -903,7 +917,7 @@ done.
 
 | # | Stage | Idempotency rule |
 |---|---|---|
-| 1 | **Preflight:** scope + `matchesFileIdentity`; destination authorized; cancel the processing **run** touching the video; **settle saves** (3.3) | Nothing changes yet |
+| 1 | **Preflight:** scope + `matchesFileIdentity`; destination authorized; skip the video in queued processing work and wait up to about 10 seconds for work already in progress on it (if still busy, nothing changes and the operation reports `in-use`); **settle saves** (3.3) | Nothing changes yet |
 | 2 | Write the journal with `stage: intent` | — |
 | 3 | **Atomic no-replace rename** (5.1), journal records `file-moved` + restat `dst.identity` | If the journal write fails after the rename, recovery sees source missing + destination matching, and continues |
 | 4 | **Destination DB transaction:** insert new-ID rows (review state, tags, clips, metadata, fingerprints) using the destination restat for size and date → `dest-committed` | Rows carry `transfer_op_id = opId`. A destination row with **this** opId counts as committed; one **without** it means **needs attention**, never a silent merge. |
@@ -1276,7 +1290,7 @@ P1  Configurable skip length (Phase 1.1)
 P1  Mark short videos for deletion (Phase 1.2)
 
 P2  Delete error investigation (Phase 2.1a)
-P2  library-registry + file-ops-delete + delete reasons (Phase 2.1) ← enables 5.4, 6.1, 7.1
+P2  library-registry + processing-runs + file-ops-delete + delete reasons (Phase 2.1) ← enables 5.4, 6.1, 7.1
 P2  Thumbnail seek times + safe publication + click-to-seek + scrub previews (Phase 2.2)
 P2  Drag-to-paint selection (Phase 2.3)
 
