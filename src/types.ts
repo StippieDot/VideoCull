@@ -58,6 +58,8 @@ export interface ScanProgress {
 export interface ScanSummary {
   skippedDirectoryCount: number;
   skippedDirectorySamples: Array<{ path: string; reason: string }>;
+  skippedFileCount?: number;
+  skippedFileSamples?: Array<{ path: string }>;
 }
 
 export type ScanDirectoryResult = Video[] | {

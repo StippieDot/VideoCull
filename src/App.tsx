@@ -547,6 +547,17 @@ export default function App() {
         dedupeKey: `scan-loaded:${dirPaths.join('|')}`,
       });
       const skippedDirectoryCount = scanSummaries.reduce((sum, summary) => sum + (summary.skippedDirectoryCount ?? 0), 0);
+      const skippedFileCount = scanSummaries.reduce((sum, summary) => sum + (summary.skippedFileCount ?? 0), 0);
+      if (skippedFileCount > 0) {
+        const sample = scanSummaries.flatMap((summary) => summary.skippedFileSamples ?? [])[0];
+        pushToast({
+          title: 'Some files could not be read',
+          detail: `${skippedFileCount} ${skippedFileCount === 1 ? 'file' : 'files'} skipped; their saved decisions were kept.${sample ? ` Example: ${formatRecentPath(sample.path)}` : ''}`,
+          kind: 'warning',
+          dedupeKey: `scan-skipped-files:${dirPaths.join('|')}`,
+          durationMs: 8000,
+        });
+      }
       if (skippedDirectoryCount > 0) {
         const sample = scanSummaries.flatMap((summary) => summary.skippedDirectorySamples ?? [])[0];
         pushToast({

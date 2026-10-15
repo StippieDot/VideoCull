@@ -94,7 +94,7 @@ async function statVideoEntries(entries, statPath = fs.stat) {
  * @param {string} dirPath - Root directory to scan.
  * @param {boolean} includeSubfolders - Whether to recurse into subdirectories.
  * @param {function} onProgress - Callback with { found, current, currentFile }.
- * @returns {Promise<Array>|Promise<{ videos: Array, visitedDirs: Array<string> }>} - Scan results.
+ * @returns {Promise<Array>|Promise<{ videos: Array, visitedDirs: Array<string>, incompleteDirs: Array<string> }>} - Scan results.
  */
 async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {}) {
   const videos = [];
@@ -103,7 +103,11 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
   const summary = {
     skippedDirectoryCount: 0,
     skippedDirectorySamples: [],
+    skippedFileCount: 0,
+    skippedFileSamples: [],
   };
+  // Folders where a file could not be read: their cache rows must not be pruned as missing.
+  const incompleteDirs = new Set();
   const assertNotCancelled = typeof options.assertNotCancelled === 'function'
     ? options.assertNotCancelled
     : () => {};
@@ -134,11 +138,16 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
       if (pendingVideoEntries.length === 0) return;
       const batch = pendingVideoEntries;
       pendingVideoEntries = [];
-      const scannedVideos = await statVideoEntries(batch);
+      const scannedVideos = await statVideoEntries(batch, options.statPath);
       assertNotCancelled();
       for (let i = 0; i < scannedVideos.length; i += 1) {
         const video = scannedVideos[i];
-        if (!video) continue;
+        if (!video) {
+          incompleteDirs.add(currentDir);
+          summary.skippedFileCount += 1;
+          if (summary.skippedFileSamples.length < 5) summary.skippedFileSamples.push({ path: batch[i].fullPath });
+          continue;
+        }
         found += 1;
         videos.push(video);
         progressReporter.report(found, batch[i].entryName);
@@ -173,7 +182,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
   await walk(dirPath);
   assertNotCancelled();
   progressReporter.flush();
-  return visitedDirs ? { videos, visitedDirs, summary } : videos;
+  return visitedDirs ? { videos, visitedDirs, incompleteDirs: Array.from(incompleteDirs), summary } : videos;
 }
 
 module.exports = {

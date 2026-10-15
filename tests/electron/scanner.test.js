@@ -131,6 +131,29 @@ test('scanDirectory summarizes inaccessible directories without failing the scan
   }
 });
 
+test('scanDirectory marks folders with unreadable files as incomplete', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
+
+  try {
+    await fs.writeFile(path.join(tempRoot, 'ok.mp4'), '');
+    await fs.writeFile(path.join(tempRoot, 'flaky.mp4'), '');
+
+    const result = await scanDirectory(tempRoot, false, undefined, {
+      includeVisitedDirs: true,
+      statPath: async (fullPath) => {
+        if (fullPath.endsWith('flaky.mp4')) throw Object.assign(new Error('io'), { code: 'EIO' });
+        return fs.stat(fullPath);
+      },
+    });
+
+    assert.deepEqual(result.videos.map((video) => video.filename), ['ok.mp4']);
+    assert.deepEqual(result.incompleteDirs, [tempRoot]);
+    assert.equal(result.summary.skippedFileCount, 1);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('scanDirectory aborts when the cancellation guard throws', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
 

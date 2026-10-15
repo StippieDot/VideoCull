@@ -1268,15 +1268,19 @@ async function reconcileScannedVideosByFolder(videos, cacheOptions, {
   scanToken,
   scanCacheRoots,
   visitedFolders,
+  incompleteFolders = [],
   shouldPrune,
   diagnostics = null,
 } = {}) {
+  const folderKey = (folderPath) => path.resolve(folderPath).toLowerCase();
+  const incompleteKeys = new Set(incompleteFolders.map(folderKey));
   const groups = groupVideosByFolder(videos);
   const folderEntries = Array.from(groups.entries());
   const concurrency = getCacheLoadConcurrency(folderEntries.length);
   const updatedAt = shouldPrune ? Date.now() : null;
   const remainingVisitedFolders = shouldPrune
-    ? new Map(visitedFolders.filter(Boolean).map((folderPath) => [path.resolve(folderPath).toLowerCase(), folderPath]))
+    ? new Map(visitedFolders.filter((folderPath) => folderPath && !incompleteKeys.has(folderKey(folderPath)))
+      .map((folderPath) => [folderKey(folderPath), folderPath]))
     : new Map();
   if (diagnostics) {
     diagnostics.folderGroupCount = Math.max(diagnostics.folderGroupCount, groups.size);
@@ -1293,7 +1297,7 @@ async function reconcileScannedVideosByFolder(videos, cacheOptions, {
       const result = await cacheService.reconcileScannedFolder(folderPath, cacheOptions, folderVideos, {
         cacheRootDir: cachePaths.cacheRootDir,
         updatedAt,
-        prune: shouldPrune,
+        prune: shouldPrune && !incompleteKeys.has(folderKey(folderPath)),
       });
       assertScanCurrent(scanToken);
       rememberDuplicateSignatures(result.signatureRows);
@@ -1328,7 +1332,7 @@ async function reconcileScannedVideosByFolder(videos, cacheOptions, {
 
   const results = await mapWithConcurrency(folderEntries, concurrency, async ([folderPath, folderVideos]) => {
     const result = await runFolder(folderPath, folderVideos);
-    remainingVisitedFolders.delete(path.resolve(folderPath).toLowerCase());
+    remainingVisitedFolders.delete(folderKey(folderPath));
     await removeStaleThumbnailDirectories(result.cachePaths, result.staleVideos);
     assertScanCurrent(scanToken);
     return { folderPath, ...result };
@@ -1916,6 +1920,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
     scanToken,
     scanCacheRoots,
     visitedFolders: visitedDirs,
+    incompleteFolders: scanResult?.incompleteDirs,
     shouldPrune: cacheOptions.autoPruneMissingSubfolderCache !== false,
     diagnostics: scanDiagnostics,
   });
@@ -1962,6 +1967,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
       .slice(0, 25) ?? [],
     autoPrunedMissingCacheFolders: autoPrunedMissingCacheFolders.length,
     skippedDirectoryCount: scanSummary?.skippedDirectoryCount ?? 0,
+    skippedFileCount: scanSummary?.skippedFileCount ?? 0,
     durationMs: Math.round((scanSnapshot?.durationMs ?? 0) * 100) / 100,
     stageTimings,
     cacheDiagnostics: summarizeScanDiagnostics(scanDiagnostics),
