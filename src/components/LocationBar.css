@@ -73,6 +73,7 @@
   font-variant-numeric: tabular-nums;
   /* Stops "9 / 14,946" wrapping onto two lines when the path is long. */
   flex-shrink: 0;
+  margin-left: 6px;
   white-space: nowrap;
 }
 
