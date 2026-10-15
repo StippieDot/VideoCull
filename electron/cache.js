@@ -602,8 +602,12 @@ function createVideoBatchWriter(db, videos, options = {}) {
       END,
       duration_secs = COALESCE(excluded.duration_secs, duration_secs),
       fps = COALESCE(excluded.fps, fps),
-      -- status, rating, favorite and bookmarks are intentionally absent: only updateVideoReviewStateBatch
-      -- may change them on an existing row, so a stale full-record snapshot cannot undo a review decision.
+      -- Review fields are only replaced when the file itself changed (the scan then resets them);
+      -- otherwise a stale full-record snapshot must not undo a decision saved by updateVideoReviewStateBatch.
+      status = CASE WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN excluded.status ELSE videos.status END,
+      rating = CASE WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN excluded.rating ELSE videos.rating END,
+      favorite = CASE WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN excluded.favorite ELSE videos.favorite END,
+      bookmarks = CASE WHEN videos.size_bytes IS NOT excluded.size_bytes OR videos.file_date IS NOT excluded.file_date THEN excluded.bookmarks ELSE videos.bookmarks END,
       compatible = excluded.compatible,
       video_codec = COALESCE(excluded.video_codec, video_codec),
       audio_codec = COALESCE(excluded.audio_codec, audio_codec),

@@ -632,6 +632,13 @@ test('saveCache with a stale snapshot does not undo review changes', async (t) =
     const row = db.prepare('SELECT status, rating, favorite, bookmarks FROM videos WHERE id = ?').get('a');
     assert.deepEqual(row, { status: 'keep', rating: 4, favorite: 1, bookmarks: '[3]' });
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM thumbnails WHERE video_id = ?').get('a').n, 0);
+
+    // A changed file is new content, so its review state is reset.
+    cache.saveCache(db, [{ ...video, date: (video.date ?? 0) + 1, status: 'pending', rating: 0, favorite: false, bookmarks: [] }]);
+    assert.deepEqual(
+      db.prepare('SELECT status, rating, favorite, bookmarks FROM videos WHERE id = ?').get('a'),
+      { status: 'pending', rating: 0, favorite: 0, bookmarks: null },
+    );
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });
