@@ -390,7 +390,7 @@ function createWindow(initialTheme = 'dark', micaTitleBar = true) {
   if (isDev) {
     mainWindow.loadURL(`http://localhost:${process.env.VITE_DEV_SERVER_PORT || 5173}`);
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    mainWindow.loadFile(path.join(__dirname, '..', 'artifacts', 'renderer', 'index.html'));
   }
 }
 

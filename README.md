@@ -228,6 +228,8 @@ npm run dev
 | `npm run test:e2e` | Build the renderer and run the Electron Playwright regression flows |
 | `npm run package` | Full build + Windows installer (NSIS) |
 
+Development documentation: [Roadmap](engineering/roadmap.md) and [backlog](engineering/backlog.md).
+
 Development sessions use `%APPDATA%\VideoCull-dev`, so local settings and cache do not mix with the packaged app. See [Building from source](https://docs.videocull.app/reference/building-from-source) for Store packaging, native-module rebuilds, and the full command list.
 
 ---

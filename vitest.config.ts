@@ -14,7 +14,7 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      reportsDirectory: 'coverage',
+      reportsDirectory: 'artifacts/coverage',
       reporter: ['text', 'html', 'json-summary'],
       include: ['src/**/*.{ts,tsx}', 'electron/**/*.js'],
       exclude: [
@@ -23,10 +23,8 @@ export default defineConfig({
         'src/assets/**',
         'src/**/*.css',
         'build/**',
-        'coverage/**',
-        'dist/**',
+        'artifacts/**',
         'node_modules/**',
-        'release/**',
         'scripts/**',
         'testspace/**',
       ],

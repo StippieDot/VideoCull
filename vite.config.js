@@ -12,13 +12,13 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   build: {
-    outDir: 'dist',
+    outDir: 'artifacts/renderer',
   },
   server: {
     port: 5173,
     // Large local-only folders stall the dev server's first responses while the watcher indexes them.
     watch: {
-      ignored: ['**/testspace/**', '**/website/**', '**/release/**', '**/coverage/**'],
+      ignored: ['**/testspace/**', '**/website/**', '**/artifacts/**'],
     },
   },
 });

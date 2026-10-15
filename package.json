@@ -19,14 +19,14 @@
     "verify:store-installed": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-installed-store-package.ps1",
     "check:brand": "node scripts/check-brand.js",
     "test": "vitest run",
-    "test:renderer": "vitest run -c vitest.renderer.config.ts",
+    "test:renderer": "vitest run -c config/vitest.renderer.config.ts",
     "test:watch": "vitest",
     "test:cache-native": "node scripts/run-electron-node-tests.js tests/electron/cache.test.js tests/electron/cache.migration.test.js",
     "test:packaging": "node --test tests/electron/build-hooks.test.js tests/electron/generate-notices.test.js tests/electron/fetch-ffmpeg.test.js",
     "coverage": "vitest run --coverage",
     "test:profile": "node --test tests/electron/profile-bootstrap.test.js tests/electron/storage-compatibility.test.js",
     "test:store": "node --test tests/electron/store-*.test.js",
-    "test:ci": "npm run check:ipc && npx tsc -p tsconfig.electron.json && npm run check:installer && npm run check:store && npm run check:brand && npm run test:packaging && npm run test:profile && npm run test:store && npx tsc -p tsconfig.test.json --noEmit && npm run coverage",
+    "test:ci": "npm run check:ipc && npx tsc -p config/tsconfig.electron.json && npm run check:installer && npm run check:store && npm run check:brand && npm run test:packaging && npm run test:profile && npm run test:store && npx tsc -p config/tsconfig.test.json --noEmit && npm run coverage",
     "test:e2e": "npm run build && playwright test",
     "test:duplicates": "vitest run tests/electron/duplicate-utils.test.js tests/electron/duplicates.test.js tests/electron/duplicate-worker.test.js tests/electron/visual-worker.test.js",
     "stress:cache-overcap": "node scripts/cache-overcap-smoke.js",
@@ -78,10 +78,10 @@
     "appId": "com.videocull.app",
     "productName": "VideoCull",
     "directories": {
-      "output": "release"
+      "output": "artifacts/packages"
     },
     "files": [
-      "dist/**/*",
+      "artifacts/renderer/**/*",
       "electron/**/*",
       "product.json",
       "node_modules/better-sqlite3/**/*",

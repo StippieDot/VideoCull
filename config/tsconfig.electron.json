@@ -11,5 +11,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["electron/**/*.js", "src/types.ts"]
+  "include": ["../electron/**/*.js", "../src/types.ts"]
 }

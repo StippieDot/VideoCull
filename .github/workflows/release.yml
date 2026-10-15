@@ -33,8 +33,8 @@ jobs:
       - name: Clean release output
         shell: pwsh
         run: |
-          if (Test-Path release) {
-            Remove-Item -Path "release/*.exe","release/*.blockmap","release/latest.yml" -Force -ErrorAction SilentlyContinue
+          if (Test-Path artifacts/packages) {
+            Remove-Item -Path "artifacts/packages/*.exe","artifacts/packages/*.blockmap","artifacts/packages/latest.yml" -Force -ErrorAction SilentlyContinue
           }
 
       - name: Build installer
@@ -48,14 +48,14 @@ jobs:
           $version = '${{ steps.vars.outputs.version }}'
           $expectedExe = "VideoCull.Setup.$version.exe"
           $expectedBlockmap = "VideoCull.Setup.$version.exe.blockmap"
-          $latestPath = "release/latest.yml"
+          $latestPath = "artifacts/packages/latest.yml"
 
-          if (-not (Test-Path "release/$expectedExe")) {
-            throw "Missing expected installer: release/$expectedExe"
+          if (-not (Test-Path "artifacts/packages/$expectedExe")) {
+            throw "Missing expected installer: artifacts/packages/$expectedExe"
           }
 
-          if (-not (Test-Path "release/$expectedBlockmap")) {
-            throw "Missing expected blockmap: release/$expectedBlockmap"
+          if (-not (Test-Path "artifacts/packages/$expectedBlockmap")) {
+            throw "Missing expected blockmap: artifacts/packages/$expectedBlockmap"
           }
 
           if (-not (Test-Path $latestPath)) {
@@ -86,6 +86,6 @@ jobs:
           body: ${{ steps.changelog.outputs.notes }}
           generate_release_notes: false
           files: |
-            release/VideoCull.Setup.${{ steps.vars.outputs.version }}.exe
-            release/VideoCull.Setup.${{ steps.vars.outputs.version }}.exe.blockmap
-            release/latest.yml
+            artifacts/packages/VideoCull.Setup.${{ steps.vars.outputs.version }}.exe
+            artifacts/packages/VideoCull.Setup.${{ steps.vars.outputs.version }}.exe.blockmap
+            artifacts/packages/latest.yml

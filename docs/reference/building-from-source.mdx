@@ -45,7 +45,7 @@ npm run dev
 ## Notes
 
 - `npm run test:ci` is the normal local verification path.
-- Backend files under `electron/` stay plain JavaScript with no build step. A file opts into type checking with `// @ts-check` and JSDoc types imported from `src/types.ts`; `tsconfig.electron.json` checks them.
+- Backend files under `electron/` stay plain JavaScript with no build step. A file opts into type checking with `// @ts-check` and JSDoc types imported from `src/types.ts`; `config/tsconfig.electron.json` checks them.
 - `npm ci` installs the Electron runtime. Dependency install scripts are disabled for better-sqlite3 to avoid npm's implicit native rebuild; its bundled binary is used instead.
 - `npm run test:cache-native` runs the cache tests inside Electron. better-sqlite3 ships prebuilt Node-API binaries, so no native rebuild or C++ build tools are needed.
 - Development Electron sessions use a separate `userData` folder so local settings and cache do not mix with the packaged app.

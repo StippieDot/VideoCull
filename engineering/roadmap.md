@@ -177,7 +177,7 @@ wrapper around every `electronAPI` call.
 1. **Characterization tests first:** test the current behaviour of the moved functions (inputs →
    results/messages), with `main-helpers`-style injected fs/shell/cache fakes.
 2. **Move verbatim** in one commit, and change behaviour in a **separate** commit.
-3. Keep green: `check:ipc`, `tsc -p tsconfig.electron.json`, unit tests, and the relevant e2e
+3. Keep green: `check:ipc`, `tsc -p config/tsconfig.electron.json`, unit tests, and the relevant e2e
    (`delete-safety`, `relaunch-persistence`, `smoke`).
 4. Each extraction lists grep-able completion criteria, e.g. "`main.js` contains no `knownVideoPaths`".
 
@@ -231,7 +231,7 @@ Mostly invisible to users; ships with the licence notices the bundled binaries a
 `@ts-check` module in this roadmap.
 
 **Implementation notes:**
-- Add `tsconfig.electron.json` (`allowJs`, `checkJs: false`, `noEmit`, including `electron/**/*.js` and
+- Add `config/tsconfig.electron.json` (`allowJs`, `checkJs: false`, `noEmit`, including `electron/**/*.js` and
   `src/types.ts`) and run it in `test:ci`.
 - Files opt in with `// @ts-check` and use JSDoc imports such as
   `@typedef {import('../src/types').DeleteResult}`.
@@ -239,7 +239,7 @@ Mostly invisible to users; ships with the licence notices the bundled binaries a
   method set and parameters against the renderer's contract.
 - Verify that TypeScript 7's native compiler supports the `checkJs` + JSDoc features used here
   **(unverified)**.
-- **Done when:** `npx tsc -p tsconfig.electron.json` passes in CI; preload is checked; nothing changes at
+- **Done when:** `npx tsc -p config/tsconfig.electron.json` passes in CI; preload is checked; nothing changes at
   runtime (no build step, no packaging change).
 
 ### 0.2 Replace fluent-ffmpeg with Plain Process Calls
@@ -302,7 +302,7 @@ repository's releases, so a toolchain release can never be mistaken for an app u
   winpthreads and MinGW-w64 CRT), manifest (versions, configure line, hashes) and `SHA256SUMS`.
 
 **In VideoCull:**
-- `ffmpeg-toolchain.json` pins repository, tag, asset and SHA-256. `scripts/fetch-ffmpeg.js` (run from
+- `config/ffmpeg-toolchain.json` pins repository, tag, asset and SHA-256. `scripts/fetch-ffmpeg.js` (run from
   `postinstall`) downloads that asset, refuses a hash mismatch, and installs it into `vendor/ffmpeg/`
   (git-ignored) by extracting next to it and swapping.
 - electron-builder `extraResources` copies `vendor/ffmpeg/` to `resources/ffmpeg/` for both editions;
@@ -312,7 +312,7 @@ repository's releases, so a toolchain release can never be mistaken for an app u
   an env override for tests, and logs the FFmpeg version once at startup.
 - **Windows minimum:** raised to Windows 10 22H2 (build 19045) for both editions (decided 2026-10-04).
 - **Updates:** change a line in `sources.lock` (or delete `msys2.lock` to move the compiler), raise
-  `REVISION`, let CI build and verify, publish, then update `ffmpeg-toolchain.json` in VideoCull.
+  `REVISION`, let CI build and verify, publish, then update `config/ffmpeg-toolchain.json` in VideoCull.
 - **Done when:** both editions run with the new binaries on a clean Windows 10 22H2 machine; Store
   package validation passes; installed and download sizes are recorded here.
 - **Measured (2026-10-04, `ffmpeg-9.0.2-r1`):** runtime folder 41.2 MB (was 145.5 MB); installer

@@ -31,7 +31,7 @@ const historicalPrefixes = [
 ];
 const historicalFiles = new Set([
   'CHANGELOG.md',
-  'ROADMAP.md',
+  'engineering/roadmap.md',
   'CODEBASE_AUDIT_REPORT.md',
 ]);
 const compatibilityFiles = new Set([
