@@ -246,6 +246,10 @@ export interface DuplicateSettings {
   customEndPercent: number;
   similarityThreshold?: number;
   finalSimilarityThreshold: number;
+  separateSimilarityThresholds: boolean;
+  phashSimilarityThreshold: number;
+  visualSimilarityThreshold: number;
+  phashFirstSampleOnly: boolean;
   durationTolerancePercent: number;
   requireEverySample: boolean;
   ignoreBlackPixels: boolean;
@@ -256,6 +260,7 @@ export interface DuplicateSettings {
   checkpointIntervalMinutes: number;
   ignoredDuplicatePairs: string[];
   phashDefaultApplied?: boolean;
+  averageSamplesDefaultApplied?: boolean;
 }
 
 export interface DuplicateGroup {

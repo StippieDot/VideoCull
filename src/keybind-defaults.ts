@@ -68,8 +68,12 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   customStartPercent: 0,
   customEndPercent: 100,
   finalSimilarityThreshold: 95,
+  separateSimilarityThresholds: false,
+  phashSimilarityThreshold: 95,
+  visualSimilarityThreshold: 95,
+  phashFirstSampleOnly: false,
   durationTolerancePercent: 20,
-  requireEverySample: true,
+  requireEverySample: false,
   ignoreBlackPixels: false,
   ignoreWhitePixels: false,
   compareFlipped: false,
@@ -78,6 +82,7 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   checkpointIntervalMinutes: 5,
   ignoredDuplicatePairs: [],
   phashDefaultApplied: true,
+  averageSamplesDefaultApplied: true,
 };
 
 const KEEPER_RULES = new Set(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
@@ -162,6 +167,12 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     if ((result.duplicates as Record<string, unknown>).phashDefaultApplied !== true) {
       migratedDuplicates.comparisonMode = 'phash';
       migratedDuplicates.phashDefaultApplied = true;
+    }
+    // Average scoring became the default because the weakest-sample rule missed real duplicates
+    // with one differing frame; move existing installs over once, like the pHash default above.
+    if ((result.duplicates as Record<string, unknown>).averageSamplesDefaultApplied !== true) {
+      migratedDuplicates.requireEverySample = false;
+      migratedDuplicates.averageSamplesDefaultApplied = true;
     }
     if (!['phash', 'visual'].includes(String(migratedDuplicates.comparisonMode))) {
       migratedDuplicates.comparisonMode = DEFAULT_DUPLICATE_SETTINGS.comparisonMode;

@@ -107,6 +107,11 @@ describe('migrateSettings', () => {
     expect(migrated.duplicates?.comparisonMode).toBe('visual');
   });
 
+  test('switches existing installs to average sample scoring once', () => {
+    expect(migrateSettings({ duplicates: { requireEverySample: true } }).duplicates?.requireEverySample).toBe(false);
+    expect(migrateSettings({ duplicates: { requireEverySample: true, averageSamplesDefaultApplied: true } }).duplicates?.requireEverySample).toBe(true);
+  });
+
   test('normalizes invalid duplicate-detection settings back to supported values', () => {
     const migrated = migrateSettings({
       duplicates: {

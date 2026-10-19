@@ -161,3 +161,28 @@ test('pHash match fails when dark-sample filtering leaves fewer than two usable 
 
   assert.equal(result.pairs.length, 0, 'matching should fail when only one usable sample remains');
 });
+
+test('pHash first-sample mode scores only the first sample where neither frame is dark', async () => {
+  const rows = (firstB) => [
+    { video_id: 'a', sample_index: 0, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.9 },
+    { video_id: 'a', sample_index: 1, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'a', sample_index: 2, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 0, phash_hex: 'ffff000000000000', frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 1, phash_hex: firstB, frame_dark_ratio: 0.1 },
+    { video_id: 'b', sample_index: 2, phash_hex: '0000ffffffffffff', frame_dark_ratio: 0.1 },
+  ];
+  const settings = {
+    sampleCount: 3,
+    comparisonMode: 'phash',
+    finalSimilarityThreshold: 95,
+    durationTolerancePercent: 20,
+    requireEverySample: true,
+    phashFirstSampleOnly: true,
+  };
+  const videos = [{ id: 'a', durationSecs: 100 }, { id: 'b', durationSecs: 100 }];
+
+  const match = await runWorker({ videos, phashRows: rows('ffff000000000000'), settings });
+  assert.equal(match.pairs.length, 1, 'a differing third sample is ignored');
+  const mismatch = await runWorker({ videos, phashRows: rows('0000ffffffffffff'), settings });
+  assert.equal(mismatch.pairs.length, 0, 'the first usable sample decides');
+});

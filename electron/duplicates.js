@@ -602,9 +602,11 @@ function recomputePHashSimilarity(samplesA, samplesB, settings, options = {}) {
       ? pHashSimilarity(sampleA.flippedHash, sampleB.hash)
       : normalScore;
     sampleScores.push(Math.max(normalScore, flippedScore));
+    // Only the first sample where neither frame is dark counts.
+    if (settings.phashFirstSampleOnly) break;
   }
 
-  if (sampleScores.length < minimumUsableSamples(settings.sampleCount)) return null;
+  if (sampleScores.length < minimumUsableSamples(settings.phashFirstSampleOnly ? 1 : settings.sampleCount)) return null;
   if (settings.requireEverySample && sampleScores.some((score) => score < settings.finalSimilarityThreshold)) return null;
   const similarity = combineSampleScores(sampleScores, settings);
   if (options.enforceThreshold === false) return similarity;

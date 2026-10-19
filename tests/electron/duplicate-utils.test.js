@@ -47,8 +47,21 @@ test('default settings follow the simplified VDF-style model', () => {
   assert.equal(settings.comparisonMode, 'phash');
   assert.equal(settings.durationTolerancePercent, 20);
   assert.equal(settings.checkpointIntervalMinutes, 5);
-  assert.equal(settings.requireEverySample, true);
+  assert.equal(settings.requireEverySample, false);
   assert.deepEqual(settings.keeperOrder, ['resolution', 'videoBitrate', 'duration', 'fps', 'size']);
+});
+
+test('similarity threshold accepts any value from 0 to 100 percent', () => {
+  assert.equal(normalizeDuplicateSettings({ finalSimilarityThreshold: 10 }).finalSimilarityThreshold, 10);
+  assert.equal(normalizeDuplicateSettings({ finalSimilarityThreshold: -5 }).finalSimilarityThreshold, 0);
+  assert.equal(normalizeDuplicateSettings({ finalSimilarityThreshold: 120 }).finalSimilarityThreshold, 100);
+});
+
+test('separate similarity values apply the one for the chosen method', () => {
+  const base = { separateSimilarityThresholds: true, finalSimilarityThreshold: 95, phashSimilarityThreshold: 80, visualSimilarityThreshold: 90 };
+  assert.equal(normalizeDuplicateSettings({ ...base, comparisonMode: 'phash' }).finalSimilarityThreshold, 80);
+  assert.equal(normalizeDuplicateSettings({ ...base, comparisonMode: 'visual' }).finalSimilarityThreshold, 90);
+  assert.equal(normalizeDuplicateSettings({ ...base, separateSimilarityThresholds: false }).finalSimilarityThreshold, 95);
 });
 
 test('duration tolerance uses the shorter video as the percentage base', () => {

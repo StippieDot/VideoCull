@@ -123,9 +123,10 @@ function comparePHashes() {
         ? pHashSimilarity(a.samples[k].flippedHash, b.samples[k].hash)
         : normalScore;
       sampleScores.push(Math.max(normalScore, flippedScore));
+      if (settings.phashFirstSampleOnly) break;
     }
     if (sampleScores.length === 0) return;
-    if (settings.sampleCount > 1 && sampleScores.length < 2) return;
+    if (!settings.phashFirstSampleOnly && settings.sampleCount > 1 && sampleScores.length < 2) return;
     const similarity = combineSampleScores(sampleScores, settings);
     const samplesMeetThreshold = !settings.requireEverySample || sampleScores.every((score) => score >= settings.finalSimilarityThreshold);
     if (similarity >= settings.finalSimilarityThreshold && samplesMeetThreshold) {

@@ -14,8 +14,12 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   customStartPercent: 0,
   customEndPercent: 100,
   finalSimilarityThreshold: 95,
+  separateSimilarityThresholds: false,
+  phashSimilarityThreshold: 95,
+  visualSimilarityThreshold: 95,
+  phashFirstSampleOnly: false,
   durationTolerancePercent: 20,
-  requireEverySample: true,
+  requireEverySample: false,
   ignoreBlackPixels: false,
   ignoreWhitePixels: false,
   compareFlipped: false,
@@ -24,6 +28,7 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   checkpointIntervalMinutes: 5,
   ignoredDuplicatePairs: [],
   phashDefaultApplied: true,
+  averageSamplesDefaultApplied: true,
 };
 
 const SAMPLE_COUNT_OPTIONS = new Set([1, 2, 3, 4, 5, 7, 9]);
@@ -38,12 +43,21 @@ function normalizeDuplicateSettings(input = {}) {
     ? input.comparisonMode
     : DEFAULT_DUPLICATE_SETTINGS.comparisonMode;
   const similarityThreshold = input.similarityThreshold ?? input.finalSimilarityThreshold ?? DEFAULT_DUPLICATE_SETTINGS.finalSimilarityThreshold;
+  const phashSimilarityThreshold = clamp(input.phashSimilarityThreshold ?? DEFAULT_DUPLICATE_SETTINGS.phashSimilarityThreshold, 0, 100);
+  const visualSimilarityThreshold = clamp(input.visualSimilarityThreshold ?? DEFAULT_DUPLICATE_SETTINGS.visualSimilarityThreshold, 0, 100);
+  const separateSimilarityThresholds = input.separateSimilarityThresholds === true;
+  const modeSimilarityThreshold = comparisonMode === 'visual' ? visualSimilarityThreshold : phashSimilarityThreshold;
   return {
     ...DEFAULT_DUPLICATE_SETTINGS,
     ...input,
     comparisonMode,
     sampleCount,
-    finalSimilarityThreshold: clampPercent(similarityThreshold),
+    // Everything downstream tests finalSimilarityThreshold, so the per-method value is resolved here.
+    finalSimilarityThreshold: separateSimilarityThresholds ? modeSimilarityThreshold : clamp(similarityThreshold, 0, 100),
+    separateSimilarityThresholds,
+    phashSimilarityThreshold,
+    visualSimilarityThreshold,
+    phashFirstSampleOnly: input.phashFirstSampleOnly === true,
     durationTolerancePercent: clamp(input.durationTolerancePercent ?? DEFAULT_DUPLICATE_SETTINGS.durationTolerancePercent, 0, 100),
     checkpointIntervalMinutes: clamp(input.checkpointIntervalMinutes ?? DEFAULT_DUPLICATE_SETTINGS.checkpointIntervalMinutes, 0, 60),
     ignoredDuplicatePairs: normalizeIgnoredDuplicatePairs(input.ignoredDuplicatePairs),
@@ -74,10 +88,6 @@ function normalizeIgnoredDuplicatePairs(value) {
     normalized.push(key);
   }
   return normalized;
-}
-
-function clampPercent(value) {
-  return clamp(Number(value), 0, 100);
 }
 
 function clamp(value, min, max) {
