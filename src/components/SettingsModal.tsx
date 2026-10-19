@@ -152,6 +152,59 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     }));
   };
 
+  // Visual scores run higher for unrelated footage than pHash scores, so it needs the earlier warning.
+  const isLowSimilarity = (mode: AppSettings['duplicates']['comparisonMode'], value: number) => (
+    mode === 'visual' ? value <= 90 : value < 80
+  );
+
+  const renderSimilarityInput = (
+    key: 'finalSimilarityThreshold' | 'phashSimilarityThreshold' | 'visualSimilarityThreshold',
+    mode: AppSettings['duplicates']['comparisonMode'],
+    label?: string,
+  ) => {
+    const value = localSettings.duplicates[key];
+    const low = isLowSimilarity(mode, value);
+    return (
+      <input
+        type="number"
+        min="0"
+        max="100"
+        value={value}
+        aria-label={label}
+        aria-describedby={low ? 'duplicate-similarity-warning' : undefined}
+        onChange={(e) => handleDuplicateChange(key, Number(e.target.value))}
+        className={low ? 'number-input is-low' : 'number-input'}
+      />
+    );
+  };
+
+  const similarityWarning = (() => {
+    const d = localSettings.duplicates;
+    const checks: Array<[AppSettings['duplicates']['comparisonMode'], number]> = d.separateSimilarityThresholds
+      ? [['phash', d.phashSimilarityThreshold], ['visual', d.visualSimilarityThreshold]]
+      : [[d.comparisonMode, d.finalSimilarityThreshold]];
+    const parts = checks
+      .filter(([mode, value]) => isLowSimilarity(mode, value))
+      .map(([mode]) => (mode === 'visual' ? 'visual at 90% or lower' : 'pHash below 80%'));
+    return parts.length > 0 ? `Unrelated videos start to match with ${parts.join(' and ')}.` : null;
+  })();
+
+  // One select over two stored flags: first-sample-only (pHash) wins over every-sample.
+  const sampleScoring = localSettings.duplicates.phashFirstSampleOnly
+    ? 'first'
+    : localSettings.duplicates.requireEverySample ? 'weakest' : 'average';
+
+  const handleSampleScoringChange = (value: string) => {
+    setLocalSettings((prev) => ({
+      ...prev,
+      duplicates: {
+        ...prev.duplicates,
+        requireEverySample: value === 'weakest',
+        phashFirstSampleOnly: value === 'first',
+      },
+    }));
+  };
+
   const moveKeeperRule = (index: number, direction: -1 | 1) => {
     const nextIndex = index + direction;
     const currentOrder = localSettings.duplicates.keeperOrder;
@@ -598,20 +651,44 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                         </div>
                       </div>
                       <div className="duplicates-control-grid">
-                        <div className="form-group">
-                          <label>Similarity</label>
-                          <div className="flex-row duplicates-inline-value">
-                            <input type="number" min="80" max="100" value={localSettings.duplicates.finalSimilarityThreshold} onChange={(e) => handleDuplicateChange('finalSimilarityThreshold', Number(e.target.value))} className="number-input" />
-                            <span>%</span>
-                          </div>
+                        <div className="form-group duplicates-span-full">
+                          <label>Comparison Method</label>
+                          <select value={localSettings.duplicates.comparisonMode} onChange={(e) => handleDuplicateChange('comparisonMode', e.target.value)}>
+                            <option value="phash">pHash</option>
+                            <option value="visual">Visual similarity</option>
+                          </select>
                           <span className="help-text">
-                            {localSettings.duplicates.comparisonMode === 'visual'
-                              ? 'Minimum score for a match. A group shows its weakest match, so every result meets this value. Visual results below 95% need more review.'
-                              : 'Minimum score for a match. A group shows its weakest match, so every result meets this value.'}
+                            pHash is strict and rejects most false positives. Visual similarity is broader and finds some duplicates pHash misses. Running both finds the most.
                           </span>
                         </div>
                         <div className="form-group">
-                          <label>Sample Count</label>
+                          <label>Similarity</label>
+                          {localSettings.duplicates.separateSimilarityThresholds ? (
+                            <div className="duplicates-similarity-pair">
+                              <span>pHash</span>
+                              {renderSimilarityInput('phashSimilarityThreshold', 'phash', 'pHash similarity')}
+                              <span>%</span>
+                              <span>Visual</span>
+                              {renderSimilarityInput('visualSimilarityThreshold', 'visual', 'Visual similarity')}
+                              <span>%</span>
+                            </div>
+                          ) : (
+                            <div className="flex-row duplicates-inline-value">
+                              {renderSimilarityInput('finalSimilarityThreshold', localSettings.duplicates.comparisonMode, 'Similarity')}
+                              <span>%</span>
+                            </div>
+                          )}
+                          <span className="help-text">Minimum score for a match. A group shows its weakest match.</span>
+                          {similarityWarning && (
+                            <span className="help-text duplicates-similarity-warning" id="duplicate-similarity-warning">{similarityWarning}</span>
+                          )}
+                          <label className="duplicates-inline-check">
+                            <input type="checkbox" checked={localSettings.duplicates.separateSimilarityThresholds} onChange={(e) => handleDuplicateChange('separateSimilarityThresholds', e.target.checked)} />
+                            Separate value per method
+                          </label>
+                        </div>
+                        <div className="form-group">
+                          <label>Samples</label>
                           <select value={localSettings.duplicates.sampleCount} onChange={(e) => handleDuplicateChange('sampleCount', Number(e.target.value))}>
                             <option value={1}>1 sample</option>
                             <option value={2}>2 samples</option>
@@ -621,19 +698,20 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                             <option value={7}>7 samples</option>
                             <option value={9}>9 samples</option>
                           </select>
-                          <span className="help-text">More samples reduce false positives, but take longer.</span>
-                        </div>
-                        <div className="form-group duplicates-span-full">
-                          <label>Comparison Method</label>
-                          <select value={localSettings.duplicates.comparisonMode} onChange={(e) => handleDuplicateChange('comparisonMode', e.target.value)}>
-                            <option value="phash">pHash</option>
-                            <option value="visual">Visual similarity</option>
+                          <select
+                            aria-label="Sample scoring"
+                            value={sampleScoring}
+                            disabled={localSettings.duplicates.sampleCount === 1}
+                            onChange={(e) => handleSampleScoringChange(e.target.value)}
+                          >
+                            <option value="average">Average score</option>
+                            <option value="weakest">Weakest sample</option>
+                            <option value="first">First sample (pHash)</option>
                           </select>
                           <span className="help-text">
-                            pHash is stricter and better at rejecting false positives. Visual similarity is broader and can find extra duplicates that pHash misses, especially in the low 90s.
-                          </span>
-                          <span className="help-text">
-                            Best coverage: run both methods separately. They work differently and can each find duplicates the other misses.
+                            {sampleScoring === 'weakest' && 'Strictest: a match is scored by its weakest sample.'}
+                            {sampleScoring === 'average' && 'One differing frame, such as a trimmed intro, does not hide a match.'}
+                            {sampleScoring === 'first' && 'Finds the most pHash matches, with more false positives. Visual similarity uses the average.'}
                           </span>
                         </div>
                         <div className="form-group duplicates-span-full">
@@ -774,13 +852,6 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                         </div>
                       )}
                       <div className="duplicates-toggle-list advanced">
-                        <div className="form-group checkbox-group duplicates-toggle-row">
-                          <label>
-                            <input type="checkbox" checked={localSettings.duplicates.requireEverySample} onChange={(e) => handleDuplicateChange('requireEverySample', e.target.checked)} />
-                            Require every sample to meet similarity
-                          </label>
-                          <span className="help-text">On: a match is scored by its weakest sample, so every sample must pass. Off: a match is scored by the average of all samples.</span>
-                        </div>
                         <div className="form-group checkbox-group duplicates-toggle-row">
                           <label>
                             <input type="checkbox" checked={localSettings.duplicates.ignoreBlackPixels} onChange={(e) => handleDuplicateChange('ignoreBlackPixels', e.target.checked)} />

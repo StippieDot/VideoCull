@@ -203,7 +203,8 @@ input[type="range"] {
   width: 80px;
 }
 
-.checkbox-group label {
+.checkbox-group label,
+.form-group .duplicates-inline-check {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -330,6 +331,26 @@ input[type="range"] {
 .duplicates-inline-value {
   min-height: 36px;
   gap: 10px;
+}
+
+.duplicates-similarity-pair {
+  display: grid;
+  grid-template-columns: max-content 80px max-content;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.duplicates-similarity-pair span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.form-group input.is-low:not(:focus) {
+  border-color: color-mix(in srgb, var(--color-skip) 55%, var(--border-color));
+}
+
+.duplicates-similarity-warning {
+  color: color-mix(in srgb, var(--color-skip) 65%, var(--text-secondary));
 }
 
 .duplicates-inline-value span {
