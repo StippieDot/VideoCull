@@ -756,7 +756,17 @@ async function writeJsonFile(fileName, data, rootPath = app.getPath('userData'))
     await handle.writeFile(content, 'utf8');
     await handle.sync();
     await handle.close();
-    await fs.rename(tempPath, targetPath);
+    // Windows refuses to replace a file that another handle has open for a moment (an overlapping
+    // save of the same file, antivirus, the search indexer), so retry briefly instead of dropping the save.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await fs.rename(tempPath, targetPath);
+        break;
+      } catch (error) {
+        if (attempt >= 10 || !['EPERM', 'EACCES', 'EBUSY'].includes(error?.code)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, attempt * 10));
+      }
+    }
   } catch (error) {
     await handle.close().catch(() => {});
     await fs.unlink(tempPath).catch(() => {});

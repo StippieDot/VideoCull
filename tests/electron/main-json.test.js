@@ -16,7 +16,7 @@ const jsonSource = ['readJsonFile', 'writeJsonFile'].map((name) => {
 // Load the actual helpers without starting Electron; inject faults only at the filesystem boundary.
 function loadJsonIo(profile, fsImpl = fs) {
   const context = {
-    fs: fsImpl, path, randomUUID, process,
+    fs: fsImpl, path, randomUUID, process, setTimeout,
     app: { getPath: () => profile },
     currentScanDiagnostics: null,
     CACHE_INDEX_FILE: 'cache-index.json',
@@ -151,6 +151,42 @@ test('overlapping JSON saves publish complete documents without temporary-file c
     const result = await io.readJsonFile('settings.json', null);
     assert.ok(JSON.stringify(result) === JSON.stringify(first) || JSON.stringify(result) === JSON.stringify(second));
     assert.deepEqual(await fs.readdir(profile), ['settings.json']);
+  });
+});
+
+test('a save retries a rename that Windows briefly refuses', async () => {
+  await withProfile(async (profile) => {
+    let refusals = 0;
+    const io = loadJsonIo(profile, {
+      ...fs,
+      async rename(from, to) {
+        if (refusals < 2) {
+          refusals++;
+          throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+        }
+        return fs.rename(from, to);
+      },
+    });
+    await io.writeJsonFile('settings.json', { saved: 'after' });
+    assert.equal(refusals, 2);
+    assert.equal((await io.readJsonFile('settings.json', null)).saved, 'after');
+    assert.deepEqual(await fs.readdir(profile), ['settings.json']);
+  });
+});
+
+test('a save does not retry a rename that fails for another reason', async () => {
+  await withProfile(async (profile) => {
+    let attempts = 0;
+    const io = loadJsonIo(profile, {
+      ...fs,
+      async rename() {
+        attempts++;
+        throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
+      },
+    });
+    await assert.rejects(io.writeJsonFile('settings.json', { saved: 'after' }), /no such file/);
+    assert.equal(attempts, 1);
+    assert.deepEqual(await fs.readdir(profile), []);
   });
 });
 
