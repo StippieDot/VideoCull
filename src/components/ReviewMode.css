@@ -1,4 +1,5 @@
 .review-mode {
+  --review-side-padding: clamp(72px, 8vw, 144px);
   position: fixed;
   inset: var(--title-bar-height, 0px) 0 0 0;
   z-index: 100;
@@ -117,7 +118,8 @@
   width: 100%;
   max-width: none;
   min-height: 0;
-  padding: 0 clamp(72px, 8vw, 144px);
+  /* Room for the absolutely placed nav arrows (48px) plus their 24px gap. */
+  padding: 0 calc(var(--review-side-padding) + 72px);
   flex: 0 1 auto;
   transition: max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -298,6 +300,12 @@
 
 /* ── Nav Arrows ── */
 .review-nav {
+  /* Pinned to the review area, not the content row, whose height differs between preview and
+     playback; centred on the space above the action bar (the root's 128px bottom padding). */
+  position: absolute;
+  top: calc((100% - 128px) / 2);
+  transform: translateY(-50%);
+  z-index: 5;
   width: 48px;
   height: 48px;
   display: flex;
@@ -313,6 +321,16 @@
   background: var(--bg-surface-hover);
   color: var(--text-primary);
 }
+/* Next to the player's edge (48px arrow + 24px gap) when the player is narrower than the window,
+   otherwise in the side gutter. */
+.review-nav-left {
+  left: max(var(--review-side-padding), calc(50% - var(--review-player-width, 100vw) / 2 - 72px));
+}
+
+.review-nav-right {
+  right: max(var(--review-side-padding), calc(50% - var(--review-player-width, 100vw) / 2 - 72px));
+}
+
 .review-nav:disabled {
   opacity: 0.25;
   cursor: not-allowed;
@@ -514,9 +532,8 @@
     top: 36px;
   }
 
-  .review-content {
-    gap: 16px;
-    padding: 0 clamp(56px, 6vw, 96px);
+  .review-mode {
+    --review-side-padding: clamp(56px, 6vw, 96px);
   }
 
   .review-center {
@@ -577,8 +594,8 @@
 }
 
 @media (max-width: 900px), (max-height: 720px) {
-  .review-content {
-    padding: 0 56px;
+  .review-mode {
+    --review-side-padding: 56px;
   }
 
   .review-action-btn {

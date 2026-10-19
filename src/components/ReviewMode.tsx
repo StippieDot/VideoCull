@@ -239,6 +239,10 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
   const reviewMediaWidth = useMemo(() => (
     getReviewMediaWidth(viewportSize.width, viewportSize.height, isPlaying)
   ), [isPlaying, viewportSize.height, viewportSize.width]);
+  // The nav arrows line up with the player's edges in preview too, so they do not move on Play.
+  const reviewPlayerWidth = useMemo(() => (
+    getReviewMediaWidth(viewportSize.width, viewportSize.height, true)
+  ), [viewportSize.height, viewportSize.width]);
 
   useEffect(() => {
     completeDevInteractionOnNextPaint('review.enter');
@@ -601,7 +605,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
   return (
     <div
       className={`review-mode ${isPlaying ? 'review-playing' : 'review-preview'} ${statusClass} ${isPlaying && keepReviewControlsVisible ? 'review-controls-persistent' : ''}`}
-      style={{ '--review-media-width': `${reviewMediaWidth}px` } as CSSProperties}
+      style={{ '--review-media-width': `${reviewMediaWidth}px`, '--review-player-width': `${reviewPlayerWidth}px` } as CSSProperties}
     >
       <button className="review-close" onClick={close} title="Close (Esc)">
         <X size={20} />

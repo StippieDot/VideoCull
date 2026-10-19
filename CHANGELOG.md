@@ -13,6 +13,9 @@ All notable changes to VideoCull will be documented here.
 - The duplicate Similarity setting accepts any value from 0% to 100% instead of 80% and up, for copies in another resolution or quality that score lower. A note warns that unrelated videos start to match below 80% with pHash and at 90% or lower with visual similarity.
 - Duplicate matches are now scored by the average of their samples instead of the weakest one, so one differing frame no longer hides a real duplicate. This also applies to existing installs once; choosing **Weakest sample** under Samples brings back the stricter rule.
 
+### Fixed
+- The previous and next arrows in Review stay in the same place whether or not a video is playing.
+
 ## [2.4.0] - 2026-10-16
 
 ### Added
