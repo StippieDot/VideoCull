@@ -2,13 +2,11 @@
 
 All notable changes to VideoCull will be documented here.
 
-## [Unreleased]
-
-### Added
-- **Separate value per method** under the duplicate Similarity setting keeps one similarity for pHash and another for visual similarity, used automatically for whichever method runs.
-- Duplicate matches can be scored by the first sample only with pHash: the first sample where neither frame is dark decides, which finds more duplicates at the cost of more false positives.
+## [2.4.1] - 2026-10-20
 
 ### Changed
+- The duplicate Samples setting can score pHash matches by the first sample only: the first sample where neither frame is dark decides, which finds more duplicates at the cost of more false positives.
+- The duplicate Similarity setting keeps a separate value for pHash and for visual similarity, and the value for the method that runs is used automatically.
 - The duplicate matching settings are reordered: Comparison Method comes first, followed by Similarity and Samples. How samples are scored (average, every sample, or first sample only) is now one choice under Samples instead of two checkboxes in Advanced.
 - The duplicate Similarity setting accepts any value from 0% to 100% instead of 80% and up, for copies in another resolution or quality that score lower. A note warns that unrelated videos start to match below 80% with pHash and at 90% or lower with visual similarity.
 - Duplicate matches are now scored by the average of their samples instead of the weakest one, so one differing frame no longer hides a real duplicate. This also applies to existing installs once; choosing **Weakest sample** under Samples brings back the stricter rule.
