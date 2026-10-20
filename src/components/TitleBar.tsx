@@ -316,6 +316,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
   useTaskbarProgress(jobs, paused);
   const status = jobs[0] ?? null;
   const marked = useStore(useShallow((s) => ({ count: s.stats.delete, size: s.stats.deleteSize })));
+  const isDeleting = useStore((s) => s.isDeleting);
 
   const sessionTitle = isPrivate || directories.length === 0
     ? 'VideoCull'
@@ -352,7 +353,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
           <button
             type="button"
             className="title-bar-marked"
-            disabled={processingInputs.isScanning}
+            disabled={processingInputs.isScanning || isDeleting}
             title={`Delete ${plural(marked.count, 'marked video')} (${formatSize(marked.size)})… (Ctrl+Backspace)`}
             aria-label={`Delete ${plural(marked.count, 'marked video')}`}
             onMouseDown={(event) => event.preventDefault()}

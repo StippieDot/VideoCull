@@ -144,6 +144,18 @@ describe('TitleBar', () => {
     expect(marked.disabled).toBe(false);
   });
 
+  test('the delete button cannot be pressed again while a delete runs', () => {
+    const api = installElectronApiMock({ processing: false, finishAction: 'none', countdown: null });
+    useStore.setState({ isScanning: false, isDeleting: true, stats: { ...useStore.getState().stats, delete: 2, deleteSize: 2048 } });
+    render(<TitleBar isPrivate={false} onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);
+    const marked = screen.getByRole('button', { name: 'Delete 2 marked videos' }) as HTMLButtonElement;
+    expect(marked.disabled).toBe(true);
+    act(() => marked.click());
+    expect(api.runCommand).not.toHaveBeenCalled();
+    act(() => useStore.setState({ isDeleting: false }));
+    expect(marked.disabled).toBe(false);
+  });
+
   test('behind the privacy screen neither the folder nor the processing status is shown', async () => {
     installElectronApiMock({ processing: true, finishAction: 'none', countdown: null });
     render(<TitleBar isPrivate onOpenCommandPalette={() => {}} locationActions={LOCATION_ACTIONS} />);

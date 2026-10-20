@@ -665,7 +665,8 @@ export default function Sidebar({
   const removeRecentDirectory = useStore((s) => s.removeRecentDirectory);
   const addDirectory = useStore((s) => s.addDirectory);
 
-  const [isDeleting, setIsDeleting] = useState(false);
+  const isDeleting = useStore((s) => s.isDeleting);
+  const setIsDeleting = useStore((s) => s.setIsDeleting);
   const [showRecents, setShowRecents] = useState(false);
   const switcherRef = useRef<HTMLButtonElement>(null);
   const [switcherAt, setSwitcherAt] = useState<{ x: number; y: number } | null>(null);
@@ -834,8 +835,8 @@ export default function Sidebar({
 
   const handleBatchDelete = async () => {
     if (!window.electronAPI) return;
-    const { videos: currentVideos, isScanning: scanningNow } = useStore.getState();
-    if (scanningNow) return;
+    const { videos: currentVideos, isScanning: scanningNow, isDeleting: deletingNow } = useStore.getState();
+    if (scanningNow || deletingNow) return;
     const toDelete = currentVideos.filter((v) => v.status === 'delete');
     if (toDelete.length === 0) return;
 

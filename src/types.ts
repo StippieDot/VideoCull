@@ -381,6 +381,7 @@ export interface VideoStore {
   // Scanning
   isScanning: boolean;
   scanProgress: ScanProgress;
+  isDeleting: boolean;
 
   // Thumbnail generation
   isGenerating: boolean;
@@ -483,6 +484,7 @@ export interface VideoStore {
   setFolderSortBy: (sortBy: FolderSortField) => void;
   setFolderSortOrder: (order: SortOrder) => void;
   setIsScanning: (val: boolean) => void;
+  setIsDeleting: (val: boolean) => void;
   setScanProgress: (progress: ScanProgress) => void;
   setIsGenerating: (val: boolean) => void;
   setGenProgress: (progress: ThumbProgress) => void;

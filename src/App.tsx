@@ -945,7 +945,7 @@ export default function App() {
         }
         case 'undo': { state.undo(); break; }
         case 'delete-all': {
-          if (state.isScanning) break;
+          if (state.isScanning || state.isDeleting) break;
           const toDelete = state.videos.filter((v) => v.status === 'delete');
           if (toDelete.length === 0) break;
           const confirmed = window.confirm(formatDeleteConfirmation({
@@ -954,12 +954,18 @@ export default function App() {
             removeEmptyFoldersAfterDelete: state.settings.removeEmptyFoldersAfterDelete,
           }));
           if (confirmed) {
-            const results = await deleteWithPermanentReview({
-              filePaths: toDelete.map((video) => video.path),
-              moveToTrash: window.electronAPI.batchDelete,
-              permanentlyDelete: window.electronAPI.permanentlyDelete,
-              confirmPermanentDelete: requestPermanentDelete,
-            });
+            state.setIsDeleting(true);
+            let results: Awaited<ReturnType<typeof deleteWithPermanentReview>>;
+            try {
+              results = await deleteWithPermanentReview({
+                filePaths: toDelete.map((video) => video.path),
+                moveToTrash: window.electronAPI.batchDelete,
+                permanentlyDelete: window.electronAPI.permanentlyDelete,
+                confirmPermanentDelete: requestPermanentDelete,
+              });
+            } finally {
+              state.setIsDeleting(false);
+            }
             const deletedPaths = results.filter((r) => r.success).map((r) => r.path);
             state.removeDeletedVideos(deletedPaths);
             const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;

@@ -10,6 +10,7 @@ export default function useAppMenuState(isPrivate: boolean) {
   const markedCount = useStore((s) => s.stats.delete);
   const canUndo = useStore((s) => s.undoStack.length > 0);
   const isScanning = useStore((s) => s.isScanning);
+  const isDeleting = useStore((s) => s.isDeleting);
   const metadataRunning = useStore((s) => s.isGenerating && s.genProgress.phase === 'metadata');
   const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const duplicatesEnabled = useStore((s) => s.settings.duplicates.enabled);
@@ -38,7 +39,7 @@ export default function useAppMenuState(isPrivate: boolean) {
       markedCount,
       canUndo,
       canExport: Boolean(directory && videoCount > 0 && !isScanning),
-      canDeleteMarked: markedCount > 0 && !isScanning,
+      canDeleteMarked: markedCount > 0 && !isScanning && !isDeleting,
       canFindDuplicates: duplicatesEnabled && videoCount >= 2 && !isFindingDuplicates && !metadataRunning,
       canPauseProcessing: isGenerating || isFindingDuplicates,
       activeVideoCount,
@@ -64,7 +65,7 @@ export default function useAppMenuState(isPrivate: boolean) {
     lastSent.current = serialized;
     window.electronAPI?.setMenuState(state);
   }, [
-    hasSession, directory, videoCount, markedCount, canUndo, isScanning, metadataRunning,
+    hasSession, directory, videoCount, markedCount, canUndo, isScanning, isDeleting, metadataRunning,
     isFindingDuplicates, duplicatesEnabled, activeVideoCount, isGenerating, sortBy, sortOrder,
     ratingsEnabled, codecBadgesEnabled, groupByFolder, filtersActive, muteAvailable, muted,
     isPrivate, recentFolders, folders,

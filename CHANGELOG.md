@@ -16,6 +16,7 @@ All notable changes to VideoCull will be documented here.
 ### Fixed
 - The previous and next arrows in Review stay in the same place whether or not a video is playing.
 - Saving settings or the folder index no longer fails now and then on Windows when another save of the same file, antivirus or the search indexer briefly holds the file.
+- The delete button in the title bar, **Delete Marked Videos** and `Ctrl + Backspace` can no longer start a second delete while one is still running.
 
 ## [2.4.0] - 2026-10-16
 

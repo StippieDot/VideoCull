@@ -949,6 +949,7 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── Scanning ──
   isScanning: false,
   scanProgress: { found: 0, currentFile: '' },
+  isDeleting: false,
 
   // ── Thumbnail generation ──
   isGenerating: false,
@@ -1510,6 +1511,7 @@ const useStore = create<VideoStore>((set, get) => ({
 
   // ── Scanning state ──
   setIsScanning: (isScanning: boolean) => set({ isScanning }),
+  setIsDeleting: (isDeleting: boolean) => set({ isDeleting }),
   setScanProgress: (scanProgress: ScanProgress) => set({ scanProgress }),
   setIsGenerating: (isGenerating: boolean) => set({ isGenerating }),
   setGenProgress: (genProgress: ThumbProgress) => set({ genProgress }),
