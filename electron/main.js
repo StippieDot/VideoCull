@@ -161,7 +161,7 @@ class ScanSupersededError extends Error {
  * First does a fast path.resolve check (catches ../ traversal), then follows
  * symlinks with fs.realpath to prevent symlink-based directory traversal.
  * If the candidate file doesn't exist yet (e.g. thumbnail not generated),
- * the path.resolve check is sufficient â€” the caller's file read will 404.
+ * the path.resolve check is sufficient — the caller's file read will 404.
  */
 async function isPathWithinDir(candidate, baseDir) {
   const resolved = path.resolve(candidate);
@@ -186,7 +186,7 @@ async function isPathWithinDir(candidate, baseDir) {
     return isSameOrInside(real, realBase);
   } catch {
     // Candidate doesn't exist (e.g. thumbnail still being generated).
-    // path.resolve check above already passed â€” allow it through.
+    // path.resolve check above already passed — allow it through.
     return true;
   }
 }
@@ -307,7 +307,7 @@ function folderDisplayName(folderPath) {
   return path.basename(path.resolve(folderPath)) || folderPath;
 }
 
-// â”€â”€ Window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Window ──────────────────────────────────────────────────────────────
 // The title bar can show the Windows 11 Mica material; the rest of the window stays opaque.
 const micaSupported = process.platform === 'win32' && supportsMica(os.release());
 let useMica = false;
@@ -430,7 +430,7 @@ function createWindow(initialTheme = 'dark', micaTitleBar = true) {
   }
 }
 
-// â”€â”€ Custom Protocol for serving thumbnail images and videos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Custom Protocol for serving thumbnail images and videos ───────────────
 const customProtocolSchemes = [
   { scheme: 'thumb', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } },
   { scheme: 'video', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } },
@@ -719,8 +719,8 @@ app.on('before-quit', (event) => {
   if (!gracefulShutdown.request({ installOptions })) event.preventDefault();
 });
 
-// â”€â”€ Cache constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Legacy directory name â€” only used to locate old thumbnails during migration.
+// ── Cache constants ──────────────────────────────────────────────────────
+// Legacy directory name — only used to locate old thumbnails during migration.
 // New thumbnails are written to cacheRootDir/thumbs/<folderKey>/ from P0 onwards,
 // where folderKey matches the DB filename (same sanitization).
 const THUMB_DIR = '.video-cull-thumbs';
@@ -1483,7 +1483,7 @@ async function splitDescendantRowsFromParentDb(parentFolder, cacheOptions, paren
   log.info(`[cache] Split ${movedCount} descendant cached video rows out of ${parentFolder}`);
 }
 
-// â”€â”€ Thumbnail path helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Thumbnail path helpers ───────────────────────────────────────────────
 // The DB always stores paths relative to cacheRootDir (e.g. 'thumbs/id/thumb_01.jpg').
 // The renderer always receives absolute paths. main.js converts at the boundary.
 
@@ -1762,7 +1762,7 @@ function buildReportHtml(videos, dirPaths) {
   </html>`;
 }
 
-// â”€â”€ IPC Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── IPC Handlers ────────────────────────────────────────────────────────
 
 // 1. Select directory via OS dialog
 // Electron 43+ opens dialogs in Downloads without a defaultPath, so start in the most recent folder.
@@ -1788,7 +1788,7 @@ ipcMain.handle('select-directory', async () => {
   return result.filePaths[0];
 });
 
-// 1b. Validate a drag-dropped path â€” confirms it exists and is a directory
+// 1b. Validate a drag-dropped path — confirms it exists and is a directory
 ipcMain.handle('validate-dropped-path', async (_event, droppedPath) => {
   try {
     const stats = await fs.stat(droppedPath);
@@ -1893,7 +1893,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
 
   // Migrate any old .video-cull-thumbs thumbnails into the cache directory.
   // Filesystem-based: checks disk directly, not the DB, so it works even when
-  // the DB has no thumbnail records (e.g. first launch after JSONâ†’SQLite migration).
+  // the DB has no thumbnail records (e.g. first launch after JSON→SQLite migration).
   // Runs once per folder; subsequent scans find nothing to move and are instant.
   stageStartedAt = performance.now();
   const oldThumbBase = path.join(dirPath, THUMB_DIR);
@@ -1901,7 +1901,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
   assertScanCurrent(scanToken);
   if (oldVideoIds.length > 0) {
     const newThumbRoot = cachePaths.thumbRootDir;
-    log.info(`[scan-directory] Migrating ${oldVideoIds.length} thumb dirs from ${oldThumbBase} â†’ ${newThumbRoot}`);
+    log.info(`[scan-directory] Migrating ${oldVideoIds.length} thumb dirs from ${oldThumbBase} → ${newThumbRoot}`);
     const BATCH = 10;
     for (let i = 0; i < oldVideoIds.length; i += BATCH) {
       await Promise.all(oldVideoIds.slice(i, i + BATCH).map(async (videoId) => {
@@ -3175,7 +3175,7 @@ ipcMain.handle('defer-update', () => {
   return true;
 });
 
-// â”€â”€ Auto-updater setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Auto-updater setup ───────────────────────────────────────────────────
 function setupAutoUpdater() {
   const autoUpdater = getAutoUpdater();
   autoUpdater.logger = log;
@@ -3238,7 +3238,7 @@ function setupAutoUpdater() {
         const config = JSON.parse(data);
         if (config.autoUpdates === false) return;
       } catch {
-        // No config yet â€” default is enabled
+        // No config yet — default is enabled
       }
       await autoUpdater.checkForUpdates();
     } catch (err) {
