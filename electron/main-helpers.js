@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 
 const SERVABLE_VIDEO_EXTENSIONS = new Set([
@@ -286,6 +287,48 @@ function normalizeReviewStateChanges(changes) {
   return normalized;
 }
 
+/**
+ * Returns true if `candidate` resolves to `baseDir` or a path inside it.
+ * First does a fast path.resolve check (catches ../ traversal), then follows
+ * symlinks with fs.realpath to prevent symlink-based directory traversal.
+ * If the candidate file doesn't exist yet (e.g. thumbnail not generated),
+ * the path.resolve check is sufficient — the caller's file read will 404.
+ * `followedLinkTargets` holds the real paths of links a scan followed: a path inside the loaded folder
+ * whose real path is inside one of them is accepted too. A link created after the scan is not.
+ */
+async function isPathWithinDir(candidate, baseDir, followedLinkTargets = null) {
+  const resolved = path.resolve(candidate);
+  const resolvedBase = path.resolve(baseDir);
+
+  const isSameOrInside = (targetPath, rootPath) => {
+    const relative = path.relative(rootPath, targetPath);
+    return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+  };
+
+  // Fast check: deny immediately if the normalised path escapes the base dir.
+  // path.relative handles drive roots like "D:\" correctly; string prefix checks
+  // can accidentally require "D:\\" and reject every child on the drive.
+  if (!isSameOrInside(resolved, resolvedBase)) {
+    return false;
+  }
+
+  // Symlink check: follow real paths for files that exist
+  try {
+    const real = await fs.promises.realpath(candidate);
+    const realBase = await fs.promises.realpath(baseDir).catch(() => resolvedBase);
+    if (isSameOrInside(real, realBase)) return true;
+    // A link inside the loaded folder leads outside it: allowed only when a scan followed that link.
+    for (const target of followedLinkTargets ?? []) {
+      if (isSameOrInside(real, target)) return true;
+    }
+    return false;
+  } catch {
+    // Candidate doesn't exist (e.g. thumbnail still being generated).
+    // path.resolve check above already passed — allow it through.
+    return true;
+  }
+}
+
 async function isKnownLoadedFilePath({
   filePath,
   knownVideoPaths,
@@ -371,6 +414,7 @@ async function removeEmptyDeletedVideoFolders({
   loadedDirectories,
   isPathWithinAnyDir,
   removeDir,
+  isLink = async () => false,
   onWarn = () => {},
 }) {
   const folders = Array.from(new Set(
@@ -385,6 +429,8 @@ async function removeEmptyDeletedVideoFolders({
     if (resolved === path.parse(resolved).root) continue;
     if (!loadedDirectories || loadedDirectories.size === 0) continue;
     if (!await isPathWithinAnyDir(resolved, loadedDirectories)) continue;
+    // Removing a junction or folder link removes the link itself, which the person made on purpose.
+    if (await isLink(resolved)) continue;
     try {
       await removeDir(resolved);
       removed.add(resolved);
@@ -519,6 +565,7 @@ module.exports = {
   hasAnyCompatFormat,
   isFolderInsideSync,
   isAllowedExternalUrl,
+  isPathWithinDir,
   isSameFolderSync,
   isServableVideoPath,
   isSqliteCorruptionError,

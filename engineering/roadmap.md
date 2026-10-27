@@ -1401,7 +1401,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 | Phase | Status | Version | Merged |
 |---|---|---|---|
 | P0 — Media toolchain & licence compliance | ✅ Merged to main | `2.4.0` | 2026-10-16 |
-| PS — Saved sessions & linked folders | ⬜ Not started | `2.5.0` | — |
+| PS — Saved sessions & linked folders | 🔄 In progress | `2.5.0` | — |
 | P1 — Quick wins | ⬜ Not started | `2.6.0` | — |
 | P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.7.0` | — |
 | PL — Persistent library | ⬜ Not started | `2.8.0` | — |

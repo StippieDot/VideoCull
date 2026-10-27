@@ -47,18 +47,25 @@ function createProgressReporter(onProgress) {
   };
 }
 
+/** Windows paths compare without regard to case. */
+function realPathKey(realPath) {
+  return path.resolve(realPath).toLowerCase();
+}
+
 async function statVideoEntries(entries, statPath = fs.stat) {
   const results = new Array(entries.length).fill(null);
 
   for (let start = 0; start < entries.length; start += SCAN_FILE_STAT_BATCH_SIZE) {
     const batch = entries.slice(start, start + SCAN_FILE_STAT_BATCH_SIZE);
-    const batchResults = await Promise.all(batch.map(async ({ entryName, fullPath }) => {
+    const batchResults = await Promise.all(batch.map(async ({ entryName, fullPath, realPath = fullPath }) => {
       try {
         const stat = await statPath(fullPath);
         return {
           id: makeVideoId(fullPath, stat.size),
           filename: entryName,
           path: fullPath,
+          // The file itself when `path` goes through a link or junction; delete acts on this.
+          realPath,
           sizeBytes: stat.size,
           date: stat.mtimeMs,
           fileIdentity: createFileIdentity(stat),
@@ -94,12 +101,22 @@ async function statVideoEntries(entries, statPath = fs.stat) {
  * @param {string} dirPath - Root directory to scan.
  * @param {boolean} includeSubfolders - Whether to recurse into subdirectories.
  * @param {function} onProgress - Callback with { found, current, currentFile }.
- * @returns {Promise<Array>|Promise<{ videos: Array, visitedDirs: Array<string>, incompleteDirs: Array<string> }>} - Scan results.
+ * @param {{ followLinks?: boolean }} [options] - `followLinks` (default on) walks symbolic links and
+ *   junctions, including ones whose target is outside `dirPath`.
+ * @returns {Promise<Array>|Promise<{ videos: Array, visitedDirs: Array<string>, incompleteDirs: Array<string>, linkTargets: Array<string> }>} - Scan results.
  */
 async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {}) {
   const videos = [];
   const visitedDirs = options.includeVisitedDirs ? [] : null;
   const readDir = typeof options.readdir === 'function' ? options.readdir : fs.readdir;
+  const statPath = typeof options.statPath === 'function' ? options.statPath : fs.stat;
+  const followLinks = options.followLinks !== false;
+  // Every folder and video is listed once, by its real path: this stops link loops, and a video
+  // reached twice would otherwise be paired with itself as a duplicate and deleted as the "copy".
+  const walkedRealDirs = new Set();
+  const seenRealFiles = new Set();
+  // Real paths of the link targets this scan followed; only these are trusted outside `dirPath`.
+  const linkTargets = new Set();
   const summary = {
     skippedDirectoryCount: 0,
     skippedDirectorySamples: [],
@@ -114,8 +131,16 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
   let found = 0;
   const progressReporter = createProgressReporter(onProgress);
 
-  async function walk(currentDir) {
+  const skipFile = (filePath, reason) => {
+    summary.skippedFileCount += 1;
+    if (summary.skippedFileSamples.length < 5) summary.skippedFileSamples.push(reason ? { path: filePath, reason } : { path: filePath });
+  };
+
+  async function walk(currentDir, realDir) {
     assertNotCancelled();
+    const realDirKey = realPathKey(realDir);
+    if (walkedRealDirs.has(realDirKey)) return;
+    walkedRealDirs.add(realDirKey);
     let entries;
     try {
       entries = await readDir(currentDir, { withFileTypes: true });
@@ -144,8 +169,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
         const video = scannedVideos[i];
         if (!video) {
           incompleteDirs.add(currentDir);
-          summary.skippedFileCount += 1;
-          if (summary.skippedFileSamples.length < 5) summary.skippedFileSamples.push({ path: batch[i].fullPath });
+          skipFile(batch[i].fullPath);
           continue;
         }
         found += 1;
@@ -157,18 +181,40 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
     for (const entry of entries) {
       assertNotCancelled();
       const fullPath = path.join(currentDir, entry.name);
+      let isDirectory = entry.isDirectory();
+      let isFile = entry.isFile();
+      let realPath = path.join(realDir, entry.name);
 
       // Skip our own cache/thumb directories
-      if (entry.isDirectory() && (entry.name === '.video-cull-thumbs' || entry.name === '.videocull' || entry.name === '.video-cull-cache.json')) {
+      if (isDirectory && (entry.name === '.video-cull-thumbs' || entry.name === '.videocull' || entry.name === '.video-cull-cache.json')) {
         continue;
       }
 
-      if (entry.isDirectory() && includeSubfolders) {
+      // Junctions and symbolic links are only `isSymbolicLink()`; the target decides folder or file.
+      if (entry.isSymbolicLink?.()) {
+        if (!followLinks || !(includeSubfolders || isVideoFile(entry.name))) continue;
+        try {
+          const stat = await statPath(fullPath);
+          realPath = await fs.realpath(fullPath);
+          isDirectory = stat.isDirectory();
+          isFile = stat.isFile();
+        } catch {
+          incompleteDirs.add(currentDir);
+          skipFile(fullPath, 'broken-link');
+          continue;
+        }
+        if ((isDirectory && includeSubfolders) || (isFile && isVideoFile(entry.name))) linkTargets.add(realPath);
+      }
+
+      if (isDirectory && includeSubfolders) {
         await flushPendingVideoEntries();
         assertNotCancelled();
-        await walk(fullPath);
-      } else if (entry.isFile() && isVideoFile(entry.name)) {
-        pendingVideoEntries.push({ entryName: entry.name, fullPath });
+        await walk(fullPath, realPath);
+      } else if (isFile && isVideoFile(entry.name)) {
+        const realFileKey = realPathKey(realPath);
+        if (seenRealFiles.has(realFileKey)) continue;
+        seenRealFiles.add(realFileKey);
+        pendingVideoEntries.push({ entryName: entry.name, fullPath, realPath });
         if (pendingVideoEntries.length >= SCAN_FILE_STAT_BATCH_SIZE) {
           await flushPendingVideoEntries();
         }
@@ -179,14 +225,18 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
   }
 
   assertNotCancelled();
-  await walk(dirPath);
+  const realRoot = await fs.realpath(dirPath).catch(() => path.resolve(dirPath));
+  await walk(dirPath, realRoot);
   assertNotCancelled();
   progressReporter.flush();
-  return visitedDirs ? { videos, visitedDirs, incompleteDirs: Array.from(incompleteDirs), summary } : videos;
+  return visitedDirs
+    ? { videos, visitedDirs, incompleteDirs: Array.from(incompleteDirs), summary, linkTargets: Array.from(linkTargets) }
+    : videos;
 }
 
 module.exports = {
   scanDirectory,
+  realPathKey,
   __test__: {
     createProgressReporter,
     statVideoEntries,

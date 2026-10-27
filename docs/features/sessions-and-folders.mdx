@@ -42,6 +42,12 @@ A folder that cannot be reached, such as one on an unplugged drive or an offline
 
 Folders that are unavailable are left out with a notice; an entry none of whose folders can be reached is marked instead of opened. Remove one stale entry with its remove button, or clear the recent list without deleting any media or cache data. At startup, a recent session is only dropped when none of its folders exist any more.
 
+## Linked folders and files
+
+Scans follow symbolic links and directory junctions to folders and to video files, also when they point outside the opened folder. Each video is listed once, however many links reach it, and a link that loops back to a folder already scanned is skipped. A link that points at nothing is counted with the files that could not be read.
+
+Deleting a video reached through a link sends the video itself to the Recycle Bin, not the link. **Remove empty source folders after delete** never removes a link or junction, or a folder outside the loaded folders. Turn link following off with **Follow symbolic links and junctions** in Settings > Cache; it applies from the next scan.
+
 ## Rescan or close a session
 
 Press `F5` to rescan all loaded roots. A rescan refreshes the current file list, restores saved statuses and metadata, and queues missing processing work. It does not reset Keep, Delete, Skip, ratings, favorites, or bookmarks that still belong to matching cached files.

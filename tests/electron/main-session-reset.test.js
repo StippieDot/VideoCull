@@ -27,3 +27,31 @@ test('stopping duplicate detection cancels the run and forgets it', () => {
   assert.match(body, /activeDuplicateRun = null/);
   assert.doesNotMatch(body, /resume/);
 });
+
+describe('linked folders and files', () => {
+  test('a reset forgets the followed links and real paths of the old session', () => {
+    const body = handlerBody('reset-loaded-directories');
+    for (const name of ['knownRealPathsByPath', 'sessionRealPathOwners', 'followedLinkTargets']) {
+      assert.match(body, new RegExp(`\\b${name}\\.clear\\(\\)`));
+    }
+  });
+
+  for (const [channel, remove] of [['batch-delete', 'shell.trashItem'], ['permanently-delete', 'fs.unlink']]) {
+    test(`${channel} checks and removes the real file, not a file link to it`, () => {
+      const body = handlerBody(channel);
+      assert.match(body, /const realPath = knownRealPathsByPath\.get\(filePath\) \?\? filePath;/);
+      assert.match(body, /filePath: realPath,/);
+      assert.match(body, new RegExp(`${remove.replace('.', '\\.')}\\(realPath\\)`));
+    });
+  }
+
+  test('duplicate detection compares each real file once', () => {
+    assert.match(handlerBody('find-duplicates'), /if \(seenRealPaths\.has\(realKey\)\) continue;/);
+  });
+
+  test('empty-folder cleanup stays inside the loaded folders and skips links', () => {
+    const body = mainSource.match(/async function maybeRemoveEmptyDeletedVideoFolders[\s\S]*?\n\}/)?.[0] ?? '';
+    assert.match(body, /isPathWithinAnyDir\(folderPath, dirs, false\)/);
+    assert.match(body, /isSymbolicLink\(\)/);
+  });
+});
