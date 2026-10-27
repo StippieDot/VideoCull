@@ -127,14 +127,15 @@ test('scanDirectory follows a junction to a folder outside the opened folder and
     await fs.writeFile(path.join(outside, 'linked.mp4'), 'x');
     await fs.symlink(outside, path.join(loaded, 'linked'), 'junction');
 
-    const result = await scanDirectory(loaded, true, null, { includeVisitedDirs: true });
+    const result = await scanDirectory(loaded, true, null, { includeVisitedDirs: true, followLinks: true });
 
     assert.deepEqual(result.videos.map((video) => [video.path, video.realPath]), [
       [path.join(loaded, 'linked', 'linked.mp4'), path.join(outside, 'linked.mp4')],
     ]);
     assert.deepEqual(result.linkTargets, [outside]);
 
-    const notFollowed = await scanDirectory(loaded, true, null, { includeVisitedDirs: true, followLinks: false });
+    // Off by default.
+    const notFollowed = await scanDirectory(loaded, true, null, { includeVisitedDirs: true });
     assert.deepEqual(notFollowed.videos, []);
     assert.deepEqual(notFollowed.linkTargets, []);
   });
@@ -150,7 +151,7 @@ test('scanDirectory lists each video once through a link loop and two links to o
     await fs.symlink(shared, path.join(tempRoot, 'a-link'), 'junction');
     await fs.symlink(shared, path.join(tempRoot, 'b-link'), 'junction');
 
-    const videos = await scanDirectory(tempRoot, true);
+    const videos = await scanDirectory(tempRoot, true, null, { followLinks: true });
 
     assert.deepEqual(videos.map((video) => video.filename).sort(), ['root.mp4', 'shared.mp4']);
   });
@@ -163,7 +164,7 @@ test('scanDirectory reports a broken link instead of skipping it without a trace
     await fs.symlink(gone, path.join(tempRoot, 'dangling'), 'junction');
     await fs.rm(gone, { recursive: true });
 
-    const result = await scanDirectory(tempRoot, true, null, { includeVisitedDirs: true });
+    const result = await scanDirectory(tempRoot, true, null, { includeVisitedDirs: true, followLinks: true });
 
     assert.deepEqual(result.videos, []);
     assert.equal(result.summary.skippedFileCount, 1);
@@ -180,7 +181,7 @@ test('scanDirectory lists a file link and its target in the same folder once', a
       return;
     }
 
-    const result = await scanDirectory(tempRoot, false, null, { includeVisitedDirs: true });
+    const result = await scanDirectory(tempRoot, false, null, { includeVisitedDirs: true, followLinks: true });
 
     assert.deepEqual(result.videos.map((video) => video.filename), ['a-real.mp4']);
     assert.deepEqual(result.linkTargets, [target]);

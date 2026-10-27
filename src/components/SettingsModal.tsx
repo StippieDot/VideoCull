@@ -1025,9 +1025,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                       checked={localSettings.followLinks}
                       onChange={(e) => handleChange('followLinks', e.target.checked)}
                     />
-                    Follow symbolic links and junctions
+                    Follow symbolic links and junctions (Experimental)
                   </label>
-                  <span className="help-text">Scans folders and videos that links or directory junctions point to, also outside the opened folder. A video reached by more than one path is listed once. Applies from the next scan.</span>
+                  <span className="help-text">Scans folders and videos that links or directory junctions point to, also outside the opened folder. A video reached by more than one path is listed once. Applies from the next scan. Experimental: off by default while it is being tested.</span>
                 </div>
 
                 <div className="form-group checkbox-group">

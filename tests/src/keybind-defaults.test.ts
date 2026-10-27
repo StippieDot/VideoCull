@@ -81,7 +81,7 @@ describe('migrateSettings', () => {
     expect(migrated.recentSessions).toEqual([]);
     expect(migrated.lastSession).toBeNull();
     expect(migrated.reopenLastSession).toBe(true);
-    expect(migrated.followLinks).toBe(true);
+    expect(migrated.followLinks).toBe(false);
     expect(migrated.autoUpdates).toBe(true);
     expect(migrated.globalMute).toBe(false);
     expect(migrated.hardwareAccel).toBe(false);

@@ -333,7 +333,7 @@ export interface AppSettings {
   perDriveCachePaths: Record<string, string>;
   autoPruneMissingSubfolderCache: boolean;
   removeEmptyFoldersAfterDelete: boolean;
-  /** Scan through symbolic links and directory junctions; read by the main process at scan time. */
+  /** Experimental, off by default: scan through symbolic links and directory junctions; read by the main process at scan time. */
   followLinks: boolean;
   thumbsPerVideo: 1 | 2 | 4 | 6 | 9;
   defaultCardScale: number;

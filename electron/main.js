@@ -795,7 +795,8 @@ async function getCacheOptions() {
 
 async function shouldFollowLinks() {
   const config = await readJsonFile(CONFIG_FILE, {});
-  return config.followLinks !== false;
+  // Experimental and off by default.
+  return config.followLinks === true;
 }
 
 async function shouldRemoveEmptyFoldersAfterDelete() {

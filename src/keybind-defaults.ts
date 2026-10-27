@@ -229,8 +229,9 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     result.removeEmptyFoldersAfterDelete = false;
   }
 
+  // Experimental: off until it is turned on in Settings.
   if (typeof result.followLinks !== 'boolean') {
-    result.followLinks = true;
+    result.followLinks = false;
   }
 
   return result as Partial<AppSettings>;

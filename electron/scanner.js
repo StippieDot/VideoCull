@@ -101,7 +101,7 @@ async function statVideoEntries(entries, statPath = fs.stat) {
  * @param {string} dirPath - Root directory to scan.
  * @param {boolean} includeSubfolders - Whether to recurse into subdirectories.
  * @param {function} onProgress - Callback with { found, current, currentFile }.
- * @param {{ followLinks?: boolean }} [options] - `followLinks` (default on) walks symbolic links and
+ * @param {{ followLinks?: boolean }} [options] - `followLinks` (default off) walks symbolic links and
  *   junctions, including ones whose target is outside `dirPath`.
  * @returns {Promise<Array>|Promise<{ videos: Array, visitedDirs: Array<string>, incompleteDirs: Array<string>, linkTargets: Array<string> }>} - Scan results.
  */
@@ -110,7 +110,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
   const visitedDirs = options.includeVisitedDirs ? [] : null;
   const readDir = typeof options.readdir === 'function' ? options.readdir : fs.readdir;
   const statPath = typeof options.statPath === 'function' ? options.statPath : fs.stat;
-  const followLinks = options.followLinks !== false;
+  const followLinks = options.followLinks === true;
   // Every folder and video is listed once, by its real path: this stops link loops, and a video
   // reached twice would otherwise be paired with itself as a duplicate and deleted as the "copy".
   const walkedRealDirs = new Set();

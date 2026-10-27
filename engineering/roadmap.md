@@ -472,7 +472,7 @@ the subfolder choice; Remove from Session keeps the other folders loaded.
 ### S.2 Linked Folders and Files
 
 **Decision:** Scanning follows symbolic links and directory junctions to folders and to video files,
-including targets outside the opened folder (setting `followLinks`, default on). Loops and anything already
+including targets outside the opened folder (setting `followLinks`, **experimental, default off**). Loops and anything already
 reached by another path are skipped.
 
 **Gate:** S.2a — record what `shell.trashItem`, the empty-folder cleanup and the identity check do for a
