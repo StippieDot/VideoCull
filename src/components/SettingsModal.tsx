@@ -547,6 +547,22 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 </section>
 
                 <section className="settings-subsection settings-section-divider">
+                  <h3 className="settings-subsection-title">Startup</h3>
+
+                  <div className="form-group checkbox-group">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={localSettings.reopenLastSession}
+                        onChange={(e) => handleChange('reopenLastSession', e.target.checked)}
+                      />
+                      Reopen the last session at startup
+                    </label>
+                    <span className="help-text">Opens the folders that were loaded when VideoCull closed. A session ended with Close Session is not reopened.</span>
+                  </div>
+                </section>
+
+                <section className="settings-subsection settings-section-divider">
                   <h3 className="settings-subsection-title">Review mode</h3>
 
                   <div className="form-group checkbox-group">

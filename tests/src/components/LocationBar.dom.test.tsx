@@ -27,7 +27,7 @@ function actionsMock(): LocationActions {
   return {
     reviewFolder: vi.fn(), reviewOnlyFolder: vi.fn(), filterToPath: vi.fn(), setIncludeSubfolders: vi.fn(), regenerateThumbnails: vi.fn(),
     reveal: vi.fn(), copyPath: vi.fn(), playExternally: vi.fn(), openFolderSearch: vi.fn(), showFolderInGrid: vi.fn(),
-    findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn(), goToGroup: vi.fn(), openRecent: vi.fn(), switchDuplicateMethod: vi.fn(),
+    findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn(), goToGroup: vi.fn(), openRecent: vi.fn(), removeFromSession: vi.fn(), switchDuplicateMethod: vi.fn(),
   };
 }
 
@@ -140,7 +140,7 @@ describe('LocationBar', () => {
   });
 
   const appActions = () => ({
-    reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), openFolderSearch: vi.fn(), openRecent: vi.fn(), switchDuplicateMethod: vi.fn(),
+    reviewFolder: vi.fn(), regenerateThumbnails: vi.fn(), findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), openFolderSearch: vi.fn(), openRecent: vi.fn(), removeFromSession: vi.fn(), switchDuplicateMethod: vi.fn(),
   });
   const buttonNames = () => screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'));
   const shownIds = () => useStore.getState().filteredVideos.map((video) => video.id);
@@ -340,6 +340,18 @@ describe('LocationBar', () => {
     act(() => screen.getByRole('menuitemradio', { name: /^P:/ }).click());
     expect(shownIds()).toEqual(['p']);
     expect(buttonNames()).toEqual(['Loaded folders', 'P:, filtered', 'Clear folder filter', 'P: actions', 'Folders in P:']);
+  });
+
+  test('Remove from Session unloads one loaded folder and keeps the others', () => {
+    const videos = [...VIDEOS, makeVideo('p', {}, 'P:\\Clips')];
+    useStore.setState({ directories: [ROOT, 'P:\\'], directory: ROOT, videos, filteredVideos: videos });
+    render(<LocationBar sessionTitle="Media + 1 more" appActions={appActions()} />);
+
+    act(() => screen.getByRole('button', { name: 'Loaded folders' }).click());
+    act(() => screen.getByRole('menuitem', { name: 'P:\\' }).click());
+
+    expect(useStore.getState().directories).toEqual([ROOT]);
+    expect(useStore.getState().settings.lastSession?.folders).toEqual([ROOT]);
   });
 
   test('in review it shows the open video and its place, and duplicates get their own menu and group stepper', () => {

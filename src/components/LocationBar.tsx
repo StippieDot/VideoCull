@@ -222,6 +222,7 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
       playExternally: (path) => openVideoExternally(path),
       openFolderSearch: () => appRef.current.openFolderSearch(),
       openRecent: (folders) => appRef.current.openRecent(folders),
+      removeFromSession: (folder) => store().removeDirectory(folder),
       showFolderInGrid: (folder) => {
         store().setReviewMode(false);
         store().setDuplicateGroupsMode(false);

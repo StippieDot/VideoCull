@@ -1160,6 +1160,8 @@ const useStore = create<VideoStore>((set, get) => ({
     saveSettingsQuietly(settings);
   },
 
+  // shortcut: the scan that follows reloads the remaining folders from the cache instead of dropping the
+  // removed folder's videos in place; drop them in place once the persistent library lands.
   removeDirectory: (dir: string) => {
     const state = get();
     const nextDirs = state.directories.filter((root) => root !== dir);

@@ -1250,3 +1250,73 @@ describe('App renderer behavior', () => {
     expect(duplicateViewAfter.parentElement?.getAttribute('aria-hidden')).toBe('false');
   });
 });
+
+describe('saved sessions', () => {
+  let electron: ElectronApiMock;
+  const A = 'D:\\Trips';
+  const B = 'E:\\Clips';
+
+  beforeEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    resetPerfDevMock();
+    electron = createElectronApiMock();
+    const store = getStoreApi();
+    store.setState(store.getInitialState(), true);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('the last session reopens at startup with its reachable folders and reports the rest', async () => {
+    electron.api.getConfig.mockResolvedValue({ lastSession: { folders: [A, B], includeSubfolders: false } });
+    electron.api.validateDroppedPath.mockImplementation(async (target: string) => ({ valid: target === A, isDirectory: target === A }));
+
+    render(<App />);
+
+    await waitFor(() => expect(electron.api.scanDirectory).toHaveBeenCalledWith(A, false));
+    expect(useStore.getState().directories).toEqual([A]);
+    expect(useStore.getState().settings.lastSession).toEqual({ folders: [A, B], includeSubfolders: false });
+    expect(useStore.getState().toasts).toContainEqual(expect.objectContaining({ title: '1 folder not opened' }));
+  });
+
+  test('the last session does not reopen when the setting is off', async () => {
+    electron.api.getConfig.mockResolvedValue({ lastSession: { folders: [A], includeSubfolders: true }, reopenLastSession: false });
+
+    render(<App />);
+
+    await waitFor(() => expect(electron.api.getConfig).toHaveBeenCalled());
+    await act(async () => {});
+    expect(useStore.getState().directories).toEqual([]);
+    expect(electron.api.scanDirectory).not.toHaveBeenCalled();
+  });
+
+  test('File > Open Recent restores every folder of the session and its subfolder choice', async () => {
+    useStore.setState({
+      settings: {
+        ...useStore.getState().settings,
+        recentSessions: [{ folders: [A, B], includeSubfolders: false, openedAt: 1 }],
+      },
+    });
+    render(<App />);
+
+    await electron.emitMenuAction(`open-recent:${A}|${B}`);
+
+    await waitFor(() => {
+      expect(electron.api.scanDirectory).toHaveBeenCalledWith(A, false);
+      expect(electron.api.scanDirectory).toHaveBeenCalledWith(B, false);
+    });
+    expect(useStore.getState().directories).toEqual([A, B]);
+    expect(useStore.getState().includeSubfolders).toBe(false);
+  });
+
+  test('File > Open Recent ignores a session the app did not list', async () => {
+    render(<App />);
+
+    await electron.emitMenuAction(`open-recent:${A}`);
+
+    expect(useStore.getState().directories).toEqual([]);
+  });
+});
