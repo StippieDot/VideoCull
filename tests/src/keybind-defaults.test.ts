@@ -3,7 +3,6 @@ import {
   DEFAULT_FEATURES,
   DEFAULT_KEYBINDS,
   migrateSettings,
-  pruneRecentDirectories,
 } from '../../src/keybind-defaults';
 
 describe('migrateSettings', () => {
@@ -60,7 +59,9 @@ describe('migrateSettings', () => {
       cacheLocation: 'unknown',
       centralCachePath: 123,
       perDriveCachePaths: [],
-      recentDirectoryTimestamps: [],
+      recentSessions: 'broken',
+      lastSession: { folders: [] },
+      reopenLastSession: 'yes',
       autoUpdates: null,
       globalMute: 'no',
       hardwareAccel: undefined,
@@ -76,11 +77,41 @@ describe('migrateSettings', () => {
     expect(migrated.perDriveCachePaths).toEqual({});
     expect(migrated.autoPruneMissingSubfolderCache).toBe(false);
     expect(migrated.removeEmptyFoldersAfterDelete).toBe(false);
-    expect(migrated.recentDirectoryTimestamps).toEqual({});
+    expect(migrated.recentSessions).toEqual([]);
+    expect(migrated.lastSession).toBeNull();
+    expect(migrated.reopenLastSession).toBe(true);
     expect(migrated.autoUpdates).toBe(true);
     expect(migrated.globalMute).toBe(false);
     expect(migrated.hardwareAccel).toBe(false);
     expect(migrated.keepReviewControlsVisible).toBe(false);
+  });
+
+  test('turns each recent folder of older settings into a one-folder session and keeps the old keys', () => {
+    const migrated = migrateSettings({
+      recentDirectories: ['D:\\Trips', 'E:\\Clips', 7],
+      recentDirectoryTimestamps: { 'D:\\Trips': 200, 'E:\\Clips': 'later' },
+    }) as Record<string, unknown>;
+
+    expect(migrated.recentSessions).toEqual([
+      { folders: ['D:\\Trips'], includeSubfolders: true, openedAt: 200 },
+      { folders: ['E:\\Clips'], includeSubfolders: true, openedAt: 0 },
+    ]);
+    expect(migrated.lastSession).toBeNull();
+    // Older versions still read these.
+    expect(migrated.recentDirectories).toEqual(['D:\\Trips', 'E:\\Clips', 7]);
+  });
+
+  test('keeps saved sessions once they exist, even when old recent folders are still in the file', () => {
+    const migrated = migrateSettings({
+      recentDirectories: ['D:\\Old'],
+      recentSessions: [{ folders: ['D:\\A', 'E:\\B'], includeSubfolders: false, openedAt: 5 }, { folders: [] }],
+      lastSession: { folders: ['D:\\A', 'E:\\B'], includeSubfolders: false },
+      reopenLastSession: false,
+    });
+
+    expect(migrated.recentSessions).toEqual([{ folders: ['D:\\A', 'E:\\B'], includeSubfolders: false, openedAt: 5 }]);
+    expect(migrated.lastSession).toEqual({ folders: ['D:\\A', 'E:\\B'], includeSubfolders: false });
+    expect(migrated.reopenLastSession).toBe(false);
   });
 
   test('preserves an explicit persistent review-controls preference', () => {
@@ -157,33 +188,5 @@ describe('migrateSettings', () => {
     expect('keyToggleAppMode' in migrated).toBe(false);
     expect('keyPreviewSeekBack' in migrated).toBe(false);
     expect('keyPreviewSeekForward' in migrated).toBe(false);
-  });
-});
-
-describe('pruneRecentDirectories', () => {
-  const validator = vi.fn(async (path: string) => {
-    if (path === 'throw') throw new Error('boom');
-    return {
-      valid: path !== 'missing',
-      isDirectory: path === 'folder-a' || path === 'folder-b',
-    };
-  });
-
-  test('returns an empty list when there are no recent directories to validate', async () => {
-    await expect(pruneRecentDirectories([], validator)).resolves.toEqual([]);
-  });
-
-  test('keeps only directories that still validate successfully', async () => {
-    await expect(pruneRecentDirectories(['folder-a', 'missing', 'folder-b'], validator)).resolves.toEqual([
-      'folder-a',
-      'folder-b',
-    ]);
-  });
-
-  test('ignores validator failures instead of aborting the entire cleanup', async () => {
-    await expect(pruneRecentDirectories(['folder-a', 'throw', 'folder-b'], validator)).resolves.toEqual([
-      'folder-a',
-      'folder-b',
-    ]);
   });
 });

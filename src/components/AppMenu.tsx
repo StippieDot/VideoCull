@@ -12,6 +12,8 @@ export type AppMenuAction = {
   icon?: LucideIcon;
   /** Right-aligned extra text, such as a count or a shortcut. */
   detail?: string;
+  /** Tooltip, such as every folder of a recent session. */
+  title?: string;
   /** Ticked; in a selection menu, the chosen one. */
   checked?: boolean;
   /** A radio item; in a selection menu every item is one unless this is false. */
@@ -217,6 +219,7 @@ export default function AppMenu({
             role={radio ? 'menuitemradio' : checkable ? 'menuitemcheckbox' : 'menuitem'}
             aria-checked={checkable ? Boolean(item.checked) : undefined}
             disabled={item.disabled}
+            title={item.title}
             tabIndex={index === focus ? 0 : -1}
             className={`app-context-menu-item app-menu-item${item.tone && item.tone !== 'default' ? ` ${item.tone}` : ''}${item.muted ? ' muted' : ''}`}
             onClick={() => run(item)}

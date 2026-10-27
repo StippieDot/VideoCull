@@ -110,7 +110,8 @@ export interface AppMenuState {
   muteAvailable: boolean;
   muted: boolean;
   isPrivate: boolean;
-  recentFolders: string[];
+  /** Folders of each recent session, newest first. */
+  recentSessions: string[][];
   /** The folders loaded in the session. */
   folders: string[];
 }
@@ -311,6 +312,16 @@ export interface UndoEntry {
 }
 
 // ── Settings ───────────────────────────────────────────────────────
+/** The loaded folders and whether their subfolders are scanned. */
+export interface SavedSession {
+  folders: string[];
+  includeSubfolders: boolean;
+}
+
+export interface RecentSession extends SavedSession {
+  openedAt: number;
+}
+
 import type { Keybind } from './keybinds';
 
 export type ColorTheme = 'dark' | 'light';
@@ -335,8 +346,11 @@ export interface AppSettings {
   keepAwakeWhileProcessing: boolean;
   /** Windows 11 only; temporary while the look is evaluated. */
   micaTitleBar: boolean;
-  recentDirectories: string[];
-  recentDirectoryTimestamps: Record<string, number>;
+  /** Reopened at startup when `reopenLastSession` is on; null after Close Session. */
+  lastSession: SavedSession | null;
+  /** Newest first. */
+  recentSessions: RecentSession[];
+  reopenLastSession: boolean;
   autoUpdates: boolean;
   globalMute: boolean;
   features: FeatureSettings;
@@ -457,6 +471,11 @@ export interface VideoStore {
   setDirectory: (dir: string | null) => Promise<void>;
   addDirectory: (dir: string) => void;
   setDirectories: (dirs: string[]) => Promise<void>;
+  /** Loads `available` (default: all of the session's folders) and remembers the whole session. */
+  openSession: (session: SavedSession, available?: string[]) => Promise<void>;
+  /** Opens a saved session's reachable folders and reports the rest; false when none can be opened. */
+  reopenSession: (session: SavedSession) => Promise<boolean>;
+  removeDirectory: (dir: string) => void;
   setIncludeSubfolders: (val: boolean) => void;
   setVideos: (videos: Video[]) => void;
   updateVideoThumbnailsBatch: (batch: ThumbReadyEvent[]) => void;
@@ -523,8 +542,8 @@ export interface VideoStore {
   removeDeletedVideos: (deletedPaths: string[]) => void;
   addBookmark: (videoId: string, time: number) => void;
   removeBookmark: (videoId: string, time: number) => void;
-  clearRecentDirectories: () => void;
-  removeRecentDirectory: (dir: string) => void;
+  clearRecentSessions: () => void;
+  removeRecentSession: (folders: string[]) => void;
   setVideoStatusesBatch: (videoIds: string[], status: VideoStatus) => void;
   setVideoRating: (videoId: string, rating: 0 | 1 | 2 | 3 | 4 | 5) => void;
   toggleFavorite: (videoId: string) => void;

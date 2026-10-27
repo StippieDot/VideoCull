@@ -26,6 +26,7 @@ import { Volume2, VolumeX } from 'lucide-react';
 import { applyDocumentTheme } from './theme';
 import './App.css';
 import { openVideoExternally, revealInExplorer } from './appCommands';
+import { sameSessionFolders } from './sessions';
 
 const CURRENT_METADATA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
@@ -144,7 +145,7 @@ export default function App() {
     closeSession: () => {},
     findDuplicates: async () => {},
     addFolderToSession: (_folderPath: string) => {},
-    openRecent: async (_folderPath: string) => {},
+    openRecent: async (_folders: string[]) => {},
     regenerateThumbnails: async (_videos: Video[]) => {},
   });
   const showShortcutsHelpRef = useRef(false);
@@ -787,7 +788,16 @@ export default function App() {
   }, [directory, directories, setVideos, setIsGenerating, setGenProgress, pushToast, skipIntroDelaySecs, thumbsPerVideo]);
 
   useEffect(() => {
-    void useStore.getState().loadSettings();
+    void (async () => {
+      await useStore.getState().loadSettings();
+      const { settings, directories, reopenSession } = useStore.getState();
+      // A folder opened before the settings arrived (e.g. "Open with") wins over the saved session.
+      if (settings.reopenLastSession && settings.lastSession && directories.length === 0) {
+        await reopenSession(settings.lastSession);
+      }
+    })().catch((err) => {
+      console.warn('[app] Failed to load settings or reopen the last session:', err);
+    });
   }, []);
 
   useEffect(() => {
@@ -850,7 +860,7 @@ export default function App() {
       if (isPrivateRef.current) return;
       const state = useStore.getState();
       if (action.startsWith('open-recent:')) {
-        await menuHandlersRef.current.openRecent(action.slice('open-recent:'.length));
+        await menuHandlersRef.current.openRecent(action.slice('open-recent:'.length).split('|'));
         return;
       }
       if (action.startsWith('reveal-folder:')) {
@@ -1276,27 +1286,18 @@ export default function App() {
     });
   }, [pushToast, setGenProgress, setIsGenerating, setIsScanning, setScanProgress]);
 
-  const openRecentFolder = useCallback(async (folderPath: string) => {
-    if (!useStore.getState().settings.recentDirectories.includes(folderPath)) return;
-    const result = await window.electronAPI?.validateDroppedPath(folderPath);
-    if (!result?.valid || !result.isDirectory) {
-      pushToast({
-        title: 'Folder unavailable',
-        detail: formatRecentPath(folderPath),
-        kind: 'warning',
-        dedupeKey: `recent-unavailable:${folderPath}`,
-      });
-      return;
-    }
-    handleDirectoryPicked(folderPath);
-  }, [handleDirectoryPicked, pushToast]);
+  const openRecentSession = useCallback(async (folders: string[]) => {
+    // Only sessions the app listed itself are opened.
+    const recent = useStore.getState().settings.recentSessions.find((session) => sameSessionFolders(session.folders, folders));
+    if (recent) await useStore.getState().reopenSession(recent);
+  }, []);
 
   useLayoutEffect(() => {
     menuHandlersRef.current = {
       closeSession: handleCloseSession,
       findDuplicates: handleFindDuplicates,
       addFolderToSession,
-      openRecent: openRecentFolder,
+      openRecent: openRecentSession,
       regenerateThumbnails: handleRegenerateThumbnails,
     };
   });
@@ -1320,7 +1321,7 @@ export default function App() {
             switchDuplicateMethod: handleSwitchDuplicateMethod,
             openDuplicateSettings: () => openSettings('duplicates'),
             openFolderSearch: () => setPaletteQuery('/'),
-            openRecent: (folder) => void openRecentFolder(folder),
+            openRecent: (folders) => void openRecentSession(folders),
           }}
         />
       )}

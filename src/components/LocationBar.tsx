@@ -31,7 +31,7 @@ export interface LocationBarAppActions {
   switchDuplicateMethod: () => void;
   openDuplicateSettings: () => void;
   openFolderSearch: () => void;
-  openRecent: (folder: string) => void;
+  openRecent: (folders: string[]) => void;
 }
 
 type Segment = PathSegment & {
@@ -221,7 +221,7 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
       },
       playExternally: (path) => openVideoExternally(path),
       openFolderSearch: () => appRef.current.openFolderSearch(),
-      openRecent: (folder) => appRef.current.openRecent(folder),
+      openRecent: (folders) => appRef.current.openRecent(folders),
       showFolderInGrid: (folder) => {
         store().setReviewMode(false);
         store().setDuplicateGroupsMode(false);
@@ -314,7 +314,7 @@ function buildMenu(
   }
   // The lists show every folder the other filters allow, so you can switch to one next to the current one.
   const scope = { filterPath: state.folderFilter?.path ?? null, directories: state.directories };
-  if (control.type === 'roots') return buildRootsMenu(videosOutsideFolderFilter(state), scope, state.settings.recentDirectories ?? [], actions);
+  if (control.type === 'roots') return buildRootsMenu(videosOutsideFolderFilter(state), scope, state.settings.recentSessions.map((recent) => recent.folders), actions);
   if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsideFolderFilter(state), control.parent, scope, actions);
   if (control.type !== 'segment' && control.type !== 'actions') return null;
   const { segment } = control;

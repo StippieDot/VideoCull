@@ -22,7 +22,7 @@
  *   muteAvailable: boolean,
  *   muted: boolean,
  *   isPrivate: boolean,
- *   recentFolders: string[],
+ *   recentSessions: string[][],
  *   folders: string[],
  * }} RendererMenuState
  */
@@ -71,7 +71,7 @@ const EMPTY_RENDERER_MENU_STATE = {
   muteAvailable: false,
   muted: false,
   isPrivate: false,
-  recentFolders: [],
+  recentSessions: [],
   folders: [],
 };
 
@@ -88,7 +88,7 @@ const SORT_LABELS = {
 /** @param {unknown} value @returns {value is keyof typeof SORT_LABELS} */
 const isSortField = (value) => typeof value === 'string' && Object.prototype.hasOwnProperty.call(SORT_LABELS, value);
 
-const MAX_RECENT_FOLDERS = 8;
+const MAX_RECENT_SESSIONS = 8;
 
 /** @param {unknown} value @returns {string[]} */
 function folderList(value) {
@@ -121,7 +121,8 @@ function normalizeRendererMenuState(input) {
     muteAvailable: raw.muteAvailable === true,
     muted: raw.muted === true,
     isPrivate: raw.isPrivate === true,
-    recentFolders: folderList(raw.recentFolders).slice(0, MAX_RECENT_FOLDERS),
+    recentSessions: (Array.isArray(raw.recentSessions) ? raw.recentSessions : [])
+      .map(folderList).filter((folders) => folders.length > 0).slice(0, MAX_RECENT_SESSIONS),
     folders: folderList(raw.folders),
   };
 }
@@ -137,7 +138,7 @@ function normalizeRendererMenuState(input) {
  */
 function buildMenuTemplate(state, actions) {
   // Disabled submenus still display their labels, so private paths must be omitted entirely.
-  if (state.isPrivate) state = { ...state, folders: [], recentFolders: [] };
+  if (state.isPrivate) state = { ...state, folders: [], recentSessions: [] };
 
   /** @type {Electron.MenuItemConstructorOptions[]} */
   const template = [
@@ -356,14 +357,18 @@ function revealFolderItem(state, send, label) {
 function openRecentItem(state, send) {
   return {
     label: 'Open Recent',
-    enabled: state.recentFolders.length > 0,
-    submenu: state.recentFolders.length > 0
-      ? state.recentFolders.map((folder) => ({
-        // The full path: the id made from the label drops "(2)", which would merge "Clips (2)" into "Clips".
-        id: `File > Open Recent > ${folder}`,
-        label: escapeMenuLabel(folder),
-        click: () => send(`open-recent:${folder}`),
-      }))
+    enabled: state.recentSessions.length > 0,
+    submenu: state.recentSessions.length > 0
+      ? state.recentSessions.map((folders) => {
+        // `|` cannot appear in a Windows path, so it separates the session's folders.
+        const key = folders.join('|');
+        return {
+          // The full paths: the id made from the label drops "(2)", which would merge "Clips (2)" into "Clips".
+          id: `File > Open Recent > ${key}`,
+          label: escapeMenuLabel(folders.length > 1 ? `${folders[0]} + ${folders.length - 1} more` : folders[0]),
+          click: () => send(`open-recent:${key}`),
+        };
+      })
       : [{ label: 'No recent folders', enabled: false }],
   };
 }

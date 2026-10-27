@@ -317,7 +317,10 @@ describe('LocationBar', () => {
       directories: [ROOT, 'P:\\'],
       videos,
       filteredVideos: videos,
-      settings: { ...useStore.getState().settings, recentDirectories: [ROOT, 'E:\\Old'] },
+      settings: { ...useStore.getState().settings, recentSessions: [
+        { folders: ['p:', ROOT], includeSubfolders: true, openedAt: 2 },
+        { folders: ['E:\\Old', 'F:\\Older'], includeSubfolders: true, openedAt: 1 },
+      ] },
     });
     const actions = appActions();
     render(<LocationBar sessionTitle="Media + 1 more" appActions={actions} />);
@@ -331,8 +334,8 @@ describe('LocationBar', () => {
       ['P:\\1 to review', 'false'],
     ]);
     // Recent sessions that are not loaded follow, to open instead.
-    act(() => screen.getByRole('menuitem', { name: 'E:\\Old' }).click());
-    expect(actions.openRecent).toHaveBeenCalledWith('E:\\Old');
+    act(() => screen.getByRole('menuitem', { name: 'E:\\Old + 1 more' }).click());
+    expect(actions.openRecent).toHaveBeenCalledWith(['E:\\Old', 'F:\\Older']);
     act(() => screen.getByRole('button', { name: 'Loaded folders' }).click());
     act(() => screen.getByRole('menuitemradio', { name: /^P:/ }).click());
     expect(shownIds()).toEqual(['p']);

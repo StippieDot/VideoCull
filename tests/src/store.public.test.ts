@@ -49,7 +49,7 @@ describe('useStore public behavior', () => {
     vi.restoreAllMocks();
   });
 
-  test('starting a new session root updates recent directories and clears duplicate/review state', async () => {
+  test('starting a new session root updates recent sessions and clears duplicate/review state', async () => {
     const store = getStoreApi();
     store.setState({
       duplicateGroupsMode: true,
@@ -74,7 +74,8 @@ describe('useStore public behavior', () => {
     expect(state.duplicateGroupsMode).toBe(false);
     expect(state.duplicateGroups).toEqual([]);
     expect(state.duplicateFilter).toBe(false);
-    expect(state.settings.recentDirectories[0]).toBe('D:\\Media');
+    expect(state.settings.recentSessions[0]).toMatchObject({ folders: ['D:\\Media'], includeSubfolders: true });
+    expect(state.settings.lastSession).toEqual({ folders: ['D:\\Media'], includeSubfolders: true });
     expect(electronAPI.saveConfig).toHaveBeenCalledTimes(1);
   });
 
@@ -87,7 +88,9 @@ describe('useStore public behavior', () => {
     const state = useStore.getState();
     expect(state.directory).toBe('D:\\Media');
     expect(state.directories).toEqual(['D:\\Media', 'E:\\Clips']);
-    expect(state.settings.recentDirectories.slice(0, 2)).toEqual(['E:\\Clips', 'd:/media/']);
+    // Adding folders grows the open session's recent entry instead of listing each folder.
+    expect(state.settings.recentSessions.map((recent) => recent.folders)).toEqual([['D:\\Media', 'E:\\Clips']]);
+    expect(state.settings.lastSession?.folders).toEqual(['D:\\Media', 'E:\\Clips']);
   });
 
   test('adding nested session roots keeps only the broadest scan root', async () => {
@@ -689,6 +692,10 @@ describe('useStore public behavior', () => {
         'D:\\Keep': 111,
         'D:\\Missing': 222,
       },
+      recentSessions: [
+        { folders: ['D:\\Keep', 'D:\\Missing'], includeSubfolders: true, openedAt: 333 },
+        { folders: ['D:\\Missing'], includeSubfolders: true, openedAt: 222 },
+      ],
       duplicates: {
         comparisonMode: 'broken',
         sampleCount: 6,
@@ -708,16 +715,81 @@ describe('useStore public behavior', () => {
     expect(settings.cacheLocation).toBe('centralised');
     expect(settings.autoPruneMissingSubfolderCache).toBe(false);
     expect(settings.removeEmptyFoldersAfterDelete).toBe(false);
-    expect(settings.recentDirectories).toEqual(['D:\\Keep']);
-    expect(settings.recentDirectoryTimestamps).toEqual({ 'D:\\Keep': 111 });
+    // A session with one missing folder survives; one with none left is dropped.
+    expect(settings.recentSessions).toEqual([{ folders: ['D:\\Keep', 'D:\\Missing'], includeSubfolders: true, openedAt: 333 }]);
     expect(settings.duplicates.comparisonMode).toBe('phash');
     expect(settings.duplicates.sampleCount).toBe(3);
     expect(settings.duplicates.ignoredDuplicatePairs).toEqual(['abcdefabcdefabcd|0011223344556677']);
-    expect(electronAPI.validateDroppedPath).toHaveBeenCalledTimes(2);
     expect(electronAPI.saveConfig).toHaveBeenCalledWith(expect.objectContaining({
       cacheLocation: 'centralised',
-      recentDirectories: ['D:\\Keep'],
-      recentDirectoryTimestamps: { 'D:\\Keep': 111 },
+      // Left for older versions.
+      recentDirectories: ['D:\\Keep', 'D:\\Missing'],
     }));
+  });
+
+  describe('saved sessions', () => {
+    const A = 'D:\\A';
+    const B = 'E:\\B';
+    const C = 'F:\\C';
+
+    test('Close Session clears the session to reopen but keeps it in the recents', async () => {
+      await useStore.getState().setDirectory(A);
+      await useStore.getState().setDirectory(null);
+
+      const { settings } = useStore.getState();
+      expect(settings.lastSession).toBeNull();
+      expect(settings.recentSessions.map((recent) => recent.folders)).toEqual([[A]]);
+      expect(electronAPI.saveConfig).toHaveBeenLastCalledWith(expect.objectContaining({ lastSession: null }));
+    });
+
+    test('changing the subfolder choice updates the open session', async () => {
+      await useStore.getState().setDirectory(A);
+      useStore.getState().setIncludeSubfolders(false);
+
+      const { settings } = useStore.getState();
+      expect(settings.lastSession).toEqual({ folders: [A], includeSubfolders: false });
+      expect(settings.recentSessions).toEqual([expect.objectContaining({ folders: [A], includeSubfolders: false })]);
+    });
+
+    test('reopening opens the reachable folders, reports the rest and keeps them in the session', async () => {
+      electronAPI.validateDroppedPath.mockImplementation(async (target: string) => ({
+        valid: target !== B,
+        isDirectory: target !== B,
+      }));
+
+      await expect(useStore.getState().reopenSession({ folders: [A, B, C], includeSubfolders: false })).resolves.toBe(true);
+
+      const state = useStore.getState();
+      expect(state.directories).toEqual([A, C]);
+      expect(state.includeSubfolders).toBe(false);
+      expect(state.settings.lastSession).toEqual({ folders: [A, B, C], includeSubfolders: false });
+      expect(state.toasts).toEqual([expect.objectContaining({ title: '1 folder not opened', kind: 'warning' })]);
+    });
+
+    test('a session none of whose folders can be reached is not opened', async () => {
+      electronAPI.validateDroppedPath.mockResolvedValue({ valid: false, isDirectory: false });
+
+      await expect(useStore.getState().reopenSession({ folders: [A, B], includeSubfolders: true })).resolves.toBe(false);
+
+      expect(useStore.getState().directories).toEqual([]);
+      expect(useStore.getState().toasts).toEqual([expect.objectContaining({ title: 'Folders unavailable' })]);
+    });
+
+    test('removing a folder keeps the others loaded and updates the session', async () => {
+      await useStore.getState().openSession({ folders: [A, B, C], includeSubfolders: true });
+      useStore.getState().removeDirectory(B);
+
+      const { directories, settings } = useStore.getState();
+      expect(directories).toEqual([A, C]);
+      expect(settings.lastSession?.folders).toEqual([A, C]);
+      expect(settings.recentSessions.map((recent) => recent.folders)).toEqual([[A, C]]);
+    });
+
+    test('the last loaded folder cannot be removed from the session', async () => {
+      await useStore.getState().setDirectory(A);
+      useStore.getState().removeDirectory(A);
+
+      expect(useStore.getState().directories).toEqual([A]);
+    });
   });
 });

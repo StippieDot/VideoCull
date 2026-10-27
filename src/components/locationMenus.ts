@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { DuplicateGroup, FolderFilter, Video, VideoStatus } from '../types';
 import { trimSeparators, type AppMenuItem } from './AppMenu';
+import { sameSessionFolders, sessionKey, sessionLabel } from '../sessions';
 import { formatDuration, formatResolutionLabel, formatSize, folderInsideTest, getFolderLabel, getFolderPath, isFolderInside, normalizeFolder, plural } from '../utils';
 
 export type LocationMenuItem = AppMenuItem;
@@ -176,9 +177,8 @@ export function buildSubfolderMenu(videos: Video[], parent: string, scope: PathS
 const RECENT_IN_ROOTS_MENU = 5;
 
 /** Every loaded folder to filter to, then recent sessions to open instead. */
-export function buildRootsMenu(videos: Video[], scope: PathScope, recent: string[], actions: LocationActions): LocationMenu {
-  const loaded = new Set(scope.directories.map(normalizeFolder));
-  const others = recent.filter((folder) => !loaded.has(normalizeFolder(folder))).slice(0, RECENT_IN_ROOTS_MENU);
+export function buildRootsMenu(videos: Video[], scope: PathScope, recent: string[][], actions: LocationActions): LocationMenu {
+  const others = recent.filter((folders) => !sameSessionFolders(folders, scope.directories)).slice(0, RECENT_IN_ROOTS_MENU);
   const entry = (path: string, inside: Video[]) => ({ path, label: path, count: inside.length, toReview: countToReview(inside) });
   const all = entry('', videos);
   return {
@@ -209,13 +209,14 @@ export function buildRootsMenu(videos: Video[], scope: PathScope, recent: string
       ...(others.length > 0 ? [
         SEPARATOR('sep-recent'),
         { type: 'heading' as const, key: 'recent', label: 'Open Recent' },
-        ...others.map((folder): LocationMenuItem => ({
+        ...others.map((folders): LocationMenuItem => ({
           type: 'item',
-          key: `recent:${folder}`,
-          label: folder,
+          key: `recent:${sessionKey(folders)}`,
+          label: sessionLabel(folders),
+          title: folders.join('\n'),
           icon: History,
           radio: false,
-          onSelect: () => actions.openRecent(folder),
+          onSelect: () => actions.openRecent(folders),
         })),
       ] : []),
     ],
@@ -252,7 +253,7 @@ export interface LocationActions {
   openDuplicateSettings: () => void;
   backToGrid: () => void;
   /** Opens a recent session in place of the loaded folders. */
-  openRecent: (folder: string) => void;
+  openRecent: (folders: string[]) => void;
   /** Focuses the group number beside the duplicates part, to type a group to go to. */
   goToGroup: () => void;
 }

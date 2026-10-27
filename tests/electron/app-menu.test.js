@@ -99,8 +99,8 @@ test('sorting, grouping, filters and mute reflect the grid state', () => {
 
 test('behind the privacy screen only the privacy screen, full screen and exit stay usable', () => {
   const folders = ['D:\\Private Clips', 'E:\\Private Trips'];
-  const recentFolders = ['P:\\Private Recent'];
-  const template = menu({ hasSession: true, videoCount: 3, isPrivate: true, folders, recentFolders });
+  const recentSessions = [['P:\\Private Recent']];
+  const template = menu({ hasSession: true, videoCount: 3, isPrivate: true, folders, recentSessions });
   assert.equal(item(template, 'File', 'Open Folder...').enabled, false);
   assert.equal(item(template, 'File', 'quit').enabled, undefined);
   assert.equal(item(template, 'View', 'Privacy Screen').enabled, undefined);
@@ -111,8 +111,8 @@ test('behind the privacy screen only the privacy screen, full screen and exit st
   const reveal = item(template, 'File', 'Reveal Folder in Explorer');
   assert.equal(reveal.enabled, false);
   assert.equal(reveal.submenu, undefined);
-  const visible = menu({ hasSession: true, folders, recentFolders });
-  assert.deepEqual(item(visible, 'File', 'Open Recent').submenu.map((entry) => entry.label), recentFolders);
+  const visible = menu({ hasSession: true, folders, recentSessions });
+  assert.deepEqual(item(visible, 'File', 'Open Recent').submenu.map((entry) => entry.label), ['P:\\Private Recent']);
   assert.deepEqual(item(visible, 'File', 'Reveal Folder in Explorer').submenu.map((entry) => entry.label), folders);
 });
 
@@ -120,7 +120,7 @@ test('recent folders become menu items, with & shown literally', () => {
   const sent = [];
   const template = buildMenuTemplate({
     ...EMPTY_RENDERER_MENU_STATE, isDev: false, updatesEnabled: false, processing: false, paused: false, finishAction: 'none',
-    recentFolders: ['D:\Tom & Jerry'],
+    recentSessions: [['D:\Tom & Jerry']],
   }, { ...actions, send: (action) => sent.push(action) });
   const recent = item(template, 'File', 'Open Recent').submenu[0];
   assert.equal(recent.label, 'D:\Tom && Jerry');
@@ -129,12 +129,24 @@ test('recent folders become menu items, with & shown literally', () => {
   assert.equal(item(template, 'Help', 'Check for Updates...'), undefined);
 });
 
+test('a recent session with several folders shows the first and how many more, and opens them all', () => {
+  const sent = [];
+  const template = buildMenuTemplate({
+    ...EMPTY_RENDERER_MENU_STATE, isDev: false, updatesEnabled: false, processing: false, paused: false, finishAction: 'none',
+    recentSessions: [['D:\\Clips', 'E:\\Trips', 'F:\\More']],
+  }, { ...actions, send: (action) => sent.push(action) });
+  const recent = item(template, 'File', 'Open Recent').submenu[0];
+  assert.equal(recent.label, 'D:\\Clips + 2 more');
+  recent.click();
+  assert.deepEqual(sent, ['open-recent:D:\\Clips|E:\\Trips|F:\\More']);
+});
+
 test('menu state from the renderer is normalised', () => {
   assert.deepEqual(normalizeRendererMenuState({
-    hasSession: 'yes', videoCount: -4, recentFolders: ['a', 3, ''], sortBy: 'evil', sortOptions: ['size', 'evil'],
+    hasSession: 'yes', videoCount: -4, recentSessions: [['a', 3, ''], [], 'b'], sortBy: 'evil', sortOptions: ['size', 'evil'],
   }), {
     ...EMPTY_RENDERER_MENU_STATE,
-    recentFolders: ['a'],
+    recentSessions: [['a']],
     sortOptions: ['size'],
   });
 });
@@ -165,7 +177,7 @@ test('menu items get ids from their path that survive changing counts', () => {
 });
 
 test('recent folders whose names differ only by a number keep separate ids', () => {
-  const recent = item(menu({ recentFolders: ['D:\\Clips', 'D:\\Clips (2)'] }), 'File', 'Open Recent').submenu;
+  const recent = item(menu({ recentSessions: [['D:\\Clips'], ['D:\\Clips (2)']] }), 'File', 'Open Recent').submenu;
   assert.deepEqual(recent.map((entry) => entry.id), ['File > Open Recent > D:\\Clips', 'File > Open Recent > D:\\Clips (2)']);
 });
 
