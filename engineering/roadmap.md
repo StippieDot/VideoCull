@@ -478,6 +478,18 @@ reached by another path are skipped.
 **Gate:** S.2a — record what `shell.trashItem`, the empty-folder cleanup and the identity check do for a
 video reached through a directory junction, a folder symbolic link and a file symbolic link.
 
+**S.2a result (Windows 11, Electron 44, 2026-10-27):**
+
+| Through | `Dirent` / `lstat` | `fs.stat` identity | `shell.trashItem(path through link)` | `fs.rmdir(dirname)` (empty-folder cleanup) |
+|---|---|---|---|---|
+| Directory junction | `isSymbolicLink()` only | same `dev`/`ino` as the target | trashes the **real file**; junction stays | removes the **junction**; target folder stays |
+| Folder symbolic link | `isSymbolicLink()` only | same `dev`/`ino` as the target | trashes the **real file**; link stays | removes the **link**; target folder stays |
+| File symbolic link | `isSymbolicLink()` only | same `dev`/`ino` as the target | trashes **only the link**; real file stays | removes the folder holding the link |
+
+Consequences: delete must act on the real path (a file link would otherwise survive as a "deleted" video
+whose file still exists); the identity check is safe through every link kind; empty-folder cleanup must
+skip a folder that is itself a link, or it removes the junction or link the person made.
+
 **Implementation notes:**
 - **Scanner (`scanner.js:157`):** today only `isDirectory()`/`isFile()` entries are handled, so links and
   junctions (both `isSymbolicLink()` in Node) are skipped without a trace. For a link entry, `fs.stat`
