@@ -315,7 +315,7 @@ function buildMenu(
   }
   // The lists show every folder the other filters allow, so you can switch to one next to the current one.
   const scope = { filterPath: state.folderFilter?.path ?? null, directories: state.directories };
-  if (control.type === 'roots') return buildRootsMenu(videosOutsideFolderFilter(state), scope, state.settings.recentSessions.map((recent) => recent.folders), actions);
+  if (control.type === 'roots') return buildRootsMenu(videosOutsideFolderFilter(state), scope, state.settings.recentSessions.map((recent) => recent.folders), actions, state.unreachableFolders);
   if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsideFolderFilter(state), control.parent, scope, actions);
   if (control.type !== 'segment' && control.type !== 'actions') return null;
   const { segment } = control;

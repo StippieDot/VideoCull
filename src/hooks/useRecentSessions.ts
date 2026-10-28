@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import useStore from '../store';
-import { checkSessionFolders, sessionKey, sessionLabel } from '../sessions';
+import { checkSessionFolders, folderKey, sessionKey, sessionLabel, shownFolders } from '../sessions';
 import { formatRecentPath, formatRelativeTime } from '../utils';
 import { copyTextToClipboard } from '../components/ContextMenu';
 import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from '../components/contextMenuBuilders';
@@ -13,32 +12,20 @@ function sameStrings(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-/** "Videos / Trips", or "Videos / Trips + 2 more" for a session with several folders. */
-export function recentSessionName(recent: RecentSession): string {
-  return sessionLabel(recent.folders.map(formatRecentPath));
-}
-
 /** What the recent-session lists (start screen and sidebar) can do with an entry. */
 export default function useRecentSessions(onNotify: Notify, onOpened?: () => void) {
   const recentSessions = useStore((s) => s.settings.recentSessions);
   const directories = useStore((s) => s.directories);
-  const [unavailable, setUnavailable] = useState<Set<string>>(() => new Set());
+  const unreachable = useStore((s) => s.unreachableFolders);
 
-  const markAvailable = (recent: RecentSession, available: boolean) => {
-    const key = sessionKey(recent.folders);
-    setUnavailable((prev) => {
-      if (prev.has(key) !== available) return prev;
-      const next = new Set(prev);
-      if (available) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
+  const isMissing = (folder: string) => unreachable.has(folderKey(folder));
+  const isUnavailable = (recent: RecentSession) => recent.folders.every(isMissing);
+
+  /** "Videos / Trips", or "Videos / Trips + 2 more" for a session with several reachable folders. */
+  const name = (recent: RecentSession) => sessionLabel(shownFolders(recent.folders, unreachable).map(formatRecentPath));
 
   const open = async (recent: RecentSession) => {
-    const opened = await useStore.getState().reopenSession(recent);
-    markAvailable(recent, opened);
-    if (opened) onOpened?.();
+    if (await useStore.getState().reopenSession(recent)) onOpened?.();
   };
 
   const addToSession = async (recent: RecentSession) => {
@@ -46,7 +33,7 @@ export default function useRecentSessions(onNotify: Notify, onOpened?: () => voi
     const { reachable, missing } = validator
       ? await checkSessionFolders(recent.folders, validator)
       : { reachable: recent.folders, missing: [] };
-    markAvailable(recent, reachable.length > 0);
+    useStore.getState().markFolderReachability(reachable, missing);
     if (missing.length > 0) {
       onNotify({
         title: reachable.length === 0 ? 'Folder unavailable' : `${missing.length} ${missing.length === 1 ? 'folder' : 'folders'} not added`,
@@ -69,7 +56,7 @@ export default function useRecentSessions(onNotify: Notify, onOpened?: () => voi
     useStore.getState().removeRecentSession(recent.folders);
     onNotify({
       title: 'Recent removed',
-      detail: recentSessionName(recent),
+      detail: name(recent),
       kind: 'info',
       dedupeKey: `recent-removed:${sessionKey(recent.folders)}`,
     });
@@ -96,25 +83,24 @@ export default function useRecentSessions(onNotify: Notify, onOpened?: () => voi
     }
   };
 
-  const isUnavailable = (recent: RecentSession) => unavailable.has(sessionKey(recent.folders));
-
   /** "Unavailable", or when the session was last opened. */
   const meta = (recent: RecentSession) => (isUnavailable(recent) ? 'Unavailable' : formatRelativeTime(recent.openedAt));
 
-  /** Every folder of the session, then when it was opened. */
-  const tooltip = (recent: RecentSession) => (
-    `${recent.folders.join('\n')} • ${isUnavailable(recent) ? 'unavailable' : `opened ${formatRelativeTime(recent.openedAt)}`}`
-  );
+  /** Every folder of the session, unreachable ones marked, then when it was opened. */
+  const tooltip = (recent: RecentSession) => {
+    const folders = recent.folders.map((folder) => (isMissing(folder) ? `${folder} (unavailable)` : folder));
+    return `${folders.join('\n')} • ${isUnavailable(recent) ? 'unavailable' : `opened ${formatRelativeTime(recent.openedAt)}`}`;
+  };
 
   const menuItems = (recent: RecentSession, withRemove: boolean) => buildRecentFolderMenu({
     folders: recent.folders,
     loadedDirectories: directories,
     onOpen: () => void open(recent),
     onAddToSession: () => void addToSession(recent),
-    onReveal: () => revealInExplorer(recent.folders[0]),
+    onReveal: () => revealInExplorer(shownFolders(recent.folders, unreachable)[0]),
     onCopyPath: () => void copyPaths(recent),
     ...(withRemove ? { onRemove: () => remove(recent) } : {}),
   });
 
-  return { recentSessions, open, remove, clearAll, meta, tooltip, menuItems };
+  return { recentSessions, open, remove, clearAll, name, meta, tooltip, menuItems };
 }

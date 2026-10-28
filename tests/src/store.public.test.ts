@@ -717,6 +717,8 @@ describe('useStore public behavior', () => {
     expect(settings.removeEmptyFoldersAfterDelete).toBe(false);
     // A session with one missing folder survives; one with none left is dropped.
     expect(settings.recentSessions).toEqual([{ folders: ['D:\\Keep', 'D:\\Missing'], includeSubfolders: true, openedAt: 333 }]);
+    // The lists leave the missing folder out.
+    expect([...useStore.getState().unreachableFolders]).toEqual(['d:\\missing']);
     expect(settings.duplicates.comparisonMode).toBe('phash');
     expect(settings.duplicates.sampleCount).toBe(3);
     expect(settings.duplicates.ignoredDuplicatePairs).toEqual(['abcdefabcdefabcd|0011223344556677']);
@@ -764,6 +766,12 @@ describe('useStore public behavior', () => {
       expect(state.includeSubfolders).toBe(false);
       expect(state.settings.lastSession).toEqual({ folders: [A, B, C], includeSubfolders: false });
       expect(state.toasts).toEqual([expect.objectContaining({ title: '1 folder not opened', kind: 'warning' })]);
+      expect([...state.unreachableFolders]).toEqual(['e:\\b']);
+
+      // Once the drive is back, the folder is shown again.
+      electronAPI.validateDroppedPath.mockResolvedValue({ valid: true, isDirectory: true });
+      await useStore.getState().reopenSession({ folders: [A, B, C], includeSubfolders: false });
+      expect(useStore.getState().unreachableFolders.size).toBe(0);
     });
 
     test('a session none of whose folders can be reached is not opened', async () => {

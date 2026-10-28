@@ -39,6 +39,15 @@ export function rememberSession(
   return [{ ...session, openedAt: now }, ...rest].slice(0, MAX_RECENT_SESSIONS);
 }
 
+/**
+ * The folders a recent session shows: the ones that can be reached, or all of them when none can,
+ * so an entry never shows up empty.
+ */
+export function shownFolders(folders: string[], unreachable: ReadonlySet<string>): string[] {
+  const reachable = folders.filter((folder) => !unreachable.has(folderKey(folder)));
+  return reachable.length > 0 ? reachable : folders;
+}
+
 /** One folder shows its path; several show the first and how many more. */
 export function sessionLabel(folders: string[]): string {
   return folders.length > 1 ? `${folders[0]} + ${folders.length - 1} more` : folders[0] ?? '';
@@ -82,10 +91,13 @@ export function parseRecentSessions(raw: Record<string, unknown>): RecentSession
   }));
 }
 
+/** Whether a path is a folder that can be opened now (the preload's validateDroppedPath). */
+export type FolderValidator = (path: string) => Promise<{ valid: boolean; isDirectory: boolean }>;
+
 /** Splits folders into the ones that can be opened now and the ones that cannot. */
 export async function checkSessionFolders(
   folders: string[],
-  validator: (path: string) => Promise<{ valid: boolean; isDirectory: boolean }>,
+  validator: FolderValidator,
 ): Promise<{ reachable: string[]; missing: string[] }> {
   const results = await Promise.all(folders.map(async (folder) => {
     try {
@@ -101,11 +113,18 @@ export async function checkSessionFolders(
   };
 }
 
-/** A recent session is dropped at startup only when none of its folders exist any more. */
+/**
+ * A recent session is dropped at startup only when none of its folders exist any more. Also returns
+ * the folders of the kept sessions that cannot be reached, which the lists leave out.
+ */
 export async function pruneRecentSessions(
   recents: RecentSession[],
-  validator: (path: string) => Promise<{ valid: boolean; isDirectory: boolean }>,
-): Promise<RecentSession[]> {
+  validator: FolderValidator,
+): Promise<{ recentSessions: RecentSession[]; missingFolders: string[] }> {
   const checked = await Promise.all(recents.map((recent) => checkSessionFolders(recent.folders, validator)));
-  return recents.filter((_, index) => checked[index].reachable.length > 0);
+  const kept = checked.filter((result) => result.reachable.length > 0);
+  return {
+    recentSessions: recents.filter((_, index) => checked[index].reachable.length > 0),
+    missingFolders: kept.flatMap((result) => result.missing),
+  };
 }

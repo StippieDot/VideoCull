@@ -99,7 +99,7 @@ test('sorting, grouping, filters and mute reflect the grid state', () => {
 
 test('behind the privacy screen only the privacy screen, full screen and exit stay usable', () => {
   const folders = ['D:\\Private Clips', 'E:\\Private Trips'];
-  const recentSessions = [['P:\\Private Recent']];
+  const recentSessions = [{ folders: ['P:\\Private Recent'], label: 'P:\\Private Recent' }];
   const template = menu({ hasSession: true, videoCount: 3, isPrivate: true, folders, recentSessions });
   assert.equal(item(template, 'File', 'Open Folder...').enabled, false);
   assert.equal(item(template, 'File', 'quit').enabled, undefined);
@@ -120,7 +120,7 @@ test('recent folders become menu items, with & shown literally', () => {
   const sent = [];
   const template = buildMenuTemplate({
     ...EMPTY_RENDERER_MENU_STATE, isDev: false, updatesEnabled: false, processing: false, paused: false, finishAction: 'none',
-    recentSessions: [['D:\Tom & Jerry']],
+    recentSessions: [{ folders: ['D:\Tom & Jerry'], label: 'D:\Tom & Jerry' }],
   }, { ...actions, send: (action) => sent.push(action) });
   const recent = item(template, 'File', 'Open Recent').submenu[0];
   assert.equal(recent.label, 'D:\Tom && Jerry');
@@ -129,24 +129,29 @@ test('recent folders become menu items, with & shown literally', () => {
   assert.equal(item(template, 'Help', 'Check for Updates...'), undefined);
 });
 
-test('a recent session with several folders shows the first and how many more, and opens them all', () => {
+test('a recent session shows the label the renderer made and opens all of its folders', () => {
   const sent = [];
   const template = buildMenuTemplate({
     ...EMPTY_RENDERER_MENU_STATE, isDev: false, updatesEnabled: false, processing: false, paused: false, finishAction: 'none',
-    recentSessions: [['D:\\Clips', 'E:\\Trips', 'F:\\More']],
+    // F:\More is offline, so the renderer leaves it out of the label.
+    recentSessions: [{ folders: ['D:\\Clips', 'E:\\Trips', 'F:\\More'], label: 'D:\\Clips + 1 more' }],
   }, { ...actions, send: (action) => sent.push(action) });
   const recent = item(template, 'File', 'Open Recent').submenu[0];
-  assert.equal(recent.label, 'D:\\Clips + 2 more');
+  assert.equal(recent.label, 'D:\\Clips + 1 more');
   recent.click();
   assert.deepEqual(sent, ['open-recent:D:\\Clips|E:\\Trips|F:\\More']);
 });
 
 test('menu state from the renderer is normalised', () => {
   assert.deepEqual(normalizeRendererMenuState({
-    hasSession: 'yes', videoCount: -4, recentSessions: [['a', 3, ''], [], 'b'], sortBy: 'evil', sortOptions: ['size', 'evil'],
+    hasSession: 'yes',
+    videoCount: -4,
+    recentSessions: [{ folders: ['a', 3, ''], label: 7 }, { folders: [] }, 'b', { folders: ['c'], label: 'C!' }],
+    sortBy: 'evil',
+    sortOptions: ['size', 'evil'],
   }), {
     ...EMPTY_RENDERER_MENU_STATE,
-    recentSessions: [['a']],
+    recentSessions: [{ folders: ['a'], label: 'a' }, { folders: ['c'], label: 'C!' }],
     sortOptions: ['size'],
   });
 });
@@ -177,7 +182,9 @@ test('menu items get ids from their path that survive changing counts', () => {
 });
 
 test('recent folders whose names differ only by a number keep separate ids', () => {
-  const recent = item(menu({ recentSessions: [['D:\\Clips'], ['D:\\Clips (2)']] }), 'File', 'Open Recent').submenu;
+  const recent = item(menu({
+    recentSessions: [{ folders: ['D:\\Clips'], label: 'D:\\Clips' }, { folders: ['D:\\Clips (2)'], label: 'D:\\Clips (2)' }],
+  }), 'File', 'Open Recent').submenu;
   assert.deepEqual(recent.map((entry) => entry.id), ['File > Open Recent > D:\\Clips', 'File > Open Recent > D:\\Clips (2)']);
 });
 

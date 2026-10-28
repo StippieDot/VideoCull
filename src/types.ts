@@ -110,8 +110,8 @@ export interface AppMenuState {
   muteAvailable: boolean;
   muted: boolean;
   isPrivate: boolean;
-  /** Folders of each recent session, newest first. */
-  recentSessions: string[][];
+  /** Each recent session, newest first: all of its folders, and its label with only the reachable ones. */
+  recentSessions: Array<{ folders: string[]; label: string }>;
   /** The folders loaded in the session. */
   folders: string[];
 }
@@ -469,6 +469,9 @@ export interface VideoStore {
   // Notifications
   toasts: ToastNotification[];
 
+  /** `folderKey`s of recent-session folders found unreachable at startup or when opened. */
+  unreachableFolders: ReadonlySet<string>;
+
   // Actions
   setDirectory: (dir: string | null) => Promise<void>;
   addDirectory: (dir: string) => void;
@@ -478,6 +481,8 @@ export interface VideoStore {
   /** Opens a saved session's reachable folders and reports the rest; false when none can be opened. */
   reopenSession: (session: SavedSession) => Promise<boolean>;
   removeDirectory: (dir: string) => void;
+  /** Records which folders could and could not be reached, for the recent-session lists. */
+  markFolderReachability: (reachable: string[], missing: string[]) => void;
   setIncludeSubfolders: (val: boolean) => void;
   setVideos: (videos: Video[]) => void;
   updateVideoThumbnailsBatch: (batch: ThumbReadyEvent[]) => void;

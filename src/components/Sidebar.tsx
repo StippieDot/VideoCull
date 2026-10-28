@@ -4,7 +4,7 @@ import type { SortField } from '../types';
 import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
 import { beginDevInteraction } from '../perf-dev';
 import { usePersistedFlag } from '../hooks/usePersistedFlag';
-import useRecentSessions, { recentSessionName } from '../hooks/useRecentSessions';
+import useRecentSessions from '../hooks/useRecentSessions';
 import { sameSessionFolders, sessionKey } from '../sessions';
 import { snapBytes, snapSeconds } from './rangeScale';
 import RangeSlider from './RangeSlider';
@@ -875,14 +875,14 @@ export default function Sidebar({
                   >
                     <FolderOpen size={12} />
                     <span className="recents-item-copy">
-                      <span className="recents-item-path">{recentSessionName(recent)}</span>
+                      <span className="recents-item-path">{recents.name(recent)}</span>
                       <span className="recents-item-meta">{recents.meta(recent)}</span>
                     </span>
                   </button>
                   <button
                     className="recents-remove-btn"
-                    title={`Remove ${recentSessionName(recent)} from recent folders`}
-                    aria-label={`Remove ${recentSessionName(recent)} from recent folders`}
+                    title={`Remove ${recents.name(recent)} from recent folders`}
+                    aria-label={`Remove ${recents.name(recent)} from recent folders`}
                     onClick={() => recents.remove(recent)}
                   >
                     <X size={12} />

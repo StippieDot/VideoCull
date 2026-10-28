@@ -7,7 +7,7 @@ import type {
   ToastInput, ToastKind, SavedSession,
 } from './types';
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, normalizeFeatureSettings } from './keybind-defaults';
-import { checkSessionFolders, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey } from './sessions';
+import { checkSessionFolders, folderKey, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey } from './sessions';
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
 import { detectVideoCompatibility, folderInsideTest, formatRecentPath, normalizeFolder } from './utils';
@@ -1053,6 +1053,8 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── Notifications ──
   toasts: [],
 
+  unreachableFolders: new Set(),
+
   // ── Actions ──
   setDirectory: async (dir: string | null) => {
     if (dir !== null) {
@@ -1142,9 +1144,19 @@ const useStore = create<VideoStore>((set, get) => ({
         dedupeKey: `recent-unavailable:${sessionKey(session.folders)}`,
       });
     }
+    get().markFolderReachability(reachable, missing);
     if (reachable.length === 0) return false;
     await get().openSession(session, reachable);
     return true;
+  },
+
+  markFolderReachability: (reachable: string[], missing: string[]) => {
+    const current = get().unreachableFolders;
+    const next = new Set(current);
+    for (const folder of reachable) next.delete(folderKey(folder));
+    for (const folder of missing) next.add(folderKey(folder));
+    if (next.size === current.size && [...next].every((key) => current.has(key))) return;
+    set({ unreachableFolders: next });
   },
 
   addDirectory: (dir: string) => {
@@ -2051,11 +2063,12 @@ const useStore = create<VideoStore>((set, get) => ({
         // Drop recent sessions none of whose folders exist any more
         if (migrated.recentSessions && migrated.recentSessions.length > 0) {
           try {
-            const recentSessions = await pruneRecentSessions(
+            const { recentSessions, missingFolders } = await pruneRecentSessions(
               migrated.recentSessions,
               (path: string) => window.electronAPI!.validateDroppedPath(path)
             );
             migrated = { ...migrated, recentSessions };
+            get().markFolderReachability([], missingFolders);
           } catch (err) {
             console.warn('[store] Failed to prune recent sessions:', err);
           }

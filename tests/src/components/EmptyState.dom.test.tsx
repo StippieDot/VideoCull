@@ -66,6 +66,23 @@ describe('EmptyState recent folder behavior', () => {
     expect(screen.getByText('Unavailable')).toBeTruthy();
   });
 
+  test('a recent session shows only the folders that can be reached, and lists every folder in its tooltip', () => {
+    const offline = 'E:\\Offline\\Clips';
+    useStore.setState({
+      settings: {
+        ...useStore.getState().settings,
+        recentSessions: [{ folders: ['D:\\Videos\\Trip', offline, 'F:\\Videos\\Family'], includeSubfolders: true, openedAt: Date.now() }],
+      },
+      unreachableFolders: new Set(['e:\\offline\\clips']),
+    });
+
+    render(<EmptyState onNotify={vi.fn()} onOpenDocumentation={vi.fn()} onToggleTheme={vi.fn()} />);
+
+    const entry = screen.getByText('Videos / Trip + 1 more').closest('button');
+    expect(entry?.getAttribute('title')).toContain(`${offline} (unavailable)`);
+    expect(screen.queryByText('Unavailable')).toBeNull();
+  });
+
   test('clears all recent folders from the empty-state panel and reports how many were removed', async () => {
     const notify = vi.fn();
     const firstDir = 'D:\\Videos\\Trip';

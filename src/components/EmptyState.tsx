@@ -8,7 +8,7 @@ import ContextMenu from './ContextMenu';
 import { PRODUCT } from '../product';
 import videoCullIcon from '../assets/videocull-icon.png';
 import './EmptyState.css';
-import useRecentSessions, { recentSessionName } from '../hooks/useRecentSessions';
+import useRecentSessions from '../hooks/useRecentSessions';
 import { sessionKey } from '../sessions';
 
 interface EmptyStateProps {
@@ -91,13 +91,13 @@ export default function EmptyState({ onNotify, onOpenDocumentation, onToggleThem
                     setContextMenu({ x: event.clientX, y: event.clientY, recent });
                   }}
                 >
-                  <span className="empty-recent-main">{recentSessionName(recent)}</span>
+                  <span className="empty-recent-main">{recents.name(recent)}</span>
                   <span className="empty-recent-meta">{recents.meta(recent)}</span>
                 </button>
                 <button
                   className="empty-recent-remove"
-                  title={`Remove ${recentSessionName(recent)} from recent folders`}
-                  aria-label={`Remove ${recentSessionName(recent)} from recent folders`}
+                  title={`Remove ${recents.name(recent)} from recent folders`}
+                  aria-label={`Remove ${recents.name(recent)} from recent folders`}
                   onClick={() => recents.remove(recent)}
                 >
                   <X size={12} />

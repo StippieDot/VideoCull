@@ -22,7 +22,7 @@
  *   muteAvailable: boolean,
  *   muted: boolean,
  *   isPrivate: boolean,
- *   recentSessions: string[][],
+ *   recentSessions: Array<{ folders: string[], label: string }>,
  *   folders: string[],
  * }} RendererMenuState
  */
@@ -122,7 +122,12 @@ function normalizeRendererMenuState(input) {
     muted: raw.muted === true,
     isPrivate: raw.isPrivate === true,
     recentSessions: (Array.isArray(raw.recentSessions) ? raw.recentSessions : [])
-      .map(folderList).filter((folders) => folders.length > 0).slice(0, MAX_RECENT_SESSIONS),
+      .map((/** @type {any} */ entry) => {
+        const folders = folderList(entry?.folders);
+        const label = typeof entry?.label === 'string' && entry.label.length > 0 ? entry.label : folders[0] ?? '';
+        return { folders, label };
+      })
+      .filter((session) => session.folders.length > 0).slice(0, MAX_RECENT_SESSIONS),
     folders: folderList(raw.folders),
   };
 }
@@ -359,13 +364,14 @@ function openRecentItem(state, send) {
     label: 'Open Recent',
     enabled: state.recentSessions.length > 0,
     submenu: state.recentSessions.length > 0
-      ? state.recentSessions.map((folders) => {
+      ? state.recentSessions.map(({ folders, label }) => {
         // `|` cannot appear in a Windows path, so it separates the session's folders.
         const key = folders.join('|');
         return {
           // The full paths: the id made from the label drops "(2)", which would merge "Clips (2)" into "Clips".
           id: `File > Open Recent > ${key}`,
-          label: escapeMenuLabel(folders.length > 1 ? `${folders[0]} + ${folders.length - 1} more` : folders[0]),
+          // Made in the renderer, which knows which folders can be reached.
+          label: escapeMenuLabel(label),
           click: () => send(`open-recent:${key}`),
         };
       })

@@ -1,4 +1,4 @@
-import { MAX_RECENT_SESSIONS, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey, sessionLabel } from '../../src/sessions';
+import { MAX_RECENT_SESSIONS, folderKey, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey, sessionLabel, shownFolders } from '../../src/sessions';
 import type { RecentSession } from '../../src/types';
 
 const recent = (folders: string[], openedAt = 1): RecentSession => ({ folders, includeSubfolders: true, openedAt });
@@ -59,6 +59,12 @@ describe('pruneRecentSessions', () => {
   test('keeps a session while any of its folders exists and drops it when none do', async () => {
     const kept = recent(['missing', 'folder-a']);
     await expect(pruneRecentSessions([kept, recent(['missing', 'throw']), recent(['folder-b'])], validator))
-      .resolves.toEqual([kept, recent(['folder-b'])]);
+      .resolves.toEqual({ recentSessions: [kept, recent(['folder-b'])], missingFolders: ['missing'] });
   });
+});
+
+test('a recent session shows only its reachable folders, or all of them when none can be reached', () => {
+  const unreachable = new Set([folderKey('E:\\Offline')]);
+  expect(shownFolders(['D:\\Trips', 'e:\\offline'], unreachable)).toEqual(['D:\\Trips']);
+  expect(shownFolders(['E:\\Offline'], unreachable)).toEqual(['E:\\Offline']);
 });
