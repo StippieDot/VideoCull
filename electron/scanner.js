@@ -47,7 +47,7 @@ function createProgressReporter(onProgress) {
   };
 }
 
-/** Windows paths compare without regard to case. */
+/** Windows paths compare without regard to case. Kept in step with `folderKey` in src/sessions.ts. */
 function realPathKey(realPath) {
   return path.resolve(realPath).toLowerCase();
 }

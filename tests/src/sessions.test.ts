@@ -1,4 +1,4 @@
-import { MAX_RECENT_SESSIONS, pruneRecentSessions, rememberSession, sameSessionFolders, sessionLabel } from '../../src/sessions';
+import { MAX_RECENT_SESSIONS, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey, sessionLabel } from '../../src/sessions';
 import type { RecentSession } from '../../src/types';
 
 const recent = (folders: string[], openedAt = 1): RecentSession => ({ folders, includeSubfolders: true, openedAt });
@@ -6,6 +6,11 @@ const recent = (folders: string[], openedAt = 1): RecentSession => ({ folders, i
 describe('sameSessionFolders', () => {
   test('ignores order, letter case and trailing separators', () => {
     expect(sameSessionFolders(['D:\\Trips', 'e:/clips/'], ['E:\\Clips', 'd:\\trips'])).toBe(true);
+  });
+
+  test('gives every spelling of one session the same key, so lists agree on which entry is meant', () => {
+    expect(sessionKey(['D:\\Trips', 'E:\\Clips'])).toBe(sessionKey(['e:/clips/', 'd:\\TRIPS']));
+    expect(sessionKey(['D:\\Trips'])).not.toBe(sessionKey(['D:\\Trips', 'E:\\Clips']));
   });
 
   test('differs when a folder is added or swapped', () => {

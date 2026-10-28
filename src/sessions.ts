@@ -2,20 +2,25 @@ import type { RecentSession, SavedSession } from './types';
 
 export const MAX_RECENT_SESSIONS = 8;
 
-function folderKey(folder: string): string {
+/**
+ * A folder in a form where equal Windows folders compare equal. Kept in step with `realPathKey` in
+ * electron/scanner.js, which compares the same paths on the main-process side.
+ */
+export function folderKey(folder: string): string {
   return folder.replace(/[\\/]+/g, '\\').replace(/\\+$/, '').toLowerCase();
+}
+
+/**
+ * Identifies a session: the same for the same folders in any order and letter case, so every place
+ * that tells sessions apart agrees. `|` cannot appear in a Windows path.
+ */
+export function sessionKey(folders: string[]): string {
+  return [...new Set(folders.map(folderKey))].sort().join('|');
 }
 
 /** Two sessions are the same when they hold the same folders, in any order and letter case. */
 export function sameSessionFolders(a: string[], b: string[]): boolean {
-  const keys = new Set(a.map(folderKey));
-  const other = new Set(b.map(folderKey));
-  return keys.size === other.size && [...keys].every((key) => other.has(key));
-}
-
-/** Identifies a recent session in menus and lists; `|` cannot appear in a Windows path. */
-export function sessionKey(folders: string[]): string {
-  return folders.join('|');
+  return sessionKey(a) === sessionKey(b);
 }
 
 /**
