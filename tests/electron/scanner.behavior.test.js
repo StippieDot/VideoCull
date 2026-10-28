@@ -169,6 +169,10 @@ test('scanDirectory reports a broken link instead of skipping it without a trace
     assert.deepEqual(result.videos, []);
     assert.equal(result.summary.skippedFileCount, 1);
     assert.deepEqual(result.summary.skippedFileSamples, [{ path: path.join(tempRoot, 'dangling'), reason: 'broken-link' }]);
+
+    // Also when subfolders are not scanned.
+    const shallow = await scanDirectory(tempRoot, false, null, { includeVisitedDirs: true, followLinks: true });
+    assert.equal(shallow.summary.skippedFileCount, 1);
   });
 });
 

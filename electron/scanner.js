@@ -191,8 +191,9 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
       }
 
       // Junctions and symbolic links are only `isSymbolicLink()`; the target decides folder or file.
+      // Every link is checked, so one that points at nothing is reported even when it would not be scanned.
       if (entry.isSymbolicLink?.()) {
-        if (!followLinks || !(includeSubfolders || isVideoFile(entry.name))) continue;
+        if (!followLinks) continue;
         try {
           const stat = await statPath(fullPath);
           realPath = await fs.realpath(fullPath);
