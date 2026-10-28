@@ -322,10 +322,13 @@ async function isPathWithinDir(candidate, baseDir, followedLinkTargets = null) {
       if (isSameOrInside(real, target)) return true;
     }
     return false;
-  } catch {
-    // Candidate doesn't exist (e.g. thumbnail still being generated).
-    // path.resolve check above already passed — allow it through.
-    return true;
+  } catch (err) {
+    // Candidate doesn't exist (e.g. thumbnail still being generated): the path.resolve check above
+    // already passed, so allow it through. Any other failure (access denied, a broken link) cannot
+    // prove where the path leads, so it is refused.
+    if (err?.code !== 'ENOENT' && err?.code !== 'ENOTDIR') return false;
+    // A link pointing at nothing also reports ENOENT; it exists, so it is not a file still to come.
+    return !await fs.promises.lstat(candidate).then(() => true, () => false);
   }
 }
 

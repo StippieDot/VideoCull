@@ -715,4 +715,31 @@ describe('containment through links', () => {
       await fsp.rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  test('a path is let through unchecked only when nothing exists there yet', async () => {
+    const tempRoot = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), 'videocull-containment-missing-')));
+    try {
+      const gone = path.join(tempRoot, 'gone');
+      await fsp.mkdir(gone);
+      await fsp.symlink(gone, path.join(tempRoot, 'dangling'), 'junction');
+      await fsp.rm(gone, { recursive: true });
+
+      // A thumbnail that is still being generated.
+      assert.equal(await isPathWithinDir(path.join(tempRoot, 'thumb.jpg'), tempRoot), true);
+      // A link that points at nothing cannot prove where it leads.
+      assert.equal(await isPathWithinDir(path.join(tempRoot, 'dangling'), tempRoot), false);
+    } finally {
+      await fsp.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('a path whose real location cannot be read is refused', async () => {
+    const realpath = vi.spyOn(require('node:fs').promises, 'realpath')
+      .mockRejectedValue(Object.assign(new Error('denied'), { code: 'EACCES' }));
+    try {
+      assert.equal(await isPathWithinDir('D:\\Media\\clip.mp4', 'D:\\Media'), false);
+    } finally {
+      realpath.mockRestore();
+    }
+  });
 });
