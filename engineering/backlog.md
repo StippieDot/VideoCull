@@ -107,6 +107,13 @@ Proposed direction:
 - Consolidate them behind one authoritative index where lookup requirements allow it.
 - The likely memory saving is modest, so include this in a broader session-state cleanup rather than performing an isolated refactor.
 
+### 14. Distributed cache for a video reached through a file link sits beside the link
+
+- With the experimental **Follow symbolic links and junctions** setting on and the distributed cache mode, a video reached through a file symbolic link has its cache row and thumbnails in the link's folder, not beside the real file. Folder links and junctions are not affected: their path already leads into the target folder.
+- Decisions are saved safely where they are; the only effect is where they live. Opening the target folder directly does not show them.
+- Moving the row beside the real file is not safe with the current cache: every scan of a folder prunes all rows in its database that the scan did not see (`pruneStaleVideosBefore`), so the target folder's next scan would delete the linked video's review decisions. About a dozen call sites also derive the cache folder from `path.dirname(video.path)` (main.js, duplicates.js, cache-folder-tracker.js).
+- Do with Phase L (persistent library), which reworks where rows live and how they are pruned: route every cache lookup through one resolver that uses the real path, and prune only rows whose real folder is the scanned folder.
+
 ## Recommended order
 
 1. Add shared I/O-aware admission across media-analysis pipelines.

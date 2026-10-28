@@ -510,7 +510,8 @@ skip a folder that is itself a link, or it removes the junction or link the pers
   link left pointing at nothing is reported as `broken-link` by the next scan. Empty-folder cleanup after a
   delete never removes a link or a folder outside the loaded folder. Both are confirmed by S.2a first.
 - **Cache:** rows stay keyed by the path as shown (through the link). In distributed mode the cache is
-  written beside the target files.
+  written beside the target files for folder links and junctions; for a file link it stays in the link's
+  folder until Phase L (backlog #14), because the target folder's next scan would prune it.
 - Lives with the known-video maps in `main.js` for now; 2.1's `library-registry` takes over the link
   targets and the real-path set.
 

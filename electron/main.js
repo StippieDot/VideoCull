@@ -1129,6 +1129,8 @@ processingPause.subscribe((state) => {
   sendToRenderer('processing-pause-state', state);
 });
 
+// shortcut: a video reached through a file link is cached in the link's folder, not beside the real file;
+// move it with the persistent library, when pruning can tell those rows apart (backlog #14).
 function getVideoFolderPath(video) {
   return path.dirname(video.path);
 }
