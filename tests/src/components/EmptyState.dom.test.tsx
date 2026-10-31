@@ -41,8 +41,7 @@ describe('EmptyState recent folder behavior', () => {
     useStore.setState({
       settings: {
         ...useStore.getState().settings,
-        recentDirectories: [staleDir],
-        recentDirectoryTimestamps: { [staleDir]: Date.now() - 60_000 },
+        recentSessions: [{ folders: [staleDir], includeSubfolders: true, openedAt: Date.now() - 60_000 }],
       },
     });
     electronAPI.validateDroppedPath.mockResolvedValue({ valid: false, isDirectory: false });
@@ -54,17 +53,34 @@ describe('EmptyState recent folder behavior', () => {
 
     await waitFor(() => {
       expect(electronAPI.validateDroppedPath).toHaveBeenCalledWith(staleDir);
-      expect(useStore.getState().settings.recentDirectories).toEqual([staleDir]);
+      expect(useStore.getState().settings.recentSessions.map((recent) => recent.folders)).toEqual([[staleDir]]);
     });
 
-    expect(notify).toHaveBeenCalledWith(
+    expect(useStore.getState().toasts).toEqual([
       expect.objectContaining({
         title: 'Folder unavailable',
         detail: 'Videos / Trip',
         kind: 'warning',
       }),
-    );
+    ]);
     expect(screen.getByText('Unavailable')).toBeTruthy();
+  });
+
+  test('a recent session shows only the folders that can be reached, and lists every folder in its tooltip', () => {
+    const offline = 'E:\\Offline\\Clips';
+    useStore.setState({
+      settings: {
+        ...useStore.getState().settings,
+        recentSessions: [{ folders: ['D:\\Videos\\Trip', offline, 'F:\\Videos\\Family'], includeSubfolders: true, openedAt: Date.now() }],
+      },
+      unreachableFolders: new Set(['e:\\offline\\clips']),
+    });
+
+    render(<EmptyState onNotify={vi.fn()} onOpenDocumentation={vi.fn()} onToggleTheme={vi.fn()} />);
+
+    const entry = screen.getByText('Videos / Trip + 1 more').closest('button');
+    expect(entry?.getAttribute('title')).toContain(`${offline} (unavailable)`);
+    expect(screen.queryByText('Unavailable')).toBeNull();
   });
 
   test('clears all recent folders from the empty-state panel and reports how many were removed', async () => {
@@ -74,11 +90,10 @@ describe('EmptyState recent folder behavior', () => {
     useStore.setState({
       settings: {
         ...useStore.getState().settings,
-        recentDirectories: [firstDir, secondDir],
-        recentDirectoryTimestamps: {
-          [firstDir]: Date.now() - 60_000,
-          [secondDir]: Date.now() - 120_000,
-        },
+        recentSessions: [
+          { folders: [firstDir], includeSubfolders: true, openedAt: Date.now() - 60_000 },
+          { folders: [secondDir], includeSubfolders: true, openedAt: Date.now() - 120_000 },
+        ],
       },
     });
 
@@ -87,7 +102,7 @@ describe('EmptyState recent folder behavior', () => {
     await userEvent.click(screen.getByRole('button', { name: /clear all/i }));
 
     await waitFor(() => {
-      expect(useStore.getState().settings.recentDirectories).toEqual([]);
+      expect(useStore.getState().settings.recentSessions).toEqual([]);
     });
 
     expect(notify).toHaveBeenCalledWith(

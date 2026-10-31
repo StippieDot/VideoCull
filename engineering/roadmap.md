@@ -46,6 +46,8 @@ documentation) shipped as `1.4.0`–`2.1.0` and is archived in git history.
 | Mark short videos scope | **Current filtered view**, with a note that Delete later applies to *all* videos marked Delete. |
 | Rename | Extension **always locked**. |
 | Explorer integration | **Folders only**, **both editions**. |
+| Saved sessions | The last session (its folders and **Include subfolders**) reopens at startup, with a setting to turn it off. **Open Recent** lists whole sessions. **Close Session** means nothing reopens. |
+| Linked folders | Scanning follows symbolic links and junctions to folders and files, also outside the opened folder, with a setting to turn it off. Each real file is listed once. |
 | Network folders | **Supported default: videos on the network, cache local.** Network-hosted cache DBs depend on 3.1. |
 | Clips | Bookmarks define segments; you choose which segments to keep, as separate clips or joined into one; exported fast (lossless) or exact (re-encoded). Bookmarks keep working as seek points. The original can be **marked** Delete; it's never deleted directly. |
 | Clips cut from longer videos | A timeboxed spike (Phase 8). Only **directed review suggestions** showing their coverage; never a keeper or deletion suggestion. |
@@ -422,6 +424,104 @@ rejecting names not on the allow-list.
 
 ---
 
+## Phase S — Saved Sessions & Linked Folders
+
+Requested in [discussion #24](https://github.com/StippieDot/VideoCull/discussions/24): people who open the
+same set of folders every time have to add them one by one after each start, and folders gathered with
+directory junctions or symbolic links are not scanned. Comes before Phase 1; it has no dependency on any
+other phase.
+
+### S.1 Saved Sessions
+
+**Decision:** A session is the set of loaded folders plus **Include subfolders**. The last session reopens
+at startup (setting `reopenLastSession`, **default off**). **Open Recent** lists whole sessions instead of single
+folders. **Close Session** clears the session to reopen, so a session closed on purpose stays closed.
+
+**Implementation notes:**
+- **Settings:** `lastSession: { folders: string[]; includeSubfolders: boolean } | null` and
+  `recentSessions: Array<{ folders: string[]; includeSubfolders: boolean; openedAt: number }>` (at most 8,
+  newest first). `migrateSettings` turns each `recentDirectories` entry into a one-folder session with its
+  `recentDirectoryTimestamps` value. Old keys are left in the file (additive, see Downgrading).
+- **Where sessions change:** `setDirectory`, `addDirectory` (`store.ts:1044`, `:1122`) and the
+  `includeSubfolders` setter update `lastSession` and move the matching recent session to the front.
+  Close Session sets `lastSession` to `null`. Saves use the existing `saveConfig` path, like the recents do
+  today.
+- **Matching:** two sessions are the same when they hold the same folders (normalized, order ignored).
+  Adding a folder to the open session updates its recent entry instead of creating a new one.
+- **Startup:** after `loadSettings` (`store.ts:2013`), if `reopenLastSession` is on and `lastSession` is
+  set, open its folders through the same path as Open Recent. Folders that can't be reached (unplugged
+  drive, offline share) are left out of this run with one notice naming them; they **stay in
+  `lastSession`** until the person changes the session, so a drive that comes back is not lost.
+- **Recents pruning at startup:** a recent session is dropped only when **none** of its folders exist
+  (today every missing folder is dropped, `store.ts:2020`). The menu shows the folders that are reachable.
+- **Labels:** one folder shows its path, as today. Several show the first folder and `+ N more`, with every
+  path in the tooltip. Applies to File > Open Recent (`app-menu.js:356`), the title bar roots menu
+  (`locationMenus.ts:178`), the sidebar recents button and the empty-state list.
+- **Remove from Session:** the sidebar's folder menu and the File menu get **Remove from Session**, a
+  submenu of the loaded folders, when more than one is loaded; nothing removes a single folder today. While nothing is scanning or
+  processing, the folder's videos are dropped in place: pending review saves are written, main unloads
+  just that folder (`unload-directory`), and the other folders are not rescanned. During a scan or
+  processing it falls back to a rescan of the remaining folders, which cancels that work first.
+- **Privacy:** behind the privacy screen nothing about the reopened session is shown, as with any open
+  folder.
+
+**Tests:** settings migration from `recentDirectories`; matching ignores order and case; Close Session
+clears `lastSession`; startup reopens all reachable folders and reports the rest without removing them;
+a recent session with one missing folder survives pruning; DOM: Open Recent restores several folders and
+the subfolder choice; Remove from Session keeps the other folders loaded.
+
+### S.2 Linked Folders and Files
+
+**Decision:** Scanning follows symbolic links and directory junctions to folders and to video files,
+including targets outside the opened folder (setting `followLinks`, **experimental, default off**). Loops and anything already
+reached by another path are skipped.
+
+**Gate:** S.2a — record what `shell.trashItem`, the empty-folder cleanup and the identity check do for a
+video reached through a directory junction, a folder symbolic link and a file symbolic link.
+
+**S.2a result (Windows 11, Electron 44, 2026-10-27):**
+
+| Through | `Dirent` / `lstat` | `fs.stat` identity | `shell.trashItem(path through link)` | `fs.rmdir(dirname)` (empty-folder cleanup) |
+|---|---|---|---|---|
+| Directory junction | `isSymbolicLink()` only | same `dev`/`ino` as the target | trashes the **real file**; junction stays | removes the **junction**; target folder stays |
+| Folder symbolic link | `isSymbolicLink()` only | same `dev`/`ino` as the target | trashes the **real file**; link stays | removes the **link**; target folder stays |
+| File symbolic link | `isSymbolicLink()` only | same `dev`/`ino` as the target | trashes **only the link**; real file stays | removes the folder holding the link |
+
+Consequences: delete must act on the real path (a file link would otherwise survive as a "deleted" video
+whose file still exists); the identity check is safe through every link kind; empty-folder cleanup must
+skip a folder that is itself a link, or it removes the junction or link the person made.
+
+**Implementation notes:**
+- **Scanner (`scanner.js:157`):** today only `isDirectory()`/`isFile()` entries are handled, so links and
+  junctions (both `isSymbolicLink()` in Node) are skipped without a trace. For a link entry, `fs.stat`
+  decides folder or file. A broken link counts in the scan summary with reason `broken-link`.
+- **Each file once:** every walked folder carries its real path (`fs.realpath` once when entered through a
+  link; otherwise parent real path + name). A folder whose real path was already walked is skipped, which
+  stops loops and double counting. Each video gets a `realPath` (folder real path + name, or `realpath` of
+  a file link); a second video with the same real path is skipped. The real-path set lives in main for the
+  whole session, so two loaded folders that reach the same files list them once. This matters for safety:
+  otherwise duplicate detection pairs a file with itself, and deleting "the duplicate" deletes the only
+  copy.
+- **Containment:** `isPathWithinDir` (`main.js:166`) follows real paths and today rejects a video whose
+  link points outside the loaded folder, which blocks thumbnails, playback and delete for it. The scan
+  returns the real paths of the links it followed; containment accepts a real path inside the loaded
+  folder **or** inside one of those followed targets. Only targets the scan itself followed are trusted;
+  a link created later is trusted after the next scan.
+- **Delete:** acts on the video's real file, so the Recycle Bin holds the video, not a link to it. A file
+  link left pointing at nothing is reported as `broken-link` by the next scan. Empty-folder cleanup after a
+  delete never removes a link or a folder outside the loaded folder. Both are confirmed by S.2a first.
+- **Cache:** rows stay keyed by the path as shown (through the link). In distributed mode the cache is
+  written beside the target files for folder links and junctions; for a file link it stays in the link's
+  folder until Phase L (backlog #14), because the target folder's next scan would prune it.
+- Lives with the known-video maps in `main.js` for now; 2.1's `library-registry` takes over the link
+  targets and the real-path set.
+
+**Tests:** loop through a link to a parent folder; two links to one folder; a file link and its target in
+the same session; broken link; `followLinks` off restores today's behaviour; containment accepts a followed
+target and rejects an unfollowed one; delete through each link kind (after S.2a).
+
+---
+
 ## Phase 1 — Quick Wins
 
 Small, ready-to-build changes. No architectural dependencies, and neither touches FFmpeg.
@@ -488,7 +588,8 @@ a drive without a Recycle Bin.
   the delete waits up to about 10 seconds for work already in progress on them. Files still busy after
   that report `in-use` and can be retried. Running pipelines are not cancelled as a whole.
 - **Architecture (in this order):**
-  1. **`library-registry.js`:** move `currentScanDirs` and the three `knownVideo*` maps behind functions;
+  1. **`library-registry.js`:** move `currentScanDirs`, the three `knownVideo*` maps, and S.2's followed
+     link targets and real-path set behind functions;
      all ~25 call sites in `main.js` use it. Needed now by the delete module, later by rename/move and
      the folder handoff. **Done when** `main.js` has no `knownVideoPaths`, `knownVideoIdsByPath`,
      `knownVideoIdentitiesByPath` or direct `currentScanDirs` mutation, and the registry has unit tests.
@@ -582,6 +683,42 @@ on an unselected card adds; starting on a selected card removes. Escape restores
 
 **Tests:** add/remove helper; **pointerup → lostpointercapture keeps the commit**; Escape restores;
 control exclusions; a **manual check on a real virtualized grid**.
+
+---
+
+## Phase L — Persistent Library
+
+Opening a session shows what the cache already knows at once, then checks the folders for changes in the
+background. Today opening waits for a full walk that stats every video and then a cache reconcile per
+folder (`scanDirectory`, `reconcileScannedVideosByFolder` `main.js:1296`) before anything is shown.
+Comes after Phase 2, because it needs 2.1's `library-registry` and `processing-runs`.
+
+**Gate:** L.0 — measure with the existing scan diagnostics how long the walk and the reconcile each take
+on a large library, an HDD, USB and a network share (shares the setup of 3.1). Record an ADR for the move
+from scan-based sessions to a persistent library before L.1 starts.
+
+### L.1 Open from the Cache
+
+- `cache-index.json` already lists every cached folder (`knownFolders`). Opening a session loads the rows of
+  the known folders under each loaded folder with `loadCacheVideos` (`cache.js:501`) and shows them.
+- `library-registry` is filled from those rows, marked **unverified**. Delete keeps its identity check,
+  so an unverified video that changed on disk is refused, not deleted.
+
+### L.2 Verify in the Background
+
+- The existing walk and reconcile run as a `processing-runs` run, cancelled by `invalidateSession()`.
+- The result is applied as a change list (added, removed, changed size or date) without resetting the
+  selection, filters or Review.
+- **Open question:** review edits made while the check runs must not be overwritten by its cache writes.
+  If that needs 3.3's "all saves settled" signal, Phase L moves after 3.3.
+- Watching folders for changes while the app runs is an optional later step.
+
+### L.3 Offline Folders
+
+- A loaded folder that can't be reached keeps its rows and shows as offline; nothing is pruned for it.
+  Pruning rules, including `autoPruneMissingSubfolderCache`, gain this case.
+
+**Decisions still open:** how unverified and offline videos look; whether processing waits for the check.
 
 ---
 
@@ -1063,7 +1200,7 @@ Already-loaded folders are focused, not reloaded.
   `edition-guard.js` (opts into `@ts-check`) gains the request/ack exchange; `bootstrap.js` wires the
   client. Main forwards validated paths with `open-folders-requested` and keeps them until the renderer
   asks after loading. Renderer: `src/open-folders.ts` with one `openFolders(paths, source)`; picker, drop,
-  open recent, add recent and the handoff all call it. **Done when** `App.tsx` and `Sidebar.tsx` no longer
+  open recent, add recent, the startup session restore (S.1) and the handoff all call it. **Done when** `App.tsx` and `Sidebar.tsx` no longer
   call `validateDroppedPath`, `setDirectory` is reached only through `openFolders`, and the existing drop
   and recents DOM tests pass.
 
@@ -1197,12 +1334,14 @@ Commit messages use conventional types (`feat:`, `fix:`, `refactor:`, `test:`, `
 | Phase | Version | Notes |
 |---|---|---|
 | P0 — Media toolchain & licence compliance | `2.4.0` | FFmpeg 9.0.2, fluent-ffmpeg removed, licence notices + About licence section |
-| P1 — Quick wins | `2.5.0` | Skip length, mark short videos |
-| P2 — Delete safety & thumbnail seeking | `2.6.0` | Delete reasons, click-to-seek, scrub previews, paint selection |
-| P3 — Reliable settings & tags | `2.7.0` | Additive schema; downgrade safety not promised (see Defaults) |
-| P4 — Processing performance | `2.8.0` | Storage-aware scheduling, smarter frames |
-| P5 — Keep clips | `2.9.0` | Clip definitions, export, keep only the clips; additive schema |
-| P6 — Rename & move | `3.0.0` | Journal + recovery, rename, move. Major only if 6.1 bumps the profile format marker (older versions then refuse the profile); otherwise `2.10.0` and P7 shifts down |
+| PS — Saved sessions & linked folders | `2.5.0` | Session restore, recent sessions, links and junctions |
+| P1 — Quick wins | `2.6.0` | Skip length, mark short videos |
+| P2 — Delete safety & thumbnail seeking | `2.7.0` | Delete reasons, click-to-seek, scrub previews, paint selection |
+| PL — Persistent library | `2.8.0` | Open from the cache, background check, offline folders |
+| P3 — Reliable settings & tags | `2.9.0` | Additive schema; downgrade safety not promised (see Defaults) |
+| P4 — Processing performance | `2.10.0` | Storage-aware scheduling, smarter frames |
+| P5 — Keep clips | `2.11.0` | Clip definitions, export, keep only the clips; additive schema |
+| P6 — Rename & move | `3.0.0` | Journal + recovery, rename, move. Major only if 6.1 bumps the profile format marker (older versions then refuse the profile); otherwise `2.12.0` and P7 shifts down |
 | P7 — "Open with VideoCull" | `3.1.0` | Folder handoff, NSIS and Store Explorer entries |
 | P8 — Clip coverage spike | — | Gets a phase and version only if promoted |
 
@@ -1262,12 +1401,14 @@ Update the status column as work completes. Merge date recorded when phase lands
 
 | Phase | Status | Version | Merged |
 |---|---|---|---|
-| P0 — Media toolchain & licence compliance | 🔄 In progress | `2.4.0` | — |
-| P1 — Quick wins | ⬜ Not started | `2.5.0` | — |
-| P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.6.0` | — |
-| P3 — Reliable settings & tags | ⬜ Not started | `2.7.0` | — |
-| P4 — Processing performance | ⬜ Not started | `2.8.0` | — |
-| P5 — Keep clips | ⬜ Not started | `2.9.0` | — |
+| P0 — Media toolchain & licence compliance | ✅ Merged to main | `2.4.0` | 2026-10-16 |
+| PS — Saved sessions & linked folders | 🔄 In progress | `2.5.0` | — |
+| P1 — Quick wins | ⬜ Not started | `2.6.0` | — |
+| P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.7.0` | — |
+| PL — Persistent library | ⬜ Not started | `2.8.0` | — |
+| P3 — Reliable settings & tags | ⬜ Not started | `2.9.0` | — |
+| P4 — Processing performance | ⬜ Not started | `2.10.0` | — |
+| P5 — Keep clips | ⬜ Not started | `2.11.0` | — |
 | P6 — Rename & move | ⬜ Not started | `3.0.0` | — |
 | P7 — "Open with VideoCull" | ⬜ Not started | `3.1.0` | — |
 | P8 — Clip coverage spike | ⬜ Not started | — | — |
@@ -1286,6 +1427,10 @@ P0  Old vs new build compatibility check (Phase 0.4) ← gates the release
 P0  Licence compliance (Phase 0.5) ← ships with 0.3; notices, About section and Store terms can start now
 P0  Toolchain maintenance (Phase 0.6)
 
+PS  Saved sessions (Phase S.1)
+PS  Linked-file delete investigation (Phase S.2a) ← gates the delete part of S.2
+PS  Linked folders and files (Phase S.2)
+
 P1  Configurable skip length (Phase 1.1)
 P1  Mark short videos for deletion (Phase 1.2)
 
@@ -1293,6 +1438,11 @@ P2  Delete error investigation (Phase 2.1a)
 P2  library-registry + processing-runs + file-ops-delete + delete reasons (Phase 2.1) ← enables 5.4, 6.1, 7.1
 P2  Thumbnail seek times + safe publication + click-to-seek + scrub previews (Phase 2.2)
 P2  Drag-to-paint selection (Phase 2.3)
+
+PL  Open-time measurements + library ADR (Phase L.0) ← after 2.1; moves after 3.3 if L.2 needs it
+PL  Open from the cache (Phase L.1)
+PL  Verify in the background (Phase L.2)
+PL  Offline folders (Phase L.3)
 
 P3  Baselines + network-cache policy (Phase 3.1) ← before tags and Phase 4
 P3  Reliable settings save (Phase 3.2) ← before tags and 6.1 stage 6
@@ -1311,7 +1461,7 @@ P5  Fast mode after prototype (Phase 5.3c)
 P5  Keeping only the clips (Phase 5.4) ← after 5.3a verification + export record
 
 P6  Journal, recovery and per-folder write protection (Phase 6.1)
-P6  D-TS decision + profile format marker decision (sets 3.0.0 vs 2.10.0)
+P6  D-TS decision + profile format marker decision (sets 3.0.0 vs 2.12.0)
 P6  Rename (Phase 6.2)
 P6  Move, same volume (Phase 6.3 A)
 P6  Move, cross volume (Phase 6.3 B)

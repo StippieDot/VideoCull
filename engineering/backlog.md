@@ -107,6 +107,21 @@ Proposed direction:
 - Consolidate them behind one authoritative index where lookup requirements allow it.
 - The likely memory saving is modest, so include this in a broader session-state cleanup rather than performing an isolated refactor.
 
+### 14. Distributed cache for a video reached through a file link sits beside the link
+
+- With the experimental **Follow symbolic links and junctions** setting on and the distributed cache mode, a video reached through a file symbolic link has its cache row and thumbnails in the link's folder, not beside the real file. Folder links and junctions are not affected: their path already leads into the target folder.
+- Decisions are saved safely where they are; the only effect is where they live. Opening the target folder directly does not show them.
+- Moving the row beside the real file is not safe with the current cache: every scan of a folder prunes all rows in its database that the scan did not see (`pruneStaleVideosBefore`), so the target folder's next scan would delete the linked video's review decisions. About a dozen call sites also derive the cache folder from `path.dirname(video.path)` (main.js, duplicates.js, cache-folder-tracker.js).
+- Do with Phase L (persistent library), which reworks where rows live and how they are pruned: route every cache lookup through one resolver that uses the real path, and prune only rows whose real folder is the scanned folder.
+
+### 15. Show what's new once after an update
+
+- Updates change a lot at once, and the only place to read about them is the full release notes on GitHub (Help > Release Notes).
+- Agreed design: a panel shown once on the first start after an update (never on a fresh install, never behind the privacy screen, not during a scan), reopenable from Help > What's New. At most three highlights, each written as what the person can now do, with a button that opens the feature; one "Good to know" line for changed behaviour; a link to the full release notes. Skipped versions are combined. Releases without highlights show nothing.
+- Highlights are written by hand per release, never generated from the changelog, and ship with the app so they work offline. A release check refuses more than three highlights or a highlight without an action.
+- Pictures per highlight, in light and dark, captured by a script that reuses the Playwright Electron harness: each highlight names the steps to stage it, the script crops and saves the result, and refuses a capture that shows the user's name in a path. A highlight without a picture falls back to its icon.
+- Blocked on demo footage: the source footage behind the existing screenshots is gone, and the test fixtures are plain black clips. Record or license a small demo set first, keep it outside the repository, and note where it lives.
+
 ## Recommended order
 
 1. Add shared I/O-aware admission across media-analysis pipelines.

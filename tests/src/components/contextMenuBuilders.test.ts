@@ -184,7 +184,7 @@ test('folder header menu contains only approved items in order', () => {
 
 test('recent folder menu disables add to session for already-loaded roots', () => {
   const items = buildRecentFolderMenu({
-    directory: 'F:/Videos',
+    folders: ['F:/Videos'],
     loadedDirectories: ['f:\\videos'],
     onOpen: noop,
     onAddToSession: noop,

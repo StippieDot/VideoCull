@@ -120,7 +120,8 @@ export function buildFolderHeaderMenu(actions: {
 }
 
 export function buildRecentFolderMenu(args: {
-  directory: string;
+  /** The recent session's folders. */
+  folders: string[];
   loadedDirectories: string[];
   onOpen: Action;
   onAddToSession: Action;
@@ -128,8 +129,8 @@ export function buildRecentFolderMenu(args: {
   onCopyPath: Action;
   onRemove?: Action;
 }): ContextMenuItem[] {
-  const normalizedTarget = normalizePath(args.directory);
-  const alreadyLoaded = args.loadedDirectories.some((dir) => normalizePath(dir) === normalizedTarget);
+  const loaded = new Set(args.loadedDirectories.map(normalizePath));
+  const alreadyLoaded = args.folders.every((folder) => loaded.has(normalizePath(folder)));
   return [
     { key: 'open', label: 'Open', onSelect: args.onOpen },
     { key: 'add', label: 'Add to session', onSelect: args.onAddToSession, disabled: alreadyLoaded },

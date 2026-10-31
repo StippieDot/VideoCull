@@ -40,7 +40,9 @@ vi.mock('react-window', () => ({
     return (
       <div data-testid="virtual-list" onScroll={onScroll}>
         {Array.from({ length: rowCount }, (_, index) => (
-          <RowComponent key={index} index={index} style={{}} ariaAttributes={{}} />
+          <div key={index} data-row-index={index}>
+            <RowComponent index={index} style={{}} ariaAttributes={{}} />
+          </div>
         ))}
       </div>
     );
@@ -303,6 +305,33 @@ describe('GridMode search', () => {
 
     act(() => useStore.getState().setReviewMode(false));
     expect(await screen.findByText('Updated trip.mp4')).toBeTruthy();
+  });
+
+  test('keeps the videos in view where they are when a folder above them leaves the session', async () => {
+    const old = Array.from({ length: 12 }, (_, index) => makeVideo(`old${index}`, { filename: `a${index}.mp4`, path: `C:\\Old\\a${index}.mp4` }));
+    const kept = Array.from({ length: 6 }, (_, index) => makeVideo(`kept${index}`, { filename: `b${index}.mp4`, path: `D:\\Media\\b${index}.mp4` }));
+    useStore.setState({ directory: 'C:\\Old', directories: ['C:\\Old', 'D:\\Media'] });
+    useStore.getState().setVideos([...old, ...kept]);
+    useStore.getState().setGroupByFolder(false);
+    const rowOf = (name: string) => Number(screen.getByText(name).closest('[data-row-index]')?.getAttribute('data-row-index'));
+    const first = renderGrid();
+    await waitFor(() => expect(screen.getByText('b0.mp4')).toBeTruthy());
+    const keptRow = rowOf('b0.mp4');
+    expect(keptRow).toBeGreaterThan(0);
+    first.unmount();
+    // The kept folder's first row is at the top of the view, scrolled 40px past its top.
+    virtualListState.visibleRows = { startIndex: keptRow, stopIndex: keptRow + 1 };
+    renderGrid();
+    await waitFor(() => expect(screen.getByText('b0.mp4')).toBeTruthy());
+    // One card per row at this width: a row is the card height plus the gap.
+    const rowHeight = 372;
+    virtualListState.element.scrollTop = keptRow * rowHeight + 40;
+    Object.assign(window.electronAPI, { unloadDirectory: vi.fn().mockResolvedValue(true) });
+
+    await act(async () => { await useStore.getState().removeDirectory('C:\\Old'); });
+
+    await waitFor(() => expect(rowOf('b0.mp4')).toBe(0));
+    expect(virtualListState.element.scrollTop).toBe(40);
   });
 
   test('preserves the next surviving video offset when the visible pending batch disappears', async () => {

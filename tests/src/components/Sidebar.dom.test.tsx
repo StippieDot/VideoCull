@@ -96,9 +96,9 @@ describe('Sidebar recent folder behavior', () => {
     expect(onToggleTheme).toHaveBeenCalledTimes(1);
   });
 
-  test('opens a valid recent folder through the recent-session panel', async () => {
+  test('opens a valid recent session through the recent-session panel with its subfolder choice', async () => {
     const electronAPI = installElectronApiMock();
-    const onDirectoryPicked = vi.fn();
+    electronAPI.validateDroppedPath.mockResolvedValue({ valid: true, isDirectory: true });
     const currentDir = 'D:\\Media\\Current';
     const recentDir = 'D:\\Media\\Trips';
     useStore.setState({
@@ -106,15 +106,14 @@ describe('Sidebar recent folder behavior', () => {
       directories: [currentDir],
       settings: {
         ...useStore.getState().settings,
-        recentDirectories: [currentDir, recentDir],
-        recentDirectoryTimestamps: {
-          [currentDir]: Date.now() - 60_000,
-          [recentDir]: Date.now() - 120_000,
-        },
+        recentSessions: [
+          { folders: [currentDir], includeSubfolders: true, openedAt: Date.now() - 60_000 },
+          { folders: [recentDir], includeSubfolders: false, openedAt: Date.now() - 120_000 },
+        ],
       },
     });
 
-    renderSidebar({ onDirectoryPicked });
+    renderSidebar();
 
     await userEvent.click(screen.getByRole('button', { name: /recent folders/i }));
     const [recentOpenButton] = screen.getAllByRole('button', { name: /Media \/ Trips/i });
@@ -122,8 +121,9 @@ describe('Sidebar recent folder behavior', () => {
 
     await waitFor(() => {
       expect(electronAPI.validateDroppedPath).toHaveBeenCalledWith(recentDir);
-      expect(onDirectoryPicked).toHaveBeenCalledWith(recentDir);
+      expect(useStore.getState().directories).toEqual([recentDir]);
     });
+    expect(useStore.getState().includeSubfolders).toBe(false);
 
     expect(screen.queryByRole('button', { name: /clear all recent folders/i })).toBeNull();
   });
@@ -138,8 +138,15 @@ describe('Sidebar recent folder behavior', () => {
     const switcher = screen.getByRole('button', { name: 'Current + 1 more' });
     await userEvent.click(switcher);
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
-      'Open Another Folder...Ctrl+O', 'Add Folder to Session...', 'RescanF5', 'Close Session',
+      'Open Another Folder...Ctrl+O', 'Add Folder to Session...', 'Remove from Session', 'RescanF5', 'Close Session',
     ]);
+    // Remove from Session lists every loaded folder to the right.
+    fireEvent.mouseEnter(screen.getByRole('menuitem', { name: 'Remove from Session' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'E:\\Clips' }));
+    expect(useStore.getState().directories).toEqual(['D:\\Media\\Current']);
+    await userEvent.click(switcher);
+    // With one folder left it is closed with Close Session instead.
+    expect(screen.getByRole('menuitem', { name: 'Remove from Session' }).hasAttribute('disabled')).toBe(true);
     await userEvent.click(screen.getByRole('menuitem', { name: /Rescan/ }));
     expect(onRescan).toHaveBeenCalledTimes(1);
     await userEvent.click(switcher);
@@ -156,11 +163,10 @@ describe('Sidebar recent folder behavior', () => {
       directories: [currentDir],
       settings: {
         ...useStore.getState().settings,
-        recentDirectories: [currentDir, recentDir],
-        recentDirectoryTimestamps: {
-          [currentDir]: Date.now() - 60_000,
-          [recentDir]: Date.now() - 120_000,
-        },
+        recentSessions: [
+          { folders: [currentDir], includeSubfolders: true, openedAt: Date.now() - 60_000 },
+          { folders: [recentDir], includeSubfolders: false, openedAt: Date.now() - 120_000 },
+        ],
       },
     });
 
@@ -187,11 +193,10 @@ describe('Sidebar recent folder behavior', () => {
       directories: [currentDir],
       settings: {
         ...useStore.getState().settings,
-        recentDirectories: [currentDir, recentDir],
-        recentDirectoryTimestamps: {
-          [currentDir]: Date.now() - 60_000,
-          [recentDir]: Date.now() - 120_000,
-        },
+        recentSessions: [
+          { folders: [currentDir], includeSubfolders: true, openedAt: Date.now() - 60_000 },
+          { folders: [recentDir], includeSubfolders: false, openedAt: Date.now() - 120_000 },
+        ],
       },
     });
     electronAPI.validateDroppedPath.mockResolvedValue({ valid: false, isDirectory: false });
@@ -203,13 +208,13 @@ describe('Sidebar recent folder behavior', () => {
     await userEvent.click(recentOpenButton);
 
     await waitFor(() => {
-      expect(useStore.getState().settings.recentDirectories).toEqual([currentDir, recentDir]);
+      expect(useStore.getState().settings.recentSessions).toHaveLength(2);
       expect(screen.getByText('Unavailable')).toBeTruthy();
     });
-    expect(onNotify).toHaveBeenCalledWith(expect.objectContaining({
+    expect(useStore.getState().toasts).toEqual([expect.objectContaining({
       title: 'Folder unavailable',
       kind: 'warning',
-    }));
+    })]);
   });
 
   test('shows a back-to-grid escape hatch when duplicate mode is active but duplicates are disabled', async () => {

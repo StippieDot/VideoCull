@@ -78,7 +78,7 @@ test('a › list offers all of the folder before it, then each folder one level 
     // Ticked: the shown folder lies inside it.
     ['Trips', '1 to review', true],
   ]);
-  rows.forEach((item) => item.type === 'item' && item.onSelect());
+  rows.forEach((item) => item.type === 'item' && item.onSelect?.());
   // All of the loaded folder is the same as no filter.
   expect(vi.mocked(actions.filterToPath).mock.calls).toEqual([[null], [`${ROOT}\\Clips`], [`${ROOT}\\Trips`]]);
 });
@@ -99,7 +99,7 @@ test.each(['\\\\nas\\share', '\\\\nas\\share\\', '\\\\nas\\share\\Trips', '\\\\n
   const menu = buildSubfolderMenu(videos, parent, { directories: [base], filterPath: null }, actions);
   const children = menu.items.filter((item) => item.type === 'item' && item.key !== 'all');
   expect(labels(children)).toEqual(['Clips', 'Trips']);
-  children.forEach((item) => item.type === 'item' && item.onSelect());
+  children.forEach((item) => item.type === 'item' && item.onSelect?.());
   expect(actions.filterToPath).toHaveBeenNthCalledWith(1, `${base}\\Clips`);
   expect(actions.filterToPath).toHaveBeenNthCalledWith(2, `${base}\\Trips`);
 });
@@ -317,7 +317,10 @@ describe('LocationBar', () => {
       directories: [ROOT, 'P:\\'],
       videos,
       filteredVideos: videos,
-      settings: { ...useStore.getState().settings, recentDirectories: [ROOT, 'E:\\Old'] },
+      settings: { ...useStore.getState().settings, recentSessions: [
+        { folders: ['p:', ROOT], includeSubfolders: true, openedAt: 2 },
+        { folders: ['E:\\Old', 'F:\\Older'], includeSubfolders: true, openedAt: 1 },
+      ] },
     });
     const actions = appActions();
     render(<LocationBar sessionTitle="Media + 1 more" appActions={actions} />);
@@ -331,8 +334,8 @@ describe('LocationBar', () => {
       ['P:\\1 to review', 'false'],
     ]);
     // Recent sessions that are not loaded follow, to open instead.
-    act(() => screen.getByRole('menuitem', { name: 'E:\\Old' }).click());
-    expect(actions.openRecent).toHaveBeenCalledWith('E:\\Old');
+    act(() => screen.getByRole('menuitem', { name: 'E:\\Old + 1 more' }).click());
+    expect(actions.openRecent).toHaveBeenCalledWith(['E:\\Old', 'F:\\Older']);
     act(() => screen.getByRole('button', { name: 'Loaded folders' }).click());
     act(() => screen.getByRole('menuitemradio', { name: /^P:/ }).click());
     expect(shownIds()).toEqual(['p']);

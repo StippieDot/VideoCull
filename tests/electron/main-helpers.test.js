@@ -7,6 +7,7 @@ const {
   filterLoadedDeletionPaths,
   filterValidCacheSaveVideos,
   isKnownLoadedFilePath,
+  isPathWithinDir,
   cacheRelevantSettingsChanged,
   detectCompatibility,
   escapeHtml,
@@ -545,6 +546,22 @@ describe('empty folder cleanup safety', () => {
     assert.deepEqual(Array.from(removed), ['D:\\Media\\Trip\\Day1']);
   });
 
+  test('never removes a folder that is a junction or symbolic link', async () => {
+    const removeCalls = [];
+    const removed = await removeEmptyDeletedVideoFolders({
+      deletedFilePaths: ['D:\\Media\\Linked\\clip.mp4', 'D:\\Media\\Plain\\clip.mp4'],
+      loadedDirectories: new Set(['D:\\Media']),
+      isPathWithinAnyDir: async () => true,
+      isLink: async (target) => target === 'D:\\Media\\Linked',
+      removeDir: async (target) => {
+        removeCalls.push(target);
+      },
+    });
+
+    assert.deepEqual(removeCalls, ['D:\\Media\\Plain']);
+    assert.deepEqual(Array.from(removed), ['D:\\Media\\Plain']);
+  });
+
   test('does not walk upward and remove ancestor folders after child cleanup', async () => {
     const removeCalls = [];
     await removeEmptyDeletedVideoFolders({
@@ -670,5 +687,70 @@ describe('ffprobe error summaries', () => {
       summarizeMediaProbeError(new Error('Invalid data found when processing input')),
       'Invalid media data: Invalid data found when processing input'
     );
+  });
+});
+
+describe('containment through links', () => {
+  const fsp = require('node:fs/promises');
+  const os = require('node:os');
+  const path = require('node:path');
+
+  test('a video reached through a junction is inside the loaded folder only when a scan followed that junction', async () => {
+    const tempRoot = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), 'videocull-containment-')));
+    try {
+      const loaded = path.join(tempRoot, 'loaded');
+      const outside = path.join(tempRoot, 'outside');
+      await fsp.mkdir(loaded);
+      await fsp.mkdir(outside);
+      await fsp.writeFile(path.join(outside, 'clip.mp4'), 'x');
+      await fsp.symlink(outside, path.join(loaded, 'linked'), 'junction');
+      const throughLink = path.join(loaded, 'linked', 'clip.mp4');
+
+      const followed = new Map([[path.join(loaded, 'linked'), outside]]);
+      assert.equal(await isPathWithinDir(throughLink, loaded, followed), true);
+      assert.equal(await isPathWithinDir(throughLink, loaded, new Map([[path.join(loaded, 'linked'), path.join(tempRoot, 'elsewhere')]])), false);
+      assert.equal(await isPathWithinDir(throughLink, loaded), false);
+      // The shown path must still be inside the loaded folder.
+      assert.equal(await isPathWithinDir(path.join(outside, 'clip.mp4'), loaded, followed), false);
+      // A file still to be written through the followed link, such as a thumbnail.
+      assert.equal(await isPathWithinDir(path.join(loaded, 'linked', 'new-thumb.jpg'), loaded, followed), true);
+
+      // A link made after the scan is not trusted, even to the same target.
+      await fsp.symlink(outside, path.join(loaded, 'made-later'), 'junction');
+      assert.equal(await isPathWithinDir(path.join(loaded, 'made-later', 'clip.mp4'), loaded, followed), false);
+      assert.equal(await isPathWithinDir(path.join(loaded, 'made-later', 'new-thumb.jpg'), loaded, followed), false);
+    } finally {
+      await fsp.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('a path is let through unchecked only when nothing exists there yet', async () => {
+    const tempRoot = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), 'videocull-containment-missing-')));
+    try {
+      const gone = path.join(tempRoot, 'gone');
+      await fsp.mkdir(gone);
+      await fsp.symlink(gone, path.join(tempRoot, 'dangling'), 'junction');
+      await fsp.rm(gone, { recursive: true });
+
+      // A thumbnail that is still being generated.
+      assert.equal(await isPathWithinDir(path.join(tempRoot, 'thumb.jpg'), tempRoot), true);
+      // A link that points at nothing cannot prove where it leads, nor can anything below it.
+      assert.equal(await isPathWithinDir(path.join(tempRoot, 'dangling'), tempRoot), false);
+      assert.equal(await isPathWithinDir(path.join(tempRoot, 'dangling', 'thumb.jpg'), tempRoot), false);
+      // A file still to come in a folder that does not exist yet either.
+      assert.equal(await isPathWithinDir(path.join(tempRoot, 'new', 'deeper', 'thumb.jpg'), tempRoot), true);
+    } finally {
+      await fsp.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('a path whose real location cannot be read is refused', async () => {
+    const realpath = vi.spyOn(require('node:fs').promises, 'realpath')
+      .mockRejectedValue(Object.assign(new Error('denied'), { code: 'EACCES' }));
+    try {
+      assert.equal(await isPathWithinDir('D:\\Media\\clip.mp4', 'D:\\Media'), false);
+    } finally {
+      realpath.mockRestore();
+    }
   });
 });

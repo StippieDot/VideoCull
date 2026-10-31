@@ -27,3 +27,51 @@ test('stopping duplicate detection cancels the run and forgets it', () => {
   assert.match(body, /activeDuplicateRun = null/);
   assert.doesNotMatch(body, /resume/);
 });
+
+describe('linked folders and files', () => {
+  test('a reset forgets the followed links and real paths of the old session', () => {
+    const body = handlerBody('reset-loaded-directories');
+    for (const name of ['knownRealPathsByPath', 'sessionRealPathOwners', 'followedLinks']) {
+      assert.match(body, new RegExp(`\\b${name}\\.clear\\(\\)`));
+    }
+  });
+
+  for (const [channel, remove] of [['batch-delete', 'shell.trashItem'], ['permanently-delete', 'fs.unlink']]) {
+    test(`${channel} checks and removes the real file, not a file link to it`, () => {
+      const body = handlerBody(channel);
+      assert.match(body, /const realPath = knownRealPathsByPath\.get\(filePath\) \?\? filePath;/);
+      assert.match(body, /filePath: realPath,/);
+      assert.match(body, new RegExp(`${remove.replace('.', '\\.')}\\(realPath\\)`));
+    });
+  }
+
+  test('unloading one folder forgets only that folder and keeps the session', () => {
+    const body = handlerBody('unload-directory');
+    assert.match(body, /!currentScanDirs\.has\(dirPath\) \|\| currentScanDirs\.size < 2\) return false/);
+    assert.match(body, /cacheService\.blockFolder\(folderPath, cacheOptions\)/);
+    assert.match(body, /currentScanDirs\.delete\(dirPath\)/);
+    // A video another folder reaches through a link is listed again only by a rescan.
+    assert.match(body, /if \(followedLinks\.size > 0\) return false;/);
+    for (const name of ['knownVideoPaths', 'knownVideoIdsByPath', 'knownVideoIdentitiesByPath', 'knownRealPathsByPath']) {
+      assert.ok(body.includes(`${name}.delete(videoPath)`), name);
+    }
+    assert.doesNotMatch(body, /\.clear\(\)/);
+    assert.doesNotMatch(body, /scanGeneration/);
+  });
+
+  test('a video reached through a link is played or opened only while the link still leads to the scanned file', () => {
+    assert.match(mainSource, /\|\| !await stillLeadsToScannedFile\(filePath\)\) \{\s+return new Response\('Access Denied'/);
+    const body = mainSource.match(/async function isValidLoadedPath[\s\S]*?\n\}/)?.[0] ?? '';
+    assert.match(body, /&& stillLeadsToScannedFile\(filePath\)/);
+  });
+
+  test('duplicate detection compares each real file once', () => {
+    assert.match(handlerBody('find-duplicates'), /if \(seenRealPaths\.has\(realKey\)\) continue;/);
+  });
+
+  test('empty-folder cleanup stays inside the loaded folders and skips links', () => {
+    const body = mainSource.match(/async function maybeRemoveEmptyDeletedVideoFolders[\s\S]*?\n\}/)?.[0] ?? '';
+    assert.match(body, /isPathWithinAnyDir\(folderPath, dirs, false\)/);
+    assert.match(body, /isSymbolicLink\(\)/);
+  });
+});

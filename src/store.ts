@@ -4,12 +4,13 @@ import type {
   Video, VideoReviewChanges, VideoReviewUpdate, VideoStatus, VideoStats, SidebarAggregates, VideoStore, ThumbReadyEvent,
   ScanProgress, ThumbProgress, UndoEntry,
   StatusFilter, SortField, SortOrder, FolderSortField, FolderFilter, RatingFilter,
-  ToastInput, ToastKind,
+  ToastInput, ToastKind, SavedSession,
 } from './types';
-import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, normalizeFeatureSettings, pruneRecentDirectories } from './keybind-defaults';
+import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, normalizeFeatureSettings } from './keybind-defaults';
+import { checkSessionFolders, folderKey, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey } from './sessions';
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
-import { detectVideoCompatibility, folderInsideTest, normalizeFolder } from './utils';
+import { detectVideoCompatibility, folderInsideTest, formatRecentPath, normalizeFolder } from './utils';
 import { getPreloadedColorTheme } from './theme';
 
 export const DUPLICATE_METHOD_NAMES: Record<DuplicateComparisonMode, string> = { phash: 'pHash', visual: 'Visual Similarity' };
@@ -496,6 +497,20 @@ function getVideoByReviewIndex(videos: Video[], scopeIds: string[] | null, fallb
     return videoId ? byId.get(videoId) ?? null : null;
   }
   return fallbackVideos[reviewIndex] ?? null;
+}
+
+/** Settings with `session` as the one to reopen and at the front of the recents. */
+// Counts every change to the session to reopen, so settings loaded meanwhile can tell it changed,
+// also when it was closed (back to null).
+let sessionChangeCount = 0;
+
+function withSession(settings: AppSettings, session: SavedSession, replacing?: string[]): AppSettings {
+  sessionChangeCount += 1;
+  return {
+    ...settings,
+    lastSession: session,
+    recentSessions: rememberSession(settings.recentSessions, session, Date.now(), replacing),
+  };
 }
 
 function saveSettingsQuietly(settings: AppSettings) {
@@ -1013,6 +1028,7 @@ const useStore = create<VideoStore>((set, get) => ({
     perDriveCachePaths: {},
     autoPruneMissingSubfolderCache: false,
     removeEmptyFoldersAfterDelete: false,
+    followLinks: false,
     thumbsPerVideo: 6,
     defaultCardScale: 1,
     defaultSortBy: 'name',
@@ -1025,8 +1041,9 @@ const useStore = create<VideoStore>((set, get) => ({
     hardwareAccel: false,
     keepAwakeWhileProcessing: true,
     micaTitleBar: true,
-    recentDirectories: [],
-    recentDirectoryTimestamps: {},
+    lastSession: null,
+    recentSessions: [],
+    reopenLastSession: false,
     autoUpdates: true,
     globalMute: false,
     features: { ...DEFAULT_FEATURES },
@@ -1041,110 +1058,166 @@ const useStore = create<VideoStore>((set, get) => ({
   // ── Notifications ──
   toasts: [],
 
+  unreachableFolders: new Set(),
+
   // ── Actions ──
   setDirectory: async (dir: string | null) => {
+    if (dir !== null) {
+      await get().openSession({ folders: [dir], includeSubfolders: get().includeSubfolders });
+      return;
+    }
+    if (finalReviewSave || retryStatesByDirectory.size > 0 || reviewSavesByDirectory.size > 0) await resetAllRetryQueues();
+    void window.electronAPI?.cancelFinishAction?.();
+    // A session closed on purpose stays closed at the next start.
+    sessionChangeCount += 1;
+    const settings = { ...get().settings, lastSession: null };
+    saveSettingsQuietly(settings);
+    set({
+      settings,
+      directory: null,
+      directories: [],
+      videos: [],
+      filteredVideos: [],
+      stats: computeStats([]),
+      sidebarAggregates: computeSidebarAggregates([]),
+      searchQuery: '',
+      folderFilter: null,
+      reviewMode: false,
+      reviewIndex: 0,
+      reviewScopeIds: null,
+      activeReviewVideoPath: null,
+      duplicateGroupsMode: false,
+      duplicateGroups: [],
+      duplicateProgress: null,
+      duplicateFilter: false,
+      duplicatePathFilter: '',
+      duplicateMinSimilarity: 0,
+      duplicateSortBy: 'similarity',
+      duplicateSortOrder: 'desc',
+      undoStack: [],
+      gridSelectionIds: new Set(),
+      gridSelectionAnchorId: null,
+    });
+  },
+
+  openSession: async (session: SavedSession, available: string[] = session.folders) => {
     // Publishing new folders starts a scan that closes the old cache.
     if (finalReviewSave || retryStatesByDirectory.size > 0 || reviewSavesByDirectory.size > 0) await resetAllRetryQueues();
-    // Replacing or closing the session ends the run a chosen sleep or shutdown belonged to; it must
+    // Replacing the session ends the run a chosen sleep or shutdown belonged to; it must
     // not carry over to the processing of the next folder.
     void window.electronAPI?.cancelFinishAction?.();
-    if (dir !== null) {
-      const { settings } = get();
-      const existing = settings.recentDirectories.filter((d) => d !== dir);
-      const updated = [dir, ...existing].slice(0, 8);
-      const nextTimestamps = { ...settings.recentDirectoryTimestamps, [dir]: Date.now() };
-      const prunedTimestamps: Record<string, number> = {};
-      for (const p of updated) {
-        if (nextTimestamps[p]) prunedTimestamps[p] = nextTimestamps[p];
-      }
-      const newSettings = {
-        ...settings,
-        recentDirectories: updated,
-        recentDirectoryTimestamps: prunedTimestamps,
-      };
-      set({
-        directory: dir,
-        directories: [dir],
-        settings: newSettings,
-        searchQuery: '',
-        folderFilter: null,
-        reviewMode: false,
-        reviewIndex: 0,
-        reviewScopeIds: null,
-        activeReviewVideoPath: null,
-        duplicateGroupsMode: false,
-        duplicateGroups: [],
-        duplicateProgress: null,
-        duplicateFilter: false,
-        duplicatePathFilter: '',
-        duplicateMinSimilarity: 0,
-        duplicateSortBy: 'similarity',
-        duplicateSortOrder: 'desc',
-        undoStack: [],
-        gridSelectionIds: new Set(),
-        gridSelectionAnchorId: null,
-      });
-      if (window.electronAPI) {
-        void window.electronAPI.saveConfig(newSettings).catch((err) => {
-          console.warn('[store] Failed to save directory settings:', err);
-        });
-      }
-    } else {
-      set({
-        directory: null,
-        directories: [],
-        videos: [],
-        filteredVideos: [],
-        stats: computeStats([]),
-        sidebarAggregates: computeSidebarAggregates([]),
-        searchQuery: '',
-        folderFilter: null,
-        reviewMode: false,
-        reviewIndex: 0,
-        reviewScopeIds: null,
-        activeReviewVideoPath: null,
-        duplicateGroupsMode: false,
-        duplicateGroups: [],
-        duplicateProgress: null,
-        duplicateFilter: false,
-        duplicatePathFilter: '',
-        duplicateMinSimilarity: 0,
-        duplicateSortBy: 'similarity',
-        duplicateSortOrder: 'desc',
-        undoStack: [],
-        gridSelectionIds: new Set(),
-        gridSelectionAnchorId: null,
+    const nextDirs = uniqueDirectories(available);
+    // A folder opened by hand after its drive came back is no longer shown as unavailable.
+    get().markFolderReachability(nextDirs, []);
+    // Folders that could not be opened stay in the saved session, so a drive that comes back is not lost.
+    const settings = withSession(get().settings, { ...session, folders: uniqueDirectories(session.folders) });
+    saveSettingsQuietly(settings);
+    set({
+      directory: nextDirs[0] ?? null,
+      directories: nextDirs,
+      includeSubfolders: session.includeSubfolders,
+      settings,
+      searchQuery: '',
+      folderFilter: null,
+      reviewMode: false,
+      reviewIndex: 0,
+      reviewScopeIds: null,
+      activeReviewVideoPath: null,
+      duplicateGroupsMode: false,
+      duplicateGroups: [],
+      duplicateProgress: null,
+      duplicateFilter: false,
+      duplicatePathFilter: '',
+      duplicateMinSimilarity: 0,
+      duplicateSortBy: 'similarity',
+      duplicateSortOrder: 'desc',
+      undoStack: [],
+      gridSelectionIds: new Set(),
+      gridSelectionAnchorId: null,
+    });
+  },
+
+  reopenSession: async (session: SavedSession) => {
+    const validator = window.electronAPI?.validateDroppedPath;
+    const { reachable, missing } = validator
+      ? await checkSessionFolders(session.folders, validator)
+      : { reachable: session.folders, missing: [] };
+    if (missing.length > 0) {
+      get().pushToast({
+        title: reachable.length === 0
+          ? (missing.length === 1 ? 'Folder unavailable' : 'Folders unavailable')
+          : `${missing.length} ${missing.length === 1 ? 'folder' : 'folders'} not opened`,
+        detail: missing.map(formatRecentPath).join('\n'),
+        kind: 'warning',
+        dedupeKey: `recent-unavailable:${sessionKey(session.folders)}`,
       });
     }
+    get().markFolderReachability(reachable, missing);
+    if (reachable.length === 0) return false;
+    await get().openSession(session, reachable);
+    return true;
+  },
+
+  markFolderReachability: (reachable: string[], missing: string[]) => {
+    const current = get().unreachableFolders;
+    const next = new Set(current);
+    for (const folder of reachable) next.delete(folderKey(folder));
+    for (const folder of missing) next.add(folderKey(folder));
+    if (next.size === current.size && [...next].every((key) => current.has(key))) return;
+    set({ unreachableFolders: next });
   },
 
   addDirectory: (dir: string) => {
     const state = get();
     const nextDirs = uniqueDirectories([...state.directories, dir]);
-    const existing = state.settings.recentDirectories.filter((d) => d !== dir);
-    const updated = [dir, ...existing].slice(0, 8);
-    const nextTimestamps = { ...state.settings.recentDirectoryTimestamps, [dir]: Date.now() };
-    const prunedTimestamps: Record<string, number> = {};
-    for (const p of updated) {
-      if (nextTimestamps[p]) prunedTimestamps[p] = nextTimestamps[p];
-    }
-    const newSettings = {
-      ...state.settings,
-      recentDirectories: updated,
-      recentDirectoryTimestamps: prunedTimestamps,
-    };
+    const settings = withSession(state.settings, { folders: nextDirs, includeSubfolders: state.includeSubfolders }, state.directories);
     set({
       directory: nextDirs[0] ?? null,
       directories: nextDirs,
-      settings: newSettings,
+      settings,
       folderFilter: null,
       reviewIndex: 0,
     });
-    if (window.electronAPI) {
-      void window.electronAPI.saveConfig(newSettings).catch((err) => {
-        console.warn('[store] Failed to save directory settings:', err);
-      });
+    saveSettingsQuietly(settings);
+  },
+
+  removeDirectory: async (dir: string) => {
+    const before = get();
+    if (!before.directories.includes(dir) || before.directories.length < 2) return;
+    // While nothing runs, the folder's videos are dropped in place. During a scan or processing, the
+    // videos stay and the changed folder list triggers the usual rescan, which cancels that work first.
+    let unloaded = false;
+    if (!before.isScanning && !before.isGenerating && !before.isFindingDuplicates && window.electronAPI?.unloadDirectory) {
+      // Decisions still waiting to be written for the folder must land before main stops accepting them.
+      await resetAllRetryQueues();
+      unloaded = await window.electronAPI.unloadDirectory(dir).catch(() => false);
     }
+    const state = get();
+    const nextDirs = state.directories.filter((root) => root !== dir);
+    if (nextDirs.length === state.directories.length || nextDirs.length === 0) return;
+    const settings = withSession(state.settings, { folders: nextDirs, includeSubfolders: state.includeSubfolders }, state.directories);
+    if (unloaded) {
+      // The folder list changes before the videos leave, so the grid can tell they left with their
+      // folder and keep the videos in view where they are.
+      set({ directory: nextDirs[0], directories: nextDirs, settings });
+      get().removeDeletedVideos(state.videos.filter((video) => isPathInsideRoot(video.path, dir)).map((video) => video.path));
+      if (state.folderFilter && isPathInsideRoot(state.folderFilter.path, dir)) get().setFolderFilter(null);
+      saveSettingsQuietly(settings);
+      return;
+    }
+    set({
+      directory: nextDirs[0],
+      directories: nextDirs,
+      settings,
+      folderFilter: null,
+      reviewMode: false,
+      reviewIndex: 0,
+      reviewScopeIds: null,
+      activeReviewVideoPath: null,
+      gridSelectionIds: new Set(),
+      gridSelectionAnchorId: null,
+    });
+    saveSettingsQuietly(settings);
   },
 
   setDirectories: async (dirs: string[]) => {
@@ -1164,7 +1237,16 @@ const useStore = create<VideoStore>((set, get) => ({
     });
   },
 
-  setIncludeSubfolders: (val: boolean) => set({ includeSubfolders: val }),
+  setIncludeSubfolders: (val: boolean) => {
+    const { directories, settings } = get();
+    if (directories.length === 0) {
+      set({ includeSubfolders: val });
+      return;
+    }
+    const nextSettings = withSession(settings, { folders: directories, includeSubfolders: val });
+    set({ includeSubfolders: val, settings: nextSettings });
+    saveSettingsQuietly(nextSettings);
+  },
 
   setVideos: (videos: Video[]) => {
     const previousVideos = get().videos;
@@ -1838,33 +1920,20 @@ const useStore = create<VideoStore>((set, get) => ({
     persistReviewState(stateNow.directory, stateNow.directories, [updatedVideo], ['bookmarks']);
   },
 
-  clearRecentDirectories: () => {
-    const { settings } = get();
-    const nextSettings = {
-      ...settings,
-      recentDirectories: [],
-      recentDirectoryTimestamps: {},
-    };
-    set({ settings: nextSettings });
-    if (window.electronAPI) {
-      void window.electronAPI.saveConfig(nextSettings);
-    }
+  clearRecentSessions: () => {
+    const settings = { ...get().settings, recentSessions: [] };
+    set({ settings });
+    saveSettingsQuietly(settings);
   },
 
-  removeRecentDirectory: (dir: string) => {
+  removeRecentSession: (folders: string[]) => {
     const { settings } = get();
-    const nextRecentDirectories = settings.recentDirectories.filter((p) => p !== dir);
-    const nextTimestamps = { ...settings.recentDirectoryTimestamps };
-    delete nextTimestamps[dir];
     const nextSettings = {
       ...settings,
-      recentDirectories: nextRecentDirectories,
-      recentDirectoryTimestamps: nextTimestamps,
+      recentSessions: settings.recentSessions.filter((recent) => !sameSessionFolders(recent.folders, folders)),
     };
     set({ settings: nextSettings });
-    if (window.electronAPI) {
-      void window.electronAPI.saveConfig(nextSettings);
-    }
+    saveSettingsQuietly(nextSettings);
   },
 
   pushToast: (toast, kind = 'info') => {
@@ -2012,30 +2081,36 @@ const useStore = create<VideoStore>((set, get) => ({
   },
   loadSettings: async () => {
     if (window.electronAPI) {
+      // Checking the recent folders can take a while (an offline share times out); a folder opened
+      // meanwhile must not be replaced by the session read from disk.
+      const sessionChangesBeforeLoad = sessionChangeCount;
       const raw = await window.electronAPI.getConfig();
       if (raw) {
         let migrated = migrateSettings(raw as unknown as Record<string, unknown>);
 
-        // Prune stale recent directories on app startup
-        if (migrated.recentDirectories && migrated.recentDirectories.length > 0) {
+        // Drop recent sessions none of whose folders exist any more
+        if (migrated.recentSessions && migrated.recentSessions.length > 0) {
           try {
-            const pruned = await pruneRecentDirectories(
-              migrated.recentDirectories,
+            const { recentSessions, missingFolders } = await pruneRecentSessions(
+              migrated.recentSessions,
               (path: string) => window.electronAPI!.validateDroppedPath(path)
             );
-            const rawTimestamps = (migrated.recentDirectoryTimestamps ?? {}) as Record<string, number>;
-            const prunedTimestamps: Record<string, number> = {};
-            for (const p of pruned) {
-              if (rawTimestamps[p]) prunedTimestamps[p] = rawTimestamps[p];
-            }
-            migrated = {
-              ...migrated,
-              recentDirectories: pruned,
-              recentDirectoryTimestamps: prunedTimestamps,
-            };
+            migrated = { ...migrated, recentSessions };
+            get().markFolderReachability([], missingFolders);
           } catch (err) {
-            console.warn('[store] Failed to prune recent directories:', err);
+            console.warn('[store] Failed to prune recent sessions:', err);
           }
+        }
+
+        if (sessionChangeCount !== sessionChangesBeforeLoad) {
+          const liveSession = get().settings.lastSession;
+          migrated = {
+            ...migrated,
+            lastSession: liveSession,
+            recentSessions: liveSession
+              ? rememberSession(migrated.recentSessions ?? [], liveSession, Date.now())
+              : migrated.recentSessions,
+          };
         }
 
         const fullSettings = {

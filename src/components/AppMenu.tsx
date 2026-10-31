@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { LucideIcon } from 'lucide-react';
-import { Check } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import './ContextMenu.css';
 import './AppMenu.css';
 
@@ -12,6 +12,8 @@ export type AppMenuAction = {
   icon?: LucideIcon;
   /** Right-aligned extra text, such as a count or a shortcut. */
   detail?: string;
+  /** Tooltip, such as every folder of a recent session. */
+  title?: string;
   /** Ticked; in a selection menu, the chosen one. */
   checked?: boolean;
   /** A radio item; in a selection menu every item is one unless this is false. */
@@ -22,7 +24,10 @@ export type AppMenuAction = {
   muted?: boolean;
   /** Selecting it shows another menu in the same place instead of closing. */
   keepOpen?: boolean;
-  onSelect: () => void;
+  /** Items shown to the right on hover, click or Right, as a native submenu does. */
+  submenu?: AppMenuItem[];
+  /** Not needed for an item with a submenu. */
+  onSelect?: () => void;
 };
 
 export type AppMenuItem =
@@ -103,6 +108,9 @@ export default function AppMenu({
     return checked >= 0 ? checked : focusable[0] ?? -1;
   });
   const [position, setPosition] = useState({ left: x, top: y });
+  // The open submenu: which item it belongs to and where it shows.
+  const [submenu, setSubmenu] = useState<{ index: number; x: number; y: number } | null>(null);
+  const submenuItem = submenu ? items[submenu.index] as AppMenuAction : null;
   const showIcons = items.some((item) => isAction(item) && (item.icon || item.checked !== undefined));
 
   useLayoutEffect(() => {
@@ -124,7 +132,8 @@ export default function AppMenu({
     const inside = (target: EventTarget | null) => target instanceof Node && Boolean(menuRef.current?.contains(target));
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Element | null;
-      if (inside(target) || (keepOpenWithin && target?.closest?.(keepOpenWithin))) return;
+      // A submenu is drawn in its own layer; using it must not close this menu.
+      if (inside(target) || target?.closest?.('.app-menu-submenu') || (keepOpenWithin && target?.closest?.(keepOpenWithin))) return;
       onClose(false);
     };
     const handleScroll = (event: Event) => {
@@ -143,10 +152,24 @@ export default function AppMenu({
     };
   }, [keepOpenWithin, onClose]);
 
-  const run = (item: AppMenuAction) => {
+  const openSubmenu = (index: number) => {
+    const rect = itemRefs.current.get(index)?.getBoundingClientRect();
+    if (rect) setSubmenu({ index, x: rect.right, y: rect.top });
+  };
+
+  const closeSubmenu = (refocus: boolean) => {
+    if (refocus && submenu) itemRefs.current.get(submenu.index)?.focus();
+    setSubmenu(null);
+  };
+
+  const run = (item: AppMenuAction, index: number) => {
     if (item.disabled) return;
+    if (item.submenu) {
+      openSubmenu(index);
+      return;
+    }
     if (!item.keepOpen) onClose(false);
-    item.onSelect();
+    item.onSelect?.();
   };
 
   const jumpToLetter = (letter: string) => {
@@ -161,7 +184,11 @@ export default function AppMenu({
       ArrowUp: () => setFocus(stepIndex(focusable, focus, -1)),
       Home: () => setFocus(focusable[0] ?? -1),
       End: () => setFocus(focusable[focusable.length - 1] ?? -1),
-      ArrowRight: () => onSwitch?.(1),
+      ArrowRight: () => {
+        const focused = items[focus];
+        if (focused && isAction(focused) && focused.submenu && !focused.disabled) openSubmenu(focus);
+        else onSwitch?.(1);
+      },
       ArrowLeft: () => onSwitch?.(-1),
       Escape: () => onClose(true),
       Tab: () => onClose(false),
@@ -216,17 +243,39 @@ export default function AppMenu({
             type="button"
             role={radio ? 'menuitemradio' : checkable ? 'menuitemcheckbox' : 'menuitem'}
             aria-checked={checkable ? Boolean(item.checked) : undefined}
+            aria-haspopup={item.submenu ? 'menu' : undefined}
+            aria-expanded={item.submenu ? submenu?.index === index : undefined}
             disabled={item.disabled}
+            title={item.title}
             tabIndex={index === focus ? 0 : -1}
             className={`app-context-menu-item app-menu-item${item.tone && item.tone !== 'default' ? ` ${item.tone}` : ''}${item.muted ? ' muted' : ''}`}
-            onClick={() => run(item)}
+            onClick={() => run(item, index)}
+            onMouseEnter={() => {
+              if (item.submenu && !item.disabled) openSubmenu(index);
+              else if (submenu) setSubmenu(null);
+            }}
           >
             {showIcons && <span className="app-menu-icon">{Icon && <Icon size={14} />}</span>}
             <span className="app-menu-label">{item.label}</span>
             {item.detail && <span className="app-menu-item-detail">{item.detail}</span>}
+            {item.submenu && <ChevronRight size={14} className="app-menu-submenu-arrow" aria-hidden="true" />}
           </button>
         );
       })}
+      {submenu && submenuItem?.submenu && (
+        <AppMenu
+          className="app-menu-submenu"
+          label={submenuItem.label}
+          x={submenu.x}
+          y={submenu.y}
+          // Choosing in the submenu closes this menu too.
+          items={submenuItem.submenu.map((entry) => (isAction(entry)
+            ? { ...entry, onSelect: () => { onClose(false); entry.onSelect?.(); } }
+            : entry))}
+          onClose={closeSubmenu}
+          onSwitch={(direction) => { if (direction === -1) closeSubmenu(true); }}
+        />
+      )}
     </div>,
     document.body,
   );

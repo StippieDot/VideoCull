@@ -56,3 +56,43 @@ test('a context menu gives focus back to where it was when Esc closes it', () =>
   act(() => screen.getByRole('menuitem', { name: 'Keep' }).click());
   expect(onSelect).toHaveBeenCalled();
 });
+
+test('an item with a submenu shows it to the right on hover or Right, and choosing in it closes both', () => {
+  const onClose = vi.fn();
+  const onSelect = vi.fn();
+  render(
+    <AppMenu
+      label="Session"
+      x={0}
+      y={0}
+      onClose={onClose}
+      items={[
+        { key: 'rescan', label: 'Rescan', onSelect: vi.fn() },
+        { key: 'remove', label: 'Remove from Session', submenu: [{ key: 'clips', label: 'E:\Clips', onSelect }] },
+      ]}
+    />,
+  );
+  const remove = screen.getByRole('menuitem', { name: 'Remove from Session' });
+  expect(remove.getAttribute('aria-haspopup')).toBe('menu');
+
+  fireEvent.mouseEnter(remove);
+  expect(screen.getByRole('menu', { name: 'Remove from Session' })).toBeTruthy();
+  // Moving to another item closes it again.
+  fireEvent.mouseEnter(screen.getByRole('menuitem', { name: 'Rescan' }));
+  expect(screen.queryByRole('menu', { name: 'Remove from Session' })).toBeNull();
+
+  remove.focus();
+  fireEvent.keyDown(screen.getByRole('menu', { name: 'Session' }), { key: 'End' });
+  fireEvent.keyDown(screen.getByRole('menu', { name: 'Session' }), { key: 'ArrowRight' });
+  const submenu = screen.getByRole('menu', { name: 'Remove from Session' });
+  expect(focused()).toBe('E:\Clips');
+  // Left goes back to the item it came from.
+  fireEvent.keyDown(submenu, { key: 'ArrowLeft' });
+  expect(screen.queryByRole('menu', { name: 'Remove from Session' })).toBeNull();
+  expect(focused()).toBe('Remove from Session');
+
+  fireEvent.click(remove);
+  act(() => screen.getByRole('menuitem', { name: 'E:\Clips' }).click());
+  expect(onSelect).toHaveBeenCalledTimes(1);
+  expect(onClose).toHaveBeenCalledWith(false);
+});

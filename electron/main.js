@@ -4,7 +4,7 @@ const fs = require('fs/promises');
 const { randomUUID } = require('crypto');
 const os = require('os');
 const { performance: nodePerformance } = require('perf_hooks');
-const { scanDirectory } = require('./scanner');
+const { scanDirectory, realPathKey } = require('./scanner');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
 const { migrateCacheMoves } = require('./cache-migration');
@@ -74,6 +74,7 @@ const {
   normalizeReportRoots,
   normalizeReviewStateChanges,
   removeEmptyDeletedVideoFolders,
+  isPathWithinDir: isPathWithinDirHelper,
   shouldRememberMediaProbeFailure,
   summarizeMediaProbeError,
   thumbAbsolute,
@@ -142,6 +143,13 @@ const ALLOWED_EXTERNAL_HTTPS_HOSTS = new Set(['docs.videocull.app']);
 const knownVideoPaths = new Set();
 const knownVideoIdsByPath = new Map();
 const knownVideoIdentitiesByPath = new Map();
+// Videos reached through a link or junction: shown path -> the file itself, which delete acts on.
+const knownRealPathsByPath = new Map();
+// Real path key -> the shown path that owns it, so loaded folders that reach one file list it once.
+const sessionRealPathOwners = new Map();
+// Links and junctions the scans followed (path as shown -> real target); containment trusts paths
+// through these besides the loaded folders.
+const followedLinks = new Map();
 // Valid video ID format: 16 hex characters (MD5-derived from path+size in scanner.js)
 const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
 
@@ -156,39 +164,9 @@ class ScanSupersededError extends Error {
   }
 }
 
-/**
- * Returns true if `candidate` resolves to `baseDir` or a path inside it.
- * First does a fast path.resolve check (catches ../ traversal), then follows
- * symlinks with fs.realpath to prevent symlink-based directory traversal.
- * If the candidate file doesn't exist yet (e.g. thumbnail not generated),
- * the path.resolve check is sufficient — the caller's file read will 404.
- */
-async function isPathWithinDir(candidate, baseDir) {
-  const resolved = path.resolve(candidate);
-  const resolvedBase = path.resolve(baseDir);
-
-  const isSameOrInside = (targetPath, rootPath) => {
-    const relative = path.relative(rootPath, targetPath);
-    return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
-  };
-
-  // Fast check: deny immediately if the normalised path escapes the base dir.
-  // path.relative handles drive roots like "D:\" correctly; string prefix checks
-  // can accidentally require "D:\\" and reject every child on the drive.
-  if (!isSameOrInside(resolved, resolvedBase)) {
-    return false;
-  }
-
-  // Symlink check: follow real paths for files that exist
-  try {
-    const real = await fs.realpath(candidate);
-    const realBase = await fs.realpath(baseDir).catch(() => resolvedBase);
-    return isSameOrInside(real, realBase);
-  } catch {
-    // Candidate doesn't exist (e.g. thumbnail still being generated).
-    // path.resolve check above already passed — allow it through.
-    return true;
-  }
+// Links the scans followed are trusted unless a caller (empty-folder cleanup) must stay inside the loaded folders.
+function isPathWithinDir(candidate, baseDir, trustFollowedLinks = true) {
+  return isPathWithinDirHelper(candidate, baseDir, trustFollowedLinks ? followedLinks : null);
 }
 
 function canSendToRenderer() {
@@ -502,7 +480,7 @@ app.whenReady().then(async () => {
       filePath,
       knownVideoPaths,
       isServableVideoPath,
-    })) {
+    }) || !await stillLeadsToScannedFile(filePath)) {
       return new Response('Access Denied', { status: 403 });
     }
 
@@ -814,6 +792,12 @@ async function getCacheOptions() {
     autoPruneMissingSubfolderCache: config.autoPruneMissingSubfolderCache === true,
     username: os.userInfo().username,
   };
+}
+
+async function shouldFollowLinks() {
+  const config = await readJsonFile(CONFIG_FILE, {});
+  // Experimental and off by default.
+  return config.followLinks === true;
 }
 
 async function shouldRemoveEmptyFoldersAfterDelete() {
@@ -1146,6 +1130,8 @@ processingPause.subscribe((state) => {
   sendToRenderer('processing-pause-state', state);
 });
 
+// shortcut: a video reached through a file link is cached in the link's folder, not beside the real file;
+// move it with the persistent library, when pruning can tell those rows apart (backlog #14).
 function getVideoFolderPath(video) {
   return path.dirname(video.path);
 }
@@ -1496,20 +1482,31 @@ function formatDate(timestampMs) {
   });
 }
 
-async function isPathWithinAnyDir(filePath, dirs) {
+async function isPathWithinAnyDir(filePath, dirs, trustFollowedLinks = true) {
   for (const dir of dirs) {
-    if (await isPathWithinDir(filePath, dir)) return true;
+    if (await isPathWithinDir(filePath, dir, trustFollowedLinks)) return true;
   }
   return false;
 }
 
+/**
+ * A video reached through a link must still lead to the file the scan found: a link pointed elsewhere
+ * since then would otherwise play or open a file nobody reviewed. Other videos pass unchanged.
+ */
+async function stillLeadsToScannedFile(filePath) {
+  const scannedRealPath = knownRealPathsByPath.get(filePath);
+  if (!scannedRealPath) return true;
+  const realPath = await fs.realpath(filePath).catch(() => null);
+  return realPath !== null && realPathKey(realPath) === realPathKey(scannedRealPath);
+}
+
 async function isValidLoadedPath(filePath) {
-  return isKnownLoadedFilePath({
+  return await isKnownLoadedFilePath({
     filePath,
     knownVideoPaths,
     loadedDirectories: currentScanDirs,
     isPathWithinAnyDir,
-  });
+  }) && stillLeadsToScannedFile(filePath);
 }
 
 function assertScanCurrent(token) {
@@ -1611,7 +1608,9 @@ async function maybeRemoveEmptyDeletedVideoFolders(deletedFilePaths) {
   return removeEmptyDeletedVideoFolders({
     deletedFilePaths,
     loadedDirectories: currentScanDirs,
-    isPathWithinAnyDir,
+    // Never a folder outside the loaded folders, even inside a followed link target.
+    isPathWithinAnyDir: (folderPath, dirs) => isPathWithinAnyDir(folderPath, dirs, false),
+    isLink: (folderPath) => fs.lstat(folderPath).then((stats) => stats.isSymbolicLink(), () => false),
     removeDir: (folderPath) => fs.rmdir(folderPath),
     onWarn: (message) => log.warn(message),
   });
@@ -1813,11 +1812,42 @@ ipcMain.handle('reset-loaded-directories', async () => {
     knownVideoPaths.clear();
     knownVideoIdsByPath.clear();
     knownVideoIdentitiesByPath.clear();
+    knownRealPathsByPath.clear();
+    sessionRealPathOwners.clear();
+    followedLinks.clear();
     clearDuplicateSessionCache();
     return true;
   } finally {
     cacheService.endTransition();
   }
+});
+
+// Unloads one of several loaded folders and keeps the others, without a rescan. The renderer calls it
+// only while nothing is scanning or processing, after its pending review saves are written.
+ipcMain.handle('unload-directory', async (_event, dirPath) => {
+  if (typeof dirPath !== 'string' || !currentScanDirs.has(dirPath) || currentScanDirs.size < 2) return false;
+  // Through links, another loaded folder can reach a video this folder listed first; only a rescan of
+  // the remaining folders lists it again, so the renderer falls back to that.
+  if (followedLinks.size > 0) return false;
+  cancelThumbnails();
+  cancelMetadata();
+  cancelActiveDuplicateRun();
+  const cacheOptions = await getCacheOptions();
+  // Late writes for the removed folder are refused; scanning it again allows its cache once more.
+  for (const folderPath of await getKnownCacheFolders([dirPath])) cacheService.blockFolder(folderPath, cacheOptions);
+  currentScanDirs.delete(dirPath);
+  if (currentScanDir === dirPath) currentScanDir = currentScanDirs.values().next().value;
+  activeCacheRoots = new Set([...activeCacheRoots].filter((cacheRoot) => !isFolderInsideSync(cacheRoot, dirPath)));
+  for (const videoPath of [...knownVideoPaths]) {
+    const folder = path.dirname(videoPath);
+    if (!isSameFolderSync(folder, dirPath) && !isFolderInsideSync(folder, dirPath)) continue;
+    knownVideoPaths.delete(videoPath);
+    knownVideoIdsByPath.delete(videoPath);
+    knownVideoIdentitiesByPath.delete(videoPath);
+    sessionRealPathOwners.delete(realPathKey(knownRealPathsByPath.get(videoPath) ?? videoPath));
+    knownRealPathsByPath.delete(videoPath);
+  }
+  return true;
 });
 
 // 2. Scan directory for video files
@@ -1937,6 +1967,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
     sendToRenderer('scan-progress', progress);
   }, {
     includeVisitedDirs: true,
+    followLinks: await shouldFollowLinks(),
     assertNotCancelled: () => assertScanCurrent(scanToken),
   });
   assertScanCurrent(scanToken);
@@ -1972,23 +2003,38 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
   currentScanDir = currentScanDir || dirPath;
   currentScanDirs.add(dirPath);
   publishScanCacheRoots(scanCacheRoots);
+  for (const { link, target } of scanResult?.followedLinks ?? []) followedLinks.set(link, target);
+
+  // A file another loaded folder already reaches (through a link) is listed once; a second
+  // entry would be paired with itself as a duplicate, and deleting "the copy" deletes the only one.
+  const realPathsByPath = new Map(videos.map((video) => [video.path, video.realPath ?? video.path]));
+  const sessionVideos = merged.filter((video) => {
+    const key = realPathKey(realPathsByPath.get(video.path) ?? video.path);
+    const owner = sessionRealPathOwners.get(key);
+    if (owner && owner !== video.path) return false;
+    sessionRealPathOwners.set(key, video.path);
+    return true;
+  });
 
   // Populate the known-paths whitelist for this loaded session.
-  merged.forEach((v) => {
+  sessionVideos.forEach((v) => {
     knownVideoPaths.add(v.path);
     knownVideoIdsByPath.set(v.path, v.id);
     knownVideoIdentitiesByPath.set(v.path, v.fileIdentity);
+    const realPath = realPathsByPath.get(v.path);
+    if (realPath && realPath !== v.path) knownRealPathsByPath.set(v.path, realPath);
   });
 
   const scanSnapshot = perfMetrics.finishRun(perfRun, {
     status: 'ok',
-    videoCount: merged.length,
+    videoCount: sessionVideos.length,
   });
   logSlowCacheFolderDiagnostics(scanDiagnostics);
   log.info('[scan-directory] complete', {
     dirPath,
     includeSubfolders: Boolean(includeSubfolders),
-    videoCount: merged.length,
+    videoCount: sessionVideos.length,
+    followedLinks: scanResult?.followedLinks?.length ?? 0,
     autoPrunedStaleVideos: cacheReconcileResult.prunedVideoCount,
     autoPrunedStaleFolders: cacheReconcileResult.prunedFolderCount,
     autoPrunedStaleVideoSamples: cacheReconcileResult.prunedVideos
@@ -2003,7 +2049,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
     counters: scanSnapshot?.counters ?? {},
   });
   currentScanDiagnostics = null;
-  return { videos: merged, summary: scanSummary };
+  return { videos: sessionVideos, summary: scanSummary };
   } catch (err) {
     currentScanDiagnostics = null;
     activeCacheIndexBatch = null;
@@ -2483,10 +2529,15 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
   }
 
   const safeVideos = [];
+  // One file reached by two paths must never be paired with itself.
+  const seenRealPaths = new Set();
   for (const video of videos) {
     if (!video || !VALID_VIDEO_ID.test(String(video.id || ''))) continue;
     if (!isKnownVideoRecord(video)) continue;
     if (!await isPathWithinAnyDir(video.path, currentScanDirs)) continue;
+    const realKey = realPathKey(knownRealPathsByPath.get(video.path) ?? video.path);
+    if (seenRealPaths.has(realKey)) continue;
+    seenRealPaths.add(realKey);
     safeVideos.push(video);
   }
   if (safeVideos.length < 2) {
@@ -2709,6 +2760,8 @@ async function finalizeDeletedFiles(results, cacheTargets) {
     knownVideoPaths.delete(filePath);
     knownVideoIdsByPath.delete(filePath);
     knownVideoIdentitiesByPath.delete(filePath);
+    sessionRealPathOwners.delete(realPathKey(knownRealPathsByPath.get(filePath) ?? filePath));
+    knownRealPathsByPath.delete(filePath);
   }
   const removedFolders = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successfulPaths));
   if (removedFolders.size === 0) return results;
@@ -2735,8 +2788,10 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
   const cacheTargets = await collectDeletionCacheTargets(validPaths);
 
   const trashResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
+    // Trashing a file link only trashes the link; the video itself must go to the Recycle Bin.
+    const realPath = knownRealPathsByPath.get(filePath) ?? filePath;
     const identityMatches = await matchesFileIdentityAtPath({
-      filePath,
+      filePath: realPath,
       expectedIdentity: knownVideoIdentitiesByPath.get(filePath),
       statPath: fs.stat,
     });
@@ -2744,7 +2799,7 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
       return { path: filePath, success: false, error: 'File changed since it was scanned. Scan again before deleting.', method: 'trash' };
     }
     try {
-      await shell.trashItem(filePath);
+      await shell.trashItem(realPath);
       return { path: filePath, success: true, method: 'trash' };
     } catch (err) {
       return { path: filePath, success: false, error: err.message, method: 'trash' };
@@ -2773,8 +2828,10 @@ ipcMain.handle('permanently-delete', async (_event, filePaths) => {
   if (validPaths.length === 0) return results;
   const cacheTargets = await collectDeletionCacheTargets(validPaths);
   const permanentResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
+    // Unlinking a file link only removes the link; the video itself is what was reviewed.
+    const realPath = knownRealPathsByPath.get(filePath) ?? filePath;
     const identityMatches = await matchesFileIdentityAtPath({
-      filePath,
+      filePath: realPath,
       expectedIdentity: knownVideoIdentitiesByPath.get(filePath),
       statPath: fs.stat,
     });
@@ -2782,7 +2839,7 @@ ipcMain.handle('permanently-delete', async (_event, filePaths) => {
       return { path: filePath, success: false, error: 'File changed since it was scanned. Scan again before deleting.', method: 'permanent' };
     }
     try {
-      await fs.unlink(filePath);
+      await fs.unlink(realPath);
       return { path: filePath, success: true, method: 'permanent' };
     } catch (err) {
       return { path: filePath, success: false, error: err.message, method: 'permanent' };

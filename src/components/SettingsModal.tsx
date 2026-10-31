@@ -263,7 +263,8 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     const hasCacheChanges = cacheSettingsChanged(before, after);
     const hasCacheMaintenanceChanges =
       before.autoPruneMissingSubfolderCache !== after.autoPruneMissingSubfolderCache ||
-      before.removeEmptyFoldersAfterDelete !== after.removeEmptyFoldersAfterDelete;
+      before.removeEmptyFoldersAfterDelete !== after.removeEmptyFoldersAfterDelete ||
+      before.followLinks !== after.followLinks;
     const hasRestartRequiredChanges = before.autoUpdates !== after.autoUpdates;
 
     return {
@@ -543,6 +544,22 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                       <input type="checkbox" checked={localSettings.defaultGroupByFolder} onChange={(e) => handleChange('defaultGroupByFolder', e.target.checked)} />
                       Group videos by folder natively
                     </label>
+                  </div>
+                </section>
+
+                <section className="settings-subsection settings-section-divider">
+                  <h3 className="settings-subsection-title">Startup</h3>
+
+                  <div className="form-group checkbox-group">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={localSettings.reopenLastSession}
+                        onChange={(e) => handleChange('reopenLastSession', e.target.checked)}
+                      />
+                      Reopen the last session at startup
+                    </label>
+                    <span className="help-text">Opens the folders that were loaded when VideoCull closed. A session ended with Close Session is not reopened.</span>
                   </div>
                 </section>
 
@@ -1005,6 +1022,18 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                   <label>
                     <input
                       type="checkbox"
+                      checked={localSettings.followLinks}
+                      onChange={(e) => handleChange('followLinks', e.target.checked)}
+                    />
+                    Follow symbolic links and junctions (Experimental)
+                  </label>
+                  <span className="help-text">Scans folders and videos that links or directory junctions point to, also outside the opened folder. A video reached by more than one path is listed once. Applies from the next scan. Experimental: off by default while it is being tested.</span>
+                </div>
+
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
                       checked={localSettings.autoPruneMissingSubfolderCache}
                       onChange={(e) => handleChange('autoPruneMissingSubfolderCache', e.target.checked)}
                     />
@@ -1022,7 +1051,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     />
                     Remove empty source folders after delete
                   </label>
-                  <span className="help-text">After deleting videos, remove only their empty parent folders. Folders that are not empty, unavailable, or outside the loaded scan roots are skipped.</span>
+                  <span className="help-text">After deleting videos, remove only their empty parent folders. Folders that are not empty, unavailable, outside the loaded scan roots, or links and junctions are skipped.</span>
                 </div>
               </div>
             )}

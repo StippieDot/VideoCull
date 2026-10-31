@@ -1,6 +1,6 @@
 ---
 title: Sessions and folders
-description: Load one or more folders, control recursive scanning, reopen recent locations, rescan safely, and export a session report.
+description: Load one or more folders, control recursive scanning, reopen recent sessions, rescan safely, and export a session report.
 ---
 
 {/* in-app-meta
@@ -14,7 +14,7 @@ A session is the set of folders currently loaded into VideoCull. The grid, filte
 
 ## Load the first folder
 
-Open a folder with `Ctrl+O`, the folder picker, a recent-folder entry, or drag and drop. VideoCull scans supported video files, restores cached information, refreshes missing metadata, and generates any thumbnails that are not already complete.
+Open a folder with `Ctrl+O`, the folder picker, a recent session, or drag and drop. VideoCull scans supported video files, restores cached information, refreshes missing metadata, and generates any thumbnails that are not already complete.
 
 Use **Include subfolders** when footage is nested below the selected root. Turning it off limits scanning to videos directly inside each loaded root. Changing the toggle triggers a rescan of the loaded roots with the new behavior.
 
@@ -28,11 +28,27 @@ When a session already contains a folder, opening a different folder asks whethe
 
 Use a multi-folder session when the folders belong to one culling job. Use separate sessions when each folder needs independent filters, duplicate runs, or delete checks.
 
-## Use recent folders
+With several folders loaded, **Remove from Session** in the sidebar's folder menu and in the File menu lists them; point at it and pick the folder to unload. Removing one keeps the other folders loaded as they are, without a rescan, and does not delete videos or their cache. A single folder is closed with **Close Session** instead.
 
-The recent-folders list records when each location was last opened. Click an entry to replace or reopen the session. Right-click an entry to open it, add it to the current session, reveal it in Explorer, or copy its path.
+## Reopen the last session
 
-Unavailable locations are marked instead of opened. Remove one stale entry with its remove button, or clear the recent list without deleting any media or cache data.
+Turn on **Reopen the last session at startup** in Settings > Interface, and VideoCull reopens the folders that were loaded when it closed, with the same **Include subfolders** choice. It is off by default. A session ended with **Close Session** stays closed.
+
+A folder that cannot be reached, such as one on an unplugged drive or an offline share, is left out with a notice naming it. It stays part of the saved session, so it is loaded again once the drive is back, unless you change the session in the meantime.
+
+## Use recent sessions
+
+**File > Open Recent**, the recent list on the start screen and in the sidebar, and the title bar folder switcher list recent sessions with when each was last opened. A session with several folders shows the first folder and how many more, counting only the folders that can be reached now; hover over it to see every folder, with unavailable ones marked. Opening one replaces the loaded folders with all of its folders and its **Include subfolders** choice. Adding a folder to the open session updates its recent entry instead of creating a new one. Right-click an entry to open it, add its folders to the current session, reveal its first folder in Explorer, or copy its paths.
+
+Folders that are unavailable are left out with a notice; an entry none of whose folders can be reached is marked instead of opened. Remove one stale entry with its remove button, or clear the recent list without deleting any media or cache data. At startup, a recent session is only dropped when its folders were deleted; one on an unplugged drive or offline share stays, marked unavailable.
+
+## Linked folders and files (experimental)
+
+Following links is experimental and off by default. Turn it on with **Follow symbolic links and junctions (Experimental)** in Settings > Cache; it applies from the next scan.
+
+When it is on, scans follow symbolic links and directory junctions to folders and to video files, also when they point outside the opened folder. Each video is listed once, however many links reach it, and a link that loops back to a folder already scanned is skipped. A link that points at nothing is counted with the files that could not be read.
+
+Deleting a video reached through a link sends the video itself to the Recycle Bin, not the link. **Remove empty source folders after delete** never removes a link or junction, or a folder outside the loaded folders.
 
 ## Rescan or close a session
 

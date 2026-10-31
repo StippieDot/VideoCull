@@ -97,3 +97,97 @@ test('scanDirectory picks up supported legacy and container video formats', asyn
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+async function withTempRoot(prefix, run) {
+  const tempRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), prefix)));
+  try {
+    await run(tempRoot);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+}
+
+/** File symbolic links need Developer Mode or admin rights on Windows; junctions do not. */
+async function trySymlinkFile(target, linkPath) {
+  try {
+    await fs.symlink(target, linkPath, 'file');
+    return true;
+  } catch (err) {
+    if (err.code === 'EPERM') return false;
+    throw err;
+  }
+}
+
+test('scanDirectory follows a junction to a folder outside the opened folder and reports its target', async () => {
+  await withTempRoot('videocull-scan-links-', async (tempRoot) => {
+    const loaded = path.join(tempRoot, 'loaded');
+    const outside = path.join(tempRoot, 'outside');
+    await fs.mkdir(loaded);
+    await fs.mkdir(outside);
+    await fs.writeFile(path.join(outside, 'linked.mp4'), 'x');
+    await fs.symlink(outside, path.join(loaded, 'linked'), 'junction');
+
+    const result = await scanDirectory(loaded, true, null, { includeVisitedDirs: true, followLinks: true });
+
+    assert.deepEqual(result.videos.map((video) => [video.path, video.realPath]), [
+      [path.join(loaded, 'linked', 'linked.mp4'), path.join(outside, 'linked.mp4')],
+    ]);
+    assert.deepEqual(result.followedLinks, [{ link: path.join(loaded, 'linked'), target: outside }]);
+
+    // Off by default.
+    const notFollowed = await scanDirectory(loaded, true, null, { includeVisitedDirs: true });
+    assert.deepEqual(notFollowed.videos, []);
+    assert.deepEqual(notFollowed.followedLinks, []);
+  });
+});
+
+test('scanDirectory lists each video once through a link loop and two links to one folder', async () => {
+  await withTempRoot('videocull-scan-loop-', async (tempRoot) => {
+    const shared = path.join(tempRoot, 'shared');
+    await fs.mkdir(shared);
+    await fs.writeFile(path.join(tempRoot, 'root.mp4'), 'x');
+    await fs.writeFile(path.join(shared, 'shared.mp4'), 'x');
+    await fs.symlink(tempRoot, path.join(shared, 'back-to-root'), 'junction');
+    await fs.symlink(shared, path.join(tempRoot, 'a-link'), 'junction');
+    await fs.symlink(shared, path.join(tempRoot, 'b-link'), 'junction');
+
+    const videos = await scanDirectory(tempRoot, true, null, { followLinks: true });
+
+    assert.deepEqual(videos.map((video) => video.filename).sort(), ['root.mp4', 'shared.mp4']);
+  });
+});
+
+test('scanDirectory reports a broken link instead of skipping it without a trace', async () => {
+  await withTempRoot('videocull-scan-broken-', async (tempRoot) => {
+    const gone = path.join(tempRoot, 'gone');
+    await fs.mkdir(gone);
+    await fs.symlink(gone, path.join(tempRoot, 'dangling'), 'junction');
+    await fs.rm(gone, { recursive: true });
+
+    const result = await scanDirectory(tempRoot, true, null, { includeVisitedDirs: true, followLinks: true });
+
+    assert.deepEqual(result.videos, []);
+    assert.equal(result.summary.skippedFileCount, 1);
+    assert.deepEqual(result.summary.skippedFileSamples, [{ path: path.join(tempRoot, 'dangling'), reason: 'broken-link' }]);
+
+    // Also when subfolders are not scanned.
+    const shallow = await scanDirectory(tempRoot, false, null, { includeVisitedDirs: true, followLinks: true });
+    assert.equal(shallow.summary.skippedFileCount, 1);
+  });
+});
+
+test('scanDirectory lists a file link and its target in the same folder once', async (context) => {
+  await withTempRoot('videocull-scan-file-link-', async (tempRoot) => {
+    const target = path.join(tempRoot, 'a-real.mp4');
+    await fs.writeFile(target, 'x');
+    if (!await trySymlinkFile(target, path.join(tempRoot, 'b-link.mp4'))) {
+      context.skip('file symbolic links need Developer Mode on Windows');
+      return;
+    }
+
+    const result = await scanDirectory(tempRoot, false, null, { includeVisitedDirs: true, followLinks: true });
+
+    assert.deepEqual(result.videos.map((video) => video.filename), ['a-real.mp4']);
+    assert.deepEqual(result.followedLinks, [{ link: path.join(tempRoot, 'b-link.mp4'), target }]);
+  });
+});

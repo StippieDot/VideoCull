@@ -1,25 +1,26 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { ColorTheme, DuplicateSortField, StatusFilter, ToastInput, ToastKind } from '../types';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import type { ColorTheme, DuplicateSortField, RecentSession, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
 import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
 import { beginDevInteraction } from '../perf-dev';
 import { usePersistedFlag } from '../hooks/usePersistedFlag';
+import useRecentSessions from '../hooks/useRecentSessions';
+import { sameSessionFolders, sessionKey } from '../sessions';
 import { snapBytes, snapSeconds } from './rangeScale';
 import RangeSlider from './RangeSlider';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
-import { revealInExplorer, runAppCommand } from '../appCommands';
-import { formatDeleteConfirmation, formatSize, formatRelativeTime, formatRecentPath } from '../utils';
+import { runAppCommand } from '../appCommands';
+import { formatDeleteConfirmation, formatSize, formatRecentPath } from '../utils';
 import { deleteWithPermanentReview } from '../deletion';
 import AppMenu, { type AppMenuItem } from './AppMenu';
-import ContextMenu, { copyTextToClipboard } from './ContextMenu';
-import { buildCopyPathSuccessDetail, buildRecentFolderMenu } from './contextMenuBuilders';
+import ContextMenu from './ContextMenu';
 import { PRODUCT } from '../product';
 import videoCullLogo from '../assets/videocull-logo.png';
 import {
   FolderOpen, Folder, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, X, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, History, FolderPlus
+  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, History, FolderPlus, FolderMinus
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -46,10 +47,6 @@ interface SidebarProps {
 /** The last part of a path; a drive root keeps its letter. */
 function folderName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
-}
-
-function sameStrings(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
 /** How strongly the size and duration tracks favour small values; see rangeScale. */
@@ -634,7 +631,6 @@ export default function Sidebar({
   const directory = useStore((s) => s.directory);
   const themeKeybind = useStore((s) => s.settings.keyToggleTheme);
   const directories = useStore((s) => s.directories);
-  const setDirectory = useStore((s) => s.setDirectory);
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const setIncludeSubfolders = useStore((s) => s.setIncludeSubfolders);
   const statusFilter = useStore((s) => s.statusFilter);
@@ -659,11 +655,6 @@ export default function Sidebar({
   const setFolderSortBy = useStore((s) => s.setFolderSortBy);
   const folderSortOrder = useStore((s) => s.folderSortOrder);
   const setFolderSortOrder = useStore((s) => s.setFolderSortOrder);
-  const recentDirectories = useStore((s) => s.settings.recentDirectories);
-  const recentDirectoryTimestamps = useStore((s) => s.settings.recentDirectoryTimestamps);
-  const clearRecentDirectories = useStore((s) => s.clearRecentDirectories);
-  const removeRecentDirectory = useStore((s) => s.removeRecentDirectory);
-  const addDirectory = useStore((s) => s.addDirectory);
 
   const isDeleting = useStore((s) => s.isDeleting);
   const setIsDeleting = useStore((s) => s.setIsDeleting);
@@ -673,8 +664,8 @@ export default function Sidebar({
   const [showFilters, setShowFilters] = usePersistedFlag('sidebar.filters-open', true);
   const [showSort, setShowSort] = usePersistedFlag('sidebar.sort-open', true);
   const [showView, setShowView] = usePersistedFlag('sidebar.view-open', true);
-  const [recentContextMenu, setRecentContextMenu] = useState<{ x: number; y: number; dir: string } | null>(null);
-  const [unavailableRecents, setUnavailableRecents] = useState<Set<string>>(() => new Set());
+  const [recentContextMenu, setRecentContextMenu] = useState<{ x: number; y: number; recent: RecentSession } | null>(null);
+  const recents = useRecentSessions(onNotify, () => setShowRecents(false));
 
   const handleSelectDir = async () => {
     if (!window.electronAPI) return;
@@ -682,131 +673,6 @@ export default function Sidebar({
     if (dir) onDirectoryPicked(dir);
   };
 
-  const handleOpenRecent = async (dir: string) => {
-    if (!window.electronAPI) {
-      setDirectory(dir);
-      return;
-    }
-    const result = await window.electronAPI.validateDroppedPath(dir);
-    if (!result.valid || !result.isDirectory) {
-      setUnavailableRecents((prev) => new Set(prev).add(dir));
-      onNotify({
-        title: 'Folder unavailable',
-        detail: formatRecentPath(dir),
-        kind: 'warning',
-        dedupeKey: `recent-unavailable:${dir}`,
-      });
-      return;
-    }
-    setUnavailableRecents((prev) => {
-      if (!prev.has(dir)) return prev;
-      const next = new Set(prev);
-      next.delete(dir);
-      return next;
-    });
-    onDirectoryPicked(dir);
-    setShowRecents(false);
-  };
-
-  const handleRemoveRecent = (dir: string) => {
-    removeRecentDirectory(dir);
-    onNotify({
-      title: 'Recent removed',
-      detail: formatRecentPath(dir),
-      kind: 'info',
-      dedupeKey: `recent-removed:${dir}`,
-    });
-  };
-
-  const handleClearRecents = () => {
-    const removedCount = recentDirectories.length;
-    clearRecentDirectories();
-    onNotify({
-      title: 'Recents cleared',
-      detail: `${removedCount} ${removedCount === 1 ? 'entry' : 'entries'} removed.`,
-      kind: 'info',
-    });
-  };
-
-  const handleAddRecentToSession = async (dir: string) => {
-    if (!window.electronAPI) {
-      addDirectory(dir);
-      return;
-    }
-    const result = await window.electronAPI.validateDroppedPath(dir);
-    if (!result.valid || !result.isDirectory) {
-      setUnavailableRecents((prev) => new Set(prev).add(dir));
-      onNotify({
-        title: 'Folder unavailable',
-        detail: formatRecentPath(dir),
-        kind: 'warning',
-        dedupeKey: `recent-unavailable:${dir}`,
-      });
-      return;
-    }
-    setUnavailableRecents((prev) => {
-      if (!prev.has(dir)) return prev;
-      const next = new Set(prev);
-      next.delete(dir);
-      return next;
-    });
-    const beforeDirs = useStore.getState().directories;
-    addDirectory(dir);
-    const afterDirs = useStore.getState().directories;
-    const changed = !sameStrings(beforeDirs, afterDirs);
-    onNotify(changed
-      ? {
-        title: 'Folder added',
-        detail: formatRecentPath(dir),
-        kind: 'success',
-        dedupeKey: `recent-added:${dir}`,
-      }
-      : {
-        title: 'Folder already covered',
-        detail: formatRecentPath(dir),
-        kind: 'info',
-        dedupeKey: `recent-covered:${dir}`,
-      });
-  };
-
-  const handleCopyRecentPath = async (dir: string) => {
-    try {
-      await copyTextToClipboard(dir);
-      onNotify({
-        title: 'Path copied',
-        detail: buildCopyPathSuccessDetail(dir),
-        kind: 'success',
-      });
-    } catch (error) {
-      console.error('Failed to copy path:', error);
-      onNotify({
-        title: 'Copy failed',
-        detail: 'The path could not be copied to the clipboard.',
-        kind: 'error',
-      });
-    }
-  };
-
-  const recentContextMenuItems = useMemo(() => {
-    if (!recentContextMenu) return [];
-    return buildRecentFolderMenu({
-      directory: recentContextMenu.dir,
-      loadedDirectories: directories,
-      onOpen: () => {
-        void handleOpenRecent(recentContextMenu.dir);
-      },
-      onAddToSession: () => {
-        void handleAddRecentToSession(recentContextMenu.dir);
-      },
-      onReveal: () => {
-        revealInExplorer(recentContextMenu.dir);
-      },
-      onCopyPath: () => {
-        void handleCopyRecentPath(recentContextMenu.dir);
-      },
-      onRemove: () => handleRemoveRecent(recentContextMenu.dir),
-    });
-  }, [directories, recentContextMenu]);
 
 
   const toggleSwitcher = () => {
@@ -827,6 +693,18 @@ export default function Sidebar({
       label: 'Add Folder to Session...',
       icon: FolderPlus,
       onSelect: () => void runAppCommand('File > Add Folder to Session'),
+    },
+    {
+      key: 'remove',
+      label: 'Remove from Session',
+      icon: FolderMinus,
+      // One folder is closed with Close Session instead.
+      disabled: directories.length < 2,
+      submenu: directories.map((folder) => ({
+        key: folder,
+        label: folder,
+        onSelect: () => void useStore.getState().removeDirectory(folder),
+      })),
     },
     { type: 'separator', key: 'sep-session' },
     { key: 'rescan', label: 'Rescan', icon: RefreshCw, detail: 'F5', disabled: isScanning, onSelect: onRescan },
@@ -979,7 +857,7 @@ export default function Sidebar({
             <span className="session-subfolders-box" />
             <span>Include subfolders</span>
           </label>
-          {recentDirectories.length > 1 && (
+          {recents.recentSessions.length > 1 && (
             <button
               type="button"
               className={`session-recents-btn${showRecents ? ' active' : ''}`}
@@ -993,33 +871,31 @@ export default function Sidebar({
             </button>
           )}
         </div>
-        {showRecents && recentDirectories.length > 1 && (
+        {showRecents && recents.recentSessions.length > 1 && (
           <div className="recents-panel">
             <ul className="recents-list" id="sidebar-recents-list">
-              {recentDirectories.slice(0, 5).map((d) => (
-                <li key={d} className="recents-row">
+              {recents.recentSessions.slice(0, 5).map((recent) => (
+                <li key={sessionKey(recent.folders)} className="recents-row">
                   <button
-                    className={`recents-item ${d === directory ? 'recents-item-active' : ''}`}
-                    title={`${d} \u2022 ${unavailableRecents.has(d) ? 'unavailable' : `opened ${formatRelativeTime(recentDirectoryTimestamps[d])}`}`}
-                    onClick={() => void handleOpenRecent(d)}
+                    className={`recents-item ${sameSessionFolders(recent.folders, directories) ? 'recents-item-active' : ''}`}
+                    title={recents.tooltip(recent)}
+                    onClick={() => void recents.open(recent)}
                     onContextMenu={(event) => {
                       event.preventDefault();
-                      setRecentContextMenu({ x: event.clientX, y: event.clientY, dir: d });
+                      setRecentContextMenu({ x: event.clientX, y: event.clientY, recent });
                     }}
                   >
                     <FolderOpen size={12} />
                     <span className="recents-item-copy">
-                      <span className="recents-item-path">{formatRecentPath(d)}</span>
-                      <span className="recents-item-meta">
-                        {unavailableRecents.has(d) ? 'Unavailable' : formatRelativeTime(recentDirectoryTimestamps[d])}
-                      </span>
+                      <span className="recents-item-path">{recents.name(recent)}</span>
+                      <span className="recents-item-meta">{recents.meta(recent)}</span>
                     </span>
                   </button>
                   <button
                     className="recents-remove-btn"
-                    title={`Remove ${formatRecentPath(d)} from recent folders`}
-                    aria-label={`Remove ${formatRecentPath(d)} from recent folders`}
-                    onClick={() => handleRemoveRecent(d)}
+                    title={`Remove ${recents.name(recent)} from recent folders`}
+                    aria-label={`Remove ${recents.name(recent)} from recent folders`}
+                    onClick={() => recents.remove(recent)}
                   >
                     <X size={12} />
                   </button>
@@ -1029,7 +905,7 @@ export default function Sidebar({
             <button
               className="recents-clear-btn"
               onClick={() => {
-                handleClearRecents();
+                recents.clearAll();
                 setShowRecents(false);
               }}
             >
@@ -1060,7 +936,7 @@ export default function Sidebar({
         <ContextMenu
           x={recentContextMenu.x}
           y={recentContextMenu.y}
-          items={recentContextMenuItems}
+          items={recents.menuItems(recentContextMenu.recent, true)}
           onClose={() => setRecentContextMenu(null)}
         />
       )}

@@ -2,6 +2,7 @@ import { kb } from './keybinds';
 import type { Keybind, KeybindSettingKey } from './keybinds';
 import type { AppSettings, FeatureSettings } from './types';
 import type { DuplicateSettings } from './types';
+import { parseRecentSessions, parseSavedSession } from './sessions';
 
 export const DEFAULT_FEATURES: FeatureSettings = {
   ratings: true,
@@ -132,13 +133,12 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     result.keyShowHelp = DEFAULT_KEYBINDS.keyShowHelp;
   }
 
-  // Ensure recentDirectories is an array (handle old config)
-  if (!Array.isArray(result.recentDirectories)) {
-    result.recentDirectories = [];
-  }
-
-  if (!result.recentDirectoryTimestamps || typeof result.recentDirectoryTimestamps !== 'object' || Array.isArray(result.recentDirectoryTimestamps)) {
-    result.recentDirectoryTimestamps = {};
+  // recentDirectories and its timestamps stay in the file for older versions; sessions replace them.
+  result.recentSessions = parseRecentSessions(raw);
+  result.lastSession = parseSavedSession(result.lastSession);
+  // Off until it is turned on in Settings: reopening folders unasked can surprise people.
+  if (typeof result.reopenLastSession !== 'boolean') {
+    result.reopenLastSession = false;
   }
 
   if (result.autoUpdates === undefined || result.autoUpdates === null) {
@@ -230,29 +230,10 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     result.removeEmptyFoldersAfterDelete = false;
   }
 
-  return result as Partial<AppSettings>;
-}
-
-/**
- * Asynchronously prune stale recent directories by validating each path exists.
- * Called during app startup to keep the recents list fresh and trustworthy.
- */
-export async function pruneRecentDirectories(
-  recentDirectories: string[],
-  validator: (path: string) => Promise<{ valid: boolean; isDirectory: boolean }>
-): Promise<string[]> {
-  if (recentDirectories.length === 0) return [];
-
-  const validatedPaths: string[] = [];
-  for (const path of recentDirectories) {
-    try {
-      const result = await validator(path);
-      if (result.valid && result.isDirectory) {
-        validatedPaths.push(path);
-      }
-    } catch {
-      // Silently skip paths that fail validation
-    }
+  // Experimental: off until it is turned on in Settings.
+  if (typeof result.followLinks !== 'boolean') {
+    result.followLinks = false;
   }
-  return validatedPaths;
+
+  return result as Partial<AppSettings>;
 }
