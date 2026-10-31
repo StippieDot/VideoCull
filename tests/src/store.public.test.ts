@@ -810,6 +810,19 @@ describe('useStore public behavior', () => {
       expect(settings.recentSessions.map((recent) => recent.folders)).toEqual([[A], [B]]);
     });
 
+    test('a session closed while the settings are still loading stays closed', async () => {
+      let resolveConfig: (config: unknown) => void = () => {};
+      electronAPI.getConfig.mockReturnValue(new Promise((resolve) => { resolveConfig = resolve; }));
+      const loading = useStore.getState().loadSettings();
+
+      await useStore.getState().setDirectory(A);
+      await useStore.getState().setDirectory(null);
+      resolveConfig({ lastSession: { folders: [B], includeSubfolders: true } });
+      await loading;
+
+      expect(useStore.getState().settings.lastSession).toBeNull();
+    });
+
     test('opening a folder by hand clears its unavailable mark', async () => {
       useStore.setState({ unreachableFolders: new Set([folderKey(A)]) });
 

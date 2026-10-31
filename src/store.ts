@@ -500,7 +500,12 @@ function getVideoByReviewIndex(videos: Video[], scopeIds: string[] | null, fallb
 }
 
 /** Settings with `session` as the one to reopen and at the front of the recents. */
+// Counts every change to the session to reopen, so settings loaded meanwhile can tell it changed,
+// also when it was closed (back to null).
+let sessionChangeCount = 0;
+
 function withSession(settings: AppSettings, session: SavedSession, replacing?: string[]): AppSettings {
+  sessionChangeCount += 1;
   return {
     ...settings,
     lastSession: session,
@@ -1064,6 +1069,7 @@ const useStore = create<VideoStore>((set, get) => ({
     if (finalReviewSave || retryStatesByDirectory.size > 0 || reviewSavesByDirectory.size > 0) await resetAllRetryQueues();
     void window.electronAPI?.cancelFinishAction?.();
     // A session closed on purpose stays closed at the next start.
+    sessionChangeCount += 1;
     const settings = { ...get().settings, lastSession: null };
     saveSettingsQuietly(settings);
     set({
@@ -2076,7 +2082,7 @@ const useStore = create<VideoStore>((set, get) => ({
     if (window.electronAPI) {
       // Checking the recent folders can take a while (an offline share times out); a folder opened
       // meanwhile must not be replaced by the session read from disk.
-      const sessionBeforeLoad = get().settings.lastSession;
+      const sessionChangesBeforeLoad = sessionChangeCount;
       const raw = await window.electronAPI.getConfig();
       if (raw) {
         let migrated = migrateSettings(raw as unknown as Record<string, unknown>);
@@ -2095,12 +2101,14 @@ const useStore = create<VideoStore>((set, get) => ({
           }
         }
 
-        const liveSession = get().settings.lastSession;
-        if (liveSession && liveSession !== sessionBeforeLoad) {
+        if (sessionChangeCount !== sessionChangesBeforeLoad) {
+          const liveSession = get().settings.lastSession;
           migrated = {
             ...migrated,
             lastSession: liveSession,
-            recentSessions: rememberSession(migrated.recentSessions ?? [], liveSession, Date.now()),
+            recentSessions: liveSession
+              ? rememberSession(migrated.recentSessions ?? [], liveSession, Date.now())
+              : migrated.recentSessions,
           };
         }
 
