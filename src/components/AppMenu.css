@@ -64,6 +64,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+.app-menu-submenu-arrow {
+  flex-shrink: 0;
+  margin-right: -4px;
+  color: var(--text-tertiary);
+}
+
 .app-menu-item.muted .app-menu-label {
   color: var(--text-tertiary);
 }
