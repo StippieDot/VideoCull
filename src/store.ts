@@ -1186,20 +1186,21 @@ const useStore = create<VideoStore>((set, get) => ({
     if (!before.directories.includes(dir) || before.directories.length < 2) return;
     // While nothing runs, the folder's videos are dropped in place. During a scan or processing, the
     // videos stay and the changed folder list triggers the usual rescan, which cancels that work first.
+    let unloaded = false;
     if (!before.isScanning && !before.isGenerating && !before.isFindingDuplicates && window.electronAPI?.unloadDirectory) {
       // Decisions still waiting to be written for the folder must land before main stops accepting them.
       await resetAllRetryQueues();
-      if (await window.electronAPI.unloadDirectory(dir).catch(() => false)) {
-        get().removeDeletedVideos(get().videos.filter((video) => isPathInsideRoot(video.path, dir)).map((video) => video.path));
-      }
+      unloaded = await window.electronAPI.unloadDirectory(dir).catch(() => false);
     }
     const state = get();
     const nextDirs = state.directories.filter((root) => root !== dir);
     if (nextDirs.length === state.directories.length || nextDirs.length === 0) return;
     const settings = withSession(state.settings, { folders: nextDirs, includeSubfolders: state.includeSubfolders }, state.directories);
-    const droppedInPlace = !state.videos.some((video) => isPathInsideRoot(video.path, dir));
-    if (droppedInPlace) {
+    if (unloaded) {
+      // The folder list changes before the videos leave, so the grid can tell they left with their
+      // folder and keep the videos in view where they are.
       set({ directory: nextDirs[0], directories: nextDirs, settings });
+      get().removeDeletedVideos(state.videos.filter((video) => isPathInsideRoot(video.path, dir)).map((video) => video.path));
       if (state.folderFilter && isPathInsideRoot(state.folderFilter.path, dir)) get().setFolderFilter(null);
       saveSettingsQuietly(settings);
       return;

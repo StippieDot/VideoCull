@@ -717,6 +717,21 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     captureFromRange(startIndex - 1, 0, -1);
   }, [getRowTop, rows]);
 
+  const captureBatchScrollAnchorRef = useRef(captureBatchScrollAnchor);
+  captureBatchScrollAnchorRef.current = captureBatchScrollAnchor;
+
+  // Remove from Session drops a folder's videos in place. Store updates arrive before the grid
+  // re-renders, so the rows here are still the old ones: anchor on a video that stays, or the rows
+  // above it shrinking away would scroll the view by the removed folder's height. Deleted videos are
+  // still inside a loaded folder, so this leaves deleting alone.
+  useEffect(() => useStore.subscribe((state, previous) => {
+    if (state.videos.length >= previous.videos.length) return;
+    const leaving = previous.videos.filter((video) => (
+      !state.directories.some((root) => isFolderInside(getFolderPath(video), root))
+    ));
+    if (leaving.length > 0) captureBatchScrollAnchorRef.current(new Set(leaving.map((video) => video.id)));
+  }), []);
+
   const handleBatchStatus = useCallback((status: 'keep' | 'delete' | 'skipped' | 'pending') => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
