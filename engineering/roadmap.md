@@ -457,8 +457,8 @@ folders. **Close Session** clears the session to reopen, so a session closed on 
 - **Labels:** one folder shows its path, as today. Several show the first folder and `+ N more`, with every
   path in the tooltip. Applies to File > Open Recent (`app-menu.js:356`), the title bar roots menu
   (`locationMenus.ts:178`), the sidebar recents button and the empty-state list.
-- **Remove from Session:** the title bar roots menu gets **Remove from Session** for each loaded folder
-  when more than one is loaded; nothing removes a single folder today. While nothing is scanning or
+- **Remove from Session:** the sidebar's folder menu and the File menu get **Remove from Session**, a
+  submenu of the loaded folders, when more than one is loaded; nothing removes a single folder today. While nothing is scanning or
   processing, the folder's videos are dropped in place: pending review saves are written, main unloads
   just that folder (`unload-directory`), and the other folders are not rescanned. During a scan or
   processing it falls back to a rescan of the remaining folders, which cancels that work first.

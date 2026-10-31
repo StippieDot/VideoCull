@@ -20,7 +20,7 @@ import videoCullLogo from '../assets/videocull-logo.png';
 import {
   FolderOpen, Folder, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, X, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, History, FolderPlus
+  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, History, FolderPlus, FolderMinus
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -693,6 +693,18 @@ export default function Sidebar({
       label: 'Add Folder to Session...',
       icon: FolderPlus,
       onSelect: () => void runAppCommand('File > Add Folder to Session'),
+    },
+    {
+      key: 'remove',
+      label: 'Remove from Session',
+      icon: FolderMinus,
+      // One folder is closed with Close Session instead.
+      disabled: directories.length < 2,
+      submenu: directories.map((folder) => ({
+        key: folder,
+        label: folder,
+        onSelect: () => void useStore.getState().removeDirectory(folder),
+      })),
     },
     { type: 'separator', key: 'sep-session' },
     { key: 'rescan', label: 'Rescan', icon: RefreshCw, detail: 'F5', disabled: isScanning, onSelect: onRescan },

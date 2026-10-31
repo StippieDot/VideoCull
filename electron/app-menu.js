@@ -166,6 +166,7 @@ function fileMenu(state, actions) {
     submenu: [
       { label: 'Open Folder...', accelerator: 'CmdOrCtrl+O', click: () => send('open-directory') },
       { label: 'Add Folder to Session...', enabled: state.hasSession, click: () => send('add-folder') },
+      removeFromSessionItem(state, send),
       openRecentItem(state, send),
       { type: 'separator' },
       { label: 'Rescan', accelerator: 'F5', enabled: state.hasSession, click: () => send('rescan-directory') },
@@ -356,6 +357,24 @@ function revealFolderItem(state, send, label) {
     };
   }
   return { label, enabled: state.folders.length === 1, click: () => send(`reveal-folder:${state.folders[0]}`) };
+}
+
+/**
+ * With several loaded folders, a submenu lists them to unload one; a single folder is closed with
+ * Close Session instead.
+ * @param {MenuState} state @param {(action: string) => void} send
+ * @returns {Electron.MenuItemConstructorOptions}
+ */
+function removeFromSessionItem(state, send) {
+  if (state.folders.length < 2) return { label: 'Remove from Session', enabled: false };
+  return {
+    label: 'Remove from Session',
+    submenu: state.folders.map((folder) => ({
+      id: `File > Remove from Session > ${folder}`,
+      label: escapeMenuLabel(folder),
+      click: () => send(`remove-folder:${folder}`),
+    })),
+  };
 }
 
 /** @param {MenuState} state @param {(action: string) => void} send @returns {Electron.MenuItemConstructorOptions} */

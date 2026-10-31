@@ -138,8 +138,15 @@ describe('Sidebar recent folder behavior', () => {
     const switcher = screen.getByRole('button', { name: 'Current + 1 more' });
     await userEvent.click(switcher);
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
-      'Open Another Folder...Ctrl+O', 'Add Folder to Session...', 'RescanF5', 'Close Session',
+      'Open Another Folder...Ctrl+O', 'Add Folder to Session...', 'Remove from Session', 'RescanF5', 'Close Session',
     ]);
+    // Remove from Session lists every loaded folder to the right.
+    fireEvent.mouseEnter(screen.getByRole('menuitem', { name: 'Remove from Session' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'E:\\Clips' }));
+    expect(useStore.getState().directories).toEqual(['D:\\Media\\Current']);
+    await userEvent.click(switcher);
+    // With one folder left it is closed with Close Session instead.
+    expect(screen.getByRole('menuitem', { name: 'Remove from Session' }).hasAttribute('disabled')).toBe(true);
     await userEvent.click(screen.getByRole('menuitem', { name: /Rescan/ }));
     expect(onRescan).toHaveBeenCalledTimes(1);
     await userEvent.click(switcher);

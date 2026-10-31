@@ -156,6 +156,20 @@ test('menu state from the renderer is normalised', () => {
   });
 });
 
+test('File > Remove from Session lists the loaded folders once there are several', () => {
+  const sent = [];
+  const remove = (folders) => item(
+    buildMenuTemplate({ ...EMPTY_RENDERER_MENU_STATE, hasSession: true, folders }, { ...actions, send: (action) => sent.push(action) }),
+    'File',
+    'Remove from Session',
+  );
+  assert.equal(remove(['D:\Clips']).enabled, false);
+  remove(['D:\Clips', 'E:\Trips']).submenu[1].click();
+  assert.deepEqual(sent, ['remove-folder:E:\Trips']);
+  // Behind the privacy screen the folders are not listed.
+  assert.equal(item(menu({ hasSession: true, isPrivate: true, folders: ['D:\Clips', 'E:\Trips'] }), 'File', 'Remove from Session').submenu, undefined);
+});
+
 test('File > Reveal Folder in Explorer offers each loaded folder', () => {
   const sent = [];
   const reveal = (folders) => item(

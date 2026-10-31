@@ -863,6 +863,11 @@ export default function App() {
         await menuHandlersRef.current.openRecent(action.slice('open-recent:'.length).split('|'));
         return;
       }
+      if (action.startsWith('remove-folder:')) {
+        const folder = action.slice('remove-folder:'.length);
+        if (state.directories.includes(folder)) await state.removeDirectory(folder);
+        return;
+      }
       if (action.startsWith('reveal-folder:')) {
         const folder = action.slice('reveal-folder:'.length);
         if (state.directories.includes(folder)) revealInExplorer(folder);

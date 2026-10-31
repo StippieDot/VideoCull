@@ -209,7 +209,7 @@ export type MenuAction =
   | 'open-command-palette' | 'open-directory' | 'open-documentation' | 'open-settings' | 'play-external'
   | 'regenerate-thumbnails' | 'rescan-directory' | 'reveal-video' | 'show-shortcuts'
   | 'toggle-group-by-folder' | 'toggle-mute' | 'toggle-privacy' | 'toggle-theme' | 'undo' | 'zoom-in' | 'zoom-out'
-  | `sort:${SortField}` | `sort-order:${SortOrder}` | `open-recent:${string}` | `reveal-folder:${string}`;
+  | `sort:${SortField}` | `sort-order:${SortOrder}` | `open-recent:${string}` | `reveal-folder:${string}` | `remove-folder:${string}`;
 
 export type SortField = 'name' | 'size' | 'duration' | 'date' | 'rating' | 'resolution' | 'fps';
 export type FolderSortField = 'name' | 'size';

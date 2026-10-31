@@ -3,7 +3,6 @@ import {
   Copy,
   ExternalLink,
   Filter,
-  FolderMinus,
   FolderOpen,
   FolderTree,
   LayoutGrid,
@@ -177,7 +176,7 @@ export function buildSubfolderMenu(videos: Video[], parent: string, scope: PathS
 /** With several loaded folders: show them all, or one of them. */
 const RECENT_IN_ROOTS_MENU = 5;
 
-/** Every loaded folder to filter to or remove from the session, then recent sessions to open instead. */
+/** Every loaded folder to filter to, then recent sessions to open instead. */
 export function buildRootsMenu(
   videos: Video[],
   scope: PathScope,
@@ -213,18 +212,6 @@ export function buildRootsMenu(
           onSelect: () => actions.filterToPath(root),
         };
       }),
-      ...(scope.directories.length > 1 ? [
-        SEPARATOR('sep-remove'),
-        { type: 'heading' as const, key: 'remove', label: 'Remove from Session' },
-        ...scope.directories.map((root): LocationMenuItem => ({
-          type: 'item',
-          key: `remove:${root}`,
-          label: root,
-          icon: FolderMinus,
-          radio: false,
-          onSelect: () => actions.removeFromSession(root),
-        })),
-      ] : []),
       ...(others.length > 0 ? [
         SEPARATOR('sep-recent'),
         { type: 'heading' as const, key: 'recent', label: 'Open Recent' },
@@ -271,8 +258,6 @@ export interface LocationActions {
   switchDuplicateMethod: () => void;
   openDuplicateSettings: () => void;
   backToGrid: () => void;
-  /** Unloads one of several loaded folders; the others stay loaded. */
-  removeFromSession: (folder: string) => void;
   /** Opens a recent session in place of the loaded folders. */
   openRecent: (folders: string[]) => void;
   /** Focuses the group number beside the duplicates part, to type a group to go to. */

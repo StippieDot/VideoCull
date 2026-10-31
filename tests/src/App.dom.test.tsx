@@ -1314,7 +1314,7 @@ describe('saved sessions', () => {
     expect(useStore.getState().includeSubfolders).toBe(false);
   });
 
-  test('Remove from Session drops the folder without scanning the folders that stay', async () => {
+  test('File > Remove from Session drops the folder without scanning the folders that stay', async () => {
     electron.api.scanDirectory.mockImplementation(async (root: string) => [makeVideo(root === A ? 'a' : 'b', {}, root)]);
     render(<App />);
     await act(async () => {
@@ -1325,9 +1325,7 @@ describe('saved sessions', () => {
     electron.api.scanDirectory.mockClear();
     electron.api.resetLoadedDirectories.mockClear();
 
-    await act(async () => {
-      await useStore.getState().removeDirectory(B);
-    });
+    await electron.emitMenuAction(`remove-folder:${B}`);
 
     expect(electron.api.unloadDirectory).toHaveBeenCalledWith(B);
     expect(useStore.getState().videos.map((video) => video.id)).toEqual(['a']);
