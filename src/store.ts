@@ -1173,13 +1173,29 @@ const useStore = create<VideoStore>((set, get) => ({
     saveSettingsQuietly(settings);
   },
 
-  // shortcut: the scan that follows reloads the remaining folders from the cache instead of dropping the
-  // removed folder's videos in place; drop them in place once the persistent library lands.
-  removeDirectory: (dir: string) => {
+  removeDirectory: async (dir: string) => {
+    const before = get();
+    if (!before.directories.includes(dir) || before.directories.length < 2) return;
+    // While nothing runs, the folder's videos are dropped in place. During a scan or processing, the
+    // videos stay and the changed folder list triggers the usual rescan, which cancels that work first.
+    if (!before.isScanning && !before.isGenerating && !before.isFindingDuplicates && window.electronAPI?.unloadDirectory) {
+      // Decisions still waiting to be written for the folder must land before main stops accepting them.
+      await resetAllRetryQueues();
+      if (await window.electronAPI.unloadDirectory(dir).catch(() => false)) {
+        get().removeDeletedVideos(get().videos.filter((video) => isPathInsideRoot(video.path, dir)).map((video) => video.path));
+      }
+    }
     const state = get();
     const nextDirs = state.directories.filter((root) => root !== dir);
     if (nextDirs.length === state.directories.length || nextDirs.length === 0) return;
     const settings = withSession(state.settings, { folders: nextDirs, includeSubfolders: state.includeSubfolders }, state.directories);
+    const droppedInPlace = !state.videos.some((video) => isPathInsideRoot(video.path, dir));
+    if (droppedInPlace) {
+      set({ directory: nextDirs[0], directories: nextDirs, settings });
+      if (state.folderFilter && isPathInsideRoot(state.folderFilter.path, dir)) get().setFolderFilter(null);
+      saveSettingsQuietly(settings);
+      return;
+    }
     set({
       directory: nextDirs[0],
       directories: nextDirs,

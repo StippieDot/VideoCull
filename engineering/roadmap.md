@@ -458,9 +458,10 @@ folders. **Close Session** clears the session to reopen, so a session closed on 
   path in the tooltip. Applies to File > Open Recent (`app-menu.js:356`), the title bar roots menu
   (`locationMenus.ts:178`), the sidebar recents button and the empty-state list.
 - **Remove from Session:** the title bar roots menu gets **Remove from Session** for each loaded folder
-  when more than one is loaded; nothing removes a single folder today. `shortcut: rescans the remaining
-  folders from the cache instead of dropping the removed folder's videos in place; drop in place when the
-  persistent library (Phase L) lands.`
+  when more than one is loaded; nothing removes a single folder today. While nothing is scanning or
+  processing, the folder's videos are dropped in place: pending review saves are written, main unloads
+  just that folder (`unload-directory`), and the other folders are not rescanned. During a scan or
+  processing it falls back to a rescan of the remaining folders, which cancels that work first.
 - **Privacy:** behind the privacy screen nothing about the reopened session is shown, as with any open
   folder.
 
@@ -716,7 +717,6 @@ from scan-based sessions to a persistent library before L.1 starts.
 
 - A loaded folder that can't be reached keeps its rows and shows as offline; nothing is pruned for it.
   Pruning rules, including `autoPruneMissingSubfolderCache`, gain this case.
-- Remove from Session (S.1) drops the folder's videos in place instead of rescanning.
 
 **Decisions still open:** how unverified and offline videos look; whether processing waits for the check.
 

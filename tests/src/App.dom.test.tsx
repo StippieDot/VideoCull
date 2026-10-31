@@ -202,6 +202,7 @@ function createElectronApiMock() {
     onProcessingPauseState: vi.fn(() => vi.fn()),
     cancelDuplicateDetection: vi.fn().mockResolvedValue(undefined),
     resetLoadedDirectories: vi.fn().mockResolvedValue(undefined),
+    unloadDirectory: vi.fn().mockResolvedValue(true),
     scanDirectory: vi.fn().mockResolvedValue([]),
     processMetadata: vi.fn().mockResolvedValue(true),
     generateThumbnails: vi.fn().mockResolvedValue(true),
@@ -1311,6 +1312,27 @@ describe('saved sessions', () => {
     });
     expect(useStore.getState().directories).toEqual([A, B]);
     expect(useStore.getState().includeSubfolders).toBe(false);
+  });
+
+  test('Remove from Session drops the folder without scanning the folders that stay', async () => {
+    electron.api.scanDirectory.mockImplementation(async (root: string) => [makeVideo(root === A ? 'a' : 'b', {}, root)]);
+    render(<App />);
+    await act(async () => {
+      await useStore.getState().openSession({ folders: [A, B], includeSubfolders: true });
+    });
+    await waitFor(() => expect(useStore.getState().videos).toHaveLength(2));
+    await waitFor(() => expect(useStore.getState().isGenerating).toBe(false));
+    electron.api.scanDirectory.mockClear();
+    electron.api.resetLoadedDirectories.mockClear();
+
+    await act(async () => {
+      await useStore.getState().removeDirectory(B);
+    });
+
+    expect(electron.api.unloadDirectory).toHaveBeenCalledWith(B);
+    expect(useStore.getState().videos.map((video) => video.id)).toEqual(['a']);
+    expect(electron.api.scanDirectory).not.toHaveBeenCalled();
+    expect(electron.api.resetLoadedDirectories).not.toHaveBeenCalled();
   });
 
   test('File > Open Recent ignores a session the app did not list', async () => {

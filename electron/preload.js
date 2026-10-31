@@ -35,6 +35,7 @@ const electronAPI = {
   scanDirectory: (dirPath, includeSubfolders) =>
     ipcRenderer.invoke('scan-directory', dirPath, includeSubfolders),
   resetLoadedDirectories: () => ipcRenderer.invoke('reset-loaded-directories'),
+  unloadDirectory: (dirPath) => ipcRenderer.invoke('unload-directory', dirPath),
   onScanProgress: (callback) => subscribe('scan-progress', callback),
 
   // Thumbnail generation

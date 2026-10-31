@@ -45,6 +45,18 @@ describe('linked folders and files', () => {
     });
   }
 
+  test('unloading one folder forgets only that folder and keeps the session', () => {
+    const body = handlerBody('unload-directory');
+    assert.match(body, /!currentScanDirs\.has\(dirPath\) \|\| currentScanDirs\.size < 2\) return false/);
+    assert.match(body, /cacheService\.blockFolder\(folderPath, cacheOptions\)/);
+    assert.match(body, /currentScanDirs\.delete\(dirPath\)/);
+    for (const name of ['knownVideoPaths', 'knownVideoIdsByPath', 'knownVideoIdentitiesByPath', 'knownRealPathsByPath']) {
+      assert.ok(body.includes(`${name}.delete(videoPath)`), name);
+    }
+    assert.doesNotMatch(body, /\.clear\(\)/);
+    assert.doesNotMatch(body, /scanGeneration/);
+  });
+
   test('duplicate detection compares each real file once', () => {
     assert.match(handlerBody('find-duplicates'), /if \(seenRealPaths\.has\(realKey\)\) continue;/);
   });

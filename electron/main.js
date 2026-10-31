@@ -1810,6 +1810,33 @@ ipcMain.handle('reset-loaded-directories', async () => {
   }
 });
 
+// Unloads one of several loaded folders and keeps the others, without a rescan. The renderer calls it
+// only while nothing is scanning or processing, after its pending review saves are written.
+ipcMain.handle('unload-directory', async (_event, dirPath) => {
+  if (typeof dirPath !== 'string' || !currentScanDirs.has(dirPath) || currentScanDirs.size < 2) return false;
+  cancelThumbnails();
+  cancelMetadata();
+  cancelActiveDuplicateRun();
+  const cacheOptions = await getCacheOptions();
+  // Late writes for the removed folder are refused; scanning it again allows its cache once more.
+  for (const folderPath of await getKnownCacheFolders([dirPath])) cacheService.blockFolder(folderPath, cacheOptions);
+  currentScanDirs.delete(dirPath);
+  if (currentScanDir === dirPath) currentScanDir = currentScanDirs.values().next().value;
+  activeCacheRoots = new Set([...activeCacheRoots].filter((cacheRoot) => !isFolderInsideSync(cacheRoot, dirPath)));
+  for (const videoPath of [...knownVideoPaths]) {
+    const folder = path.dirname(videoPath);
+    if (!isSameFolderSync(folder, dirPath) && !isFolderInsideSync(folder, dirPath)) continue;
+    knownVideoPaths.delete(videoPath);
+    knownVideoIdsByPath.delete(videoPath);
+    knownVideoIdentitiesByPath.delete(videoPath);
+    sessionRealPathOwners.delete(realPathKey(knownRealPathsByPath.get(videoPath) ?? videoPath));
+    knownRealPathsByPath.delete(videoPath);
+  }
+  // shortcut: link targets the removed folder's scan followed stay trusted until the session is reset;
+  // harmless, since containment also needs the shown path inside a loaded folder. Track per folder if that changes.
+  return true;
+});
+
 // 2. Scan directory for video files
 ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerManager.trackWork(async () => {
   const scanToken = ++scanGeneration;

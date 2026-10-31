@@ -480,7 +480,8 @@ export interface VideoStore {
   openSession: (session: SavedSession, available?: string[]) => Promise<void>;
   /** Opens a saved session's reachable folders and reports the rest; false when none can be opened. */
   reopenSession: (session: SavedSession) => Promise<boolean>;
-  removeDirectory: (dir: string) => void;
+  /** Unloads one of several loaded folders; its videos are dropped in place when nothing is running. */
+  removeDirectory: (dir: string) => Promise<void>;
   /** Records which folders could and could not be reached, for the recent-session lists. */
   markFolderReachability: (reachable: string[], missing: string[]) => void;
   setIncludeSubfolders: (val: boolean) => void;
@@ -718,6 +719,8 @@ export interface ElectronAPI {
   openInExplorer: (filePath: string) => Promise<boolean>;
   scanDirectory: (dirPath: string, includeSubfolders: boolean) => Promise<ScanDirectoryResult>;
   resetLoadedDirectories: () => Promise<boolean>;
+  /** Unloads one of several loaded folders without a rescan; false when main refused. */
+  unloadDirectory: (dirPath: string) => Promise<boolean>;
   onScanProgress: (callback: (data: ScanProgress) => void) => () => void;
   processMetadata: (videos: MediaProbeVideoInput[], dirPath: string, options?: { force?: boolean }) => Promise<boolean>;
   onMetadataProgress: (callback: (data: ThumbProgress) => void) => () => void;

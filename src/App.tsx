@@ -1146,6 +1146,11 @@ export default function App() {
       includeSubfolders,
     };
     if (directories.length === 0) return;
+    // Remove from Session already dropped the folder's videos in place: the rest stay loaded as they are.
+    const droppedInPlace = rootsToScan.length === 0 &&
+      previous.includeSubfolders === includeSubfolders &&
+      useStore.getState().videos.every((video) => directories.some((root) => isPathInsideRoot(video.path, root)));
+    if (droppedInPlace) return;
     if (canPreserveExisting && rootsToScan.length > 0) {
       void handleScan(rootsToScan, { preserveExisting: true });
       return;

@@ -785,7 +785,7 @@ describe('useStore public behavior', () => {
 
     test('removing a folder keeps the others loaded and updates the session', async () => {
       await useStore.getState().openSession({ folders: [A, B, C], includeSubfolders: true });
-      useStore.getState().removeDirectory(B);
+      await useStore.getState().removeDirectory(B);
 
       const { directories, settings } = useStore.getState();
       expect(directories).toEqual([A, C]);
@@ -795,9 +795,54 @@ describe('useStore public behavior', () => {
 
     test('the last loaded folder cannot be removed from the session', async () => {
       await useStore.getState().setDirectory(A);
-      useStore.getState().removeDirectory(A);
+      await useStore.getState().removeDirectory(A);
 
       expect(useStore.getState().directories).toEqual([A]);
+    });
+
+    test('while nothing runs, removing a folder drops its videos in place and keeps the rest as they are', async () => {
+      const unloadDirectory = vi.fn().mockResolvedValue(true);
+      Object.assign(electronAPI, { unloadDirectory });
+      const kept = makeVideo('kept', { status: 'keep' }, A);
+      const dropped = makeVideo('dropped', {}, B);
+      await useStore.getState().openSession({ folders: [A, B], includeSubfolders: true });
+      useStore.getState().setVideos([kept, dropped]);
+      useStore.getState().setFolderFilter({ path: B, includeSubfolders: true });
+
+      await useStore.getState().removeDirectory(B);
+
+      const state = useStore.getState();
+      expect(unloadDirectory).toHaveBeenCalledWith(B);
+      expect(state.directories).toEqual([A]);
+      expect(state.videos.map((video) => video.id)).toEqual(['kept']);
+      expect(state.videos[0].status).toBe('keep');
+      // A filter on the removed folder would hide everything that is left.
+      expect(state.folderFilter).toBeNull();
+    });
+
+    test('during processing, removing a folder leaves its videos for the rescan that follows', async () => {
+      const unloadDirectory = vi.fn().mockResolvedValue(true);
+      Object.assign(electronAPI, { unloadDirectory });
+      await useStore.getState().openSession({ folders: [A, B], includeSubfolders: true });
+      useStore.getState().setVideos([makeVideo('a', {}, A), makeVideo('b', {}, B)]);
+      useStore.setState({ isGenerating: true });
+
+      await useStore.getState().removeDirectory(B);
+
+      expect(unloadDirectory).not.toHaveBeenCalled();
+      expect(useStore.getState().directories).toEqual([A]);
+      expect(useStore.getState().videos).toHaveLength(2);
+    });
+
+    test('when main refuses to unload a folder, its videos stay for the rescan', async () => {
+      Object.assign(electronAPI, { unloadDirectory: vi.fn().mockResolvedValue(false) });
+      await useStore.getState().openSession({ folders: [A, B], includeSubfolders: true });
+      useStore.getState().setVideos([makeVideo('a', {}, A), makeVideo('b', {}, B)]);
+
+      await useStore.getState().removeDirectory(B);
+
+      expect(useStore.getState().directories).toEqual([A]);
+      expect(useStore.getState().videos).toHaveLength(2);
     });
   });
 });
