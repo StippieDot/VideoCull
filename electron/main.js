@@ -1814,6 +1814,9 @@ ipcMain.handle('reset-loaded-directories', async () => {
 // only while nothing is scanning or processing, after its pending review saves are written.
 ipcMain.handle('unload-directory', async (_event, dirPath) => {
   if (typeof dirPath !== 'string' || !currentScanDirs.has(dirPath) || currentScanDirs.size < 2) return false;
+  // Through links, another loaded folder can reach a video this folder listed first; only a rescan of
+  // the remaining folders lists it again, so the renderer falls back to that.
+  if (followedLinkTargets.size > 0) return false;
   cancelThumbnails();
   cancelMetadata();
   cancelActiveDuplicateRun();

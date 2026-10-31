@@ -50,6 +50,8 @@ describe('linked folders and files', () => {
     assert.match(body, /!currentScanDirs\.has\(dirPath\) \|\| currentScanDirs\.size < 2\) return false/);
     assert.match(body, /cacheService\.blockFolder\(folderPath, cacheOptions\)/);
     assert.match(body, /currentScanDirs\.delete\(dirPath\)/);
+    // A video another folder reaches through a link is listed again only by a rescan.
+    assert.match(body, /if \(followedLinkTargets\.size > 0\) return false;/);
     for (const name of ['knownVideoPaths', 'knownVideoIdsByPath', 'knownVideoIdentitiesByPath', 'knownRealPathsByPath']) {
       assert.ok(body.includes(`${name}.delete(videoPath)`), name);
     }
