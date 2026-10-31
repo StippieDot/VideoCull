@@ -103,7 +103,7 @@ async function statVideoEntries(entries, statPath = fs.stat) {
  * @param {function} onProgress - Callback with { found, current, currentFile }.
  * @param {{ followLinks?: boolean }} [options] - `followLinks` (default off) walks symbolic links and
  *   junctions, including ones whose target is outside `dirPath`.
- * @returns {Promise<Array>|Promise<{ videos: Array, visitedDirs: Array<string>, incompleteDirs: Array<string>, linkTargets: Array<string> }>} - Scan results.
+ * @returns {Promise<Array>|Promise<{ videos: Array, visitedDirs: Array<string>, incompleteDirs: Array<string>, followedLinks: Array<{ link: string, target: string }> }>} - Scan results.
  */
 async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {}) {
   const videos = [];
@@ -115,8 +115,8 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
   // reached twice would otherwise be paired with itself as a duplicate and deleted as the "copy".
   const walkedRealDirs = new Set();
   const seenRealFiles = new Set();
-  // Real paths of the link targets this scan followed; only these are trusted outside `dirPath`.
-  const linkTargets = new Set();
+  // The links this scan followed (path as shown -> real target); only these are trusted outside `dirPath`.
+  const followedLinks = new Map();
   const summary = {
     skippedDirectoryCount: 0,
     skippedDirectorySamples: [],
@@ -204,7 +204,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
           skipFile(fullPath, 'broken-link');
           continue;
         }
-        if ((isDirectory && includeSubfolders) || (isFile && isVideoFile(entry.name))) linkTargets.add(realPath);
+        if ((isDirectory && includeSubfolders) || (isFile && isVideoFile(entry.name))) followedLinks.set(fullPath, realPath);
       }
 
       if (isDirectory && includeSubfolders) {
@@ -231,7 +231,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
   assertNotCancelled();
   progressReporter.flush();
   return visitedDirs
-    ? { videos, visitedDirs, incompleteDirs: Array.from(incompleteDirs), summary, linkTargets: Array.from(linkTargets) }
+    ? { videos, visitedDirs, incompleteDirs: Array.from(incompleteDirs), summary, followedLinks: Array.from(followedLinks, ([link, target]) => ({ link, target })) }
     : videos;
 }
 

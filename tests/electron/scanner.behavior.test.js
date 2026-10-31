@@ -132,12 +132,12 @@ test('scanDirectory follows a junction to a folder outside the opened folder and
     assert.deepEqual(result.videos.map((video) => [video.path, video.realPath]), [
       [path.join(loaded, 'linked', 'linked.mp4'), path.join(outside, 'linked.mp4')],
     ]);
-    assert.deepEqual(result.linkTargets, [outside]);
+    assert.deepEqual(result.followedLinks, [{ link: path.join(loaded, 'linked'), target: outside }]);
 
     // Off by default.
     const notFollowed = await scanDirectory(loaded, true, null, { includeVisitedDirs: true });
     assert.deepEqual(notFollowed.videos, []);
-    assert.deepEqual(notFollowed.linkTargets, []);
+    assert.deepEqual(notFollowed.followedLinks, []);
   });
 });
 
@@ -188,6 +188,6 @@ test('scanDirectory lists a file link and its target in the same folder once', a
     const result = await scanDirectory(tempRoot, false, null, { includeVisitedDirs: true, followLinks: true });
 
     assert.deepEqual(result.videos.map((video) => video.filename), ['a-real.mp4']);
-    assert.deepEqual(result.linkTargets, [target]);
+    assert.deepEqual(result.followedLinks, [{ link: path.join(tempRoot, 'b-link.mp4'), target }]);
   });
 });

@@ -147,8 +147,9 @@ const knownVideoIdentitiesByPath = new Map();
 const knownRealPathsByPath = new Map();
 // Real path key -> the shown path that owns it, so loaded folders that reach one file list it once.
 const sessionRealPathOwners = new Map();
-// Link and junction targets the scans followed; containment trusts these besides the loaded folders.
-const followedLinkTargets = new Set();
+// Links and junctions the scans followed (path as shown -> real target); containment trusts paths
+// through these besides the loaded folders.
+const followedLinks = new Map();
 // Valid video ID format: 16 hex characters (MD5-derived from path+size in scanner.js)
 const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
 
@@ -165,7 +166,7 @@ class ScanSupersededError extends Error {
 
 // Links the scans followed are trusted unless a caller (empty-folder cleanup) must stay inside the loaded folders.
 function isPathWithinDir(candidate, baseDir, trustFollowedLinks = true) {
-  return isPathWithinDirHelper(candidate, baseDir, trustFollowedLinks ? followedLinkTargets : null);
+  return isPathWithinDirHelper(candidate, baseDir, trustFollowedLinks ? followedLinks : null);
 }
 
 function canSendToRenderer() {
@@ -1802,7 +1803,7 @@ ipcMain.handle('reset-loaded-directories', async () => {
     knownVideoIdentitiesByPath.clear();
     knownRealPathsByPath.clear();
     sessionRealPathOwners.clear();
-    followedLinkTargets.clear();
+    followedLinks.clear();
     clearDuplicateSessionCache();
     return true;
   } finally {
@@ -1816,7 +1817,7 @@ ipcMain.handle('unload-directory', async (_event, dirPath) => {
   if (typeof dirPath !== 'string' || !currentScanDirs.has(dirPath) || currentScanDirs.size < 2) return false;
   // Through links, another loaded folder can reach a video this folder listed first; only a rescan of
   // the remaining folders lists it again, so the renderer falls back to that.
-  if (followedLinkTargets.size > 0) return false;
+  if (followedLinks.size > 0) return false;
   cancelThumbnails();
   cancelMetadata();
   cancelActiveDuplicateRun();
@@ -1835,8 +1836,6 @@ ipcMain.handle('unload-directory', async (_event, dirPath) => {
     sessionRealPathOwners.delete(realPathKey(knownRealPathsByPath.get(videoPath) ?? videoPath));
     knownRealPathsByPath.delete(videoPath);
   }
-  // shortcut: link targets the removed folder's scan followed stay trusted until the session is reset;
-  // harmless, since containment also needs the shown path inside a loaded folder. Track per folder if that changes.
   return true;
 });
 
@@ -1993,7 +1992,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
   currentScanDir = currentScanDir || dirPath;
   currentScanDirs.add(dirPath);
   publishScanCacheRoots(scanCacheRoots);
-  for (const target of scanResult?.linkTargets ?? []) followedLinkTargets.add(target);
+  for (const { link, target } of scanResult?.followedLinks ?? []) followedLinks.set(link, target);
 
   // A file another loaded folder already reaches (through a link) is listed once; a second
   // entry would be paired with itself as a duplicate, and deleting "the copy" deletes the only one.
@@ -2024,7 +2023,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
     dirPath,
     includeSubfolders: Boolean(includeSubfolders),
     videoCount: sessionVideos.length,
-    followedLinkTargets: scanResult?.linkTargets?.length ?? 0,
+    followedLinks: scanResult?.followedLinks?.length ?? 0,
     autoPrunedStaleVideos: cacheReconcileResult.prunedVideoCount,
     autoPrunedStaleFolders: cacheReconcileResult.prunedFolderCount,
     autoPrunedStaleVideoSamples: cacheReconcileResult.prunedVideos

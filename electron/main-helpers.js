@@ -291,12 +291,11 @@ function normalizeReviewStateChanges(changes) {
  * Returns true if `candidate` resolves to `baseDir` or a path inside it.
  * First does a fast path.resolve check (catches ../ traversal), then follows
  * symlinks with fs.realpath to prevent symlink-based directory traversal.
- * If the candidate file doesn't exist yet (e.g. thumbnail not generated),
- * the path.resolve check is sufficient — the caller's file read will 404.
- * `followedLinkTargets` holds the real paths of links a scan followed: a path inside the loaded folder
- * whose real path is inside one of them is accepted too. A link created after the scan is not.
+ * `followedLinks` maps each link a scan followed (its path as shown) to its real target: a path that
+ * goes through one of those links and resolves inside its target is accepted too. A link created
+ * after the scan is not, even when it points at a trusted target.
  */
-async function isPathWithinDir(candidate, baseDir, followedLinkTargets = null) {
+async function isPathWithinDir(candidate, baseDir, followedLinks = null) {
   const resolved = path.resolve(candidate);
   const resolvedBase = path.resolve(baseDir);
 
@@ -312,23 +311,35 @@ async function isPathWithinDir(candidate, baseDir, followedLinkTargets = null) {
     return false;
   }
 
-  // Symlink check: follow real paths for files that exist
-  try {
-    const real = await fs.promises.realpath(candidate);
-    const realBase = await fs.promises.realpath(baseDir).catch(() => resolvedBase);
+  const realBase = await fs.promises.realpath(baseDir).catch(() => resolvedBase);
+  /** Whether `shownPath`, whose real location is `real`, stays inside the folder or a followed link. */
+  const leadsInside = (shownPath, real) => {
     if (isSameOrInside(real, realBase)) return true;
-    // A link inside the loaded folder leads outside it: allowed only when a scan followed that link.
-    for (const target of followedLinkTargets ?? []) {
-      if (isSameOrInside(real, target)) return true;
+    for (const [link, target] of followedLinks ?? []) {
+      if (isSameOrInside(shownPath, path.resolve(link)) && isSameOrInside(real, target)) return true;
     }
     return false;
+  };
+
+  // Symlink check: follow real paths for files that exist
+  try {
+    return leadsInside(resolved, await fs.promises.realpath(candidate));
   } catch (err) {
-    // Candidate doesn't exist (e.g. thumbnail still being generated): the path.resolve check above
-    // already passed, so allow it through. Any other failure (access denied, a broken link) cannot
-    // prove where the path leads, so it is refused.
+    // Any failure other than "not there" (access denied) cannot prove where the path leads.
     if (err?.code !== 'ENOENT' && err?.code !== 'ENOTDIR') return false;
-    // A link pointing at nothing also reports ENOENT; it exists, so it is not a file still to come.
-    return !await fs.promises.lstat(candidate).then(() => true, () => false);
+    // Nothing exists here yet (e.g. a thumbnail still being generated): the nearest part of the path
+    // that does exist decides. A link that points at nothing exists but cannot be resolved, so it,
+    // and anything below it, is refused.
+    for (let dir = resolved; isSameOrInside(dir, resolvedBase); dir = path.dirname(dir)) {
+      if (!await fs.promises.lstat(dir).then(() => true, () => false)) continue;
+      try {
+        return leadsInside(dir, await fs.promises.realpath(dir));
+      } catch {
+        return false;
+      }
+    }
+    // Not even the base folder exists, so there is nothing a path could lead into.
+    return true;
   }
 }
 

@@ -706,11 +706,19 @@ describe('containment through links', () => {
       await fsp.symlink(outside, path.join(loaded, 'linked'), 'junction');
       const throughLink = path.join(loaded, 'linked', 'clip.mp4');
 
-      assert.equal(await isPathWithinDir(throughLink, loaded, new Set([outside])), true);
-      assert.equal(await isPathWithinDir(throughLink, loaded, new Set([path.join(tempRoot, 'elsewhere')])), false);
+      const followed = new Map([[path.join(loaded, 'linked'), outside]]);
+      assert.equal(await isPathWithinDir(throughLink, loaded, followed), true);
+      assert.equal(await isPathWithinDir(throughLink, loaded, new Map([[path.join(loaded, 'linked'), path.join(tempRoot, 'elsewhere')]])), false);
       assert.equal(await isPathWithinDir(throughLink, loaded), false);
       // The shown path must still be inside the loaded folder.
-      assert.equal(await isPathWithinDir(path.join(outside, 'clip.mp4'), loaded, new Set([outside])), false);
+      assert.equal(await isPathWithinDir(path.join(outside, 'clip.mp4'), loaded, followed), false);
+      // A file still to be written through the followed link, such as a thumbnail.
+      assert.equal(await isPathWithinDir(path.join(loaded, 'linked', 'new-thumb.jpg'), loaded, followed), true);
+
+      // A link made after the scan is not trusted, even to the same target.
+      await fsp.symlink(outside, path.join(loaded, 'made-later'), 'junction');
+      assert.equal(await isPathWithinDir(path.join(loaded, 'made-later', 'clip.mp4'), loaded, followed), false);
+      assert.equal(await isPathWithinDir(path.join(loaded, 'made-later', 'new-thumb.jpg'), loaded, followed), false);
     } finally {
       await fsp.rm(tempRoot, { recursive: true, force: true });
     }
@@ -726,8 +734,11 @@ describe('containment through links', () => {
 
       // A thumbnail that is still being generated.
       assert.equal(await isPathWithinDir(path.join(tempRoot, 'thumb.jpg'), tempRoot), true);
-      // A link that points at nothing cannot prove where it leads.
+      // A link that points at nothing cannot prove where it leads, nor can anything below it.
       assert.equal(await isPathWithinDir(path.join(tempRoot, 'dangling'), tempRoot), false);
+      assert.equal(await isPathWithinDir(path.join(tempRoot, 'dangling', 'thumb.jpg'), tempRoot), false);
+      // A file still to come in a folder that does not exist yet either.
+      assert.equal(await isPathWithinDir(path.join(tempRoot, 'new', 'deeper', 'thumb.jpg'), tempRoot), true);
     } finally {
       await fsp.rm(tempRoot, { recursive: true, force: true });
     }
