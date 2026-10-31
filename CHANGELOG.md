@@ -2,6 +2,20 @@
 
 All notable changes to VideoCull will be documented here.
 
+## [Unreleased]
+
+### Added
+- **Reopen the last session at startup** in Settings > Interface opens the folders that were loaded when VideoCull closed, with the same **Include subfolders** choice. It is off by default, and a session ended with **Close Session** stays closed. A folder that cannot be reached, such as one on an unplugged drive or an offline share, is left out with a notice naming it and stays part of the saved session, so it opens again once it is back.
+- **Remove from Session** in the File menu and in the sidebar's folder menu unloads one of several loaded folders: point at it and pick the folder. The other folders stay loaded as they are, without a rescan, and the grid keeps the videos in view where they are.
+- **Follow symbolic links and junctions (Experimental)** in Settings > Cache, off by default, scans folders and videos that links and directory junctions point to, also outside the opened folder. Each video is listed once however many links reach it, and link loops are skipped. Deleting a video reached through a link sends the video itself to the Recycle Bin, **Remove empty source folders after delete** never removes a link or junction, and a link that points at nothing is counted with the files that could not be read.
+
+### Changed
+- Recent entries remember whole sessions: every loaded folder plus the **Include subfolders** choice. File > Open Recent, the title bar folder switcher, the sidebar recents and the start screen list them; a session with several folders shows as the first folder and how many more, with every folder in the tooltip. Opening one replaces the loaded folders with all of its folders. Adding a folder to the open session updates its entry instead of adding another. Recent folders from earlier versions are kept as one-folder sessions.
+- Recent entries count only the folders that can be reached, and an entry on an unplugged drive or offline share stays in the list, marked unavailable, instead of being removed at startup.
+
+### Security
+- The check that keeps file access inside the loaded folders refuses a path whose real location cannot be read, instead of letting it through.
+
 ## [2.4.1] - 2026-10-20
 
 ### Changed
