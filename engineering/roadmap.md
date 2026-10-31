@@ -434,7 +434,7 @@ other phase.
 ### S.1 Saved Sessions
 
 **Decision:** A session is the set of loaded folders plus **Include subfolders**. The last session reopens
-at startup (setting `reopenLastSession`, default on). **Open Recent** lists whole sessions instead of single
+at startup (setting `reopenLastSession`, **default off**). **Open Recent** lists whole sessions instead of single
 folders. **Close Session** clears the session to reopen, so a session closed on purpose stays closed.
 
 **Implementation notes:**

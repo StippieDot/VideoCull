@@ -1038,7 +1038,7 @@ const useStore = create<VideoStore>((set, get) => ({
     micaTitleBar: true,
     lastSession: null,
     recentSessions: [],
-    reopenLastSession: true,
+    reopenLastSession: false,
     autoUpdates: true,
     globalMute: false,
     features: { ...DEFAULT_FEATURES },

@@ -136,8 +136,9 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
   // recentDirectories and its timestamps stay in the file for older versions; sessions replace them.
   result.recentSessions = parseRecentSessions(raw);
   result.lastSession = parseSavedSession(result.lastSession);
+  // Off until it is turned on in Settings: reopening folders unasked can surprise people.
   if (typeof result.reopenLastSession !== 'boolean') {
-    result.reopenLastSession = true;
+    result.reopenLastSession = false;
   }
 
   if (result.autoUpdates === undefined || result.autoUpdates === null) {

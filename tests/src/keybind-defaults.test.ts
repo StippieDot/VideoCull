@@ -80,7 +80,7 @@ describe('migrateSettings', () => {
     expect(migrated.removeEmptyFoldersAfterDelete).toBe(false);
     expect(migrated.recentSessions).toEqual([]);
     expect(migrated.lastSession).toBeNull();
-    expect(migrated.reopenLastSession).toBe(true);
+    expect(migrated.reopenLastSession).toBe(false);
     expect(migrated.followLinks).toBe(false);
     expect(migrated.autoUpdates).toBe(true);
     expect(migrated.globalMute).toBe(false);

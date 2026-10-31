@@ -1271,7 +1271,7 @@ describe('saved sessions', () => {
   });
 
   test('the last session reopens at startup with its reachable folders and reports the rest', async () => {
-    electron.api.getConfig.mockResolvedValue({ lastSession: { folders: [A, B], includeSubfolders: false } });
+    electron.api.getConfig.mockResolvedValue({ lastSession: { folders: [A, B], includeSubfolders: false }, reopenLastSession: true });
     electron.api.validateDroppedPath.mockImplementation(async (target: string) => ({ valid: target === A, isDirectory: target === A }));
 
     render(<App />);
@@ -1282,8 +1282,9 @@ describe('saved sessions', () => {
     expect(useStore.getState().toasts).toContainEqual(expect.objectContaining({ title: '1 folder not opened' }));
   });
 
-  test('the last session does not reopen when the setting is off', async () => {
-    electron.api.getConfig.mockResolvedValue({ lastSession: { folders: [A], includeSubfolders: true }, reopenLastSession: false });
+  test('the last session does not reopen unless the setting is turned on', async () => {
+    // Off by default.
+    electron.api.getConfig.mockResolvedValue({ lastSession: { folders: [A], includeSubfolders: true } });
 
     render(<App />);
 
