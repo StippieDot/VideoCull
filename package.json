@@ -45,15 +45,15 @@
     "electron-winstaller@5.4.0": true
   },
   "dependencies": {
-    "@videojs/react": "^10.1.0",
+    "@videojs/react": "^10.2.0",
     "better-sqlite3": "^13.0.3",
     "electron-log": "^5.4.4",
-    "electron-updater": "^6.8.3",
-    "lucide-react": "^1.59.0",
+    "electron-updater": "^6.8.11",
+    "lucide-react": "^1.61.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-window": "^2.4.1",
-    "zustand": "^5.0.14"
+    "react-window": "^2.5.0",
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
     "@electron/asar": "^4.3.1",
@@ -68,7 +68,7 @@
     "electron-builder": "^26.8.1",
     "jsdom": "^30.1.3",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4",
+    "vite": "^8.3.5",
     "vitest": "^5.0.3"
   },
   "overrides": {
