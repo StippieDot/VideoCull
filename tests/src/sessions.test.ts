@@ -1,4 +1,4 @@
-import { MAX_RECENT_SESSIONS, folderKey, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey, sessionLabel, shownFolders } from '../../src/sessions';
+import { MAX_RECENT_SESSIONS, folderKey, folderVolume, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey, sessionLabel, shownFolders } from '../../src/sessions';
 import type { RecentSession } from '../../src/types';
 
 const recent = (folders: string[], openedAt = 1): RecentSession => ({ folders, includeSubfolders: true, openedAt });
@@ -51,16 +51,36 @@ test('a session label names one folder, or the first and how many more', () => {
 });
 
 describe('pruneRecentSessions', () => {
+  // D: is there with D:\Trips and D:\Family; D:\Deleted is gone; E: (an unplugged drive) and the share are offline.
+  const existing = new Set(['D:\\', 'D:\\Trips', 'D:\\Family']);
   const validator = vi.fn(async (path: string) => {
-    if (path === 'throw') throw new Error('boom');
-    return { valid: path !== 'missing', isDirectory: path.startsWith('folder') };
+    if (path.startsWith('\\\\nas')) throw new Error('timed out');
+    return { valid: existing.has(path), isDirectory: existing.has(path) };
   });
 
-  test('keeps a session while any of its folders exists and drops it when none do', async () => {
-    const kept = recent(['missing', 'folder-a']);
-    await expect(pruneRecentSessions([kept, recent(['missing', 'throw']), recent(['folder-b'])], validator))
-      .resolves.toEqual({ recentSessions: [kept, recent(['folder-b'])], missingFolders: ['missing'] });
+  test('keeps a session while any of its folders exists', async () => {
+    const kept = recent(['D:\\Deleted', 'D:\\Trips']);
+    await expect(pruneRecentSessions([kept], validator))
+      .resolves.toEqual({ recentSessions: [kept], missingFolders: ['D:\\Deleted'] });
   });
+
+  test('drops a session whose folders were deleted from a drive that is there', async () => {
+    await expect(pruneRecentSessions([recent(['D:\\Deleted']), recent(['D:\\Family'])], validator))
+      .resolves.toEqual({ recentSessions: [recent(['D:\\Family'])], missingFolders: [] });
+  });
+
+  test('keeps a session on an unplugged drive or offline share, marked unavailable', async () => {
+    const offline = recent(['E:\\Holiday', '\\\\nas\\videos\\Clips']);
+    await expect(pruneRecentSessions([offline], validator))
+      .resolves.toEqual({ recentSessions: [offline], missingFolders: ['E:\\Holiday', '\\\\nas\\videos\\Clips'] });
+  });
+});
+
+test('a folder lives on its drive or network share', () => {
+  expect(folderVolume('E:\\Holiday\\2024')).toBe('E:\\');
+  expect(folderVolume('\\\\nas\\videos\\Clips')).toBe('\\\\nas\\videos\\');
+  expect(folderVolume('//nas/videos')).toBe('\\\\nas\\videos\\');
+  expect(folderVolume('relative')).toBeNull();
 });
 
 test('a recent session shows only its reachable folders, or all of them when none can be reached', () => {

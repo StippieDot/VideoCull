@@ -703,9 +703,10 @@ describe('useStore public behavior', () => {
         ignoredDuplicatePairs: ['ABCDEFABCDEFABCD|0011223344556677', 'bad'],
       },
     });
+    // The drive is there, so D:\Missing was deleted rather than offline.
     electronAPI.validateDroppedPath.mockImplementation(async (target: string) => ({
-      valid: target === 'D:\\Keep',
-      isDirectory: target === 'D:\\Keep',
+      valid: target === 'D:\\Keep' || target === 'D:\\',
+      isDirectory: target === 'D:\\Keep' || target === 'D:\\',
     }));
 
     await useStore.getState().loadSettings();

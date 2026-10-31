@@ -113,18 +113,38 @@ export async function checkSessionFolders(
   };
 }
 
+/** The drive (`E:\`) or network share (`\\server\share\`) a folder lives on; null when there is none. */
+export function folderVolume(folder: string): string | null {
+  const normalized = folder.replace(/\//g, '\\');
+  const share = /^\\\\[^\\]+\\[^\\]+/.exec(normalized);
+  if (share) return `${share[0]}\\`;
+  const drive = /^[a-z]:/i.exec(normalized);
+  return drive ? `${drive[0]}\\` : null;
+}
+
 /**
- * A recent session is dropped at startup only when none of its folders exist any more. Also returns
- * the folders of the kept sessions that cannot be reached, which the lists leave out.
+ * A recent session is dropped at startup only when none of its folders exist any more. A folder whose
+ * drive or share cannot be reached (unplugged, offline) is not gone: its session stays, marked
+ * unavailable. Also returns every folder of the kept sessions that cannot be reached, which the lists
+ * leave out.
  */
 export async function pruneRecentSessions(
   recents: RecentSession[],
   validator: FolderValidator,
 ): Promise<{ recentSessions: RecentSession[]; missingFolders: string[] }> {
   const checked = await Promise.all(recents.map((recent) => checkSessionFolders(recent.folders, validator)));
-  const kept = checked.filter((result) => result.reachable.length > 0);
+  const volumes = [...new Set(checked.flatMap((result) => result.missing.map(folderVolume)))]
+    .filter((volume): volume is string => volume !== null);
+  const { reachable: reachableVolumes } = await checkSessionFolders(volumes, validator);
+  const onReachableVolume = new Set(reachableVolumes.map(folderKey));
+  // Only a folder on a drive or share that is there now is known to be deleted.
+  const isGone = (folder: string) => {
+    const volume = folderVolume(folder);
+    return volume !== null && onReachableVolume.has(folderKey(volume));
+  };
+  const keep = checked.map((result) => result.reachable.length > 0 || !result.missing.every(isGone));
   return {
-    recentSessions: recents.filter((_, index) => checked[index].reachable.length > 0),
-    missingFolders: kept.flatMap((result) => result.missing),
+    recentSessions: recents.filter((_, index) => keep[index]),
+    missingFolders: checked.filter((_, index) => keep[index]).flatMap((result) => result.missing),
   };
 }
