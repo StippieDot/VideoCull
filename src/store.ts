@@ -1101,6 +1101,8 @@ const useStore = create<VideoStore>((set, get) => ({
     // not carry over to the processing of the next folder.
     void window.electronAPI?.cancelFinishAction?.();
     const nextDirs = uniqueDirectories(available);
+    // A folder opened by hand after its drive came back is no longer shown as unavailable.
+    get().markFolderReachability(nextDirs, []);
     // Folders that could not be opened stay in the saved session, so a drive that comes back is not lost.
     const settings = withSession(get().settings, { ...session, folders: uniqueDirectories(session.folders) });
     saveSettingsQuietly(settings);
@@ -2072,6 +2074,9 @@ const useStore = create<VideoStore>((set, get) => ({
   },
   loadSettings: async () => {
     if (window.electronAPI) {
+      // Checking the recent folders can take a while (an offline share times out); a folder opened
+      // meanwhile must not be replaced by the session read from disk.
+      const sessionBeforeLoad = get().settings.lastSession;
       const raw = await window.electronAPI.getConfig();
       if (raw) {
         let migrated = migrateSettings(raw as unknown as Record<string, unknown>);
@@ -2088,6 +2093,15 @@ const useStore = create<VideoStore>((set, get) => ({
           } catch (err) {
             console.warn('[store] Failed to prune recent sessions:', err);
           }
+        }
+
+        const liveSession = get().settings.lastSession;
+        if (liveSession && liveSession !== sessionBeforeLoad) {
+          migrated = {
+            ...migrated,
+            lastSession: liveSession,
+            recentSessions: rememberSession(migrated.recentSessions ?? [], liveSession, Date.now()),
+          };
         }
 
         const fullSettings = {

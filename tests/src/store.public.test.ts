@@ -1,4 +1,5 @@
 import useStore, { flushPendingReviewSaves } from '../../src/store';
+import { folderKey } from '../../src/sessions';
 import type { VideoStore } from '../../src/types';
 import { makeDuplicateGroup as makeGroup, makeVideo } from '../helpers/videoFactory';
 
@@ -791,6 +792,29 @@ describe('useStore public behavior', () => {
       expect(directories).toEqual([A, C]);
       expect(settings.lastSession?.folders).toEqual([A, C]);
       expect(settings.recentSessions.map((recent) => recent.folders)).toEqual([[A, C]]);
+    });
+
+    test('a folder opened while the settings are still loading stays the session to reopen', async () => {
+      let resolveConfig: (config: unknown) => void = () => {};
+      electronAPI.getConfig.mockReturnValue(new Promise((resolve) => { resolveConfig = resolve; }));
+      const loading = useStore.getState().loadSettings();
+
+      await useStore.getState().setDirectory(A);
+      resolveConfig({ lastSession: { folders: [B], includeSubfolders: true }, recentSessions: [{ folders: [B], includeSubfolders: true, openedAt: 1 }] });
+      electronAPI.validateDroppedPath.mockResolvedValue({ valid: true, isDirectory: true });
+      await loading;
+
+      const { settings } = useStore.getState();
+      expect(settings.lastSession?.folders).toEqual([A]);
+      expect(settings.recentSessions.map((recent) => recent.folders)).toEqual([[A], [B]]);
+    });
+
+    test('opening a folder by hand clears its unavailable mark', async () => {
+      useStore.setState({ unreachableFolders: new Set([folderKey(A)]) });
+
+      await useStore.getState().setDirectory(A);
+
+      expect(useStore.getState().unreachableFolders.size).toBe(0);
     });
 
     test('the last loaded folder cannot be removed from the session', async () => {
