@@ -59,6 +59,12 @@ describe('linked folders and files', () => {
     assert.doesNotMatch(body, /scanGeneration/);
   });
 
+  test('a video reached through a link is played or opened only while the link still leads to the scanned file', () => {
+    assert.match(mainSource, /\|\| !await stillLeadsToScannedFile\(filePath\)\) \{\s+return new Response\('Access Denied'/);
+    const body = mainSource.match(/async function isValidLoadedPath[\s\S]*?\n\}/)?.[0] ?? '';
+    assert.match(body, /&& stillLeadsToScannedFile\(filePath\)/);
+  });
+
   test('duplicate detection compares each real file once', () => {
     assert.match(handlerBody('find-duplicates'), /if \(seenRealPaths\.has\(realKey\)\) continue;/);
   });

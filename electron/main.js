@@ -480,7 +480,7 @@ app.whenReady().then(async () => {
       filePath,
       knownVideoPaths,
       isServableVideoPath,
-    })) {
+    }) || !await stillLeadsToScannedFile(filePath)) {
       return new Response('Access Denied', { status: 403 });
     }
 
@@ -1489,13 +1489,24 @@ async function isPathWithinAnyDir(filePath, dirs, trustFollowedLinks = true) {
   return false;
 }
 
+/**
+ * A video reached through a link must still lead to the file the scan found: a link pointed elsewhere
+ * since then would otherwise play or open a file nobody reviewed. Other videos pass unchanged.
+ */
+async function stillLeadsToScannedFile(filePath) {
+  const scannedRealPath = knownRealPathsByPath.get(filePath);
+  if (!scannedRealPath) return true;
+  const realPath = await fs.realpath(filePath).catch(() => null);
+  return realPath !== null && realPathKey(realPath) === realPathKey(scannedRealPath);
+}
+
 async function isValidLoadedPath(filePath) {
-  return isKnownLoadedFilePath({
+  return await isKnownLoadedFilePath({
     filePath,
     knownVideoPaths,
     loadedDirectories: currentScanDirs,
     isPathWithinAnyDir,
-  });
+  }) && stillLeadsToScannedFile(filePath);
 }
 
 function assertScanCurrent(token) {
