@@ -65,6 +65,10 @@ describe('linked folders and files', () => {
     assert.match(body, /&& stillLeadsToScannedFile\(filePath\)/);
   });
 
+  test('duplicate detection skips a linked video whose link no longer leads to the scanned file', () => {
+    assert.match(handlerBody('find-duplicates'), /if \(!await stillLeadsToScannedFile\(video\.path\)\) continue;/);
+  });
+
   test('duplicate detection compares each real file once', () => {
     assert.match(handlerBody('find-duplicates'), /if \(seenRealPaths\.has\(realKey\)\) continue;/);
   });

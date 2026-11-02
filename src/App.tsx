@@ -1152,7 +1152,10 @@ export default function App() {
     };
     if (directories.length === 0) return;
     // Remove from Session already dropped the folder's videos in place: the rest stay loaded as they are.
+    // A scan still running (e.g. of the folder just removed) must be superseded by the rescan instead,
+    // or it would add the removed folder's videos back when it finishes.
     const droppedInPlace = rootsToScan.length === 0 &&
+      !useStore.getState().isScanning &&
       previous.includeSubfolders === includeSubfolders &&
       useStore.getState().videos.every((video) => directories.some((root) => isPathInsideRoot(video.path, root)));
     if (droppedInPlace) return;

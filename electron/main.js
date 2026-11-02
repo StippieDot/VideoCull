@@ -2535,6 +2535,8 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
     if (!video || !VALID_VIDEO_ID.test(String(video.id || ''))) continue;
     if (!isKnownVideoRecord(video)) continue;
     if (!await isPathWithinAnyDir(video.path, currentScanDirs)) continue;
+    // A link pointed elsewhere since the scan would fingerprint a file nobody reviewed.
+    if (!await stillLeadsToScannedFile(video.path)) continue;
     const realKey = realPathKey(knownRealPathsByPath.get(video.path) ?? video.path);
     if (seenRealPaths.has(realKey)) continue;
     seenRealPaths.add(realKey);

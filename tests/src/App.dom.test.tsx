@@ -1333,6 +1333,26 @@ describe('saved sessions', () => {
     expect(electron.api.resetLoadedDirectories).not.toHaveBeenCalled();
   });
 
+  test('removing a folder while it is still being scanned does not bring its videos back', async () => {
+    let finishScanOfB: (videos: unknown[]) => void = () => {};
+    electron.api.scanDirectory.mockImplementation((root: string) => (root === A
+      ? Promise.resolve([makeVideo('a', {}, A)])
+      : new Promise((resolve) => { finishScanOfB = resolve; })));
+    render(<App />);
+    await act(async () => { await useStore.getState().setDirectory(A); });
+    await waitFor(() => expect(useStore.getState().videos).toHaveLength(1));
+    await waitFor(() => expect(useStore.getState().isGenerating).toBe(false));
+
+    act(() => useStore.getState().addDirectory(B));
+    await waitFor(() => expect(electron.api.scanDirectory).toHaveBeenCalledWith(B, true));
+    await act(async () => { await useStore.getState().removeDirectory(B); });
+    await act(async () => { finishScanOfB([makeVideo('b', {}, B)]); });
+
+    await waitFor(() => expect(useStore.getState().isScanning).toBe(false));
+    expect(useStore.getState().directories).toEqual([A]);
+    expect(useStore.getState().videos.map((video) => video.id)).toEqual(['a']);
+  });
+
   test('File > Open Recent ignores a session the app did not list', async () => {
     render(<App />);
 
