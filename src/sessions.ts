@@ -1,17 +1,18 @@
 import type { RecentSession, SavedSession } from './types';
+import { foldPathCase } from './utils';
 
 export const MAX_RECENT_SESSIONS = 8;
 
 /**
- * A folder in a form where equal Windows folders compare equal. Kept in step with `realPathKey` in
- * electron/scanner.js, which compares the same paths on the main-process side.
+ * A folder in a form where equal folders compare equal. Kept in step with `pathKey` in
+ * electron/path-key.js, which compares the same paths on the main-process side.
  */
 export function folderKey(folder: string): string {
-  return folder.replace(/[\\/]+/g, '\\').replace(/\\+$/, '').toLowerCase();
+  return foldPathCase(folder.replace(/[\\/]+/g, '\\').replace(/\\+$/, ''));
 }
 
 /**
- * Identifies a session: the same for the same folders in any order and letter case, so every place
+ * Identifies a session: the same for the same folders in any order (and, on Windows, letter case), so every place
  * that tells sessions apart agrees. `|` cannot appear in a Windows path.
  */
 export function sessionKey(folders: string[]): string {

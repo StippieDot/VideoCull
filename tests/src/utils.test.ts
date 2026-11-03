@@ -1,5 +1,8 @@
 import { expect, test, vi } from 'vitest';
 import {
+  fileManagerName,
+  foldPathCase,
+  modKeyName,
   calcThumbGrid,
   describeThumbnailWork,
   detectVideoCompatibility,
@@ -101,6 +104,20 @@ test('macOS and Linux call it the Trash', () => {
   try {
     expect(formatDeleteConfirmation({ count: 1, sizeBytes: 1024, removeEmptyFoldersAfterDelete: false }))
       .toBe('Move 1 marked video (1 KB) to the Trash? If the Trash is unavailable, VideoCull will ask before permanently deleting. Empty source folders will not be removed.');
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test('names, shortcuts and path case follow the platform', () => {
+  const on = (platform: string) => vi.stubGlobal('window', { electronAPI: { platform } });
+  try {
+    on('win32');
+    expect([fileManagerName(), modKeyName(), foldPathCase('D:\\Media')]).toEqual(['Explorer', 'Ctrl', 'd:\\media']);
+    on('darwin');
+    expect([fileManagerName(), modKeyName(), foldPathCase('/Users/Media')]).toEqual(['Finder', 'Cmd', '/Users/Media']);
+    on('linux');
+    expect([fileManagerName(), modKeyName(), foldPathCase('/media/Clips')]).toEqual(['File Manager', 'Ctrl', '/media/Clips']);
   } finally {
     vi.unstubAllGlobals();
   }

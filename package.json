@@ -154,6 +154,12 @@
       ],
       "icon": "src/assets/videocull-icon.png",
       "category": "AudioVideo",
+    "extraResources": [
+      {
+        "from": "src/assets/videocull-icon.png",
+        "to": "videocull.png"
+      }
+    ],
       "executableName": "videocull",
       "syncDesktopName": true,
       "artifactName": "VideoCull-${version}-${arch}.${ext}",

@@ -11,7 +11,7 @@ import RangeSlider from './RangeSlider';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { runAppCommand } from '../appCommands';
-import { formatDeleteConfirmation, formatSize, formatRecentPath, trashName } from '../utils';
+import { formatDeleteConfirmation, formatSize, formatRecentPath, modKeyName, trashName } from '../utils';
 import { deleteWithPermanentReview } from '../deletion';
 import AppMenu, { type AppMenuItem } from './AppMenu';
 import ContextMenu from './ContextMenu';
@@ -687,7 +687,7 @@ export default function Sidebar({
     ? `${folderName(directories[0])} + ${directories.length - 1} more`
     : directory ? folderName(directory) : 'No folder open';
   const switcherItems: AppMenuItem[] = [
-    { key: 'open', label: 'Open Another Folder...', icon: FolderOpen, detail: 'Ctrl+O', onSelect: () => void handleSelectDir() },
+    { key: 'open', label: 'Open Another Folder...', icon: FolderOpen, detail: `${modKeyName()}+O`, onSelect: () => void handleSelectDir() },
     {
       key: 'add',
       label: 'Add Folder to Session...',
@@ -1133,7 +1133,7 @@ export default function Sidebar({
         )}
 
         <div className="sidebar-footer-row">
-          <button className="settings-icon-btn" onClick={onOpenSettings} title="Preferences (Ctrl+,)" aria-label="Preferences">
+          <button className="settings-icon-btn" onClick={onOpenSettings} title={`Preferences (${modKeyName()}+,)`} aria-label="Preferences">
             <Settings size={18} />
           </button>
 

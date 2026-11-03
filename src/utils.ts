@@ -11,10 +11,32 @@ export function formatSize(bytes: number): string {
   return `${value.toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
 }
 
+/** The system the app runs on; undefined outside Electron (tests, a plain browser), which reads as Windows. */
+function currentPlatform(): string | undefined {
+  return typeof window === 'undefined' ? undefined : window.electronAPI?.platform;
+}
+
 /** What the system calls deleted-file storage: the Recycle Bin on Windows, the Trash elsewhere. */
 export function trashName(): string {
-  const platform = typeof window === 'undefined' ? undefined : window.electronAPI?.platform;
+  const platform = currentPlatform();
   return platform && platform !== 'win32' ? 'Trash' : 'Recycle Bin';
+}
+
+/** The app that shows files, named as the native menu names it (`fileManagerName` in electron/app-menu.js). */
+export function fileManagerName(): string {
+  const platform = currentPlatform();
+  return platform === 'darwin' ? 'Finder' : platform === 'linux' ? 'File Manager' : 'Explorer';
+}
+
+/** The modifier shortcuts show: Cmd on macOS, where it stands in for Ctrl (see `matchesKeybind`). */
+export function modKeyName(): string {
+  return currentPlatform() === 'darwin' ? 'Cmd' : 'Ctrl';
+}
+
+/** Windows paths ignore letter case; macOS and Linux paths keep it. Kept in step with electron/path-key.js. */
+export function foldPathCase(value: string): string {
+  const platform = currentPlatform();
+  return !platform || platform === 'win32' ? value.toLowerCase() : value;
 }
 
 export function formatDeleteConfirmation({
@@ -233,13 +255,13 @@ const normalizedFolders = new Map<string, string>();
 export function normalizeFolder(value: string): string {
   let normalized = normalizedFolders.get(value);
   if (normalized === undefined) {
-    normalized = value.replace(/[\\/]+/g, '\\').replace(/\\$/, '').toLowerCase();
+    normalized = foldPathCase(value.replace(/[\\/]+/g, '\\').replace(/\\$/, ''));
     normalizedFolders.set(value, normalized);
   }
   return normalized;
 }
 
-/** Tests whether a folder is `ancestor` or lies below it; Windows paths, so case and separators do not matter. */
+/** Tests whether a folder is `ancestor` or lies below it, compared as `normalizeFolder` compares them. */
 export function folderInsideTest(ancestor: string): (folder: string) => boolean {
   const base = normalizeFolder(ancestor);
   const prefix = `${base}\\`;

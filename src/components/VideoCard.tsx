@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { Video } from '../types';
 import useStore from '../store';
 import ThumbnailStrip from './ThumbnailStrip';
-import { formatSize, formatDuration, formatCodecLabel, formatFps, formatResolutionLabel, isWebSupported } from '../utils';
+import { formatSize, formatDuration, formatCodecLabel, formatFps, formatResolutionLabel, isWebSupported, modKeyName } from '../utils';
 import { Check, SkipForward, Square, CheckSquare, Trash2, Play, Heart, Star } from 'lucide-react';
 import './VideoCard.css';
 import { openVideoExternally } from '../appCommands';
@@ -146,7 +146,7 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
           <button 
             className="card-action-btn card-play-btn" 
             onClick={handlePlay} 
-            title={canPlayInReview ? "Play in review mode (Ctrl+Click for external player)" : "Open in external player"}
+            title={canPlayInReview ? `Play in review mode (${modKeyName()}+Click for external player)` : "Open in external player"}
           >
             <Play size={20} />
           </button>

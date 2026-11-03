@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { pathKey } = require('./path-key');
 
 const SERVABLE_VIDEO_EXTENSIONS = new Set([
   '.mp4', '.webm', '.ogg', '.ogv', '.mov', '.mkv', '.m4v',
@@ -383,13 +384,13 @@ async function canRevealInExplorerPath({
 }
 
 function isFolderInsideSync(childFolder, parentFolder) {
-  const child = path.resolve(childFolder).toLowerCase();
-  const parent = path.resolve(parentFolder).toLowerCase();
+  const child = pathKey(childFolder);
+  const parent = pathKey(parentFolder);
   return child !== parent && child.startsWith(parent + path.sep);
 }
 
 function isSameFolderSync(a, b) {
-  return path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+  return pathKey(a) === pathKey(b);
 }
 
 function isMissingPathError(err) {

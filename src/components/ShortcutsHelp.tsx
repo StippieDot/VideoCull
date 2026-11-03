@@ -3,6 +3,7 @@ import useStore from '../store';
 import { ALL_SHORTCUTS, FIXED_SHORTCUTS, formatKeybind, type ShortcutGroup } from '../keybinds';
 import type { Keybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
+import { modKeyName } from '../utils';
 
 interface Props {
   onClose: () => void;
@@ -65,7 +66,7 @@ export default function ShortcutsHelp({ onClose }: Props) {
         </div>
 
         <p className="shortcuts-hint">
-          All shortcuts can be changed in <strong>Settings → Keybindings</strong> (Ctrl+,)
+          All shortcuts can be changed in <strong>Settings → Keybindings</strong> ({modKeyName()}+,)
         </p>
       </div>
     </div>

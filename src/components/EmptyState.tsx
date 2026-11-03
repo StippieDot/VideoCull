@@ -3,6 +3,7 @@ import useStore from '../store';
 import { CircleHelp, FolderOpen, Moon, Settings, Sun, X } from 'lucide-react';
 import type { RecentSession, ToastInput, ToastKind } from '../types';
 import { formatKeybind } from '../keybinds';
+import { modKeyName } from '../utils';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import ContextMenu from './ContextMenu';
 import { PRODUCT } from '../product';
@@ -45,7 +46,7 @@ export default function EmptyState({ onNotify, onOpenDocumentation, onToggleThem
         <button className="settings-icon-btn empty-state-settings-btn" onClick={onOpenDocumentation} title="Open documentation" aria-label="Open documentation">
           <CircleHelp size={20} />
         </button>
-        <button className="settings-icon-btn empty-state-settings-btn" onClick={() => useStore.getState().setIsSettingsModalOpen(true)} title="Preferences (Ctrl+,)" aria-label="Open preferences">
+        <button className="settings-icon-btn empty-state-settings-btn" onClick={() => useStore.getState().setIsSettingsModalOpen(true)} title={`Preferences (${modKeyName()}+,)`} aria-label="Open preferences">
           <Settings size={20} />
         </button>
       </div>

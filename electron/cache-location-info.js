@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const cache = require('./cache');
+const { pathKey } = require('./path-key');
 
 function isPathInside(parentPath, childPath) {
   const relative = path.relative(path.resolve(parentPath), path.resolve(childPath));
@@ -40,7 +41,7 @@ async function getCacheLocationInfo(options) {
     for (const [drive, configuredPath] of Object.entries(settings.perDriveCachePaths || {})) {
       if (!configuredPath) continue;
       const item = await location(configuredPath, roots, `${drive} cache`, options.fsImpl);
-      seen.add(item.path.toLowerCase());
+      seen.add(pathKey(item.path));
       locations.push(item);
     }
     for (const folderPath of options.knownFolders || []) {
@@ -51,10 +52,10 @@ async function getCacheLocationInfo(options) {
         perDriveCachePaths: settings.perDriveCachePaths || {},
         username: options.username ?? os.userInfo().username,
       }).cacheRootDir;
-      if (seen.has(path.resolve(resolved).toLowerCase())) continue;
+      if (seen.has(pathKey(resolved))) continue;
       const drive = path.parse(folderPath).root.replace(/[\\/]+$/, '') || folderPath;
       const item = await location(resolved, roots, `${drive} cache`, options.fsImpl);
-      seen.add(item.path.toLowerCase());
+      seen.add(pathKey(item.path));
       locations.push(item);
     }
   } else {

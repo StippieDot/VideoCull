@@ -1,4 +1,5 @@
 const path = require('path');
+const { pathKey } = require('./path-key');
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const crypto = require('crypto');
@@ -96,8 +97,7 @@ function sanitizePathForFilename(folderPath) {
 }
 
 function normalizePathForCacheKey(folderPath) {
-  const normalized = path.resolve(folderPath);
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  return pathKey(folderPath);
 }
 
 function pathHashForFilename(folderPath) {

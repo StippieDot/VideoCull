@@ -1,5 +1,6 @@
 import type { DuplicateGroup, Video } from '../types';
 import type { ContextMenuItem } from './ContextMenu';
+import { fileManagerName } from '../utils';
 
 type Action = () => void;
 
@@ -18,7 +19,7 @@ export function buildLibraryGridVideoMenu(actions: {
   return [
     { key: 'play', label: 'Play', onSelect: actions.onPlay },
     { key: 'external', label: 'Open in external player', onSelect: actions.onOpenExternal },
-    { key: 'reveal', label: 'Reveal in Explorer', onSelect: actions.onReveal },
+    { key: 'reveal', label: `Reveal in ${fileManagerName()}`, onSelect: actions.onReveal },
     separator('sep-top'),
     { key: 'reset', label: 'Reset to pending', onSelect: actions.onResetPending, tone: 'secondary' },
     { key: 'thumbs', label: 'Regenerate thumbnails and metadata', onSelect: actions.onRegenerateThumbnails },
@@ -41,7 +42,7 @@ export function buildDuplicateVideoMenu(actions: {
   return [
     { key: 'play', label: 'Play', onSelect: actions.onPlay },
     { key: 'external', label: 'Open in external player', onSelect: actions.onOpenExternal },
-    { key: 'reveal', label: 'Reveal in Explorer', onSelect: actions.onReveal },
+    { key: 'reveal', label: `Reveal in ${fileManagerName()}`, onSelect: actions.onReveal },
     separator('sep-top'),
     { key: 'delete', label: 'Mark Delete', onSelect: actions.onMarkDelete, tone: 'danger' },
     { key: 'keep', label: 'Mark Keep', onSelect: actions.onMarkKeep },
@@ -90,7 +91,7 @@ export function buildReviewVideoMenu(actions: {
 }): ContextMenuItem[] {
   return [
     { key: 'external', label: 'Open in external player', onSelect: actions.onOpenExternal },
-    { key: 'reveal', label: 'Reveal in Explorer', onSelect: actions.onReveal },
+    { key: 'reveal', label: `Reveal in ${fileManagerName()}`, onSelect: actions.onReveal },
     separator('sep-main'),
     { key: 'copy', label: 'Copy full path', onSelect: actions.onCopyPath, tone: 'secondary' },
   ];
@@ -109,7 +110,7 @@ export function buildFolderHeaderMenu(actions: {
   return [
     { key: 'review', label: 'Review this folder', onSelect: actions.onReviewFolder },
     { key: 'filter', label: 'Filter to this folder', onSelect: actions.onFilterToFolder },
-    { key: 'reveal', label: 'Reveal folder in Explorer', onSelect: actions.onRevealFolder },
+    { key: 'reveal', label: `Reveal folder in ${fileManagerName()}`, onSelect: actions.onRevealFolder },
     { key: 'copy', label: 'Copy folder path', onSelect: actions.onCopyFolderPath, tone: 'secondary' },
     separator('sep-main'),
     { key: 'keep', label: 'Mark all in folder as Keep', onSelect: actions.onMarkKeep },
@@ -135,7 +136,7 @@ export function buildRecentFolderMenu(args: {
     { key: 'open', label: 'Open', onSelect: args.onOpen },
     { key: 'add', label: 'Add to session', onSelect: args.onAddToSession, disabled: alreadyLoaded },
     separator('sep-main'),
-    { key: 'reveal', label: 'Reveal in Explorer', onSelect: args.onReveal },
+    { key: 'reveal', label: `Reveal in ${fileManagerName()}`, onSelect: args.onReveal },
     { key: 'copy', label: 'Copy path', onSelect: args.onCopyPath, tone: 'secondary' },
     ...(args.onRemove ? [
       separator('sep-remove'),

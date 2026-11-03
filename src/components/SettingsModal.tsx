@@ -5,6 +5,7 @@ import type { AppSettings, CacheLocationInfo, DistributionInfo, LegacyInstallSta
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
+import { modKeyName } from '../utils';
 import KeybindInput from './KeybindInput';
 import { PRODUCT } from '../product';
 import './SettingsModal.css';
@@ -1132,7 +1133,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     <input type="checkbox" checked={localSettings.keepAwakeWhileProcessing} onChange={(e) => handleChange('keepAwakeWhileProcessing', e.target.checked)} />
                     Keep the PC awake while processing
                   </label>
-                  <span className="help-text">Stops Windows from going to sleep on its own while videos are scanned, read or fingerprinted, so long runs can finish unattended. Sleeping manually still works, and the screen can still turn off.</span>
+                  <span className="help-text">Stops the computer from going to sleep on its own while videos are scanned, read or fingerprinted, so long runs can finish unattended. Sleeping manually still works, and the screen can still turn off.</span>
                 </div>
               </div>
             )}
@@ -1184,13 +1185,15 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 })}
 
                 <p className="help-text" style={{ marginTop: 12 }}>
-                  <strong>Note:</strong> Esc always closes/stops. System shortcuts (Ctrl+O, F5, etc.) cannot be rebound here.
+                  <strong>Note:</strong> Esc always closes/stops. System shortcuts ({modKeyName()}+O, F5, etc.) cannot be rebound here.
                 </p>
               </div>
             )}
 
             {activeTab === 'updates' && (() => {
-              if (distributionInfo?.channel === 'microsoft-store') {
+              const isStore = distributionInfo?.channel === 'microsoft-store';
+              // macOS builds are not signed yet, which self-updating requires (see updatesEnabled in electron/main.js).
+              if (isStore || window.electronAPI?.platform === 'darwin') {
                 return (
                   <div className="settings-form">
                     <div className="form-group">
@@ -1198,8 +1201,8 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                       <span className="version-display">v{appVersionLabel}</span>
                     </div>
                     <div className="form-group">
-                      <label>Microsoft Store edition</label>
-                      <span className="help-text">Updates are managed and installed by Microsoft Store.</span>
+                      <label>{isStore ? 'Microsoft Store edition' : 'Updates'}</label>
+                      <span className="help-text">{isStore ? 'Updates are managed and installed by Microsoft Store.' : 'This version does not update itself yet. Download new versions from GitHub Releases.'}</span>
                     </div>
                   </div>
                 );

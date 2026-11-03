@@ -1,7 +1,8 @@
 const path = require('path');
+const { pathKey } = require('./path-key');
 
 function createFolderKey(folderPath) {
-  return path.resolve(folderPath).toLowerCase();
+  return pathKey(folderPath);
 }
 
 function rememberFolder(loadedFolderKeys, folderPath) {

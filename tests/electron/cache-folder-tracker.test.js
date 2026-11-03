@@ -28,11 +28,14 @@ test('rememberFolder normalizes paths so the same folder is only tracked once', 
   const folderPath = path.join('F:\\', 'Library', 'ChildA');
 
   assert.equal(rememberFolder(loadedFolderKeys, folderPath), true);
-  assert.equal(rememberFolder(loadedFolderKeys, path.join('f:\\', 'library', 'ChildA')), false);
-  assert.equal(loadedFolderKeys.size, 1);
+  assert.equal(rememberFolder(loadedFolderKeys, folderPath), false);
+  // Only Windows paths ignore letter case.
+  const isWindows = process.platform === 'win32';
+  assert.equal(rememberFolder(loadedFolderKeys, path.join('f:\\', 'library', 'ChildA')), !isWindows);
+  assert.equal(loadedFolderKeys.size, isWindows ? 1 : 2);
 });
 
-test('collectUnloadedOwnerFolders skips videos in the root folder and de-duplicates case variants', () => {
+test('collectUnloadedOwnerFolders skips videos in the root folder and de-duplicates case variants on Windows', () => {
   const root = path.join('F:\\', 'Library');
   const child = path.join(root, 'ChildA');
 
@@ -42,5 +45,5 @@ test('collectUnloadedOwnerFolders skips videos in the root folder and de-duplica
     { path: path.join(child.toLowerCase(), 'b.mp4') },
   ], root);
 
-  assert.deepEqual(folders, [child]);
+  assert.deepEqual(folders, process.platform === 'win32' ? [child] : [child, child.toLowerCase()]);
 });

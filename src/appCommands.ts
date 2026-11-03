@@ -1,4 +1,5 @@
 import useStore from './store';
+import { fileManagerName } from './utils';
 
 function reportCommandFailure(what: string, err?: unknown) {
   console.warn(`[app] ${what} failed:`, err ?? 'refused by the main process');
@@ -57,5 +58,5 @@ export function openVideoExternally(path: string): Promise<void> {
 
 /** Shows a video or folder in the file manager. */
 export function revealInExplorer(path: string): Promise<void> {
-  return runFileAction('Reveal in Explorer', path, window.electronAPI && (() => window.electronAPI.openInExplorer(path)));
+  return runFileAction(`Reveal in ${fileManagerName()}`, path, window.electronAPI && (() => window.electronAPI.openInExplorer(path)));
 }

@@ -7,7 +7,7 @@ import useProcessingPauseState from '../hooks/useProcessingPauseState';
 import type { PowerState, ProcessingPauseState, TaskbarProgress } from '../types';
 import videoCullIcon from '../assets/videocull-icon.png';
 import { openAppMenuAt, runAppCommand } from '../appCommands';
-import { formatRecentPath, formatSize, plural } from '../utils';
+import { formatRecentPath, formatSize, modKeyName, plural } from '../utils';
 import AppMenu, { type AppMenuItem } from './AppMenu';
 import { formatTimeLeft, listProcessingJobs, TimeLeftEstimator, type ProcessingJob } from './processingStatus';
 import LocationBar, { type LocationBarAppActions } from './LocationBar';
@@ -354,7 +354,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
             type="button"
             className="title-bar-marked"
             disabled={processingInputs.isScanning || isDeleting}
-            title={`Delete ${plural(marked.count, 'marked video')} (${formatSize(marked.size)})… (Ctrl+Backspace)`}
+            title={`Delete ${plural(marked.count, 'marked video')} (${formatSize(marked.size)})… (${modKeyName()}+Backspace)`}
             aria-label={`Delete ${plural(marked.count, 'marked video')}`}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => void runAppCommand('Actions > Delete Marked Videos')}
@@ -368,7 +368,7 @@ export default function TitleBar({ isPrivate, onOpenCommandPalette, locationActi
           <button
             type="button"
             className="title-bar-icon-button"
-            title="Find a command, folder or video (Ctrl+K)"
+            title={`Find a command, folder or video (${modKeyName()}+K)`}
             aria-label="Quick open"
             onMouseDown={(event) => event.preventDefault()}
             onClick={onOpenCommandPalette}

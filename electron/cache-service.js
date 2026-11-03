@@ -1,6 +1,7 @@
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 const { resolveCachePath } = require('./cache');
+const { pathKey } = require('./path-key');
 
 // Refusals carry this code so callers can tell "the cache is closed for now" from a real write error.
 // SYNC NOTE: electron/duplicates.js compares against the same literal.
@@ -24,7 +25,7 @@ function createCacheService({
   const blockedScopes = new Set();
 
   function scopeKey(folderPath, cacheOptions) {
-    return path.resolve(resolveCachePath(folderPath, cacheOptions)).toLowerCase();
+    return pathKey(resolveCachePath(folderPath, cacheOptions));
   }
 
   function rejectWorkerRequests(targetWorker, error) {

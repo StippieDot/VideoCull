@@ -4,7 +4,8 @@ const fs = require('fs/promises');
 const { randomUUID } = require('crypto');
 const os = require('os');
 const { performance: nodePerformance } = require('perf_hooks');
-const { scanDirectory, realPathKey } = require('./scanner');
+const { scanDirectory } = require('./scanner');
+const { pathKey } = require('./path-key');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
 const { migrateCacheMoves } = require('./cache-migration');
@@ -329,10 +330,11 @@ guardIpcMain(
 function createWindow(initialTheme = 'dark', micaTitleBar = true) {
   useMica = micaSupported && micaTitleBar;
   const theme = applyNativeTheme(initialTheme);
-  // macOS and Linux take the icon from the app bundle and the desktop entry.
-  const appIconPath = process.platform !== 'win32' ? undefined : app.isPackaged
-    ? path.join(process.resourcesPath, 'videocull.ico')
-    : path.join(__dirname, '..', 'build', 'videocull.ico');
+  // macOS takes the icon from the app bundle. Linux uses this one under X11; Wayland shells take it
+  // from the desktop entry that matches the window, which only an installed AppImage has.
+  const appIconPath = isMac ? undefined : app.isPackaged
+    ? path.join(process.resourcesPath, process.platform === 'win32' ? 'videocull.ico' : 'videocull.png')
+    : path.join(__dirname, '..', process.platform === 'win32' ? 'build/videocull.ico' : 'src/assets/videocull-icon.png');
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -422,6 +424,8 @@ const customProtocolSchemes = [
 protocol.registerSchemesAsPrivileged(customProtocolSchemes);
 
 app.whenReady().then(async () => {
+  // A packaged app shows its bundle icon in the Dock; in development that would be Electron's.
+  if (isMac && !app.isPackaged) app.dock?.setIcon(path.join(__dirname, '..', 'src', 'assets', 'videocull-icon.png'));
   log.info(`[crash-reporter] Local crash dumps: ${globalThis.__VIDEOCULL_CRASH_DUMPS_PATH__ ?? app.getPath('crashDumps')}`);
   if (profileBootstrap) {
     log.info('[profile-bootstrap]', {
@@ -861,19 +865,19 @@ async function unregisterCacheFolders(folderPaths) {
   const folderKeys = new Set(
     (Array.isArray(folderPaths) ? folderPaths : [])
       .filter(Boolean)
-      .map((folderPath) => path.resolve(folderPath).toLowerCase())
+      .map((folderPath) => pathKey(folderPath))
   );
   if (folderKeys.size === 0) return;
 
   if (activeCacheIndexBatch) {
     for (const folderPath of Array.from(activeCacheIndexBatch.knownFolders)) {
-      if (folderKeys.has(path.resolve(folderPath).toLowerCase())) {
+      if (folderKeys.has(pathKey(folderPath))) {
         activeCacheIndexBatch.knownFolders.delete(folderPath);
         activeCacheIndexBatch.indexDirty = true;
       }
     }
     for (const folderPath of Array.from(activeCacheIndexBatch.knownDistributedPaths)) {
-      if (folderKeys.has(path.resolve(folderPath).toLowerCase())) {
+      if (folderKeys.has(pathKey(folderPath))) {
         activeCacheIndexBatch.knownDistributedPaths.delete(folderPath);
         activeCacheIndexBatch.distributedDirty = true;
       }
@@ -883,12 +887,12 @@ async function unregisterCacheFolders(folderPaths) {
 
   const index = await readJsonFile(CACHE_INDEX_FILE, { knownFolders: [] });
   const knownFolders = (Array.isArray(index.knownFolders) ? index.knownFolders : [])
-    .filter((folderPath) => !folderKeys.has(path.resolve(folderPath).toLowerCase()));
+    .filter((folderPath) => !folderKeys.has(pathKey(folderPath)));
   await writeJsonFile(CACHE_INDEX_FILE, { ...index, knownFolders });
 
   const distributed = await readJsonFile(DISTRIBUTED_INDEX_FILE, { knownDistributedPaths: [] });
   const knownDistributedPaths = (Array.isArray(distributed.knownDistributedPaths) ? distributed.knownDistributedPaths : [])
-    .filter((folderPath) => !folderKeys.has(path.resolve(folderPath).toLowerCase()));
+    .filter((folderPath) => !folderKeys.has(pathKey(folderPath)));
   await writeJsonFile(DISTRIBUTED_INDEX_FILE, { ...distributed, knownDistributedPaths });
 }
 
@@ -1181,7 +1185,7 @@ async function saveVideosByParentFolder(videos, cacheOptions, {
   if (diagnostics) diagnostics.folderGroupCount = Math.max(diagnostics.folderGroupCount, groups.size);
   const shouldPruneStaleRows = Number.isFinite(updatedAt) && Array.isArray(syncVisitedFolders);
   const remainingVisitedFolders = shouldPruneStaleRows
-    ? new Map(syncVisitedFolders.filter(Boolean).map((folderPath) => [path.resolve(folderPath).toLowerCase(), folderPath]))
+    ? new Map(syncVisitedFolders.filter(Boolean).map((folderPath) => [pathKey(folderPath), folderPath]))
     : null;
   let prunedVideoCount = 0;
   let prunedFolderCount = 0;
@@ -1233,7 +1237,7 @@ async function saveVideosByParentFolder(videos, cacheOptions, {
         thumbnailRowsSkipped: folderWriteStats.thumbnailRowsSkipped,
       });
     }
-    remainingVisitedFolders?.delete(path.resolve(folderPath).toLowerCase());
+    remainingVisitedFolders?.delete(pathKey(folderPath));
   }
 
   if (remainingVisitedFolders?.size) {
@@ -1293,7 +1297,7 @@ async function reconcileScannedVideosByFolder(videos, cacheOptions, {
   shouldPrune,
   diagnostics = null,
 } = {}) {
-  const folderKey = (folderPath) => path.resolve(folderPath).toLowerCase();
+  const folderKey = (folderPath) => pathKey(folderPath);
   const incompleteKeys = new Set(incompleteFolders.map(folderKey));
   const groups = groupVideosByFolder(videos);
   const folderEntries = Array.from(groups.entries());
@@ -1503,7 +1507,7 @@ async function stillLeadsToScannedFile(filePath) {
   const scannedRealPath = knownRealPathsByPath.get(filePath);
   if (!scannedRealPath) return true;
   const realPath = await fs.realpath(filePath).catch(() => null);
-  return realPath !== null && realPathKey(realPath) === realPathKey(scannedRealPath);
+  return realPath !== null && pathKey(realPath) === pathKey(scannedRealPath);
 }
 
 async function isValidLoadedPath(filePath) {
@@ -1850,7 +1854,7 @@ ipcMain.handle('unload-directory', async (_event, dirPath) => {
     knownVideoPaths.delete(videoPath);
     knownVideoIdsByPath.delete(videoPath);
     knownVideoIdentitiesByPath.delete(videoPath);
-    sessionRealPathOwners.delete(realPathKey(knownRealPathsByPath.get(videoPath) ?? videoPath));
+    sessionRealPathOwners.delete(pathKey(knownRealPathsByPath.get(videoPath) ?? videoPath));
     knownRealPathsByPath.delete(videoPath);
   }
   return true;
@@ -2015,7 +2019,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
   // entry would be paired with itself as a duplicate, and deleting "the copy" deletes the only one.
   const realPathsByPath = new Map(videos.map((video) => [video.path, video.realPath ?? video.path]));
   const sessionVideos = merged.filter((video) => {
-    const key = realPathKey(realPathsByPath.get(video.path) ?? video.path);
+    const key = pathKey(realPathsByPath.get(video.path) ?? video.path);
     const owner = sessionRealPathOwners.get(key);
     if (owner && owner !== video.path) return false;
     sessionRealPathOwners.set(key, video.path);
@@ -2543,7 +2547,7 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
     if (!await isPathWithinAnyDir(video.path, currentScanDirs)) continue;
     // A link pointed elsewhere since the scan would fingerprint a file nobody reviewed.
     if (!await stillLeadsToScannedFile(video.path)) continue;
-    const realKey = realPathKey(knownRealPathsByPath.get(video.path) ?? video.path);
+    const realKey = pathKey(knownRealPathsByPath.get(video.path) ?? video.path);
     if (seenRealPaths.has(realKey)) continue;
     seenRealPaths.add(realKey);
     safeVideos.push(video);
@@ -2768,7 +2772,7 @@ async function finalizeDeletedFiles(results, cacheTargets) {
     knownVideoPaths.delete(filePath);
     knownVideoIdsByPath.delete(filePath);
     knownVideoIdentitiesByPath.delete(filePath);
-    sessionRealPathOwners.delete(realPathKey(knownRealPathsByPath.get(filePath) ?? filePath));
+    sessionRealPathOwners.delete(pathKey(knownRealPathsByPath.get(filePath) ?? filePath));
     knownRealPathsByPath.delete(filePath);
   }
   const removedFolders = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successfulPaths));
