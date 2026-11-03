@@ -10,6 +10,7 @@ import DuplicateStepper from './DuplicateStepper';
 import {
   buildDuplicatesMenu,
   buildFolderMenu,
+  buildParentsMenu,
   buildRootsMenu,
   buildSubfolderMenu,
   buildVideoMenu,
@@ -55,19 +56,30 @@ type Control =
   | { type: 'actions'; segment: Segment }
   | { type: 'subfolders'; parent: string }
   | { type: 'roots' }
+  /** The folders above the loaded one, as one "…": its menu shows where the loaded folder is on disk. */
+  | { type: 'parents'; loadedFolder: string }
   /** Several loaded folders and no folder chosen: the session's name. */
   | { type: 'text' }
   /** The middle of a long path; opens a list of the folders it hides. */
   | { type: 'ellipsis'; hidden: Segment[] }
   | { type: 'separator' };
 
-const INTERACTIVE = new Set<Control['type']>(['segment', 'actions', 'subfolders', 'roots', 'ellipsis']);
+const INTERACTIVE = new Set<Control['type']>(['segment', 'actions', 'subfolders', 'roots', 'parents', 'ellipsis']);
 
 interface Location {
   segments: Segment[];
   /** Grid: parts filter and the `›` lists browse folders. Review and duplicates show a plain path. */
   browsable: boolean;
   filter: FolderFilter | null;
+  /** The loaded folder the path starts at, when folders above it are hidden behind "…"; null at a drive root. */
+  hiddenAbove: string | null;
+}
+
+/** The path from the loaded folder that holds `fullPath` down to it, and where that loaded folder sits on disk. */
+function fromLoadedFolder<T extends PathSegment>(parts: T[], fullPath: string, directories: string[]): { segments: T[]; hiddenAbove: string | null } {
+  const root = directories.find((directory) => isFolderInside(fullPath, directory));
+  const start = root ? splitPath(root).length - 1 : 0;
+  return { segments: parts.slice(Math.max(0, start)), hiddenAbove: start > 0 ? parts[start].path : null };
 }
 
 /** Where the open video is in the videos being reviewed. */
@@ -91,12 +103,12 @@ function useLocation(): Location | null {
     if (directories.length === 0) return null;
     // Playing a video from a duplicate group keeps the duplicate list open underneath, so Review goes first.
     if (!(reviewMode && reviewPath) && duplicateGroupsMode) {
-      return { segments: [{ kind: 'duplicates', label: 'Duplicates', path: 'duplicates' }], browsable: false, filter: null };
+      return { segments: [{ kind: 'duplicates', label: 'Duplicates', path: 'duplicates' }], browsable: false, filter: null, hiddenAbove: null };
     }
     if (reviewMode && reviewPath) {
       const parts = splitPath(reviewPath);
       return {
-        segments: parts.map((segment, index) => ({ ...segment, kind: index === parts.length - 1 ? 'video' : 'folder' })),
+        ...fromLoadedFolder(parts.map((segment, index) => ({ ...segment, kind: index === parts.length - 1 ? 'video' as const : 'folder' as const })), reviewPath, directories),
         browsable: false,
         filter: null,
       };
@@ -106,17 +118,17 @@ function useLocation(): Location | null {
       ? isFolderInside(gridTopFolder, filterPath)
       : directories.some((root) => isFolderInside(gridTopFolder, root))) ? gridTopFolder : null;
     const folder = topFolder ?? filterPath ?? (directories.length === 1 ? directories[0] : null);
-    if (!folder) return { segments: [], browsable: true, filter };
+    if (!folder) return { segments: [], browsable: true, filter, hiddenAbove: null };
     const filterKey = filterPath && normalizeFolder(filterPath);
     const scopeFolder = filterPath ?? directories.find((root) => isFolderInside(folder, root)) ?? folder;
     const scopeLength = splitPath(scopeFolder).length;
     return {
-      segments: splitPath(folder).map((segment, index) => ({
+      ...fromLoadedFolder(splitPath(folder).map((segment, index) => ({
         ...segment,
-        kind: 'folder',
+        kind: 'folder' as const,
         filtered: normalizeFolder(segment.path) === filterKey,
         position: index >= scopeLength,
-      })),
+      })), folder, directories),
       browsable: true,
       filter,
     };
@@ -127,6 +139,7 @@ function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders:
   const { segments, browsable } = location;
   const controls: Control[] = browsable && hasRoots ? [{ type: 'roots' }] : [];
   if (segments.length === 0) return [...controls, { type: 'text' }];
+  if (location.hiddenAbove) controls.push({ type: 'parents', loadedFolder: location.hiddenAbove }, { type: 'separator' });
   const visible = collapseSegments(segments, hiddenCount);
   visible.forEach((segment, index) => {
     if (!segment) {
@@ -314,6 +327,7 @@ function buildMenu(
   }
   // The lists show every folder the other filters allow, so you can switch to one next to the current one.
   const scope = { filterPath: state.folderFilter?.path ?? null, directories: state.directories };
+  if (control.type === 'parents') return buildParentsMenu(control.loadedFolder, actions);
   if (control.type === 'roots') return buildRootsMenu(videosOutsideFolderFilter(state), scope, state.settings.recentSessions.map((recent) => recent.folders), actions, state.unreachableFolders);
   if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsideFolderFilter(state), control.parent, scope, actions);
   if (control.type !== 'segment' && control.type !== 'actions') return null;
@@ -564,6 +578,12 @@ function LocationControl({ control, index, isOpen, location, sessionTitle, butto
       return (
         <button {...buttonProps(index, 'Loaded folders')} className={`location-bar-chevron${open}`}>
           <ChevronDown size={12} aria-hidden="true" />
+        </button>
+      );
+    case 'parents':
+      return (
+        <button {...buttonProps(index, `Location of ${location.segments[0]?.label ?? ''}`)} className={`location-bar-segment${open}`} title={control.loadedFolder}>
+          <span className="location-bar-label">…</span>
         </button>
       );
     case 'text':

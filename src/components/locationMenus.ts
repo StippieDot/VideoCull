@@ -324,6 +324,21 @@ export function buildFolderMenu(context: FolderMenuContext, actions: LocationAct
   };
 }
 
+/**
+ * Behind the "…" before the loaded folder: where that folder is on disk. Its actions act on the loaded
+ * folder itself, because the main process refuses paths outside the loaded folders (open-in-explorer).
+ */
+export function buildParentsMenu(folder: string, actions: LocationActions): LocationMenu {
+  return {
+    kind: 'folder',
+    title: folder,
+    items: [
+      { type: 'item', key: 'reveal', label: 'Reveal in Explorer', icon: FolderOpen, onSelect: () => actions.reveal(folder) },
+      { type: 'item', key: 'copy', label: 'Copy Path', icon: Copy, onSelect: () => actions.copyPath(folder) },
+    ],
+  };
+}
+
 const STATUS_LABELS: Record<VideoStatus, string> = { pending: 'To review', keep: 'Keep', delete: 'Delete', skipped: 'Skipped' };
 
 export function buildVideoMenu(video: Video, canNarrowReview: boolean, actions: LocationActions): LocationMenu {
