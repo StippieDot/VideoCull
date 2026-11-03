@@ -178,8 +178,8 @@ Shared text.
     - first
       - nested
   </Tab>
-  <Tab title="macOS">
-    macOS text.
+  <Tab title="macOS and Linux">
+    Shared Unix text.
   </Tab>
 </Tabs>
 
@@ -203,19 +203,41 @@ Shared text.
     ]);
     expect(parseDocumentationPage(source, 'macOS').nodes.slice(0, 2)).toEqual([
       paragraph('Shared text.'),
-      paragraph('macOS text.'),
+      paragraph('Shared Unix text.'),
     ]);
     expect(parseDocumentationPage(source, 'Linux').nodes).toEqual([
       paragraph('Shared text.'),
+      paragraph('Shared Unix text.'),
       { type: 'steps', items: [{ title: 'Install', nodes: [paragraph('Linux text.')] }] },
     ]);
 
     vi.stubGlobal('window', { electronAPI: { platform: 'darwin' } });
-    expect(parseDocumentationPage(source).nodes[1]).toEqual(paragraph('macOS text.'));
+    expect(parseDocumentationPage(source).nodes[1]).toEqual(paragraph('Shared Unix text.'));
   });
 
-  test('bundled pages carry no unfiltered platform tabs', () => {
-    expect(DOCUMENTATION_PAGES.every((page) => !page.searchableText.includes('<tab'))).toBe(true);
+  test('bundled pages show each system only its own platform text', async () => {
+    const bundledTextOn = async (platform: string) => {
+      vi.resetModules();
+      vi.stubGlobal('window', { electronAPI: { platform } });
+      const { DOCUMENTATION_PAGES: pages } = await import('../../../src/docs/documentation');
+      return pages.map((page) => page.searchableText).join(' ');
+    };
+
+    const macOnly = /macos|xattr|\.dmg|videotoolbox|\bcmd\b/;
+    const linuxOnly = /linux|appimage|systemd|fedora|vaapi/;
+    const windowsOnly = /d3d11|dxva|\bmica\b|smartscreen/;
+    // One after another: each load reads the stubbed platform while the module evaluates.
+    const windows = await bundledTextOn('win32');
+    const mac = await bundledTextOn('darwin');
+    const linux = await bundledTextOn('linux');
+
+    expect(windows).not.toMatch(macOnly);
+    expect(windows).not.toMatch(linuxOnly);
+    expect(mac).not.toMatch(linuxOnly);
+    expect(mac).not.toMatch(windowsOnly);
+    expect(linux).not.toMatch(macOnly);
+    expect(linux).not.toMatch(windowsOnly);
+    expect(`${windows} ${mac} ${linux}`).not.toContain('<tab');
   });
 
   test('rejects unsupported MDX components instead of rendering broken prose', () => {

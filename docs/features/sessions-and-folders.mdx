@@ -14,7 +14,7 @@ A session is the set of folders currently loaded into VideoCull. The grid, filte
 
 ## Load the first folder
 
-Open a folder with `Ctrl+O` (`Cmd+O` on macOS), the folder picker, a recent session, or drag and drop. VideoCull scans supported video files, restores cached information, refreshes missing metadata, and generates any thumbnails that are not already complete.
+Open a folder with `Ctrl+O`, the folder picker, a recent session, or drag and drop. VideoCull scans supported video files, restores cached information, refreshes missing metadata, and generates any thumbnails that are not already complete.
 
 Use **Include subfolders** when footage is nested below the selected root. Turning it off limits scanning to videos directly inside each loaded root. Changing the toggle triggers a rescan of the loaded roots with the new behavior.
 
@@ -24,7 +24,16 @@ When a session already contains a folder, opening a different folder asks whethe
 
 - **Add to session** combines the folder with the currently loaded roots and creates one shared grid and review queue.
 - **Replace session** closes the current loaded set and scans only the new folder.
-- Adding a folder that is already covered does not duplicate its videos. Folder paths ignore letter case on Windows only: on macOS and Linux, `Footage` and `footage` are different folders.
+- Adding a folder that is already covered does not duplicate its videos.
+
+<Tabs>
+  <Tab title="Windows">
+    Folder paths ignore letter case, so `Footage` and `footage` are the same folder.
+  </Tab>
+  <Tab title="macOS and Linux">
+    Folder paths keep letter case, so `Footage` and `footage` are different folders.
+  </Tab>
+</Tabs>
 
 Use a multi-folder session when the folders belong to one culling job. Use separate sessions when each folder needs independent filters, duplicate runs, or delete checks.
 
@@ -38,17 +47,23 @@ A folder that cannot be reached, such as one on an unplugged drive or an offline
 
 ## Use recent sessions
 
-**File > Open Recent**, the recent list on the start screen and in the sidebar, and the title bar folder switcher list recent sessions with when each was last opened. A session with several folders shows the first folder and how many more, counting only the folders that can be reached now; hover over it to see every folder, with unavailable ones marked. Opening one replaces the loaded folders with all of its folders and its **Include subfolders** choice. Adding a folder to the open session updates its recent entry instead of creating a new one. Right-click an entry to open it, add its folders to the current session, reveal its first folder in Explorer (Finder on macOS, File Manager on Linux), or copy its paths.
+**File > Open Recent**, the recent list on the start screen and in the sidebar, and the title bar folder switcher list recent sessions with when each was last opened. A session with several folders shows the first folder and how many more, counting only the folders that can be reached now; hover over it to see every folder, with unavailable ones marked. Opening one replaces the loaded folders with all of its folders and its **Include subfolders** choice. Adding a folder to the open session updates its recent entry instead of creating a new one. Right-click an entry to open it, add its folders to the current session, reveal its first folder in your file manager, or copy its paths.
 
 Folders that are unavailable are left out with a notice; an entry none of whose folders can be reached is marked instead of opened. Remove one stale entry with its remove button, or clear the recent list without deleting any media or cache data. At startup, a recent session is only dropped when its folders were deleted; one on an unplugged drive or offline share stays, marked unavailable.
 
 ## Linked folders and files (experimental)
 
-Following links is experimental and off by default. Turn it on with **Follow symbolic links (Experimental)** in Settings > Cache; it applies from the next scan. On Windows the setting is named **Follow symbolic links and junctions (Experimental)**, because directory junctions exist only there.
+Following links is experimental and off by default. Turn it on with the **Follow symbolic links** setting (Experimental) in Settings > Cache; it applies from the next scan.
 
-When it is on, scans follow symbolic links (and, on Windows, directory junctions) to folders and to video files, also when they point outside the opened folder. Each video is listed once, however many links reach it, and a link that loops back to a folder already scanned is skipped. A link that points at nothing is counted with the files that could not be read.
+When it is on, scans follow symbolic links to folders and to video files, also when they point outside the opened folder.
 
-Deleting a video reached through a link sends the video itself to the Recycle Bin or Trash, not the link. **Remove empty source folders after delete** never removes a link or junction, or a folder outside the loaded folders.
+<Tabs>
+  <Tab title="Windows">
+    The setting is named **Follow symbolic links and junctions (Experimental)**, and scans also follow directory junctions, which exist only on Windows. Deleting never removes a junction either.
+  </Tab>
+</Tabs> Each video is listed once, however many links reach it, and a link that loops back to a folder already scanned is skipped. A link that points at nothing is counted with the files that could not be read.
+
+Deleting a video reached through a link sends the video itself to the Recycle Bin or Trash, not the link. **Remove empty source folders after delete** never removes a link, or a folder outside the loaded folders.
 
 ## Rescan or close a session
 

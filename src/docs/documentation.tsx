@@ -175,13 +175,15 @@ function stripFrontmatterAndMeta(raw: string) {
 
 /**
  * The website shows every `<Tabs>` tab; the app keeps only the tab titled for the system it runs on,
- * so platform-specific text never reaches the wrong reader. Runs on the raw source, which also
- * covers tabs inside steps and accordions. Tabs must not contain headings: the website's outline
- * would not list them.
+ * so platform-specific text never reaches the wrong reader. A title may name several systems
+ * (`macOS and Linux`); a tab group should not name one system twice. Runs on the raw source, which
+ * also covers tabs inside steps and accordions. Tabs must not contain headings: the website's
+ * outline would not list them.
  */
 function keepPlatformTab(raw: string, platform: string) {
+  const named = new RegExp(`\\b${platform}\\b`);
   return raw.replace(/<Tabs>([\s\S]*?)<\/Tabs>/g, (_, tabs: string) => {
-    const tab = Array.from(tabs.matchAll(/<Tab title="([^"]+)">([\s\S]*?)<\/Tab>/g)).find((match) => match[1] === platform);
+    const tab = Array.from(tabs.matchAll(/<Tab title="([^"]+)">([\s\S]*?)<\/Tab>/g)).find((match) => named.test(match[1]));
     if (!tab) return '';
     // Dedent the body, or its nested list items would read as continuation lines.
     const indent = Math.min(...(tab[2].match(/^[ \t]*(?=\S)/gm) ?? ['']).map((lead) => lead.length));

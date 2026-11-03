@@ -36,38 +36,24 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
     </Steps>
   </Accordion>
 
-  <Accordion title="Windows SmartScreen warns on launch">
-    This can happen with the direct installer because it is not code-signed yet. The Microsoft Store edition does not use this installer.
+  <Accordion title="VideoCull is blocked or does not start">
+    <Tabs>
+      <Tab title="Windows">
+        SmartScreen can warn on launch with the direct installer because it is not code-signed yet. The Microsoft Store edition does not use this installer.
 
-    <Steps>
-      <Step title="Click More info">
-        Use the **More info** link on the SmartScreen prompt.
-      </Step>
-      <Step title="Click Run anyway">
-        Continue only if you downloaded the installer from the official [GitHub Releases](https://github.com/StippieDot/VideoCull/releases) page.
-      </Step>
-    </Steps>
-  </Accordion>
+        1. Use the **More info** link on the SmartScreen prompt.
+        2. Click **Run anyway**, only if you downloaded the installer from the official [GitHub Releases](https://github.com/StippieDot/VideoCull/releases) page.
+      </Tab>
+      <Tab title="macOS">
+        The macOS app is not signed or notarized yet, so macOS blocks it on first launch.
 
-  <Accordion title="macOS says VideoCull cannot be opened">
-    The macOS app is not signed or notarized yet, so macOS blocks it on first launch.
-
-    <Steps>
-      <Step title="Remove the quarantine flag">
-        After moving VideoCull to Applications, run `xattr -cr /Applications/VideoCull.app` in Terminal once.
-      </Step>
-      <Step title="Or allow it in System Settings">
-        Try to open VideoCull, then allow it under **System Settings > Privacy & Security**.
-      </Step>
-    </Steps>
-  </Accordion>
-
-  <Accordion title="The AppImage does not start on Linux">
-    AppImages need FUSE 2, which Ubuntu 22.04 and newer do not install by default. Install it with `sudo apt install libfuse2t64`, then run the AppImage again. Make sure the file is executable (`chmod +x`).
-  </Accordion>
-
-  <Accordion title="Hardware acceleration does not speed up H.264 or HEVC videos on Fedora">
-    Fedora's standard graphics drivers leave out H.264 and HEVC, so VideoCull decodes those videos in software. Install the graphics drivers from RPM Fusion to let hardware acceleration handle them.
+        1. After moving VideoCull to Applications, run `xattr -cr /Applications/VideoCull.app` in Terminal once.
+        2. Or try to open VideoCull, then allow it under **System Settings > Privacy & Security**.
+      </Tab>
+      <Tab title="Linux">
+        AppImages need FUSE 2, which Ubuntu 22.04 and newer do not install by default. Install it with `sudo apt install libfuse2t64`, then run the AppImage again. Make sure the file is executable (`chmod +x`).
+      </Tab>
+    </Tabs>
   </Accordion>
 
   <Accordion title="A video does not play in the built-in player">
@@ -77,7 +63,7 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
   </Accordion>
 
   <Accordion title="I accidentally sent videos to the Recycle Bin or Trash">
-    Restore them from the Recycle Bin (Windows) or the Trash (macOS and Linux), then rescan in VideoCull so the files appear in the grid again.
+    Restore them from the Recycle Bin or Trash, then rescan in VideoCull so the files appear in the grid again.
   </Accordion>
 
   <Accordion title="Thumbnail generation uses too much CPU">

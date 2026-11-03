@@ -36,7 +36,7 @@ These answers cover the short questions that come up during normal culling. For 
 
     Status, ratings, favorites, bookmarks, metadata, and thumbnails survive rescans.
 
-    See [Cache and processing](/reference/cache-and-processing) for the default folders on Windows, macOS, and Linux.
+    See [Cache and processing](/reference/cache-and-processing) for the default folders.
   </Accordion>
 
   <Accordion title="How do I move cache to a new drive?">
@@ -78,7 +78,7 @@ These answers cover the short questions that come up during normal culling. For 
   </Accordion>
 
   <Accordion title="Are deleted files permanently removed?">
-    No. VideoCull sends marked files to the Recycle Bin on Windows, or the Trash on macOS and Linux, when possible. They are not gone forever unless you empty it or your system cannot use it for that location.
+    No. VideoCull sends marked files to the Recycle Bin or Trash when possible. They are not gone forever unless you empty it or your system cannot use it for that location.
 
     If you send files there by mistake, you can restore them from the Recycle Bin or Trash and then rescan in VideoCull.
 
@@ -86,7 +86,7 @@ These answers cover the short questions that come up during normal culling. For 
   </Accordion>
 
   <Accordion title="Does VideoCull work offline?">
-    Yes. VideoCull runs locally and does not require an account or cloud sync. Builds that update themselves (the Windows direct-download edition and Linux) can check GitHub for updates, which you can turn off in Settings. The [privacy policy](https://videocull.app/privacy/) describes all network access.
+    Yes. VideoCull runs locally and does not require an account or cloud sync. Builds that update themselves can check GitHub for updates, which you can turn off in Settings. The [privacy policy](https://videocull.app/privacy/) describes all network access.
   </Accordion>
 
   <Accordion title="Will upgrades preserve my decisions and bookmarks?">
@@ -103,21 +103,34 @@ These answers cover the short questions that come up during normal culling. For 
     Keep both editions updated before switching. After confirming the edition you used before works, you can remove the other edition without deleting the shared profile or cache. Resetting or uninstalling the Store package also leaves that shared data in place.
   </Accordion>
 
-  <Accordion title="Why does Windows SmartScreen warn me about the installer?">
-    This applies to the direct installer, which is not code-signed yet. Windows may flag it as an unrecognized app. Use the official [GitHub Releases](https://github.com/StippieDot/VideoCull/releases) page and click **More info** then **Run anyway**.
+  <Accordion title="Why does my system warn about or block VideoCull?">
+    <Tabs>
+      <Tab title="Windows">
+        This applies to the direct installer, which is not code-signed yet. Windows may flag it as an unrecognized app. Use the official [GitHub Releases](https://github.com/StippieDot/VideoCull/releases) page and click **More info** then **Run anyway**.
+      </Tab>
+      <Tab title="macOS">
+        The macOS app is not signed or notarized yet. Run `xattr -cr /Applications/VideoCull.app` in Terminal once, or allow the app under **System Settings > Privacy & Security**.
+      </Tab>
+      <Tab title="Linux">
+        Linux shows no warning. If an AppImage does not start, it probably needs FUSE 2, which Ubuntu 22.04 and newer do not install by default: run `sudo apt install libfuse2t64`.
+      </Tab>
+    </Tabs>
   </Accordion>
 
-  <Accordion title="Can I use VideoCull on macOS or Linux?">
-    Yes. The macOS and Linux builds are in beta: they are new and tested by the community.
-
-    - **macOS:** a `.dmg` for Apple silicon (arm64) and one for Intel (x64). The app does not update itself; download new versions from GitHub Releases.
-    - **Linux:** a `.deb` (Debian, Ubuntu, Linux Mint, Zorin), an `.rpm` (Fedora and other RPM-based distributions), and an AppImage (any distribution). They check GitHub Releases for updates.
+  <Accordion title="Which systems does VideoCull run on?">
+    <Tabs>
+      <Tab title="Windows">
+        Windows 10 version 22H2 or Windows 11, as a Microsoft Store edition or a direct installer.
+      </Tab>
+      <Tab title="macOS">
+        Yes, in beta: a `.dmg` for Apple silicon (arm64) and one for Intel (x64). The app does not update itself; download new versions from GitHub Releases.
+      </Tab>
+      <Tab title="Linux">
+        Yes, in beta: a `.deb` (Debian, Ubuntu, Linux Mint, Zorin), an `.rpm` (Fedora and other RPM-based distributions), and an AppImage (any distribution). They check GitHub Releases for updates.
+      </Tab>
+    </Tabs>
 
     See [Install VideoCull](/getting-started/installation) for the steps, and [report problems](https://github.com/StippieDot/VideoCull/issues) you run into.
-  </Accordion>
-
-  <Accordion title="Why does macOS say it cannot open VideoCull?">
-    The macOS app is not signed or notarized yet. Run `xattr -cr /Applications/VideoCull.app` in Terminal once, or allow the app under **System Settings > Privacy & Security**.
   </Accordion>
 
   <Accordion title="What does intro skip delay do?">
