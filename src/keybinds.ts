@@ -15,10 +15,13 @@ export type ShortcutGroup = 'Review mode' | 'Global';
 // (e.g. ArrowLeft = prev video when not playing, seek -5s when playing)
 export type ShortcutContext = 'playing' | 'not-playing';
 
+export type ShortcutSection = 'Navigation' | 'Decisions' | 'Playback' | 'While playing' | 'Folders & search' | 'Videos' | 'App';
+
 export interface ShortcutDef {
   readonly id: KeybindSettingKey;
   readonly description: string;
   readonly group: ShortcutGroup;
+  readonly section: ShortcutSection; // how Settings clusters it; group decides which keys may conflict
   readonly context?: ShortcutContext; // undefined = fires regardless of play state
 }
 
@@ -31,31 +34,26 @@ export type KeybindSettingKey =
   | 'keyGlobalMute' | 'keyToggleTheme' | 'keySearch';
 
 export const ALL_SHORTCUTS: ShortcutDef[] = [
-  // Navigation (only fires when not playing)
-  { id: 'keyPrevVideo',          description: 'Previous video',            group: 'Review mode', context: 'not-playing' },
-  { id: 'keyNextVideo',          description: 'Next video',                group: 'Review mode', context: 'not-playing' },
-  // Decision actions
-  { id: 'keyKeep',               description: 'Mark as Keep',              group: 'Review mode' },
-  { id: 'keyDelete',             description: 'Mark as Delete',            group: 'Review mode' },
-  { id: 'keySkip',               description: 'Skip (no decision)',        group: 'Review mode' },
-  { id: 'keyReset',              description: 'Reset to Pending',          group: 'Review mode' },
-  { id: 'keyUndo',               description: 'Undo last action',          group: 'Review mode' },
-  // Playback controls
-  { id: 'keyPlay',               description: 'Play / Pause',              group: 'Review mode' },
-  { id: 'keyEnterPlay',          description: 'Play / Pause (alternate)',  group: 'Review mode' },
-  { id: 'keyExternalPlayer',     description: 'Open in external player',   group: 'Review mode' },
-  { id: 'keyNextUndecided',      description: 'Next undecided',            group: 'Review mode' },
-  // While playing
-  { id: 'keySeekBack',           description: 'Rewind 5s',                 group: 'Review mode', context: 'playing' },
-  { id: 'keySeekForward',        description: 'Forward 5s',                group: 'Review mode', context: 'playing' },
-  { id: 'keySpeedDown',          description: 'Decrease speed',            group: 'Review mode', context: 'playing' },
-  { id: 'keySpeedUp',            description: 'Increase speed',            group: 'Review mode', context: 'playing' },
-  { id: 'keyBookmark',           description: 'Bookmark current position', group: 'Review mode', context: 'playing' },
-  // Global
-  { id: 'keyShowHelp',           description: 'Show keyboard shortcuts',   group: 'Global' },
-  { id: 'keyGlobalMute',         description: 'Toggle global mute',        group: 'Global' },
-  { id: 'keyToggleTheme',        description: 'Toggle color theme',        group: 'Global' },
-  { id: 'keySearch',             description: 'Search loaded videos',      group: 'Global' },
+  { id: 'keyPrevVideo',          description: 'Previous video',            group: 'Review mode', section: 'Navigation', context: 'not-playing' },
+  { id: 'keyNextVideo',          description: 'Next video',                group: 'Review mode', section: 'Navigation', context: 'not-playing' },
+  { id: 'keyNextUndecided',      description: 'Next undecided',            group: 'Review mode', section: 'Navigation' },
+  { id: 'keyKeep',               description: 'Mark as Keep',              group: 'Review mode', section: 'Decisions' },
+  { id: 'keyDelete',             description: 'Mark as Delete',            group: 'Review mode', section: 'Decisions' },
+  { id: 'keySkip',               description: 'Skip (no decision)',        group: 'Review mode', section: 'Decisions' },
+  { id: 'keyReset',              description: 'Reset to Pending',          group: 'Review mode', section: 'Decisions' },
+  { id: 'keyUndo',               description: 'Undo last action',          group: 'Review mode', section: 'Decisions' },
+  { id: 'keyPlay',               description: 'Play / Pause',              group: 'Review mode', section: 'Playback' },
+  { id: 'keyEnterPlay',          description: 'Play / Pause (alternate)',  group: 'Review mode', section: 'Playback' },
+  { id: 'keyExternalPlayer',     description: 'Open in external player',   group: 'Review mode', section: 'Playback' },
+  { id: 'keySeekBack',           description: 'Rewind 5s',                 group: 'Review mode', section: 'While playing', context: 'playing' },
+  { id: 'keySeekForward',        description: 'Forward 5s',                group: 'Review mode', section: 'While playing', context: 'playing' },
+  { id: 'keySpeedDown',          description: 'Decrease speed',            group: 'Review mode', section: 'While playing', context: 'playing' },
+  { id: 'keySpeedUp',            description: 'Increase speed',            group: 'Review mode', section: 'While playing', context: 'playing' },
+  { id: 'keyBookmark',           description: 'Bookmark current position', group: 'Review mode', section: 'While playing', context: 'playing' },
+  { id: 'keyShowHelp',           description: 'Show keyboard shortcuts',   group: 'Global', section: 'App' },
+  { id: 'keyGlobalMute',         description: 'Toggle global mute',        group: 'Global', section: 'App' },
+  { id: 'keyToggleTheme',        description: 'Toggle color theme',        group: 'Global', section: 'App' },
+  { id: 'keySearch',             description: 'Search loaded videos',      group: 'Global', section: 'Folders & search' },
 ];
 
 // Fixed shortcuts that are never configurable (displayed in help only)
@@ -63,29 +61,38 @@ export interface FixedShortcut {
   readonly keys: string[];
   readonly description: string;
   readonly group: ShortcutGroup;
+  readonly section: ShortcutSection;
+  // The player's own key: a configured Review shortcut on it wins, so it is not a conflict.
+  readonly playerKey?: boolean;
 }
 
 const MOD = modKeyName();
 
 export const FIXED_SHORTCUTS: FixedShortcut[] = [
-  { keys: ['Esc'], description: 'Stop playing / Exit review', group: 'Review mode' },
-  { keys: [`${MOD}+,`],          description: 'Open settings',         group: 'Global' },
-  { keys: [`${MOD}+O`],          description: 'Open folder',           group: 'Global' },
-  { keys: ['F5'],              description: 'Rescan',                group: 'Global' },
-  { keys: [`${MOD}+Shift+E`],    description: 'Export report',         group: 'Global' },
-  { keys: [`${MOD}+Z`],          description: 'Undo last action',      group: 'Global' },
-  { keys: [`${MOD}+Backspace`],  description: 'Delete marked videos',  group: 'Global' },
-  { keys: [`${MOD}++`, `${MOD}+=`], description: 'Larger cards',         group: 'Global' },
-  { keys: [`${MOD}+-`],          description: 'Smaller cards',         group: 'Global' },
-  { keys: [`${MOD}+E`],         description: `Reveal in ${fileManagerName()}`, group: 'Global' },
-  { keys: [`${MOD}+P`],          description: 'Play externally',      group: 'Global' },
-  { keys: [`${MOD}+K`],          description: 'Find a command, folder or video', group: 'Global' },
-  { keys: [`${MOD}+G`],          description: 'Go to folder',          group: 'Global' },
-  { keys: [`${MOD}+L`],          description: 'Focus the path',        group: 'Global' },
-  { keys: ['Alt+Left', 'Alt+Right'], description: 'Previous / next folder filter', group: 'Global' },
-  { keys: ['F1'],              description: 'Open documentation',    group: 'Global' },
-  { keys: ['F11'],             description: 'Toggle fullscreen',     group: 'Global' },
-  { keys: ['Shift+Esc'],       description: 'Toggle privacy screen', group: 'Global' },
+  { keys: ['Esc'], description: 'Stop playing / Exit review', group: 'Review mode', section: 'Playback' },
+  { keys: ['J', 'L'], description: 'Back / forward 10s', group: 'Review mode', section: 'While playing', playerKey: true },
+  { keys: ['0-9'], description: 'Jump to 0-90% of the video', group: 'Review mode', section: 'While playing', playerKey: true },
+  { keys: ['Home', 'End'], description: 'Jump to start / end', group: 'Review mode', section: 'While playing', playerKey: true },
+  { keys: ['↑', '↓'], description: 'Volume up / down', group: 'Review mode', section: 'While playing', playerKey: true },
+  { keys: ['F'], description: 'Player fullscreen', group: 'Review mode', section: 'While playing', playerKey: true },
+  { keys: ['I'], description: 'Picture-in-picture', group: 'Review mode', section: 'While playing', playerKey: true },
+  { keys: [`${MOD}+,`],          description: 'Open settings',         group: 'Global', section: 'App' },
+  { keys: [`${MOD}+O`],          description: 'Open folder',           group: 'Global', section: 'Folders & search' },
+  { keys: ['F5'],              description: 'Rescan',                group: 'Global', section: 'Folders & search' },
+  { keys: [`${MOD}+Shift+E`],    description: 'Export report',         group: 'Global', section: 'Videos' },
+  { keys: [`${MOD}+Z`],          description: 'Undo last action',      group: 'Global', section: 'Videos' },
+  { keys: [`${MOD}+Backspace`],  description: 'Delete marked videos',  group: 'Global', section: 'Videos' },
+  { keys: [`${MOD}++`, `${MOD}+=`], description: 'Larger cards',         group: 'Global', section: 'Videos' },
+  { keys: [`${MOD}+-`],          description: 'Smaller cards',         group: 'Global', section: 'Videos' },
+  { keys: [`${MOD}+E`],         description: `Reveal in ${fileManagerName()}`, group: 'Global', section: 'Videos' },
+  { keys: [`${MOD}+P`],          description: 'Play externally',      group: 'Global', section: 'Videos' },
+  { keys: [`${MOD}+K`],          description: 'Find a command, folder or video', group: 'Global', section: 'Folders & search' },
+  { keys: [`${MOD}+G`],          description: 'Go to folder',          group: 'Global', section: 'Folders & search' },
+  { keys: [`${MOD}+L`],          description: 'Focus the path',        group: 'Global', section: 'Folders & search' },
+  { keys: ['Alt+Left', 'Alt+Right'], description: 'Previous / next folder filter', group: 'Global', section: 'Folders & search' },
+  { keys: ['F1'],              description: 'Open documentation',    group: 'Global', section: 'App' },
+  { keys: ['F11'],             description: 'Toggle fullscreen',     group: 'Global', section: 'App' },
+  { keys: ['Shift+Esc'],       description: 'Toggle privacy screen', group: 'Global', section: 'App' },
 ];
 
 // ── Creation helper ────────────────────────────────────────────────
@@ -185,7 +192,8 @@ export function findConflict(
   // Fixed shortcuts are taken by the menu or the window before a configurable binding can fire.
   const pressed = formatKeybind(currentBind).replace('←', 'Left').replace('→', 'Right').toLowerCase();
   const fixed = FIXED_SHORTCUTS.find((shortcut) => (
-    (shortcut.group === 'Global' || shortcut.group === currentDef.group)
+    !shortcut.playerKey
+    && (shortcut.group === 'Global' || shortcut.group === currentDef.group)
     && shortcut.keys.some((keys) => keys.toLowerCase() === pressed)
   ));
   return fixed?.description ?? null;

@@ -137,11 +137,17 @@ describe('findConflict with fixed shortcuts', () => {
 });
 
 describe('fixed shortcut metadata', () => {
+  test('player keys are listed but never block a Review shortcut from using them', () => {
+    expect(FIXED_SHORTCUTS.some((shortcut) => shortcut.playerKey && shortcut.keys.includes('F'))).toBe(true);
+    const binds = Object.fromEntries(ALL_SHORTCUTS.map((shortcut) => [shortcut.id, kb(shortcut.id)])) as Record<KeybindSettingKey, Keybind>;
+    expect(findConflict('keyKeep', kb('f'), binds)).toBeNull();
+  });
+
   test('keeps the help entries needed by the shortcut reference UI', () => {
     expect(FIXED_SHORTCUTS).toEqual(
       expect.arrayContaining([
-        { keys: ['Esc'], description: 'Stop playing / Exit review', group: 'Review mode' },
-        { keys: ['Ctrl+Backspace'], description: 'Delete marked videos', group: 'Global' },
+        { keys: ['Esc'], description: 'Stop playing / Exit review', group: 'Review mode', section: 'Playback' },
+        { keys: ['Ctrl+Backspace'], description: 'Delete marked videos', group: 'Global', section: 'Videos' },
       ])
     );
   });
@@ -151,7 +157,7 @@ describe('shortcut metadata', () => {
   test('lists search as a configurable global shortcut', () => {
     expect(ALL_SHORTCUTS).toEqual(
       expect.arrayContaining([
-        { id: 'keySearch', description: 'Search loaded videos', group: 'Global' },
+        { id: 'keySearch', description: 'Search loaded videos', group: 'Global', section: 'Folders & search' },
       ])
     );
   });
@@ -159,7 +165,7 @@ describe('shortcut metadata', () => {
   test('lists theme switching as a configurable global shortcut', () => {
     expect(ALL_SHORTCUTS).toEqual(
       expect.arrayContaining([
-        { id: 'keyToggleTheme', description: 'Toggle color theme', group: 'Global' },
+        { id: 'keyToggleTheme', description: 'Toggle color theme', group: 'Global', section: 'App' },
       ])
     );
   });

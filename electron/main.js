@@ -338,7 +338,8 @@ function createWindow(initialTheme = 'dark', micaTitleBar = true) {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    minWidth: 900,
+    // Narrower squeezes the two-column Settings boxes; still fits 1366 x 768 at 125% scaling.
+    minWidth: 1080,
     minHeight: 600,
     icon: appIconPath,
     // Mica only shows through a transparent window background; the page paints everything else.

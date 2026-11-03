@@ -3,6 +3,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SettingsModal from '../../../src/components/SettingsModal';
+import { ALL_SHORTCUTS } from '../../../src/keybinds';
 import useStore from '../../../src/store';
 import { makeVideo } from '../../helpers/videoFactory';
 import type { UpdateInfo } from '../../../src/types';
@@ -108,7 +109,7 @@ describe('SettingsModal integration behavior', () => {
   });
 
   test('keeps the modal open and shows the migration error when cache relocation fails', async () => {
-    render(<SettingsModal initialTab="cache" />);
+    render(<SettingsModal initialTab="library" />);
 
     const [cacheStorageSelect] = screen.getAllByRole('combobox');
     await userEvent.selectOptions(cacheStorageSelect, 'per-drive');
@@ -129,7 +130,7 @@ describe('SettingsModal integration behavior', () => {
       errors: ['E:\\Clips: copy failed'],
     });
     const originalCacheLocation = useStore.getState().settings.cacheLocation;
-    render(<SettingsModal initialTab="cache" />);
+    render(<SettingsModal initialTab="library" />);
 
     const [cacheStorageSelect] = screen.getAllByRole('combobox');
     await userEvent.selectOptions(cacheStorageSelect, 'per-drive');
@@ -169,7 +170,7 @@ describe('SettingsModal integration behavior', () => {
     electronAPI.chooseReportScope.mockResolvedValue('filtered');
     electronAPI.exportReport.mockResolvedValue('error');
 
-    render(<SettingsModal initialTab="interface" />);
+    render(<SettingsModal initialTab="general" />);
 
     await userEvent.click(screen.getByRole('button', { name: /export report/i }));
 
@@ -182,11 +183,11 @@ describe('SettingsModal integration behavior', () => {
   });
 
   test('saves the persistent Review playback-controls preference', async () => {
-    render(<SettingsModal initialTab="interface" />);
+    render(<SettingsModal initialTab="view" />);
 
     expect(screen.getByRole('heading', { name: /grid defaults/i })).toBeTruthy();
     expect(screen.getByRole('heading', { name: /review mode/i })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: /^export$/i })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /optional features/i })).toBeTruthy();
 
     const controlsToggle = screen.getByRole('checkbox', { name: /keep playback controls visible in review/i });
     expect((controlsToggle as HTMLInputElement).checked).toBe(false);
@@ -230,8 +231,20 @@ describe('SettingsModal integration behavior', () => {
     expect(useStore.getState().settings.duplicates.keeperOrder).toEqual(['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec']);
   });
 
+  test('lists the tabs by task and groups each tab into titled sections', async () => {
+    render(<SettingsModal initialTab="general" />);
+
+    const tabs = Array.from(document.querySelectorAll('.settings-sidebar .tab-btn')).map((tab) => tab.textContent);
+    expect(tabs).toEqual(['General', 'Grid & review', 'Library & cache', 'Duplicates', 'Processing', 'Keyboard shortcuts', 'Updates', 'About']);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Library & cache' }));
+    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent))
+      .toEqual(['Scanning', 'Cache', 'After deleting']);
+    expect(screen.getByRole('checkbox', { name: /remove empty source folders after delete/i })).toBeTruthy();
+  });
+
   test('shows Appearance first and saves the selected color theme', async () => {
-    render(<SettingsModal initialTab="interface" />);
+    render(<SettingsModal initialTab="general" />);
 
     const headings = screen.getAllByRole('heading', { level: 3 });
     expect(headings[0]?.textContent).toBe('Appearance');
@@ -299,7 +312,7 @@ describe('SettingsModal integration behavior', () => {
   });
 
   test('shows only rating and favorites as optional feature toggles', async () => {
-    render(<SettingsModal initialTab="features" />);
+    render(<SettingsModal initialTab="view" />);
 
     expect(await screen.findByLabelText(/5-star rating/i)).toBeTruthy();
     expect(screen.getByLabelText(/favorites/i)).toBeTruthy();
@@ -310,13 +323,13 @@ describe('SettingsModal integration behavior', () => {
   });
 
   test('shows the missing-subfolder cache cleanup toggle on the cache tab', async () => {
-    render(<SettingsModal initialTab="cache" />);
+    render(<SettingsModal initialTab="library" />);
 
     expect(await screen.findByRole('checkbox', { name: /auto-clean stale cache after scans/i })).toBeTruthy();
   });
 
   test('shows the resolved cache path and provides open and copy actions', async () => {
-    render(<SettingsModal initialTab="cache" />);
+    render(<SettingsModal initialTab="library" />);
     expect(await screen.findByText('C:\\Profile\\video-cache')).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: /^open$/i }));
     await userEvent.click(screen.getByRole('button', { name: /copy path/i }));
@@ -339,7 +352,7 @@ describe('SettingsModal integration behavior', () => {
     });
     electronAPI.migrateCacheSettings.mockResolvedValue({ status: 'no-cache', migrated: 0, errors: [] });
 
-    render(<SettingsModal initialTab="cache" />);
+    render(<SettingsModal initialTab="library" />);
     await userEvent.click(await screen.findByRole('button', { name: /use default/i }));
 
     expect(await screen.findByText(/default cache location selected/i)).toBeTruthy();
@@ -401,7 +414,7 @@ describe('SettingsModal integration behavior', () => {
   test('explains thumbnail count rebuild and reuse behavior', async () => {
     render(<SettingsModal initialTab="processing" />);
 
-    expect(await screen.findByText(/Increasing this rebuilds videos that need more shots; lowering keeps extra cached files, so raising it again can reuse them if the cache still exists/i)).toBeTruthy();
+    expect(await screen.findByText(/Raising this rebuilds the thumbnails of videos that need more frames\. Lowering it keeps the extra frames, so raising it again reuses them\./i)).toBeTruthy();
   });
 
   test('confirms before saving a thumbnail count increase when loaded videos have thumbnails', async () => {
@@ -436,6 +449,16 @@ describe('SettingsModal integration behavior', () => {
     expect(useStore.getState().isSettingsModalOpen).toBe(true);
   });
 
+  test('clusters the shortcuts by what they do and shows every one', async () => {
+    render(<SettingsModal initialTab="shortcuts" />);
+
+    expect(screen.getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent))
+      .toEqual(['Navigation', 'Decisions', 'Playback', 'While playing', 'App', 'Folders & search']);
+    expect(document.querySelectorAll('.keybind-row')).toHaveLength(ALL_SHORTCUTS.length);
+    expect(screen.queryByText('while playing')).toBeNull();
+    expect(screen.getAllByText('not playing')).toHaveLength(2);
+  });
+
   test('blocks saving while configurable shortcuts conflict', async () => {
     const current = useStore.getState();
     useStore.setState({
@@ -445,7 +468,7 @@ describe('SettingsModal integration behavior', () => {
       },
     });
 
-    render(<SettingsModal initialTab="keybindings" />);
+    render(<SettingsModal initialTab="shortcuts" />);
 
     expect(await screen.findByText(/conflicts with Mark as Keep/i)).toBeTruthy();
     const saveButton = screen.getByRole('button', { name: /save preferences/i }) as HTMLButtonElement;

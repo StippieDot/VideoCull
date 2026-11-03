@@ -6,7 +6,7 @@ description: Load one or more folders, control recursive scanning, reopen recent
 {/* in-app-meta
 {
   "summary": "Understand what belongs to a session and how folders, rescans, privacy, and reports interact.",
-  "actions": ["open-settings-interface"]
+  "actions": ["open-settings-general"]
 }
 */}
 
@@ -41,7 +41,7 @@ With several folders loaded, **Remove from Session** in the sidebar's folder men
 
 ## Reopen the last session
 
-Turn on **Reopen the last session at startup** in Settings > Interface, and VideoCull reopens the folders that were loaded when it closed, with the same **Include subfolders** choice. It is off by default. A session ended with **Close Session** stays closed.
+Turn on **Reopen the last session at startup** in Settings > General, and VideoCull reopens the folders that were loaded when it closed, with the same **Include subfolders** choice. It is off by default. A session ended with **Close Session** stays closed.
 
 A folder that cannot be reached, such as one on an unplugged drive or an offline share, is left out with a notice naming it. It stays part of the saved session, so it is loaded again once the drive is back, unless you change the session in the meantime.
 
@@ -53,7 +53,7 @@ Folders that are unavailable are left out with a notice; an entry none of whose 
 
 ## Linked folders and files (experimental)
 
-Following links is experimental and off by default. Turn it on with the **Follow symbolic links** setting (Experimental) in Settings > Cache; it applies from the next scan.
+Following links is experimental and off by default. Turn it on with the **Follow symbolic links** setting (Experimental) in Settings > Library & cache; it applies from the next scan.
 
 When it is on, scans follow symbolic links to folders and to video files, also when they point outside the opened folder.
 

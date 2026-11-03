@@ -41,8 +41,10 @@ describe('DocumentationModal behavior', () => {
     expect(header).toBeTruthy();
     expect(within(header as HTMLElement).getByRole('heading', { name: 'Help', level: 2 })).toBeTruthy();
     expect(within(header as HTMLElement).getByRole('searchbox', { name: /search documentation/i })).toBeTruthy();
-    expect(within(header as HTMLElement).getByRole('button', { name: /open web docs/i })).toBeTruthy();
+    expect(within(header as HTMLElement).queryByRole('button', { name: /open web docs/i })).toBeNull();
     expect(within(header as HTMLElement).getByRole('button', { name: /close documentation/i })).toBeTruthy();
+    const pageHeader = document.querySelector('.documentation-page-header') as HTMLElement;
+    expect(within(pageHeader).getByRole('button', { name: /open web docs/i })).toBeTruthy();
     expect(document.querySelector('.documentation-toolbar')).toBeNull();
     expect(screen.queryByText(/complete offline guide/i)).toBeNull();
     expect(screen.getByRole('heading', { level: 3, name: 'Get started with VideoCull' })).toBeTruthy();
@@ -58,7 +60,7 @@ describe('DocumentationModal behavior', () => {
     expect(within(docsNav).getAllByText('Workflows')).toHaveLength(1);
     expect(docsNav.querySelectorAll('small')).toHaveLength(0);
     expect(document.querySelector('.documentation-task-section')).toBeNull();
-    expect(screen.queryByRole('navigation', { name: /on this page/i })).toBeNull();
+    expect(screen.getByRole('navigation', { name: /on this page/i })).toBeTruthy();
     expect(screen.getByRole('combobox', { name: 'Jump to section' })).toBeTruthy();
   });
 
@@ -83,7 +85,7 @@ describe('DocumentationModal behavior', () => {
     expect(currentButtons[0]?.textContent).toBe('Settings');
   });
 
-  test('searches content from a later collapsed section', async () => {
+  test('searches content from a later section', async () => {
     render(
       <DocumentationModal
         onClose={() => {}}
@@ -100,7 +102,7 @@ describe('DocumentationModal behavior', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'Settings' })).toBeTruthy();
     expect(within(screen.getByRole('navigation', { name: /documentation pages/i }))
       .getByRole('button', { name: 'Settings' })).toBeTruthy();
-    expect((document.getElementById('settings-cache') as HTMLDetailsElement).open).toBe(false);
+    expect(document.getElementById('settings-library-and-cache')?.tagName).toBe('H4');
   });
 
   test('filters pages from search and resets article scroll when the page changes', async () => {
@@ -129,10 +131,10 @@ describe('DocumentationModal behavior', () => {
     await userEvent.click(within(docsNav).getByRole('button', { name: /^Keyboard-first video review mode/i }));
 
     expect(scrollTo).toHaveBeenCalled();
-    expect(document.querySelector('#review-mode-use-keyboard-controls summary')?.textContent).toBe('Use keyboard controls');
+    expect(document.getElementById('review-mode-use-keyboard-controls')?.textContent).toBe('Use keyboard controls');
   });
 
-  test('renders the first Settings section open and later sections closed', async () => {
+  test('shows every Settings section open and lists them under On this page', async () => {
     render(
       <DocumentationModal
         onClose={() => {}}
@@ -144,16 +146,18 @@ describe('DocumentationModal behavior', () => {
     const docsNav = screen.getByRole('navigation', { name: /documentation pages/i });
     await userEvent.click(within(docsNav).getByRole('button', { name: 'Settings' }));
 
-    const sections = Array.from(document.querySelectorAll<HTMLDetailsElement>('.documentation-mdx > details'));
-    expect(sections.length).toBeGreaterThan(1);
-    expect(sections[0]?.open).toBe(true);
-    expect(sections.slice(1).every((section) => !section.open)).toBe(true);
-    expect(within(sections[0]!.querySelector('summary')!).getByRole('heading', {
-      name: 'Before changing defaults',
-    })).toBeTruthy();
+    expect(document.querySelectorAll('.documentation-mdx details.documentation-section')).toHaveLength(0);
+    const headings = Array.from(document.querySelectorAll<HTMLElement>('.documentation-mdx > .documentation-mdx-h2'));
+    expect(headings.length).toBeGreaterThan(1);
+    expect(headings[0]?.textContent).toBe('Before changing defaults');
+
+    const toc = screen.getByRole('navigation', { name: /on this page/i });
+    const tocButtons = within(toc).getAllByRole('button');
+    expect(tocButtons.map((button) => button.textContent)).toEqual(headings.map((heading) => heading.textContent));
+    expect(tocButtons[0]?.getAttribute('aria-current')).toBe('location');
   });
 
-  test('opens and scrolls the selected Settings section without moving focus', async () => {
+  test('scrolls to the selected Settings section without moving focus', async () => {
     const scrollIntoView = vi.fn();
 
     render(
@@ -167,18 +171,17 @@ describe('DocumentationModal behavior', () => {
     const docsNav = screen.getByRole('navigation', { name: /documentation pages/i });
     await userEvent.click(within(docsNav).getByRole('button', { name: 'Settings' }));
     const selector = screen.getByRole('combobox', { name: 'Jump to section' });
-    const cacheSection = document.getElementById('settings-cache') as HTMLDetailsElement;
+    const cacheSection = document.getElementById('settings-library-and-cache') as HTMLElement;
     Object.defineProperty(cacheSection, 'scrollIntoView', { value: scrollIntoView });
     selector.focus();
 
-    await userEvent.selectOptions(selector, 'cache');
+    await userEvent.selectOptions(selector, 'library-and-cache');
 
-    expect(cacheSection.open).toBe(true);
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
     expect(document.activeElement).toBe(selector);
   });
 
-  test('resets disclosure defaults after switching pages', async () => {
+  test('On this page follows the chosen section and starts over on another page', async () => {
     render(
       <DocumentationModal
         onClose={() => {}}
@@ -189,20 +192,21 @@ describe('DocumentationModal behavior', () => {
 
     const docsNav = screen.getByRole('navigation', { name: /documentation pages/i });
     await userEvent.click(within(docsNav).getByRole('button', { name: 'Settings' }));
-    const cacheSection = document.getElementById('settings-cache') as HTMLDetailsElement;
-    Object.defineProperty(cacheSection, 'scrollIntoView', { value: vi.fn() });
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Jump to section' }), 'cache');
-    expect(cacheSection.open).toBe(true);
-    const firstSection = document.querySelector<HTMLDetailsElement>('.documentation-mdx > details');
-    await userEvent.click(firstSection!.querySelector('summary')!);
-    expect(firstSection?.open).toBe(false);
+    const cacheSection = document.getElementById('settings-library-and-cache') as HTMLElement;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(cacheSection, 'scrollIntoView', { value: scrollIntoView });
+
+    const toc = screen.getByRole('navigation', { name: /on this page/i });
+    const cacheButton = within(toc).getByRole('button', { name: cacheSection.textContent ?? '' });
+    await userEvent.click(cacheButton);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+    expect(cacheButton.getAttribute('aria-current')).toBe('location');
+    expect((screen.getByRole('combobox', { name: 'Jump to section' }) as HTMLSelectElement).value).toBe('library-and-cache');
 
     await userEvent.click(within(docsNav).getByRole('button', { name: 'Grid view' }));
     await userEvent.click(within(docsNav).getByRole('button', { name: 'Settings' }));
-
-    const sections = Array.from(document.querySelectorAll<HTMLDetailsElement>('.documentation-mdx > details'));
-    expect(sections[0]?.open).toBe(true);
-    expect((document.getElementById('settings-cache') as HTMLDetailsElement).open).toBe(false);
+    const firstButton = within(screen.getByRole('navigation', { name: /on this page/i })).getAllByRole('button')[0];
+    expect(firstButton?.getAttribute('aria-current')).toBe('location');
   });
 
   test('renders page-specific in-app actions and internal mdx cards', async () => {
@@ -256,7 +260,7 @@ describe('DocumentationModal behavior', () => {
     expect(within(docsNav).getByRole('button', { name: /Troubleshooting/i })).toBeTruthy();
 
     await userEvent.click(within(docsNav).getByRole('button', { name: /Supported formats/i }));
-    expect(document.querySelector('#supported-formats-built-in-player summary')?.textContent).toBe('Built-in player');
+    expect(document.getElementById('supported-formats-built-in-player')?.textContent).toBe('Built-in player');
 
     await userEvent.click(within(docsNav).getByRole('button', { name: /^Troubleshooting/i }));
     await userEvent.click(screen.getByText('Thumbnails are not generating or are stuck'));
@@ -311,8 +315,8 @@ describe('DocumentationModal behavior', () => {
 
     const search = screen.getByRole('searchbox', { name: /search documentation/i });
     const modal = screen.getByRole('dialog');
-    const summaries = modal.querySelectorAll<HTMLElement>('.documentation-mdx > details > summary');
-    const lastVisibleFocusable = summaries[summaries.length - 1];
+    const tocButtons = modal.querySelectorAll<HTMLElement>('.documentation-toc-btn');
+    const lastVisibleFocusable = tocButtons[tocButtons.length - 1];
 
     expect(document.activeElement).toBe(search);
 
@@ -329,7 +333,7 @@ describe('DocumentationModal behavior', () => {
     expect(document.activeElement).toBe(openButton);
   });
 
-  test('opens the web documentation from the header instead of a footer action', async () => {
+  test('opens the web documentation from the page header instead of a footer action', async () => {
     const electronAPI = installElectronApiMock();
     render(
       <DocumentationModal
@@ -339,9 +343,9 @@ describe('DocumentationModal behavior', () => {
       />
     );
 
-    const header = document.querySelector('.documentation-header');
-    expect(header).toBeTruthy();
-    await userEvent.click(within(header as HTMLElement).getByRole('button', { name: /open web docs/i }));
+    const pageHeader = document.querySelector('.documentation-page-header');
+    expect(pageHeader).toBeTruthy();
+    await userEvent.click(within(pageHeader as HTMLElement).getByRole('button', { name: /open web docs/i }));
     expect(electronAPI.openExternalUrl).toHaveBeenCalledTimes(1);
     expect(document.querySelector('.documentation-footer')).toBeNull();
   });

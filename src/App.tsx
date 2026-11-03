@@ -7,7 +7,7 @@ import Sidebar from './components/Sidebar';
 import GridMode from './components/GridMode';
 import ReviewMode from './components/ReviewMode';
 import EmptyState from './components/EmptyState';
-import SettingsModal from './components/SettingsModal';
+import SettingsModal, { type SettingsTab } from './components/SettingsModal';
 import DuplicateGroupsView from './components/DuplicateGroupsView';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import DocumentationModal from './components/DocumentationModal';
@@ -159,7 +159,7 @@ export default function App() {
   const [isPrivate, setIsPrivate] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropModalPath, setDropModalPath] = useState<string | null>(null);
-  const [settingsTab, setSettingsTab] = useState<'interface' | 'features' | 'duplicates' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about'>('interface');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const [settingsTabRequestId, setSettingsTabRequestId] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
@@ -244,13 +244,13 @@ export default function App() {
     setDropModalPath(pickedPath);
   }, []);
 
-  const openSettings = useCallback((tab: 'interface' | 'features' | 'duplicates' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about' = 'interface') => {
+  const openSettings = useCallback((tab: SettingsTab = 'general') => {
     setSettingsTab(tab);
     setSettingsTabRequestId((prev) => prev + 1);
     useStore.getState().setIsSettingsModalOpen(true);
   }, []);
 
-  const openDocumentationSettings = useCallback((tab: 'interface' | 'features' | 'duplicates' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about') => {
+  const openDocumentationSettings = useCallback((tab: SettingsTab) => {
     setShowDocumentation(false);
     openSettings(tab);
   }, [openSettings]);
@@ -906,7 +906,7 @@ export default function App() {
         case 'go-to-folder': { setPaletteQuery('/'); break; }
         case 'open-about': { openSettings('about'); break; }
         case 'check-updates': { openSettings('updates'); break; }
-        case 'open-settings': { openSettings('interface'); break; }
+        case 'open-settings': { openSettings('general'); break; }
         case 'open-documentation': { setShowDocumentation(true); break; }
         case 'open-directory': {
           const dir = await window.electronAPI.selectDirectory();
@@ -1331,7 +1331,15 @@ export default function App() {
       {paletteQuery !== null && !isPrivate && <CommandPalette key={paletteQuery} initialQuery={paletteQuery} onClose={closePalette} />}
       <SettingsModal initialTab={settingsTab} tabRequestId={settingsTabRequestId} />
       <StoreTransition />
-      {showShortcutsHelp && <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
+      {showShortcutsHelp && (
+        <ShortcutsHelp
+          onClose={() => setShowShortcutsHelp(false)}
+          onOpenShortcutSettings={() => {
+            setShowShortcutsHelp(false);
+            openSettings('shortcuts');
+          }}
+        />
+      )}
       {showDocumentation && (
         <DocumentationModal
           onClose={() => setShowDocumentation(false)}
@@ -1355,7 +1363,7 @@ export default function App() {
             onRescan={() => directories.length > 0 && handleScan(directories)}
             onDirectoryPicked={handleDirectoryPicked}
             onNotify={pushToast}
-            onOpenSettings={() => openSettings('interface')}
+            onOpenSettings={() => openSettings('general')}
             onOpenDocumentation={() => setShowDocumentation(true)}
             onCloseSession={() => void handleCloseSession()}
             onFindDuplicates={() => void handleFindDuplicates()}

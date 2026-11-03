@@ -21,11 +21,12 @@ export const DOCUMENTATION_SITE_URL = 'https://docs.videocull.app';
 
 export type DocumentationActionId =
   | 'show-shortcuts'
-  | 'open-settings-interface'
+  | 'open-settings-general'
+  | 'open-settings-view'
+  | 'open-settings-library'
   | 'open-settings-duplicates'
-  | 'open-settings-keybindings'
-  | 'open-settings-cache'
   | 'open-settings-processing'
+  | 'open-settings-shortcuts'
   | 'open-settings-about';
 
 export type DocumentationTask = {
@@ -108,21 +109,25 @@ export const DOCUMENTATION_ACTIONS: Record<DocumentationActionId, { label: strin
     label: 'Show keyboard shortcuts',
     description: 'Open the shortcut overlay with the live bindings you use in review mode.',
   },
-  'open-settings-interface': {
-    label: 'Open interface settings',
-    description: 'Adjust layout, sort defaults, and the folder-grouping behavior.',
+  'open-settings-general': {
+    label: 'Open general settings',
+    description: 'Adjust the theme, startup behavior, and report export.',
+  },
+  'open-settings-view': {
+    label: 'Open grid and review settings',
+    description: 'Adjust card size, sort defaults, folder grouping, review playback, and optional features.',
+  },
+  'open-settings-library': {
+    label: 'Open library and cache settings',
+    description: 'Choose how folders are scanned, where cache data lives, and what happens after deleting.',
   },
   'open-settings-duplicates': {
     label: 'Open duplicate settings',
     description: 'Tune similarity, sample count, keeper rules, and ignored matches.',
   },
-  'open-settings-keybindings': {
-    label: 'Open keybinding settings',
+  'open-settings-shortcuts': {
+    label: 'Open keyboard shortcut settings',
     description: 'Change the review, preview, and global shortcuts used in the app.',
-  },
-  'open-settings-cache': {
-    label: 'Open cache settings',
-    description: 'Choose where cache data lives and whether old cache paths are cleaned up.',
   },
   'open-settings-processing': {
     label: 'Open processing settings',

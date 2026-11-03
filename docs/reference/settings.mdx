@@ -6,7 +6,7 @@ description: Configure thumbnails, cache behavior, duplicate review, hardware ac
 {/* in-app-meta
 {
   "summary": "Use this tab-by-tab reference when a default no longer fits your workflow.",
-  "actions": ["open-settings-interface", "open-settings-keybindings"]
+  "actions": ["open-settings-general", "open-settings-shortcuts"]
 }
 */}
 
@@ -17,7 +17,7 @@ Settings are split across the same tabs you see in the app. Most libraries work 
 - Leave most defaults alone for your first pass through a library.
 - Use the grid to narrow the queue before changing review behavior.
 - Touch duplicate settings only when the match quality is clearly too noisy or too strict.
-- Treat cache and processing settings as library-scale controls, not per-session tweaks.
+- Treat library, cache, and processing settings as library-scale controls, not per-session tweaks.
 
 <Tip>
   Change one thing at a time, then rescan or rerun the affected workflow. That makes it obvious which setting actually helped.
@@ -37,17 +37,14 @@ After saving:
 
 VideoCull blocks saving while configurable shortcut conflicts remain. The conflicting keybind fields identify what must be changed.
 
-## Interface
+## General
 
-These settings change how the main view starts and how you move through a session.
+These settings cover how the app looks, how it starts, and report export.
 
 | Setting | What it does | Suggested default use |
 | --- | --- | --- |
 | Theme | Switches the app chrome between Dark and Light mode while keeping video and thumbnail wells neutral. | Use Dark in dim environments and Light when the surrounding room or display is bright. |
-| Default card scale | Sets the starting card size in grid view. | Leave it at `1.0x` unless your monitor or footage needs more or less detail. |
-| Default sorting | Controls the first sort field and order for new sessions. | `Name` is the safest default. Use `Date` for chronology, `Size` for storage cleanup, or `Duration` for spotting clips that are too short or too long. |
-| Group by folder | Starts the grid grouped by folder instead of one flat list. | Keep it on when folder context matters. Turn it off when you want one global queue. |
-| Keep playback controls visible in Review | Prevents the timeline and playback controls from auto-hiding while a video is playing in Review mode. | Leave it off for a cleaner playback view. Turn it on when you want the scrubber to remain available without moving the mouse. |
+| Reopen the last session at startup | Opens the folders that were loaded when VideoCull closed. A session ended with **Close Session** is not reopened. | Turn it on when you usually continue where you left off. |
 | Export report | Exports an HTML report for all loaded videos or the current filtered set, grouped by folder and review status. | Use it at the end of a pass or before a destructive cleanup. Export never changes statuses or files. |
 
 <Tabs>
@@ -58,14 +55,41 @@ These settings change how the main view starts and how you move through a sessio
 
 The sun or moon button switches theme immediately and saves the choice. It is available on the landing screen and in the sidebar header. You can also use the configurable theme shortcut, which defaults to `Ctrl + Shift + L`. The Theme selector in Settings follows the normal draft behavior and changes the interface only after you choose **Save Preferences**.
 
-## Features
+## Grid & review
 
-This tab contains optional metadata controls. Core status, playback, compatibility, codec badges, global mute, and next-undecided behavior remain part of the normal app workflow.
+These settings change how the grid starts, how Review mode plays, and which optional controls are shown. Core status, playback, compatibility, codec badges, global mute, and next-undecided behavior are always part of the normal app workflow.
 
 | Setting | What it does | Suggested default use |
 | --- | --- | --- |
+| Default card scale | Sets the starting card size in grid view. | Leave it at `1.0x` unless your monitor or footage needs more or less detail. |
+| Default sorting | Controls the first sort field and order for new sessions. | `Name` is the safest default. Use `Date` for chronology, `Size` for storage cleanup, or `Duration` for spotting clips that are too short or too long. |
+| Group by folder | Starts the grid grouped by folder instead of one flat list. | Keep it on when folder context matters. Turn it off when you want one global queue. |
+| Keep playback controls visible in Review | Prevents the timeline and playback controls from auto-hiding while a video is playing in Review mode. | Leave it off for a cleaner playback view. Turn it on when you want the scrubber to remain available without moving the mouse. |
 | 5-star rating | Shows rating controls on video cards and in review mode. | Turn it on only if you actually rate clips. |
 | Favorites | Shows the heart toggle and favorites filter. | Turn it on when you need a shortlist across a large session. |
+
+## Library & cache
+
+These settings decide how folders are scanned, where progress lives, how aggressively old data is cleaned up, and what happens to folders after deleting.
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
+| Cache storage | Chooses `Centralised`, `Per-drive`, or `Distributed`. | Use `Centralised` unless you need the cache to travel with a drive or folder. |
+| Central cache location | Picks the app-controlled cache folder. | Leave it at the default unless the current drive is a bad fit. |
+| Per-drive cache location | Picks a cache folder for the currently opened drive. | Use this only when you deliberately want separate per-drive roots. |
+| Follow symbolic links (Experimental) | Scans folders and videos that symbolic links point to, also outside the opened folder. | Leave it off unless your library relies on links. See [Sessions and folders](/features/sessions-and-folders). |
+| Auto-clean stale cache after scans | Removes stale cache rows, thumbnail folders, and child-folder cache entries that no longer exist on disk. | Leave it off unless you want ongoing housekeeping. |
+| Remove empty source folders after delete | Removes parent folders that become empty after deleting videos. | Leave it off unless folder cleanup is part of the job. |
+
+`Distributed` mode creates a hidden `.videocull` folder inside each loaded folder. It is useful for portable libraries, but noisier than centralized cache.
+
+<Tabs>
+  <Tab title="Windows">
+    On Windows, the link setting is named **Follow symbolic links and junctions (Experimental)** and also follows directory junctions.
+  </Tab>
+</Tabs>
+
+For migration choices, rebuild behavior, and the difference between cache modes, see [Cache and processing](/reference/cache-and-processing).
 
 ## Duplicates
 
@@ -117,29 +141,6 @@ Pairs marked **Not a match** stay hidden in future duplicate runs.
 | Compare flipped videos | Also checks horizontally mirrored copies. | Turn it on only when mirrored duplicates are a real possibility. |
 | Retry failed fingerprints | Retries videos that failed before. | Turn it on when a previous run hit processing failures. |
 
-## Cache
-
-Cache settings decide where progress lives and how aggressively old data is cleaned up.
-
-| Setting | What it does | Suggested default use |
-| --- | --- | --- |
-| Cache storage | Chooses `Centralised`, `Per-drive`, or `Distributed`. | Use `Centralised` unless you need the cache to travel with a drive or folder. |
-| Central cache location | Picks the app-controlled cache folder. | Leave it at the default unless the current drive is a bad fit. |
-| Per-drive cache location | Picks a cache folder for the currently opened drive. | Use this only when you deliberately want separate per-drive roots. |
-| Follow symbolic links (Experimental) | Scans folders and videos that symbolic links point to, also outside the opened folder. | Leave it off unless your library relies on links. See [Sessions and folders](/features/sessions-and-folders). |
-| Auto-clean stale cache after scans | Removes stale cache rows, thumbnail folders, and child-folder cache entries that no longer exist on disk. | Leave it off unless you want ongoing housekeeping. |
-| Remove empty source folders after delete | Removes parent folders that become empty after deleting videos. | Leave it off unless folder cleanup is part of the job. |
-
-`Distributed` mode creates a hidden `.videocull` folder inside each loaded folder. It is useful for portable libraries, but noisier than centralized cache.
-
-<Tabs>
-  <Tab title="Windows">
-    On Windows, the link setting is named **Follow symbolic links and junctions (Experimental)** and also follows directory junctions.
-  </Tab>
-</Tabs>
-
-For migration choices, rebuild behavior, and the difference between cache modes, see [Cache and processing](/reference/cache-and-processing).
-
 ## Processing
 
 Processing settings affect future scans, thumbnail runs, and metadata work. They do not retroactively rebuild current thumbnails until you rescan or regenerate them.
@@ -165,11 +166,11 @@ Processing settings affect future scans, thumbnail runs, and metadata work. They
   </Tab>
 </Tabs>
 
-## Keybindings
+## Keyboard shortcuts
 
-Keybindings are for review-mode and preview behavior, not for system-level app actions.
+Keyboard shortcuts are for review-mode and preview behavior, not for system-level app actions.
 
-- Review mode, Preview, and Global shortcuts are grouped separately.
+- Review mode shortcuts are grouped into Navigation, Decisions, Playback, and While playing. Global shortcuts have their own box.
 - Click a keybind field to record a new shortcut.
 - `Esc` cancels recording.
 - **Reset defaults** restores the built-in review bindings.

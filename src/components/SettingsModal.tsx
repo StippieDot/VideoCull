@@ -8,11 +8,22 @@ import type { Keybind } from '../keybinds';
 import { isWindows as isWindowsPlatform, modKeyName } from '../utils';
 import KeybindInput from './KeybindInput';
 import { PRODUCT } from '../product';
+import { SettingRow, SwitchRow } from './SettingRow';
+import './Dialog.css';
 import './SettingsModal.css';
 
 const KEYBIND_GROUPS: ShortcutGroup[] = ['Review mode', 'Global'];
 
-type SettingsTab = 'interface' | 'features' | 'duplicates' | 'keybindings' | 'cache' | 'processing' | 'updates' | 'about';
+export type SettingsTab = 'general' | 'view' | 'library' | 'duplicates' | 'processing' | 'shortcuts' | 'updates' | 'about';
+
+const SETTINGS_TABS: ReadonlyArray<{ id: Exclude<SettingsTab, 'updates' | 'about'>; label: string }> = [
+  { id: 'general', label: 'General' },
+  { id: 'view', label: 'Grid & review' },
+  { id: 'library', label: 'Library & cache' },
+  { id: 'duplicates', label: 'Duplicates' },
+  { id: 'processing', label: 'Processing' },
+  { id: 'shortcuts', label: 'Keyboard shortcuts' },
+];
 
 const ABOUT_LINKS = {
   repo: PRODUCT.repository.url,
@@ -26,8 +37,8 @@ const ABOUT_LINKS = {
 const sourceCodeUrl = (version: string) => `${PRODUCT.repository.url}/tree/v${version}`;
 
 const FEATURE_TOGGLES = [
-  { key: 'ratings', label: '5-star rating', description: 'Show rating controls on video cards and in review mode.' },
-  { key: 'favorites', label: 'Favorites', description: 'Show the heart toggle and favorites filter.' },
+  { key: 'ratings', label: '5-star rating', description: 'Rating controls on video cards and in Review.' },
+  { key: 'favorites', label: 'Favorites', description: 'A heart toggle on each video and a favorites filter.' },
 ] as const satisfies ReadonlyArray<{
   key: typeof OPTIONAL_FEATURE_KEYS[number];
   label: string;
@@ -64,7 +75,7 @@ interface SettingsModalProps {
   tabRequestId?: number;
 }
 
-export default function SettingsModal({ initialTab = 'interface', tabRequestId = 0 }: SettingsModalProps) {
+export default function SettingsModal({ initialTab = 'general', tabRequestId = 0 }: SettingsModalProps) {
   const isWindows = isWindowsPlatform();
   const isOpen = useStore((s) => s.isSettingsModalOpen);
   const close = () => useStore.getState().setIsSettingsModalOpen(false);
@@ -78,7 +89,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const filteredVideos = useStore((s) => s.filteredVideos);
   const isScanning = useStore((s) => s.isScanning);
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>('interface');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [localSettings, setLocalSettings] = useState<AppSettings>(globalSettings);
   const [appVersion, setAppVersion] = useState<string>('');
   // Collapsed by default: most people never change the codec preference.
@@ -129,7 +140,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   }, [isOpen, initialTab, tabRequestId]);
 
   useEffect(() => {
-    if (activeTab !== 'interface') {
+    if (activeTab !== 'general') {
       setExportMessage('');
     }
   }, [activeTab]);
@@ -491,23 +502,20 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   };
 
   return (
-    <div className="settings-overlay">
-      <div className="settings-window">
-        <div className="settings-header">
+    <div className="dialog-overlay settings-overlay">
+      <div className="dialog-window settings-window">
+        <div className="dialog-header">
           <h2>Preferences</h2>
-          <button className="settings-close-btn" onClick={close} title="Close without saving">
+          <button className="dialog-close-btn" onClick={close} title="Close without saving">
             <X size={20} />
           </button>
         </div>
 
         <div className="settings-body">
           <div className="settings-sidebar">
-            <button className={`tab-btn ${activeTab === 'interface' ? 'active' : ''}`} onClick={() => setActiveTab('interface')}>Interface</button>
-            <button className={`tab-btn ${activeTab === 'features' ? 'active' : ''}`} onClick={() => setActiveTab('features')}>Features</button>
-            <button className={`tab-btn ${activeTab === 'duplicates' ? 'active' : ''}`} onClick={() => setActiveTab('duplicates')}>Duplicates</button>
-            <button className={`tab-btn ${activeTab === 'cache' ? 'active' : ''}`} onClick={() => setActiveTab('cache')}>Cache</button>
-            <button className={`tab-btn ${activeTab === 'processing' ? 'active' : ''}`} onClick={() => setActiveTab('processing')}>Processing</button>
-            <button className={`tab-btn ${activeTab === 'keybindings' ? 'active' : ''}`} onClick={() => setActiveTab('keybindings')}>Keybindings</button>
+            {SETTINGS_TABS.map((tab) => (
+              <button key={tab.id} className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>
+            ))}
             <button className={`tab-btn ${activeTab === 'updates' ? 'active' : ''}`} onClick={() => setActiveTab('updates')}>
               Updates
               {(updateInfo.status === 'ready' || updateInfo.status === 'scheduled' || updateInfo.status === 'deferred') && <span className="update-dot" />}
@@ -517,271 +525,255 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
 
           <div className="settings-content">
 
-            {activeTab === 'interface' && (
+            {activeTab === 'general' && (
               <div className="settings-form">
                 <section className="settings-subsection">
                   <h3 className="settings-subsection-title">Appearance</h3>
-
-                  <div className="form-group">
-                    <label htmlFor="color-theme">Theme</label>
-                    <select
-                      id="color-theme"
-                      value={localSettings.theme}
-                      onChange={(e) => handleChange('theme', e.target.value)}
-                    >
-                      <option value="dark">Dark</option>
-                      <option value="light">Light</option>
-                    </select>
-                    <span className="help-text">Choose the app appearance. Changes apply after saving preferences.</span>
-                  </div>
-                </section>
-
-                <section className="settings-subsection settings-section-divider">
-                  <h3 className="settings-subsection-title">Grid defaults</h3>
-
-                  <div className="form-group">
-                    <label>Default Card Scale</label>
-                    <div className="flex-row">
-                      <input type="range" min="0.5" max="2.0" step="0.1" value={localSettings.defaultCardScale} onChange={(e) => handleChange('defaultCardScale', Number(e.target.value))} />
-                      <span>{localSettings.defaultCardScale.toFixed(1)}x</span>
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Default Sorting</label>
-                    <div className="flex-row">
-                      <select value={localSettings.defaultSortBy} onChange={(e) => handleChange('defaultSortBy', e.target.value)}>
-                        <option value="name">Name</option>
-                        <option value="size">Size</option>
-                        <option value="date">Date</option>
-                        <option value="duration">Duration</option>
-                        {localSettings.features.ratings && <option value="rating">Rating</option>}
-                        {localSettings.features.codecBadges && <option value="resolution">Resolution</option>}
-                        {localSettings.features.codecBadges && <option value="fps">FPS</option>}
-                      </select>
-                      <select value={localSettings.defaultSortOrder} onChange={(e) => handleChange('defaultSortOrder', e.target.value)}>
-                        <option value="asc">Ascending</option>
-                        <option value="desc">Descending</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="form-group checkbox-group">
-                    <label>
-                      <input type="checkbox" checked={localSettings.defaultGroupByFolder} onChange={(e) => handleChange('defaultGroupByFolder', e.target.checked)} />
-                      Group videos by folder natively
-                    </label>
+                  <div className="settings-card">
+                    <SettingRow label="Theme">
+                      {(id) => (
+                        <select id={id} value={localSettings.theme} onChange={(e) => handleChange('theme', e.target.value)}>
+                          <option value="dark">Dark</option>
+                          <option value="light">Light</option>
+                        </select>
+                      )}
+                    </SettingRow>
+                    {window.electronAPI?.micaSupported && (
+                      <SwitchRow
+                        label="Tint the title bar with the desktop background"
+                        help="Lets the desktop background show through the title bar, as in Windows 11's own apps."
+                        checked={localSettings.micaTitleBar}
+                        onChange={(checked) => handleChange('micaTitleBar', checked)}
+                      />
+                    )}
                   </div>
                 </section>
 
                 <section className="settings-subsection settings-section-divider">
                   <h3 className="settings-subsection-title">Startup</h3>
-
-                  <div className="form-group checkbox-group">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={localSettings.reopenLastSession}
-                        onChange={(e) => handleChange('reopenLastSession', e.target.checked)}
-                      />
-                      Reopen the last session at startup
-                    </label>
-                    <span className="help-text">Opens the folders that were loaded when VideoCull closed. A session ended with Close Session is not reopened.</span>
+                  <div className="settings-card">
+                    <SwitchRow
+                      label="Reopen the last session at startup"
+                      help="Opens the folders that were loaded when VideoCull closed, unless you ended the session with Close Session."
+                      checked={localSettings.reopenLastSession}
+                      onChange={(checked) => handleChange('reopenLastSession', checked)}
+                    />
                   </div>
                 </section>
-
-                <section className="settings-subsection settings-section-divider">
-                  <h3 className="settings-subsection-title">Review mode</h3>
-
-                  <div className="form-group checkbox-group">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={localSettings.keepReviewControlsVisible}
-                        onChange={(e) => handleChange('keepReviewControlsVisible', e.target.checked)}
-                      />
-                      Keep playback controls visible in Review
-                    </label>
-                    <span className="help-text">Prevents the timeline and playback controls from auto-hiding while a video is playing.</span>
-                  </div>
-                </section>
-
-                {window.electronAPI?.micaSupported && (
-                  <section className="settings-subsection settings-section-divider">
-                    <h3 className="settings-subsection-title">Window</h3>
-
-                    <div className="form-group checkbox-group">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={localSettings.micaTitleBar}
-                          onChange={(e) => handleChange('micaTitleBar', e.target.checked)}
-                        />
-                        Tint the title bar with the desktop background
-                      </label>
-                      <span className="help-text">As in Windows 11's own apps. Turn off for a solid title bar.</span>
-                    </div>
-                  </section>
-                )}
 
                 <section className="settings-subsection settings-section-divider">
                   <h3 className="settings-subsection-title">Export</h3>
-
-                  <div className="form-group">
-                    <button
-                      className="btn-check-updates"
-                      onClick={handleExportReport}
-                      disabled={!directory || videos.length === 0 || isScanning}
+                  <div className="settings-card">
+                    <SettingRow
+                      label="Export report"
+                      help="Saves an HTML report of all loaded videos or only the filtered ones."
+                      details={exportMessage && <span className="help-text">{exportMessage}</span>}
                     >
-                      <FileDown size={14} />
-                      Export Report...
-                    </button>
-                    <span className="help-text">Choose filtered or all videos when exporting.</span>
-                    {exportMessage && <span className="help-text">{exportMessage}</span>}
+                      {(id) => (
+                        <button
+                          id={id}
+                          className="btn-check-updates"
+                          onClick={handleExportReport}
+                          disabled={!directory || videos.length === 0 || isScanning}
+                        >
+                          <FileDown size={14} />
+                          Export Report...
+                        </button>
+                      )}
+                    </SettingRow>
                   </div>
                 </section>
               </div>
             )}
 
-            {activeTab === 'features' && (
+            {activeTab === 'view' && (
               <div className="settings-form">
-                <div className="feature-toggle-list">
-                  {FEATURE_TOGGLES.map((feature) => (
-                    <label key={feature.key} className="feature-toggle-row">
-                      <input
-                        type="checkbox"
+                <section className="settings-subsection">
+                  <h3 className="settings-subsection-title">Grid defaults</h3>
+                  <div className="settings-card settings-card-grid">
+                    <SettingRow label="Default card scale">
+                      {(id) => (
+                        <div className="flex-row">
+                          <input id={id} type="range" min="0.5" max="2.0" step="0.1" value={localSettings.defaultCardScale} onChange={(e) => handleChange('defaultCardScale', Number(e.target.value))} />
+                          <span className="settings-range-value">{localSettings.defaultCardScale.toFixed(1)}x</span>
+                        </div>
+                      )}
+                    </SettingRow>
+                    <SettingRow label="Default sorting">
+                      {(id) => (
+                        <div className="flex-row">
+                          <select id={id} value={localSettings.defaultSortBy} onChange={(e) => handleChange('defaultSortBy', e.target.value)}>
+                            <option value="name">Name</option>
+                            <option value="size">Size</option>
+                            <option value="date">Date</option>
+                            <option value="duration">Duration</option>
+                            {localSettings.features.ratings && <option value="rating">Rating</option>}
+                            {localSettings.features.codecBadges && <option value="resolution">Resolution</option>}
+                            {localSettings.features.codecBadges && <option value="fps">FPS</option>}
+                          </select>
+                          <select aria-label="Sort order" value={localSettings.defaultSortOrder} onChange={(e) => handleChange('defaultSortOrder', e.target.value)}>
+                            <option value="asc">Ascending</option>
+                            <option value="desc">Descending</option>
+                          </select>
+                        </div>
+                      )}
+                    </SettingRow>
+                    <SwitchRow
+                      wide
+                      label="Group videos by folder"
+                      checked={localSettings.defaultGroupByFolder}
+                      onChange={(checked) => handleChange('defaultGroupByFolder', checked)}
+                    />
+                  </div>
+                </section>
+
+                <section className="settings-subsection settings-section-divider">
+                  <h3 className="settings-subsection-title">Review mode</h3>
+                  <div className="settings-card">
+                    <SwitchRow
+                      label="Keep playback controls visible in Review"
+                      help="Stops the timeline and playback controls from hiding while a video plays."
+                      checked={localSettings.keepReviewControlsVisible}
+                      onChange={(checked) => handleChange('keepReviewControlsVisible', checked)}
+                    />
+                  </div>
+                </section>
+
+                <section className="settings-subsection settings-section-divider">
+                  <h3 className="settings-subsection-title">Optional features</h3>
+                  <div className="settings-card">
+                    {FEATURE_TOGGLES.map((feature) => (
+                      <SwitchRow
+                        key={feature.key}
+                        label={feature.label}
+                        help={feature.description}
                         checked={localSettings.features[feature.key]}
-                        onChange={(e) => handleFeatureChange(feature.key, e.target.checked)}
+                        onChange={(checked) => handleFeatureChange(feature.key, checked)}
                       />
-                      <span className="feature-toggle-copy">
-                        <span className="feature-toggle-label">{feature.label}</span>
-                        <span className="help-text">{feature.description}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </section>
               </div>
             )}
 
             {activeTab === 'duplicates' && (
               <div className="settings-form duplicates-settings">
                 <div className="form-group">
-                  <span className="help-text">Matching changes are used the next time duplicate detection runs. Keeper protection and keeper ordering update the current duplicate view immediately.</span>
+                  <span className="help-text">Matching changes apply to the next duplicate run. Protection and keeper priority update the current results right away.</span>
                 </div>
-                <label className={`duplicates-enable-row ${localSettings.duplicates.enabled ? 'active' : ''}`}>
-                  <span className="duplicates-enable-main">
-                    <input type="checkbox" checked={localSettings.duplicates.enabled} onChange={(e) => handleDuplicateChange('enabled', e.target.checked)} />
-                    <span className="duplicates-enable-copy">
-                      <span className="duplicates-enable-title">Enable duplicate detection</span>
-                      <span className="help-text">Enables duplicate finding and stores its cache data.</span>
-                    </span>
-                  </span>
-                </label>
+                <div className="settings-card">
+                  <SwitchRow
+                    label="Enable duplicate detection"
+                    checked={localSettings.duplicates.enabled}
+                    onChange={(checked) => handleDuplicateChange('enabled', checked)}
+                  />
+                </div>
 
                 {localSettings.duplicates.enabled && (
                   <>
                     <div className="duplicates-section settings-section-divider">
-                      <div className="duplicates-section-heading">
-                        <h3 className="settings-subsection-title">Matching</h3>
-                        <span className="help-text">Main duplicate matching options.</span>
-                      </div>
-                      <div className="duplicates-toggle-list">
-                        <div className="form-group checkbox-group duplicates-toggle-row">
-                          <label>
-                            <input type="checkbox" checked={localSettings.duplicates.runAfterScan} onChange={(e) => handleDuplicateChange('runAfterScan', e.target.checked)} />
-                            Run after each scan
-                          </label>
-                          <span className="help-text">Starts duplicate detection after each scan.</span>
-                        </div>
-                      </div>
-                      <div className="duplicates-control-grid">
-                        <div className="form-group duplicates-span-full">
-                          <label>Comparison Method</label>
-                          <select value={localSettings.duplicates.comparisonMode} onChange={(e) => handleDuplicateChange('comparisonMode', e.target.value)}>
-                            <option value="phash">pHash</option>
-                            <option value="visual">Visual similarity</option>
-                          </select>
-                          <span className="help-text">
-                            pHash is strict and rejects most false positives. Visual similarity is broader and finds some duplicates pHash misses. Running both finds the most.
-                          </span>
-                        </div>
-                        <div className="form-group">
-                          <label>Similarity</label>
-                          {localSettings.duplicates.separateSimilarityThresholds ? (
-                            <div className="duplicates-similarity-pair">
-                              <span>pHash</span>
-                              {renderSimilarityInput('phashSimilarityThreshold', 'phash', 'pHash similarity')}
-                              <span>%</span>
-                              <span>Visual</span>
-                              {renderSimilarityInput('visualSimilarityThreshold', 'visual', 'Visual similarity')}
-                              <span>%</span>
-                            </div>
-                          ) : (
-                            <div className="flex-row duplicates-inline-value">
-                              {renderSimilarityInput('finalSimilarityThreshold', localSettings.duplicates.comparisonMode, 'Similarity')}
-                              <span>%</span>
-                            </div>
+                      <h3 className="settings-subsection-title">Matching</h3>
+                      <div className="settings-card settings-card-grid">
+                        <SwitchRow
+                          label="Run after each scan"
+                          checked={localSettings.duplicates.runAfterScan}
+                          onChange={(checked) => handleDuplicateChange('runAfterScan', checked)}
+                        />
+                        <SettingRow label="Default scope">
+                          {(id) => (
+                            <select id={id} value={localSettings.duplicates.defaultScope} onChange={(e) => handleDuplicateChange('defaultScope', e.target.value)}>
+                              <option value="all">All loaded videos</option>
+                              <option value="filtered">Current filtered view</option>
+                            </select>
                           )}
-                          <span className="help-text">Minimum score for a match. A group shows its weakest match.</span>
-                          {similarityWarning && (
+                        </SettingRow>
+                        <SettingRow
+                          wide
+                          label="Comparison method"
+                          help="pHash is strict and rarely matches the wrong videos. Visual similarity is broader and also finds copies pHash misses."
+                        >
+                          {(id) => (
+                            <select id={id} value={localSettings.duplicates.comparisonMode} onChange={(e) => handleDuplicateChange('comparisonMode', e.target.value)}>
+                              <option value="phash">pHash</option>
+                              <option value="visual">Visual similarity</option>
+                            </select>
+                          )}
+                        </SettingRow>
+                        <SettingRow
+                          label="Similarity"
+                          help="The lowest score two videos need to count as a match."
+                          details={similarityWarning && (
                             <span className="help-text duplicates-similarity-warning" id="duplicate-similarity-warning">{similarityWarning}</span>
                           )}
-                          <label className="duplicates-inline-check">
-                            <input type="checkbox" checked={localSettings.duplicates.separateSimilarityThresholds} onChange={(e) => handleDuplicateChange('separateSimilarityThresholds', e.target.checked)} />
-                            Separate value per method
-                          </label>
-                        </div>
-                        <div className="form-group">
-                          <label>Samples</label>
-                          <select value={localSettings.duplicates.sampleCount} onChange={(e) => handleDuplicateChange('sampleCount', Number(e.target.value))}>
-                            <option value={1}>1 sample</option>
-                            <option value={2}>2 samples</option>
-                            <option value={3}>3 samples</option>
-                            <option value={4}>4 samples</option>
-                            <option value={5}>5 samples</option>
-                            <option value={7}>7 samples</option>
-                            <option value={9}>9 samples</option>
-                          </select>
-                          <select
-                            aria-label="Sample scoring"
-                            value={sampleScoring}
-                            disabled={localSettings.duplicates.sampleCount === 1}
-                            onChange={(e) => handleSampleScoringChange(e.target.value)}
-                          >
-                            <option value="average">Average score</option>
-                            <option value="weakest">Weakest sample</option>
-                            <option value="first">First sample (pHash)</option>
-                          </select>
-                          <span className="help-text">
+                        >
+                          {() => (
+                            <>
+                              {localSettings.duplicates.separateSimilarityThresholds ? (
+                                <div className="duplicates-similarity-pair">
+                                  <span>pHash</span>
+                                  {renderSimilarityInput('phashSimilarityThreshold', 'phash', 'pHash similarity')}
+                                  <span>%</span>
+                                  <span>Visual</span>
+                                  {renderSimilarityInput('visualSimilarityThreshold', 'visual', 'Visual similarity')}
+                                  <span>%</span>
+                                </div>
+                              ) : (
+                                <div className="flex-row duplicates-inline-value">
+                                  {renderSimilarityInput('finalSimilarityThreshold', localSettings.duplicates.comparisonMode, 'Similarity')}
+                                  <span>%</span>
+                                </div>
+                              )}
+                              <label className="settings-inline-check">
+                                <input type="checkbox" checked={localSettings.duplicates.separateSimilarityThresholds} onChange={(e) => handleDuplicateChange('separateSimilarityThresholds', e.target.checked)} />
+                                Separate value per method
+                              </label>
+                            </>
+                          )}
+                        </SettingRow>
+                        <SettingRow
+                          label="Samples"
+                          help={<>
                             {sampleScoring === 'weakest' && 'Strictest: a match is scored by its weakest sample.'}
                             {sampleScoring === 'average' && 'One differing frame, such as a trimmed intro, does not hide a match.'}
                             {sampleScoring === 'first' && 'Finds the most pHash matches, with more false positives. Visual similarity uses the average.'}
-                          </span>
-                        </div>
-                        <div className="form-group duplicates-span-full">
-                          <label>Default Scope</label>
-                          <select value={localSettings.duplicates.defaultScope} onChange={(e) => handleDuplicateChange('defaultScope', e.target.value)}>
-                            <option value="all">All loaded videos</option>
-                            <option value="filtered">Current filtered view</option>
-                          </select>
-                          <span className="help-text">Choose all loaded videos or only the current filtered view.</span>
-                        </div>
-                      </div>
-                      <div className="duplicates-toggle-list">
-                        <div className="form-group checkbox-group duplicates-toggle-row">
-                          <label>
-                            <input type="checkbox" checked={localSettings.duplicates.protectKeep} onChange={(e) => handleDuplicateChange('protectKeep', e.target.checked)} />
-                            Protect marked keep videos
-                          </label>
-                          <span className="help-text">Keeps already approved videos out of delete suggestions.</span>
-                        </div>
-                        <div className="form-group checkbox-group duplicates-toggle-row">
-                          <label>
-                            <input type="checkbox" checked={localSettings.duplicates.protectSkipped} onChange={(e) => handleDuplicateChange('protectSkipped', e.target.checked)} />
-                            Protect skipped videos
-                          </label>
-                          <span className="help-text">Leaves skipped videos out of delete suggestions.</span>
-                        </div>
+                          </>}
+                        >
+                          {(id) => (
+                            <>
+                              <select id={id} value={localSettings.duplicates.sampleCount} onChange={(e) => handleDuplicateChange('sampleCount', Number(e.target.value))}>
+                                <option value={1}>1 sample</option>
+                                <option value={2}>2 samples</option>
+                                <option value={3}>3 samples</option>
+                                <option value={4}>4 samples</option>
+                                <option value={5}>5 samples</option>
+                                <option value={7}>7 samples</option>
+                                <option value={9}>9 samples</option>
+                              </select>
+                              <select
+                                aria-label="Sample scoring"
+                                value={sampleScoring}
+                                disabled={localSettings.duplicates.sampleCount === 1}
+                                onChange={(e) => handleSampleScoringChange(e.target.value)}
+                              >
+                                <option value="average">Average score</option>
+                                <option value="weakest">Weakest sample</option>
+                                <option value="first">First sample (pHash)</option>
+                              </select>
+                            </>
+                          )}
+                        </SettingRow>
+                        <SwitchRow
+                          label="Protect marked keep videos"
+                          help="Videos marked Keep are never suggested for deletion."
+                          checked={localSettings.duplicates.protectKeep}
+                          onChange={(checked) => handleDuplicateChange('protectKeep', checked)}
+                        />
+                        <SwitchRow
+                          label="Protect skipped videos"
+                          help="Skipped videos are never suggested for deletion."
+                          checked={localSettings.duplicates.protectSkipped}
+                          onChange={(checked) => handleDuplicateChange('protectSkipped', checked)}
+                        />
                       </div>
                       <div className="duplicates-keeper-order">
                         <div className="duplicates-keeper-heading">
@@ -871,111 +863,101 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     </div>
 
                     <div className="duplicates-section settings-section-divider">
-                      <div className="duplicates-section-heading">
-                        <h3 className="settings-subsection-title">Ignored Matches</h3>
-                        <span className="help-text">Pairs marked Not a match stay hidden in future duplicate runs.</span>
-                      </div>
-                      <div className="duplicates-maintenance-row">
-                        <div>
-                          <strong>{ignoredDuplicatePairCount}</strong>
-                          <span className="help-text">
-                            {ignoredDuplicatePairCount === 1 ? ' ignored pair' : ' ignored pairs'}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          className="duplicates-clear-btn"
-                          disabled={ignoredDuplicatePairCount === 0}
-                          onClick={() => handleDuplicateChange('ignoredDuplicatePairs', [])}
+                      <h3 className="settings-subsection-title">Ignored matches</h3>
+                      <div className="settings-card">
+                        <SettingRow
+                          label={`${ignoredDuplicatePairCount} ${ignoredDuplicatePairCount === 1 ? 'ignored pair' : 'ignored pairs'}`}
+                          help="Pairs marked Not a match stay hidden in future duplicate runs."
                         >
-                          Clear ignored matches
-                        </button>
+                          {(id) => (
+                            <button
+                              id={id}
+                              type="button"
+                              className="duplicates-clear-btn"
+                              disabled={ignoredDuplicatePairCount === 0}
+                              onClick={() => handleDuplicateChange('ignoredDuplicatePairs', [])}
+                            >
+                              Clear ignored matches
+                            </button>
+                          )}
+                        </SettingRow>
                       </div>
                     </div>
 
                     <div className="duplicates-section settings-section-divider">
-                      <div className="duplicates-section-heading">
-                        <h3 className="settings-subsection-title">Advanced</h3>
-                        <span className="help-text">Extra control for harder matching cases.</span>
-                      </div>
-                      <div className="duplicates-control-grid">
-                        <div className="form-group">
-                          <label>Sampling Window</label>
-                          <select value={localSettings.duplicates.samplingWindow} onChange={(e) => handleDuplicateChange('samplingWindow', e.target.value)}>
-                            <option value="even">Evenly spaced</option>
-                            <option value="25-75">25-75% center</option>
-                            <option value="20-80">20-80% center</option>
-                            <option value="15-85">15-85% center</option>
-                            <option value="custom">Custom window</option>
-                          </select>
-                          <span className="help-text">Choose which part of each video gets sampled.</span>
-                        </div>
-                        <div className="form-group">
-                          <label>Duration Tolerance</label>
-                          <div className="flex-row duplicates-inline-value">
-                            <input type="number" min="0" max="100" value={localSettings.duplicates.durationTolerancePercent} onChange={(e) => handleDuplicateChange('durationTolerancePercent', Number(e.target.value))} className="number-input" />
-                            <span>%</span>
-                          </div>
-                          <span className="help-text">How much video lengths may differ and still be compared.</span>
-                        </div>
-                        <div className="form-group">
-                          <label>Max Sampling Duration</label>
-                          <div className="flex-row duplicates-inline-value">
-                            <input type="number" min="0" max="86400" value={localSettings.duplicates.maxSamplingDuration} onChange={(e) => handleDuplicateChange('maxSamplingDuration', Number(e.target.value))} className="number-input" />
-                            <span>seconds</span>
-                          </div>
-                          <span className="help-text">0 uses the full video length.</span>
-                        </div>
-                        <div className="form-group">
-                          <label>Checkpoint Interval</label>
-                          <div className="flex-row duplicates-inline-value">
-                            <input type="number" min="0" max="60" value={localSettings.duplicates.checkpointIntervalMinutes} onChange={(e) => handleDuplicateChange('checkpointIntervalMinutes', Number(e.target.value))} className="number-input" />
-                            <span>minutes</span>
-                          </div>
-                          <span className="help-text">How often long runs save progress.</span>
-                        </div>
-                      </div>
-                      {localSettings.duplicates.samplingWindow === 'custom' && (
-                        <div className="form-group duplicates-custom-window">
-                          <label>Custom Sampling Window</label>
-                          <div className="flex-row duplicates-inline-value">
-                            <input type="number" min="0" max="95" value={localSettings.duplicates.customStartPercent} onChange={(e) => handleDuplicateChange('customStartPercent', Number(e.target.value))} className="number-input" />
-                            <span>% start</span>
-                            <input type="number" min="5" max="100" value={localSettings.duplicates.customEndPercent} onChange={(e) => handleDuplicateChange('customEndPercent', Number(e.target.value))} className="number-input" />
-                            <span>% end</span>
-                          </div>
-                          <span className="help-text">Useful for repeated intros, outros, or watermarks.</span>
-                        </div>
-                      )}
-                      <div className="duplicates-toggle-list advanced">
-                        <div className="form-group checkbox-group duplicates-toggle-row">
-                          <label>
-                            <input type="checkbox" checked={localSettings.duplicates.ignoreBlackPixels} onChange={(e) => handleDuplicateChange('ignoreBlackPixels', e.target.checked)} />
-                            Ignore black pixels
-                          </label>
-                          <span className="help-text">Can help with fades, black frames, and letterboxing.</span>
-                        </div>
-                        <div className="form-group checkbox-group duplicates-toggle-row">
-                          <label>
-                            <input type="checkbox" checked={localSettings.duplicates.ignoreWhitePixels} onChange={(e) => handleDuplicateChange('ignoreWhitePixels', e.target.checked)} />
-                            Ignore white pixels
-                          </label>
-                          <span className="help-text">Can help with bright flashes and white frames.</span>
-                        </div>
-                        <div className="form-group checkbox-group duplicates-toggle-row">
-                          <label>
-                            <input type="checkbox" checked={localSettings.duplicates.compareFlipped} onChange={(e) => handleDuplicateChange('compareFlipped', e.target.checked)} />
-                            Compare flipped videos
-                          </label>
-                          <span className="help-text">Also checks horizontally mirrored copies.</span>
-                        </div>
-                        <div className="form-group checkbox-group duplicates-toggle-row">
-                          <label>
-                            <input type="checkbox" checked={localSettings.duplicates.retryFailedFingerprintExtraction} onChange={(e) => handleDuplicateChange('retryFailedFingerprintExtraction', e.target.checked)} />
-                            Retry failed fingerprints
-                          </label>
-                          <span className="help-text">Retries videos that failed to process before.</span>
-                        </div>
+                      <h3 className="settings-subsection-title">Advanced</h3>
+                      <div className="settings-card settings-card-grid">
+                        <SettingRow label="Sampling window" help="Which part of each video is sampled.">
+                          {(id) => (
+                            <select id={id} value={localSettings.duplicates.samplingWindow} onChange={(e) => handleDuplicateChange('samplingWindow', e.target.value)}>
+                              <option value="even">Evenly spaced</option>
+                              <option value="25-75">25-75% center</option>
+                              <option value="20-80">20-80% center</option>
+                              <option value="15-85">15-85% center</option>
+                              <option value="custom">Custom window</option>
+                            </select>
+                          )}
+                        </SettingRow>
+                        <SettingRow label="Duration tolerance" help="How much two videos may differ in length and still be compared.">
+                          {(id) => (
+                            <div className="flex-row duplicates-inline-value">
+                              <input id={id} type="number" min="0" max="100" value={localSettings.duplicates.durationTolerancePercent} onChange={(e) => handleDuplicateChange('durationTolerancePercent', Number(e.target.value))} className="number-input" />
+                              <span>%</span>
+                            </div>
+                          )}
+                        </SettingRow>
+                        <SettingRow label="Max sampling duration" help="0 samples the whole video.">
+                          {(id) => (
+                            <div className="flex-row duplicates-inline-value">
+                              <input id={id} type="number" min="0" max="86400" value={localSettings.duplicates.maxSamplingDuration} onChange={(e) => handleDuplicateChange('maxSamplingDuration', Number(e.target.value))} className="number-input" />
+                              <span>seconds</span>
+                            </div>
+                          )}
+                        </SettingRow>
+                        <SettingRow label="Checkpoint interval" help="How often long runs save their progress.">
+                          {(id) => (
+                            <div className="flex-row duplicates-inline-value">
+                              <input id={id} type="number" min="0" max="60" value={localSettings.duplicates.checkpointIntervalMinutes} onChange={(e) => handleDuplicateChange('checkpointIntervalMinutes', Number(e.target.value))} className="number-input" />
+                              <span>minutes</span>
+                            </div>
+                          )}
+                        </SettingRow>
+                        {localSettings.duplicates.samplingWindow === 'custom' && (
+                          <SettingRow wide label="Custom sampling window" help="Skips repeated intros, outros or watermarks.">
+                            {(id) => (
+                              <div className="flex-row duplicates-inline-value">
+                                <input id={id} type="number" min="0" max="95" value={localSettings.duplicates.customStartPercent} onChange={(e) => handleDuplicateChange('customStartPercent', Number(e.target.value))} className="number-input" />
+                                <span>% start</span>
+                                <input aria-label="Custom sampling window end" type="number" min="5" max="100" value={localSettings.duplicates.customEndPercent} onChange={(e) => handleDuplicateChange('customEndPercent', Number(e.target.value))} className="number-input" />
+                                <span>% end</span>
+                              </div>
+                            )}
+                          </SettingRow>
+                        )}
+                        <SwitchRow
+                          label="Ignore black pixels"
+                          help="Helps with fades, black frames and letterboxing."
+                          checked={localSettings.duplicates.ignoreBlackPixels}
+                          onChange={(checked) => handleDuplicateChange('ignoreBlackPixels', checked)}
+                        />
+                        <SwitchRow
+                          label="Ignore white pixels"
+                          help="Helps with bright flashes and white frames."
+                          checked={localSettings.duplicates.ignoreWhitePixels}
+                          onChange={(checked) => handleDuplicateChange('ignoreWhitePixels', checked)}
+                        />
+                        <SwitchRow
+                          label="Compare flipped videos"
+                          help="Also matches mirrored copies."
+                          checked={localSettings.duplicates.compareFlipped}
+                          onChange={(checked) => handleDuplicateChange('compareFlipped', checked)}
+                        />
+                        <SwitchRow
+                          label="Retry failed fingerprints"
+                          help="Tries videos that failed before again."
+                          checked={localSettings.duplicates.retryFailedFingerprintExtraction}
+                          onChange={(checked) => handleDuplicateChange('retryFailedFingerprintExtraction', checked)}
+                        />
                       </div>
                     </div>
                   </>
@@ -983,240 +965,262 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
               </div>
             )}
 
-            {activeTab === 'cache' && (
+            {activeTab === 'library' && (
               <div className="settings-form">
-                <div className="form-group">
-                  <label>Cache Storage</label>
-                  <select
-                    value={localSettings.cacheLocation}
-                    onChange={(e) => void handleCacheLocationChange(e.target.value)}
-                  >
-                    <option value="centralised">Centralised</option>
-                    <option value="per-drive">Per-drive</option>
-                    <option value="distributed">Distributed</option>
-                  </select>
-                  <span className="help-text">Centralised stores cache in app data. Per-drive keeps cache on the same drive. Distributed creates a hidden .videocull folder inside each loaded folder.</span>
-                </div>
-
-                {localSettings.cacheLocation === 'centralised' && (
-                  <div className="form-group">
-                    <label>Central Cache Location</label>
-                    <div className="cache-location-panel">
-                      {activeCacheLocations[0] ? (
-                        <>
-                          <div className="cache-location-details">
-                            <span className="cache-location-label">
-                              {globalSettings.centralCachePath ? 'Active custom folder' : 'Active default folder'}
-                            </span>
-                            <span className="cache-location-path" title={activeCacheLocations[0].path}>{activeCacheLocations[0].path}</span>
-                          </div>
-                          <div className="cache-location-actions">
-                            <button type="button" onClick={() => void handleOpenCache(activeCacheLocations[0].path)} disabled={!activeCacheLocations[0].available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
-                            <button type="button" onClick={() => void handleCopyCachePath(activeCacheLocations[0].path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
-                          </div>
-                        </>
-                      ) : (
-                        <span className="help-text">Save this cache mode to resolve its active folder.</span>
-                      )}
-                    </div>
-                    {activeCacheLocations[0] && (
-                      <span className="help-text">{cacheLocationDescription(activeCacheLocations[0])}</span>
-                    )}
-                    <div className="cache-location-controls">
-                      <button className="btn-check-updates" type="button" onClick={() => void handleChooseCacheFolder('centralCachePath')}>
-                        <Database size={14} />
-                        Choose Folder
-                      </button>
-                      {localSettings.centralCachePath && (
-                        <button className="btn-check-updates" type="button" onClick={handleUseDefaultCentralCache}>
-                          <RotateCcw size={14} />
-                          Use Default
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {localSettings.cacheLocation === 'per-drive' && (
-                  <div className="form-group">
-                    <label>Per-drive Cache Locations</label>
-                    {activeCacheLocations.length ? activeCacheLocations.map((item) => (
-                      <div className="cache-location-panel" key={item.path}>
-                        <div className="cache-location-details">
-                          <span className="cache-location-label">{item.label}</span>
-                          <span className="cache-location-path" title={item.path}>{item.path}</span>
-                          <span className="help-text">{cacheLocationDescription(item)}</span>
-                        </div>
-                        <div className="cache-location-actions">
-                          <button type="button" onClick={() => void handleOpenCache(item.path)} disabled={!item.available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
-                          <button type="button" onClick={() => void handleCopyCachePath(item.path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
-                        </div>
-                      </div>
-                    )) : (
-                      <span className="help-text">Open a folder to resolve its drive cache.</span>
-                    )}
-                    <div className="cache-location-controls">
-                      <button
-                        className="btn-check-updates"
-                        type="button"
-                        onClick={() => void handleChooseCacheFolder('perDriveCachePaths')}
-                        disabled={!currentDriveKey}
-                      >
-                        <Database size={14} />
-                        Choose Folder
-                      </button>
-                    </div>
-                    <span className="help-text">
-                      {currentDriveKey
-                        ? (localSettings.perDriveCachePaths[currentDriveKey] || `Using the default location for ${currentDriveKey}`)
-                        : 'Open a folder to configure its drive.'}
-                    </span>
-                  </div>
-                )}
-
-                {localSettings.cacheLocation === 'distributed' && (
-                  <div className="form-group">
-                    <label>Distributed Cache Locations</label>
-                    {activeCacheLocations.length ? activeCacheLocations.map((item) => (
-                      <div className="cache-location-panel" key={item.path}>
-                        <div className="cache-location-details">
-                          <span className="cache-location-label">{item.label}</span>
-                          <span className="cache-location-path" title={item.path}>{item.path}</span>
-                          <span className="help-text">{cacheLocationDescription(item)}</span>
-                        </div>
-                        <div className="cache-location-actions">
-                          <button type="button" onClick={() => void handleOpenCache(item.path)} disabled={!item.available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
-                          <button type="button" onClick={() => void handleCopyCachePath(item.path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
-                        </div>
-                      </div>
-                    )) : (
-                      <span className="help-text">Open a folder to resolve its distributed cache.</span>
-                    )}
-                  </div>
-                )}
-
-                {cacheMessage && <span className="help-text cache-location-message">{cacheMessage}</span>}
-
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
+                <section className="settings-subsection">
+                  <h3 className="settings-subsection-title">Scanning</h3>
+                  <div className="settings-card">
+                    <SwitchRow
+                      label={`Follow symbolic links${isWindows ? ' and junctions' : ''} (Experimental)`}
+                      help={`Also scans folders and videos that ${isWindows ? 'links and junctions' : 'symbolic links'} point to, even outside the opened folder. Each video is listed once. Applies from the next scan.`}
                       checked={localSettings.followLinks}
-                      onChange={(e) => handleChange('followLinks', e.target.checked)}
+                      onChange={(checked) => handleChange('followLinks', checked)}
                     />
-                    Follow symbolic links{isWindows ? ' and junctions' : ''} (Experimental)
-                  </label>
-                  <span className="help-text">Scans folders and videos that {isWindows ? 'links or directory junctions' : 'symbolic links'} point to, also outside the opened folder. A video reached by more than one path is listed once. Applies from the next scan. Experimental: off by default while it is being tested.</span>
-                </div>
+                  </div>
+                </section>
 
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
+                <section className="settings-subsection settings-section-divider">
+                  <h3 className="settings-subsection-title">Cache</h3>
+                  <div className="settings-card">
+                    <SettingRow
+                      label="Cache storage"
+                      help="Centralised keeps it in the app's data folder, Per-drive on the same drive as the videos, and Distributed in a hidden .videocull folder inside each loaded folder."
+                    >
+                      {(id) => (
+                        <select id={id} value={localSettings.cacheLocation} onChange={(e) => void handleCacheLocationChange(e.target.value)}>
+                          <option value="centralised">Centralised</option>
+                          <option value="per-drive">Per-drive</option>
+                          <option value="distributed">Distributed</option>
+                        </select>
+                      )}
+                    </SettingRow>
+                    {localSettings.cacheLocation === 'centralised' && (
+                        <div className="form-group">
+                          <label>Central Cache Location</label>
+                          <div className="cache-location-panel">
+                            {activeCacheLocations[0] ? (
+                              <>
+                                <div className="cache-location-details">
+                                  <span className="cache-location-label">
+                                    {globalSettings.centralCachePath ? 'Active custom folder' : 'Active default folder'}
+                                  </span>
+                                  <span className="cache-location-path" title={activeCacheLocations[0].path}>{activeCacheLocations[0].path}</span>
+                                </div>
+                                <div className="cache-location-actions">
+                                  <button type="button" onClick={() => void handleOpenCache(activeCacheLocations[0].path)} disabled={!activeCacheLocations[0].available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
+                                  <button type="button" onClick={() => void handleCopyCachePath(activeCacheLocations[0].path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
+                                </div>
+                              </>
+                            ) : (
+                              <span className="help-text">Save this cache mode to resolve its active folder.</span>
+                            )}
+                          </div>
+                          {activeCacheLocations[0] && (
+                            <span className="help-text">{cacheLocationDescription(activeCacheLocations[0])}</span>
+                          )}
+                          <div className="cache-location-controls">
+                            <button className="btn-check-updates" type="button" onClick={() => void handleChooseCacheFolder('centralCachePath')}>
+                              <Database size={14} />
+                              Choose Folder
+                            </button>
+                            {localSettings.centralCachePath && (
+                              <button className="btn-check-updates" type="button" onClick={handleUseDefaultCentralCache}>
+                                <RotateCcw size={14} />
+                                Use Default
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+  
+                      {localSettings.cacheLocation === 'per-drive' && (
+                        <div className="form-group">
+                          <label>Per-drive Cache Locations</label>
+                          {activeCacheLocations.length ? activeCacheLocations.map((item) => (
+                            <div className="cache-location-panel" key={item.path}>
+                              <div className="cache-location-details">
+                                <span className="cache-location-label">{item.label}</span>
+                                <span className="cache-location-path" title={item.path}>{item.path}</span>
+                                <span className="help-text">{cacheLocationDescription(item)}</span>
+                              </div>
+                              <div className="cache-location-actions">
+                                <button type="button" onClick={() => void handleOpenCache(item.path)} disabled={!item.available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
+                                <button type="button" onClick={() => void handleCopyCachePath(item.path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
+                              </div>
+                            </div>
+                          )) : (
+                            <span className="help-text">Open a folder to resolve its drive cache.</span>
+                          )}
+                          <div className="cache-location-controls">
+                            <button
+                              className="btn-check-updates"
+                              type="button"
+                              onClick={() => void handleChooseCacheFolder('perDriveCachePaths')}
+                              disabled={!currentDriveKey}
+                            >
+                              <Database size={14} />
+                              Choose Folder
+                            </button>
+                          </div>
+                          <span className="help-text">
+                            {currentDriveKey
+                              ? (localSettings.perDriveCachePaths[currentDriveKey] || `Using the default location for ${currentDriveKey}`)
+                              : 'Open a folder to configure its drive.'}
+                          </span>
+                        </div>
+                      )}
+  
+                      {localSettings.cacheLocation === 'distributed' && (
+                        <div className="form-group">
+                          <label>Distributed Cache Locations</label>
+                          {activeCacheLocations.length ? activeCacheLocations.map((item) => (
+                            <div className="cache-location-panel" key={item.path}>
+                              <div className="cache-location-details">
+                                <span className="cache-location-label">{item.label}</span>
+                                <span className="cache-location-path" title={item.path}>{item.path}</span>
+                                <span className="help-text">{cacheLocationDescription(item)}</span>
+                              </div>
+                              <div className="cache-location-actions">
+                                <button type="button" onClick={() => void handleOpenCache(item.path)} disabled={!item.available} title="Open cache folder"><FolderOpen size={14} /> Open</button>
+                                <button type="button" onClick={() => void handleCopyCachePath(item.path)} title="Copy cache path"><Copy size={14} /> Copy path</button>
+                              </div>
+                            </div>
+                          )) : (
+                            <span className="help-text">Open a folder to resolve its distributed cache.</span>
+                          )}
+                        </div>
+                      )}
+  
+                      {cacheMessage && <span className="help-text cache-location-message">{cacheMessage}</span>}
+                    <SwitchRow
+                      label="Auto-clean stale cache after scans"
+                      help="After each scan, removes cached data and thumbnails for files and folders that no longer exist."
                       checked={localSettings.autoPruneMissingSubfolderCache}
-                      onChange={(e) => handleChange('autoPruneMissingSubfolderCache', e.target.checked)}
+                      onChange={(checked) => handleChange('autoPruneMissingSubfolderCache', checked)}
                     />
-                    Auto-clean stale cache after scans
-                  </label>
-                  <span className="help-text">After a scan, VideoCull can automatically remove stale cache rows, thumbnail folders for files that disappeared, and remembered child-folder caches that no longer exist on disk.</span>
-                </div>
+                  </div>
+                </section>
 
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
+                <section className="settings-subsection settings-section-divider">
+                  <h3 className="settings-subsection-title">After deleting</h3>
+                  <div className="settings-card">
+                    <SwitchRow
+                      label="Remove empty source folders after delete"
+                      help={`Removes folders a delete leaves empty. Folders outside the loaded folders, unavailable ones and ${isWindows ? 'links and junctions' : 'symbolic links'} are never removed.`}
                       checked={localSettings.removeEmptyFoldersAfterDelete}
-                      onChange={(e) => handleChange('removeEmptyFoldersAfterDelete', e.target.checked)}
+                      onChange={(checked) => handleChange('removeEmptyFoldersAfterDelete', checked)}
                     />
-                    Remove empty source folders after delete
-                  </label>
-                  <span className="help-text">After deleting videos, remove only their empty parent folders. Folders that are not empty, unavailable, outside the loaded scan roots, or {isWindows ? 'links and junctions' : 'symbolic links'} are skipped.</span>
-                </div>
+                  </div>
+                </section>
               </div>
             )}
 
             {activeTab === 'processing' && (
               <div className="settings-form">
-                <div className="form-group">
-                  <span className="help-text">Processing changes apply the next time thumbnails, metadata, or duplicate work starts. They do not rebuild current thumbnails until you rescan or regenerate them.</span>
-                </div>
-                <div className="form-group">
-                  <label>Thumbnails per Video</label>
-                  <select value={localSettings.thumbsPerVideo} onChange={(e) => handleChange('thumbsPerVideo', Number(e.target.value))}>
-                    <option value={1}>1 Frame</option>
-                    <option value={2}>2 Frames</option>
-                    <option value={4}>4 Frames</option>
-                    <option value={6}>6 Frames</option>
-                    <option value={9}>9 Frames</option>
-                  </select>
-                  <span className="help-text">Number of preview shots extracted evenly per video. Increasing this rebuilds videos that need more shots; lowering keeps extra cached files, so raising it again can reuse them if the cache still exists.</span>
-                </div>
+                <span className="help-text">Changes apply to the next run. Existing thumbnails stay until you rescan or regenerate them.</span>
 
-                <div className="form-group">
-                  <label>Skip Intro Blackframes (Delay)</label>
-                  <div className="flex-row">
-                    <input type="number" min="0" max="60" value={localSettings.skipIntroDelaySecs} onChange={(e) => handleChange('skipIntroDelaySecs', Number(e.target.value))} className="number-input" />
-                    <span>Seconds</span>
+                <section className="settings-subsection">
+                  <h3 className="settings-subsection-title">Thumbnails</h3>
+                  <div className="settings-card settings-card-grid">
+                    <SettingRow
+                      label="Thumbnails per video"
+                      help="Raising this rebuilds the thumbnails of videos that need more frames. Lowering it keeps the extra frames, so raising it again reuses them."
+                    >
+                      {(id) => (
+                        <select id={id} value={localSettings.thumbsPerVideo} onChange={(e) => handleChange('thumbsPerVideo', Number(e.target.value))}>
+                          <option value={1}>1 Frame</option>
+                          <option value={2}>2 Frames</option>
+                          <option value={4}>4 Frames</option>
+                          <option value={6}>6 Frames</option>
+                          <option value={9}>9 Frames</option>
+                        </select>
+                      )}
+                    </SettingRow>
+                    <SettingRow
+                      label="Skip intro blackframes (delay)"
+                      help="Takes the first thumbnail later, to skip black fade-ins."
+                    >
+                      {(id) => (
+                        <div className="flex-row">
+                          <input id={id} type="number" min="0" max="60" value={localSettings.skipIntroDelaySecs} onChange={(e) => handleChange('skipIntroDelaySecs', Number(e.target.value))} className="number-input" />
+                          <span>seconds</span>
+                        </div>
+                      )}
+                    </SettingRow>
                   </div>
-                  <span className="help-text">Forces the first thumbnail to extract X seconds later to avoid black fade-in screens.</span>
-                </div>
+                </section>
 
-                <div className="form-group">
-                  <label>Parallel FFmpeg Processes</label>
-                  <select
-                    value={localSettings.maxConcurrent === 'auto' ? 'auto' : localSettings.maxConcurrent}
-                    onChange={(e) => handleChange('maxConcurrent', e.target.value === 'auto' ? 'auto' : Number(e.target.value))}
-                  >
-                    <option value="auto">
-                      {autoConcurrency
-                        ? `Auto (${autoConcurrency} process${autoConcurrency === 1 ? '' : 'es'}, CPU + RAM aware)`
-                        : 'Auto (CPU + RAM aware)'}
-                    </option>
-                    <option value={1}>1 Process (Slower, stable)</option>
-                    <option value={2}>2 Processes</option>
-                    <option value={3}>3 Processes</option>
-                    <option value={4}>4 Processes</option>
-                    <option value={6}>6 Processes</option>
-                    <option value={8}>8 Processes</option>
-                    <option value={12}>12 Processes</option>
-                    <option value={16}>16 Processes</option>
-                    <option value={24}>24 Processes</option>
-                    <option value={32}>32 Processes</option>
-                  </select>
-                  <span className="help-text">
-                    {localSettings.maxConcurrent === 'auto' && autoConcurrency
-                      ? `Auto will run up to ${autoConcurrency} FFmpeg process${autoConcurrency === 1 ? '' : 'es'} at once with the current thread setting.`
-                      : 'Caps how many thumbnail extraction processes run at the same time.'}
-                  </span>
-                </div>
+                <section className="settings-subsection settings-section-divider">
+                  <h3 className="settings-subsection-title">FFmpeg</h3>
+                  <div className="settings-card">
+                    <SettingRow
+                      label="Parallel FFmpeg processes"
+                      help={localSettings.maxConcurrent === 'auto' && autoConcurrency
+                        ? `Auto runs up to ${autoConcurrency} at once on this PC.`
+                        : 'How many FFmpeg processes run at once.'}
+                    >
+                      {(id) => (
+                        <select
+                          id={id}
+                          value={localSettings.maxConcurrent === 'auto' ? 'auto' : localSettings.maxConcurrent}
+                          onChange={(e) => handleChange('maxConcurrent', e.target.value === 'auto' ? 'auto' : Number(e.target.value))}
+                        >
+                          <option value="auto">
+                            {autoConcurrency
+                              ? `Auto (${autoConcurrency} process${autoConcurrency === 1 ? '' : 'es'}, CPU + RAM aware)`
+                              : 'Auto (CPU + RAM aware)'}
+                          </option>
+                          <option value={1}>1 Process (Slower, stable)</option>
+                          <option value={2}>2 Processes</option>
+                          <option value={3}>3 Processes</option>
+                          <option value={4}>4 Processes</option>
+                          <option value={6}>6 Processes</option>
+                          <option value={8}>8 Processes</option>
+                          <option value={12}>12 Processes</option>
+                          <option value={16}>16 Processes</option>
+                          <option value={24}>24 Processes</option>
+                          <option value={32}>32 Processes</option>
+                        </select>
+                      )}
+                    </SettingRow>
+                  </div>
+                  <div className="settings-card settings-card-grid">
+                    <SwitchRow
+                      label="Limit each FFmpeg process to 1 CPU thread (Recommended)"
+                      help="Runs more single-threaded processes instead of fewer multi-threaded ones, which is usually faster for thumbnails."
+                      checked={localSettings.cpuThreadsLimited}
+                      onChange={(checked) => handleChange('cpuThreadsLimited', checked)}
+                    />
+                    <SwitchRow
+                      label="Enable Hardware Acceleration (Beta)"
+                      help="Decodes with the GPU instead of the CPU. Can fail on older formats."
+                      checked={localSettings.hardwareAccel}
+                      onChange={(checked) => handleChange('hardwareAccel', checked)}
+                    />
+                  </div>
+                </section>
 
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input type="checkbox" checked={localSettings.cpuThreadsLimited} onChange={(e) => handleChange('cpuThreadsLimited', e.target.checked)} />
-                    Limit each FFmpeg process to 1 CPU thread (Recommended)
-                  </label>
-                  <span className="help-text">Uses more small FFmpeg processes instead of fewer multi-threaded processes. Usually faster and smoother for thumbnail generation.</span>
-                </div>
-
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input type="checkbox" checked={localSettings.hardwareAccel} onChange={(e) => handleChange('hardwareAccel', e.target.checked)} />
-                    Enable Hardware Acceleration (Beta)
-                  </label>
-                  <span className="help-text">Attempts to route decoding through the GPU instead of CPU. May crash on legacy formats.</span>
-                </div>
-
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input type="checkbox" checked={localSettings.keepAwakeWhileProcessing} onChange={(e) => handleChange('keepAwakeWhileProcessing', e.target.checked)} />
-                    Keep the PC awake while processing
-                  </label>
-                  <span className="help-text">Stops the computer from going to sleep on its own while videos are scanned, read or fingerprinted, so long runs can finish unattended. Sleeping manually still works, and the screen can still turn off.</span>
-                </div>
+                <section className="settings-subsection settings-section-divider">
+                  <h3 className="settings-subsection-title">Power</h3>
+                  <div className="settings-card">
+                    <SwitchRow
+                      label="Keep the PC awake while processing"
+                      help="Stops the PC from going to sleep on its own while processing runs, so long runs finish unattended. The screen can still turn off, and choosing Sleep yourself still works."
+                      checked={localSettings.keepAwakeWhileProcessing}
+                      onChange={(checked) => handleChange('keepAwakeWhileProcessing', checked)}
+                    />
+                    <div className="settings-row">
+                      <div className="settings-row-text">
+                        <span className="settings-row-label">When processing finishes</span>
+                        <span className="help-text">To sleep or shut down after a long run, choose Actions &gt; When Processing Finishes or select the processing status in the title bar while processing runs. It applies to that run only.</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
               </div>
             )}
 
-            {activeTab === 'keybindings' && (
+            {activeTab === 'shortcuts' && (
               <div className="settings-form">
                 <div className="keybind-header-row">
                   <span className="help-text">Click a key to record a new shortcut. Escape cancels recording.</span>
@@ -1229,36 +1233,40 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 {KEYBIND_GROUPS.map((group) => {
                   const shortcuts = ALL_SHORTCUTS.filter((s) => s.group === group);
                   if (shortcuts.length === 0) return null;
+                  const sections = [...new Set(shortcuts.map((s) => s.section))];
                   return (
-                    <div key={group} className="keybind-group">
-                      <h4 className="keybind-group-title">{group}</h4>
-                      {shortcuts.map((shortcut) => {
-                        const bind = (localSettings[shortcut.id] ?? DEFAULT_KEYBINDS[shortcut.id]) as Keybind;
-                        const conflict = findConflict(shortcut.id, bind, currentBinds);
-                        return (
-                          <div key={shortcut.id} className="form-group row keybind-row">
-                            <label className="keybind-label">
-                              {shortcut.description}
-                              {shortcut.context && (
-                                <span className="keybind-context-tag">
-                                  {shortcut.context === 'playing' ? 'while playing' : 'not playing'}
-                                </span>
-                              )}
-                            </label>
-                            <KeybindInput
-                              value={bind}
-                              onChange={(newBind) => handleKeybind(shortcut.id, newBind)}
-                              conflict={conflict}
-                            />
-                            {conflict && (
-                              <span className="help-text keybind-conflict-text">
-                                Conflicts with {conflict}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <section key={group} className="settings-subsection">
+                      <h3 className="settings-subsection-title">{group}</h3>
+                      {sections.map((section) => (
+                        <div key={section} className="keybind-group">
+                          <h4 className="keybind-group-title">{section}</h4>
+                          {shortcuts.filter((s) => s.section === section).map((shortcut) => {
+                            const bind = (localSettings[shortcut.id] ?? DEFAULT_KEYBINDS[shortcut.id]) as Keybind;
+                            const conflict = findConflict(shortcut.id, bind, currentBinds);
+                            return (
+                              <div key={shortcut.id} className="form-group row keybind-row">
+                                <label className="keybind-label">
+                                  {shortcut.description}
+                                  {shortcut.context === 'not-playing' && (
+                                    <span className="keybind-context-tag">not playing</span>
+                                  )}
+                                </label>
+                                <KeybindInput
+                                  value={bind}
+                                  onChange={(newBind) => handleKeybind(shortcut.id, newBind)}
+                                  conflict={conflict}
+                                />
+                                {conflict && (
+                                  <span className="help-text keybind-conflict-text">
+                                    Conflicts with {conflict}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </section>
                   );
                 })}
 
@@ -1300,72 +1308,64 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
               const isBusy = updateInfo.status === 'checking' || updateInfo.status === 'downloading' || updateInfo.status === 'available';
               return (
                 <div className="settings-form">
-                  <div className="form-group">
-                    <label>Current Version</label>
-                    <span className="version-display">v{appVersionLabel}</span>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Status</label>
-                    <span className={`update-status-label update-status-${updateInfo.status}`}>
-                      {statusLabel[updateInfo.status] ?? updateInfo.status}
-                    </span>
-                    {updateInfo.status === 'downloading' && (
-                      <div className="update-progress-bar">
-                        <div className="update-progress-fill" style={{ width: `${updateInfo.percent ?? 0}%` }} />
+                  <div className="settings-card">
+                    <div className="settings-row">
+                      <div className="settings-row-text">
+                        <span className="settings-row-label">Version <span className="version-display">v{appVersionLabel}</span></span>
+                        <span className={`update-status-label update-status-${updateInfo.status}`}>
+                          {statusLabel[updateInfo.status] ?? updateInfo.status}
+                        </span>
+                        {updateInfo.status === 'downloading' && (
+                          <div className="update-progress-bar">
+                            <div className="update-progress-fill" style={{ width: `${updateInfo.percent ?? 0}%` }} />
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-
-                  <div className="form-group update-actions">
-                    {!hasDownloadedUpdate && (
-                      <button
-                        className="btn-check-updates"
-                        onClick={() => window.electronAPI?.checkForUpdates()}
-                        disabled={isBusy}
-                      >
-                        <RefreshCw size={14} />
-                        {updateInfo.status === 'checking' ? 'Checking…' : 'Check for updates'}
-                      </button>
-                    )}
-                    {hasDownloadedUpdate && (
-                      <>
-                        <button
-                          className="btn-install-update"
-                          onClick={() => void window.electronAPI?.installUpdate()}
-                        >
-                          Update now to v{updateInfo.version}
-                        </button>
-                        {updateInfo.status !== 'scheduled' && (
+                      <div className="settings-row-control update-actions">
+                        {!hasDownloadedUpdate && (
                           <button
                             className="btn-check-updates"
-                            onClick={() => void window.electronAPI?.scheduleUpdateOnExit()}
+                            onClick={() => window.electronAPI?.checkForUpdates()}
+                            disabled={isBusy}
                           >
-                            Install on exit
+                            <RefreshCw size={14} />
+                            {updateInfo.status === 'checking' ? 'Checking…' : 'Check for updates'}
                           </button>
                         )}
-                        {updateInfo.status !== 'deferred' && (
-                          <button
-                            className="btn-check-updates"
-                            onClick={() => void window.electronAPI?.deferUpdate()}
-                          >
-                            Ask me later
-                          </button>
+                        {hasDownloadedUpdate && (
+                          <>
+                            <button
+                              className="btn-install-update"
+                              onClick={() => void window.electronAPI?.installUpdate()}
+                            >
+                              Update now to v{updateInfo.version}
+                            </button>
+                            {updateInfo.status !== 'scheduled' && (
+                              <button
+                                className="btn-check-updates"
+                                onClick={() => void window.electronAPI?.scheduleUpdateOnExit()}
+                              >
+                                Install on exit
+                              </button>
+                            )}
+                            {updateInfo.status !== 'deferred' && (
+                              <button
+                                className="btn-check-updates"
+                                onClick={() => void window.electronAPI?.deferUpdate()}
+                              >
+                                Ask me later
+                              </button>
+                            )}
+                          </>
                         )}
-                      </>
-                    )}
-                  </div>
-
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
+                      </div>
+                    </div>
+                    <SwitchRow
+                      label="Automatically check for updates on startup"
+                      help="Downloads updates in the background. Nothing installs until you choose Update now or Install on exit. Takes effect after a restart."
                       checked={localSettings.autoUpdates}
-                      onChange={(e) => handleChange('autoUpdates', e.target.checked)}
+                      onChange={(checked) => handleChange('autoUpdates', checked)}
                     />
-                      Automatically check for updates on startup
-                  </label>
-                    <span className="help-text">When enabled, updates download silently in the background. Nothing installs until you choose Update now or Install on exit. Ask me later prompts you again after the next launch. Restart the app after changing this setting.</span>
                   </div>
                 </div>
               );
@@ -1459,6 +1459,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
         </div>
 
         <div className="settings-footer">
+          <span className="help-text settings-footer-note">Changes take effect when you choose Save Preferences.</span>
           <button className="btn-cancel" onClick={close}>Cancel</button>
           <button className="btn-save" onClick={handleSave} disabled={keybindConflictCount > 0}>Save Preferences</button>
         </div>

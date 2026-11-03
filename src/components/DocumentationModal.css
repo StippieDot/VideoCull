@@ -1,50 +1,16 @@
-.documentation-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: var(--bg-overlay);
-  backdrop-filter: blur(4px);
-}
-
 .documentation-modal {
-  --doc-font-meta: 10px;
-  --doc-font-body: 12px;
-  --doc-font-title: 14px;
-  --doc-font-page: 18px;
-  --doc-font-ui: 11px;
+  --doc-font-meta: 11px;
+  --doc-font-body: 14px;
+  --doc-font-page: 24px;
+  --doc-font-ui: 13px;
 
-  width: min(1120px, 100%);
-  height: min(1100px, 82vh);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-lg);
-  animation: modal-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Grows with the window but never below the original min(1120px, 100%) x min(1100px, 82vh). */
+  width: clamp(min(1120px, 100%), 85vw, 1600px);
+  height: min(1200px, 88vh);
 }
 
 .documentation-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-inline: 20px;
-  padding-top: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface-hover);
-}
-
-.documentation-header-copy h2 {
-  margin: 0;
-  font-size: var(--doc-font-title);
-  font-weight: 500;
-  color: var(--text-primary);
+  justify-content: flex-start;
 }
 
 .documentation-header-actions {
@@ -57,7 +23,6 @@
 }
 
 .documentation-action-btn,
-.documentation-close-btn,
 .documentation-link-btn,
 .documentation-nav-btn,
 .documentation-mdx-card {
@@ -79,24 +44,6 @@
   background: var(--bg-surface-hover);
   border-color: var(--border-hover);
   color: var(--text-primary);
-}
-
-.documentation-close-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  color: var(--text-tertiary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.15s;
-}
-
-.documentation-close-btn:hover {
-  background: var(--bg-hover-danger, rgba(255, 71, 87, 0.18));
-  color: var(--color-delete);
 }
 
 .documentation-search,
@@ -152,16 +99,50 @@
 
 .documentation-body {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
+  /* The third column is the On this page list; it collapses to nothing while that list is hidden. */
+  grid-template-columns: 220px minmax(0, 1fr) auto;
   min-height: 0;
   flex: 1;
+  container-type: inline-size;
 }
+
+.documentation-toc {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  width: 220px;
+  padding: 28px 16px 16px 8px;
+  overflow-y: auto;
+}
+
+.documentation-toc-btn {
+  border: none;
+  border-left: 2px solid var(--border);
+  background: transparent;
+  padding: 5px 10px;
+  color: var(--text-tertiary);
+  text-align: left;
+  font-size: var(--doc-font-ui);
+  line-height: 1.35;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.documentation-toc-btn:hover {
+  color: var(--text-primary);
+}
+
+.documentation-toc-btn.active {
+  border-left-color: var(--accent);
+  color: var(--text-primary);
+}
+
 
 .documentation-nav {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 12px 8px;
+  padding: 16px 10px;
   border-right: 1px solid var(--border);
   background: var(--bg-subtle);
   overflow-y: auto;
@@ -181,8 +162,8 @@
 }
 
 .documentation-nav-btn {
-  padding: 7px 9px;
-  border-radius: 5px;
+  padding: 8px 10px;
+  border-radius: 6px;
   color: var(--text-secondary);
   text-align: left;
   font-size: var(--doc-font-ui);
@@ -202,16 +183,23 @@
 }
 
 .documentation-content {
-  padding: 20px 24px 24px;
+  padding: 28px 40px 48px;
   overflow-y: auto;
   color: var(--text-secondary);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .documentation-page-header {
-  margin-bottom: 18px;
+  margin-bottom: 24px;
+}
+
+.documentation-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .documentation-page-header h3 {
@@ -228,14 +216,14 @@
 .documentation-page-header p {
   margin: 0;
   color: var(--text-secondary);
-  line-height: 1.5;
-  font-size: var(--doc-font-body);
+  line-height: 1.55;
+  font-size: 15px;
 }
 
 .documentation-page-header,
 .documentation-section-picker,
 .documentation-mdx {
-  width: min(68ch, 100%);
+  width: min(760px, 100%);
 }
 
 .documentation-section-picker {
@@ -290,7 +278,7 @@
 
 .documentation-mdx {
   font-size: var(--doc-font-body);
-  line-height: 1.55;
+  line-height: 1.65;
 }
 
 .documentation-mdx > :first-child {
@@ -301,35 +289,6 @@
   margin-bottom: 0;
 }
 
-.documentation-section {
-  border-top: 1px solid var(--border);
-}
-
-.documentation-section:last-child {
-  border-bottom: 1px solid var(--border);
-}
-
-.documentation-section > summary {
-  cursor: pointer;
-  padding: 12px 2px;
-}
-
-.documentation-section > summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.documentation-section > summary .documentation-mdx-h2 {
-  display: inline;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.documentation-section[open] > summary {
-  padding-bottom: 10px;
-}
-
 .documentation-mdx-h2,
 .documentation-mdx-h3 {
   color: var(--text-primary);
@@ -337,16 +296,17 @@
 }
 
 .documentation-mdx-h2 {
-  margin: 26px 0 10px;
-  font-size: 15px;
+  margin: 36px 0 12px;
+  font-size: 19px;
   font-weight: 600;
-  padding-top: 12px;
+  padding-top: 20px;
+  scroll-margin-top: 16px;
   border-top: 1px solid var(--border);
 }
 
 .documentation-mdx-h3 {
-  margin: 18px 0 8px;
-  font-size: 13px;
+  margin: 24px 0 8px;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -357,7 +317,7 @@
 }
 
 .documentation-mdx-paragraph {
-  margin: 0 0 10px;
+  margin: 0 0 14px;
 }
 
 .documentation-mdx a {
@@ -512,7 +472,7 @@
 .documentation-step-content h5 {
   margin: 1px 0 8px;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -610,5 +570,16 @@
 
   .documentation-content {
     padding: 18px 16px 22px;
+  }
+}
+
+/* Room for the navigation, the 760px reading column and the On this page list. */
+@container (min-width: 1150px) {
+  .documentation-toc {
+    display: flex;
+  }
+
+  .documentation-section-picker {
+    display: none;
   }
 }

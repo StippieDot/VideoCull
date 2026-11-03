@@ -11,40 +11,23 @@ import {
   type DocumentationActionId,
   type DocumentationNode,
 } from '../docs/documentation';
+import type { SettingsTab } from './SettingsModal';
+import './Dialog.css';
 import './DocumentationModal.css';
-
-type DocumentationSettingsTab =
-  | 'interface'
-  | 'features'
-  | 'duplicates'
-  | 'keybindings'
-  | 'cache'
-  | 'processing'
-  | 'updates'
-  | 'about';
 
 type DocumentationModalProps = {
   onClose: () => void;
-  onOpenSettings: (tab: DocumentationSettingsTab) => void;
+  onOpenSettings: (tab: SettingsTab) => void;
   onOpenShortcutsHelp: () => void;
 };
 
-type DocumentationSection = {
-  heading: Extract<DocumentationNode, { type: 'heading' }>;
-  nodes: DocumentationNode[];
-};
-
-type GroupedPageNodes = {
-  introduction: DocumentationNode[];
-  sections: DocumentationSection[];
-};
-
-const SETTINGS_ACTIONS: Partial<Record<DocumentationActionId, DocumentationSettingsTab>> = {
-  'open-settings-interface': 'interface',
+const SETTINGS_ACTIONS: Partial<Record<DocumentationActionId, SettingsTab>> = {
+  'open-settings-general': 'general',
+  'open-settings-view': 'view',
+  'open-settings-library': 'library',
   'open-settings-duplicates': 'duplicates',
-  'open-settings-keybindings': 'keybindings',
-  'open-settings-cache': 'cache',
   'open-settings-processing': 'processing',
+  'open-settings-shortcuts': 'shortcuts',
   'open-settings-about': 'about',
 };
 
@@ -58,30 +41,6 @@ function sectionAnchorId(pageId: string, sectionId: string) {
 
 function inlineTokenKey(index: number, value: string) {
   return `${index}-${value}`;
-}
-
-function groupPageNodes(nodes: DocumentationNode[]): GroupedPageNodes {
-  return nodes.reduce<GroupedPageNodes>((grouped, node) => {
-    if (node.type === 'heading' && node.level === 2) {
-      return {
-        ...grouped,
-        sections: [...grouped.sections, { heading: node, nodes: [] }],
-      };
-    }
-
-    const currentSection = grouped.sections[grouped.sections.length - 1];
-    if (!currentSection) {
-      return { ...grouped, introduction: [...grouped.introduction, node] };
-    }
-
-    return {
-      ...grouped,
-      sections: [
-        ...grouped.sections.slice(0, -1),
-        { ...currentSection, nodes: [...currentSection.nodes, node] },
-      ],
-    };
-  }, { introduction: [], sections: [] });
 }
 
 function getFocusableElements(modal: HTMLElement | null) {
@@ -148,6 +107,7 @@ export default function DocumentationModal({
   const [activePageId, setActivePageId] = useState(DOCUMENTATION_PAGES[0]?.id ?? '');
   const [query, setQuery] = useState('');
   const [pendingSectionId, setPendingSectionId] = useState<string | null>(null);
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -168,10 +128,15 @@ export default function DocumentationModal({
     ?? DOCUMENTATION_PAGES.find((page) => page.id === activePageId)
     ?? DOCUMENTATION_PAGES[0];
 
-  const groupedPageNodes = useMemo(
-    () => groupPageNodes(activePage?.nodes ?? []),
+  const sections = useMemo(
+    () => (activePage?.nodes ?? []).filter(
+      (node): node is Extract<DocumentationNode, { type: 'heading' }> => node.type === 'heading' && node.level === 2,
+    ),
     [activePage],
   );
+  const currentSectionId = sections.some((section) => section.id === activeSectionId)
+    ? activeSectionId
+    : sections[0]?.id ?? null;
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -187,14 +152,25 @@ export default function DocumentationModal({
     } else if (contentRef.current) {
       contentRef.current.scrollTop = 0;
     }
+    setActiveSectionId(null);
   }, [activePageId, normalizedQuery]);
 
   const jumpToSection = (sectionId: string) => {
-    const node = document.getElementById(sectionAnchorId(activePage.id, sectionId));
-    if (node?.tagName === 'DETAILS') {
-      (node as HTMLDetailsElement).open = true;
+    document.getElementById(sectionAnchorId(activePage.id, sectionId))?.scrollIntoView({ block: 'start' });
+    setActiveSectionId(sectionId);
+  };
+
+  // The section whose heading has scrolled past the top of the article is the one being read.
+  const trackActiveSection = () => {
+    const content = contentRef.current;
+    if (!content) return;
+    const readingLine = content.getBoundingClientRect().top + 32;
+    let current = sections[0]?.id ?? null;
+    for (const section of sections) {
+      const heading = document.getElementById(sectionAnchorId(activePage.id, section.id));
+      if (heading && heading.getBoundingClientRect().top <= readingLine) current = section.id;
     }
-    node?.scrollIntoView({ block: 'start' });
+    setActiveSectionId(current);
   };
 
   useEffect(() => {
@@ -444,17 +420,17 @@ export default function DocumentationModal({
   });
 
   return (
-    <div className="documentation-overlay" onClick={onClose}>
+    <div className="dialog-overlay documentation-overlay" onClick={onClose}>
       <div
         ref={modalRef}
-        className="documentation-modal"
+        className="dialog-window documentation-modal"
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
         role="dialog"
         aria-modal="true"
         aria-labelledby="documentation-modal-title"
       >
-        <div className="documentation-header">
+        <div className="dialog-header documentation-header">
           <div className="documentation-header-copy">
             <h2 id="documentation-modal-title">Help</h2>
           </div>
@@ -478,28 +454,9 @@ export default function DocumentationModal({
             </select>
           </label>
           <div className="documentation-header-actions">
-            {(activePage.actions ?? []).map((actionId) => (
-              <button
-                key={actionId}
-                type="button"
-                className="documentation-action-btn"
-                onClick={() => openAction(actionId)}
-                title={DOCUMENTATION_ACTIONS[actionId].description}
-              >
-                {DOCUMENTATION_ACTIONS[actionId].label}
-              </button>
-            ))}
             <button
               type="button"
-              className="documentation-action-btn documentation-link-btn"
-              onClick={openExternal}
-            >
-              Open web docs
-              <ExternalLink size={14} />
-            </button>
-            <button
-              type="button"
-              className="documentation-close-btn"
+              className="dialog-close-btn"
               onClick={onClose}
               aria-label="Close documentation"
               title="Close documentation"
@@ -528,46 +485,68 @@ export default function DocumentationModal({
             ))}
           </nav>
 
-          <article ref={contentRef} className="documentation-content">
+          <article ref={contentRef} className="documentation-content" onScroll={trackActiveSection}>
             <header className="documentation-page-header">
               <h3>{activePage.title}</h3>
               <p>{activePage.summary}</p>
+              <div className="documentation-page-actions">
+                {(activePage.actions ?? []).map((actionId) => (
+                  <button
+                    key={actionId}
+                    type="button"
+                    className="documentation-action-btn"
+                    onClick={() => openAction(actionId)}
+                    title={DOCUMENTATION_ACTIONS[actionId].description}
+                  >
+                    {DOCUMENTATION_ACTIONS[actionId].label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="documentation-action-btn documentation-link-btn"
+                  onClick={openExternal}
+                >
+                  Open web docs
+                  <ExternalLink size={14} />
+                </button>
+              </div>
             </header>
 
-            {groupedPageNodes.sections.length >= 2 && (
+            {sections.length >= 2 && (
               <label className="documentation-section-picker">
                 <span>Jump to section</span>
                 <select
-                  key={activePage.id}
-                  defaultValue={groupedPageNodes.sections[0]?.heading.id}
+                  value={currentSectionId ?? ''}
                   onChange={(event) => jumpToSection(event.target.value)}
                 >
-                  {groupedPageNodes.sections.map((section) => (
-                    <option key={section.heading.id} value={section.heading.id}>
-                      {section.heading.text}
-                    </option>
+                  {sections.map((section) => (
+                    <option key={section.id} value={section.id}>{section.text}</option>
                   ))}
                 </select>
               </label>
             )}
 
             <div key={activePage.id} className="documentation-mdx">
-              {renderNodes(groupedPageNodes.introduction, `${activePage.id}-introduction`)}
-              {groupedPageNodes.sections.map((section, index) => (
-                <details
-                  key={section.heading.id}
-                  id={sectionAnchorId(activePage.id, section.heading.id)}
-                  className="documentation-section"
-                  open={index === 0}
-                >
-                  <summary>
-                    <h4 className="documentation-mdx-h2">{section.heading.text}</h4>
-                  </summary>
-                  {renderNodes(section.nodes, `${activePage.id}-${section.heading.id}`)}
-                </details>
-              ))}
+              {renderNodes(activePage.nodes, activePage.id)}
             </div>
           </article>
+
+          {sections.length >= 2 && (
+            <nav className="documentation-toc" aria-label="On this page">
+              <div className="documentation-nav-group-label">On this page</div>
+              {sections.map((section) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  className={`documentation-toc-btn${section.id === currentSectionId ? ' active' : ''}`}
+                  aria-current={section.id === currentSectionId ? 'location' : undefined}
+                  onClick={() => jumpToSection(section.id)}
+                >
+                  {section.text}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
 
       </div>
