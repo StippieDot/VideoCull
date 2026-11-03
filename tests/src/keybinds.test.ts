@@ -15,6 +15,7 @@ function makeEvent(overrides: Partial<KeyboardEvent> & { key: string }): Keyboar
   return {
     key: overrides.key,
     ctrlKey: overrides.ctrlKey ?? false,
+    metaKey: overrides.metaKey ?? false,
     shiftKey: overrides.shiftKey ?? false,
     altKey: overrides.altKey ?? false,
   } as KeyboardEvent;
@@ -43,6 +44,20 @@ describe('key matching', () => {
 
     expect(matchesKeybind(makeEvent({ key: 'arrowleft', ctrlKey: true }), bind)).toBe(true);
     expect(matchesKeybind(makeEvent({ key: 'arrowleft' }), bind)).toBe(false);
+  });
+
+  test('Cmd stands in for Ctrl on macOS only; Super and the Windows key do not', () => {
+    const bind = kb('z', { ctrl: true });
+    const metaZ = makeEvent({ key: 'z', metaKey: true });
+    try {
+      vi.stubGlobal('window', { electronAPI: { platform: 'darwin' } });
+      expect(matchesKeybind(metaZ, bind)).toBe(true);
+      vi.stubGlobal('window', { electronAPI: { platform: 'linux' } });
+      expect(matchesKeybind(metaZ, bind)).toBe(false);
+      expect(keybindFromEvent(metaZ)?.ctrl).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test('treats normalized shortcuts with the same modifiers as equal', () => {

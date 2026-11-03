@@ -1,4 +1,4 @@
-import { fileManagerName, modKeyName } from './utils';
+import { fileManagerName, isModKeyDown, modKeyName } from './utils';
 
 // ── Keybind data type ──────────────────────────────────────────────
 export interface Keybind {
@@ -106,7 +106,7 @@ export function kb(
 export function matchesKeybind(event: KeyboardEvent, bind: Keybind): boolean {
   return (
     event.key.toLowerCase() === bind.key &&
-    (event.ctrlKey || event.metaKey) === bind.ctrl &&
+    isModKeyDown(event) === bind.ctrl &&
     event.shiftKey === bind.shift &&
     event.altKey   === bind.alt
   );
@@ -123,7 +123,7 @@ export function keybindFromEvent(event: KeyboardEvent): Keybind | null {
   if (['control', 'shift', 'alt', 'meta'].includes(event.key.toLowerCase())) return null;
   return {
     key:   event.key.toLowerCase(),
-    ctrl:  event.ctrlKey || event.metaKey,
+    ctrl:  isModKeyDown(event),
     shift: event.shiftKey,
     alt:   event.altKey,
   };

@@ -45,6 +45,11 @@ export function modKeyName(): string {
   return currentPlatform() === 'darwin' ? 'Cmd' : 'Ctrl';
 }
 
+/** Ctrl is held, or Cmd on macOS. Elsewhere Meta is the Windows or Super key and must not act as Ctrl. */
+export function isModKeyDown(event: { ctrlKey: boolean; metaKey: boolean }): boolean {
+  return event.ctrlKey || (event.metaKey && currentPlatform() === 'darwin');
+}
+
 /** Windows paths ignore letter case; macOS and Linux paths keep it. Kept in step with electron/path-key.js. */
 export function foldPathCase(value: string): string {
   return isWindows() ? value.toLowerCase() : value;

@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { ChevronDown, ChevronRight, Copy, Film, Filter, Folder, X } from 'lucide-react';
 import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod, videosOutsideFolderFilter } from '../store';
 import type { FolderFilter, Video } from '../types';
-import { isFolderInside, isFolderShownByFilter, normalizeFolder } from '../utils';
+import { isFolderInside, isFolderShownByFilter, isModKeyDown, normalizeFolder } from '../utils';
 import AppMenu from './AppMenu';
 import { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail } from './contextMenuBuilders';
@@ -260,7 +260,7 @@ function useLocationKeys(navRef: React.RefObject<HTMLElement | null>, browsable:
     const handleKeyDown = (event: KeyboardEvent) => {
       const { target } = event;
       if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'l') {
+      if (isModKeyDown(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'l') {
         const buttons = navRef.current?.querySelectorAll<HTMLButtonElement>('.location-bar-segment');
         const lastButton = buttons?.[buttons.length - 1];
         if (!lastButton) return;
