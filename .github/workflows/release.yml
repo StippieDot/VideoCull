@@ -29,6 +29,7 @@ jobs:
             files: |
               artifacts/packages/VideoCull-*.AppImage
               artifacts/packages/VideoCull-*.deb
+              artifacts/packages/VideoCull-*.rpm
               artifacts/packages/latest-linux.yml
     runs-on: ${{ matrix.os }}
 
@@ -54,6 +55,10 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
             exit 1
           fi
+
+      - name: Install the RPM build tool
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm
 
       - name: Build packages
         run: npm run ${{ matrix.script }}
@@ -123,4 +128,5 @@ jobs:
             packages/VideoCull-*.dmg
             packages/VideoCull-*.AppImage
             packages/VideoCull-*.deb
+            packages/VideoCull-*.rpm
             packages/latest-linux.yml
