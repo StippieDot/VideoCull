@@ -180,11 +180,6 @@ Proposed direction:
 - Then a local Flatpak build to test filesystem access, Trash, VAAPI and session restore on an external drive, on at least two distributions.
 - Submit to Flathub only after that. The Linux notes in the README gain a Flatpak line when it ships.
 
-Alternatives considered:
-
-- **Snap:** reaches mainly Ubuntu, which the .deb already covers, and Linux Mint blocks it by default. Strict confinement denies hidden folders in home (including `~/.local/share/Trash`) and needs `removable-media` connected for drives under `/media`; classic confinement is rarely granted for this kind of app. Revisit only if Ubuntu users ask for VideoCull in the App Center; the updater change above carries over (detect `SNAP`).
-- **Own apt repository:** gives updates through `apt upgrade`, but adds a GPG signing key to protect and rotate, hosting, a signed index per release, and a second update path next to the in-app updater. Not worth it while the in-app updater installs new .deb versions. Revisit if users ask for it or if .deb self-updates prove unreliable.
-
 ## Recommended order
 
 1. Add shared I/O-aware admission across media-analysis pipelines.
