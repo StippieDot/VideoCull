@@ -90,7 +90,8 @@ jobs:
 
   publish:
     needs: build
-    if: github.ref_type == 'tag'
+    # Only a pushed tag publishes; a manual run never does, even when started from a tag.
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
