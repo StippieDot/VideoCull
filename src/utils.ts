@@ -16,6 +16,12 @@ function currentPlatform(): string | undefined {
   return typeof window === 'undefined' ? undefined : window.electronAPI?.platform;
 }
 
+/** Windows, or no platform at all (tests, a plain browser), which the app treats as Windows. */
+export function isWindows(): boolean {
+  const platform = currentPlatform();
+  return !platform || platform === 'win32';
+}
+
 /** What the system calls deleted-file storage: the Recycle Bin on Windows, the Trash elsewhere. */
 export function trashName(): string {
   const platform = currentPlatform();
@@ -35,8 +41,7 @@ export function modKeyName(): string {
 
 /** Windows paths ignore letter case; macOS and Linux paths keep it. Kept in step with electron/path-key.js. */
 export function foldPathCase(value: string): string {
-  const platform = currentPlatform();
-  return !platform || platform === 'win32' ? value.toLowerCase() : value;
+  return isWindows() ? value.toLowerCase() : value;
 }
 
 export function formatDeleteConfirmation({
