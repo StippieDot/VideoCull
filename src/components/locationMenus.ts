@@ -17,7 +17,7 @@ import {
 import type { DuplicateGroup, FolderFilter, Video, VideoStatus } from '../types';
 import { trimSeparators, type AppMenuItem } from './AppMenu';
 import { sameSessionFolders, sessionKey, sessionLabel, shownFolders } from '../sessions';
-import { formatDuration, formatResolutionLabel, formatSize, fileManagerName, folderInsideTest, getFolderLabel, getFolderPath, isFolderInside, modKeyName, normalizeFolder, plural } from '../utils';
+import { formatDuration, formatResolutionLabel, formatSize, fileManagerName, folderInsideTest, foldPathCase, getFolderLabel, getFolderPath, isFolderInside, modKeyName, normalizeFolder, plural } from '../utils';
 
 export type LocationMenuItem = AppMenuItem;
 
@@ -111,7 +111,7 @@ export function listSubfolders(videos: Video[], parent: string): FolderEntry[] {
     const folder = getFolderPath(video);
     if (folder.length < prefixLength || !isFolderInside(folder, parent)) continue;
     const label = folder.slice(prefixLength).split(/[\\/]/)[0];
-    const key = label.toLowerCase();
+    const key = foldPathCase(label);
     const entry = children.get(key);
     if (entry) entry.videos.push(video);
     else children.set(key, { path: folder.slice(0, prefixLength + label.length), label, videos: [video] });
