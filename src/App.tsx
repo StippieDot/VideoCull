@@ -19,7 +19,7 @@ import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, MenuAction, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
-import { describeThumbnailWork, detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside, trashName } from './utils';
+import { describeThumbnailWork, detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside, normalizeFolder, trashName } from './utils';
 import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
@@ -31,20 +31,10 @@ import { sameSessionFolders } from './sessions';
 const CURRENT_METADATA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
 
-function normalizeFsPath(value: string): string {
-  return value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-}
-
-function isPathInsideRoot(filePath: string, rootPath: string): boolean {
-  const file = normalizeFsPath(filePath);
-  const root = normalizeFsPath(rootPath);
-  return file === root || file.startsWith(`${root}/`);
-}
-
 function groupVideosByLoadedRoot(videos: Video[], roots: string[], fallbackRoot: string | null): Map<string, Video[]> {
   const groups = new Map<string, Video[]>();
   for (const video of videos) {
-    const root = roots.find((candidate) => isPathInsideRoot(video.path, candidate)) ?? fallbackRoot;
+    const root = roots.find((candidate) => isFolderInside(video.path, candidate)) ?? fallbackRoot;
     if (!root) continue;
     const group = groups.get(root) ?? [];
     group.push(video);
@@ -503,14 +493,14 @@ export default function App() {
       if (scanId !== scanIdRef.current) return;
       const preservedVideos = preserveExisting
         ? useStore.getState().videos.filter((video) => (
-          !dirPaths.some((rootPath) => isPathInsideRoot(video.path, rootPath))
+          !dirPaths.some((rootPath) => isFolderInside(video.path, rootPath))
         ))
         : [];
-      const seenVideoPaths = new Set(preservedVideos.map((video) => normalizeFsPath(video.path)));
+      const seenVideoPaths = new Set(preservedVideos.map((video) => normalizeFolder(video.path)));
       const uniqueScannedGroups = scannedGroups.map((group) => ({
         ...group,
         videos: group.videos.filter((video) => {
-          const normalizedPath = normalizeFsPath(video.path);
+          const normalizedPath = normalizeFolder(video.path);
           if (seenVideoPaths.has(normalizedPath)) return false;
           seenVideoPaths.add(normalizedPath);
           return true;
@@ -1137,12 +1127,12 @@ export default function App() {
     const previous = autoScanStateRef.current;
     if (key === previous.key) return;
 
-    const previousDirectoryKeys = new Set(previous.directories.map(normalizeFsPath));
-    const rootsToScan = directories.filter((rootPath) => !previousDirectoryKeys.has(normalizeFsPath(rootPath)));
+    const previousDirectoryKeys = new Set(previous.directories.map(normalizeFolder));
+    const rootsToScan = directories.filter((rootPath) => !previousDirectoryKeys.has(normalizeFolder(rootPath)));
     const canPreserveExisting = previous.directories.length > 0 &&
       previous.includeSubfolders === includeSubfolders &&
       previous.directories.every((previousRoot) => (
-        directories.some((currentRoot) => isPathInsideRoot(previousRoot, currentRoot))
+        directories.some((currentRoot) => isFolderInside(previousRoot, currentRoot))
       ));
 
     autoScanStateRef.current = {
@@ -1157,7 +1147,7 @@ export default function App() {
     const droppedInPlace = rootsToScan.length === 0 &&
       !useStore.getState().isScanning &&
       previous.includeSubfolders === includeSubfolders &&
-      useStore.getState().videos.every((video) => directories.some((root) => isPathInsideRoot(video.path, root)));
+      useStore.getState().videos.every((video) => directories.some((root) => isFolderInside(video.path, root)));
     if (droppedInPlace) return;
     if (canPreserveExisting && rootsToScan.length > 0) {
       void handleScan(rootsToScan, { preserveExisting: true });

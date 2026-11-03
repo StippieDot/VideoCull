@@ -276,6 +276,17 @@ describe('directory identity', () => {
       'D:\\Clips\\',
     ])).toEqual(['C:\\Media', 'D:\\Clips']);
   });
+
+  test('keeps folders that differ only in letter case apart on Linux', () => {
+    vi.stubGlobal('window', { electronAPI: { platform: 'linux' } });
+    try {
+      expect(__test__.uniqueDirectories(['/media/LinuxCase/Project', '/media/LinuxCase/project']))
+        .toEqual(['/media/LinuxCase/Project', '/media/LinuxCase/project']);
+      expect(__test__.isPathInsideRoot('/media/LinuxCase/project/a.mp4', '/media/LinuxCase/Project')).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 test('the title bar path filter keeps a folder and everything below it, not folders that only start alike', () => {
