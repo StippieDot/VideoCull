@@ -21,6 +21,7 @@ All notable changes to VideoCull will be documented here.
 - In Review, **Space** and the **Pause** button pause and resume on the current frame instead of returning to the thumbnails and restarting the video. **Enter**, **Esc** or **Thumbnails** next to the bookmark button goes back to the thumbnails.
 - The color behind a video you already decided on in Review is stronger, so Keep, Delete and Skip are easier to tell apart.
 - The VideoCull window can no longer be made narrower than 1080 pixels (it was 900), so grids and dialogs keep enough room.
+- Dropdowns use a theme-aware arrow with more room on the right instead of the system arrow.
 
 ### Fixed
 - The title bar's location starts at the loaded folder. The folders above it collapse into one **…** whose menu shows where the folder is on disk, instead of offering actions that do nothing outside the loaded folders.

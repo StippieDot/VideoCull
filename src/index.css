@@ -76,6 +76,8 @@
   --text-on-accent: #ffffff;
   --text-on-keep: #00150d;
   --text-placeholder: rgba(255, 255, 255, 0.4);
+  /* Matches --text-secondary; data URIs cannot read CSS variables. */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23ffffff' stroke-opacity='0.65' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
 
   /* Shadows */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -147,6 +149,7 @@
   --text-secondary: rgba(33, 30, 49, 0.76);
   --text-tertiary: rgba(33, 30, 49, 0.56);
   --text-placeholder: rgba(33, 30, 49, 0.5);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23211e31' stroke-opacity='0.76' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
   --text-on-keep: #ffffff;
 
   --shadow-sm: 0 2px 8px rgba(35, 29, 66, 0.12);
@@ -218,4 +221,17 @@ input, select {
 }
 input:focus, select:focus {
   border-color: var(--accent);
+}
+
+/* Replaces the native arrow, which ignores the theme and sits flush against the edge.
+   The extra specificity beats per-component select padding/background shorthands. */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 12px;
+  text-overflow: ellipsis;
 }
