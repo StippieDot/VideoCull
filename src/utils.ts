@@ -34,6 +34,12 @@ export function fileManagerName(): string {
   return platform === 'darwin' ? 'Finder' : platform === 'linux' ? 'File Manager' : 'Explorer';
 }
 
+/** The system's name as the documentation titles its platform tabs (`<Tab title="macOS">`). */
+export function platformName(): 'Windows' | 'macOS' | 'Linux' {
+  const platform = currentPlatform();
+  return platform === 'darwin' ? 'macOS' : platform === 'linux' ? 'Linux' : 'Windows';
+}
+
 /** The modifier shortcuts show: Cmd on macOS, where it stands in for Ctrl (see `matchesKeybind`). */
 export function modKeyName(): string {
   return currentPlatform() === 'darwin' ? 'Cmd' : 'Ctrl';

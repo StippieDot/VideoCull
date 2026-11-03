@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   DOCUMENTATION_SITE_URL,
   DOCUMENTATION_PAGES,
@@ -8,6 +8,8 @@ import {
 } from '../../../src/docs/documentation';
 
 describe('documentation source adapter', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   test('bundles the grouped in-app documentation pages in navigation order', () => {
     expect(DOCUMENTATION_PAGES.map(({ id, group }) => ({ id, group }))).toEqual([
       { id: 'quick-start', group: 'Get started' },
@@ -158,6 +160,64 @@ title: MDX comment fixture
     expect(page.nodes.some((node) => node.type === 'table')).toBe(false);
   });
 
+  test('keeps only the platform tab for the system the app runs on', () => {
+    const source: DocumentationSource = {
+      id: 'tabs-fixture',
+      group: 'Help',
+      href: '/tabs-fixture',
+      raw: `---
+title: Tabs fixture
+---
+
+Shared text.
+
+<Tabs>
+  <Tab title="Windows">
+    Windows text.
+
+    - first
+      - nested
+  </Tab>
+  <Tab title="macOS">
+    macOS text.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Install">
+    <Tabs>
+      <Tab title="Linux">
+        Linux text.
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>`,
+    };
+    const paragraph = (text: string) => ({ type: 'paragraph', text });
+
+    expect(parseDocumentationPage(source, 'Windows').nodes).toEqual([
+      paragraph('Shared text.'),
+      paragraph('Windows text.'),
+      { type: 'list', ordered: false, items: ['first', 'nested'] },
+      { type: 'steps', items: [{ title: 'Install', nodes: [] }] },
+    ]);
+    expect(parseDocumentationPage(source, 'macOS').nodes.slice(0, 2)).toEqual([
+      paragraph('Shared text.'),
+      paragraph('macOS text.'),
+    ]);
+    expect(parseDocumentationPage(source, 'Linux').nodes).toEqual([
+      paragraph('Shared text.'),
+      { type: 'steps', items: [{ title: 'Install', nodes: [paragraph('Linux text.')] }] },
+    ]);
+
+    vi.stubGlobal('window', { electronAPI: { platform: 'darwin' } });
+    expect(parseDocumentationPage(source).nodes[1]).toEqual(paragraph('macOS text.'));
+  });
+
+  test('bundled pages carry no unfiltered platform tabs', () => {
+    expect(DOCUMENTATION_PAGES.every((page) => !page.searchableText.includes('<tab'))).toBe(true);
+  });
+
   test('rejects unsupported MDX components instead of rendering broken prose', () => {
     const source: DocumentationSource = {
       id: 'unsupported-fixture',
@@ -167,11 +227,11 @@ title: MDX comment fixture
 title: Unsupported fixture
 ---
 
-<Tabs>
+<Frame>
   Unsupported content
-</Tabs>`,
+</Frame>`,
     };
 
-    expect(() => parseDocumentationPage(source)).toThrow('Unsupported in-app MDX component: Tabs');
+    expect(() => parseDocumentationPage(source)).toThrow('Unsupported in-app MDX component: Frame');
   });
 });
