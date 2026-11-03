@@ -10,9 +10,6 @@ in the [Reference](#reference--verified-code-facts) section at the end.
 The previous roadmap (SQLite, quick wins, culling enhancements, cache architecture, feature additions,
 documentation) shipped as `1.4.0`–`2.1.0` and is archived in git history.
 
-> **Rule for implementation:** no code, comments, tests, commit messages, changelogs, docs, or
-> UI text may reference other apps by name. Describe features by what they do in VideoCull.
-
 > **Guiding constraint:** reuse existing infrastructure. Build no generic transfer, persistence or
 > processing framework; each operation is a concrete, small function with its own tests.
 
@@ -53,7 +50,7 @@ documentation) shipped as `1.4.0`–`2.1.0` and is archived in git history.
 | Clips cut from longer videos | A timeboxed spike (Phase 8). Only **directed review suggestions** showing their coverage; never a keeper or deletion suggestion. |
 | Unsupported-codec playback | Separate scope decision; not in this roadmap. |
 
-### Defaults (change if you disagree)
+### Defaults
 
 - **Permanent-delete prompt:** keep the existing prompt, but offer it only for `trash-unavailable`.
 - **Escape during a paint gesture:** restores the selection from before the gesture.
@@ -525,9 +522,33 @@ target and rejects an unfollowed one; delete through each link kind (after S.2a)
 
 ---
 
+## Phase M — macOS & Linux (Beta)
+
+Requested in [issue #29](https://github.com/StippieDot/VideoCull/issues/29) (macOS) and
+[issue #4](https://github.com/StippieDot/VideoCull/issues/4) (Linux). The beta builds ship together with
+Phase S, built on the same FFmpeg as Windows (0.3). Work happens on `feat/macos-linux-support`.
+
+**Shipped in the beta:** macOS disk images for Apple silicon and Intel, a 64-bit Linux AppImage and a .deb
+package for Debian-based distributions, the shared
+FFmpeg build, native window buttons and menus on macOS, Cmd as Ctrl, Trash instead of Recycle Bin, sleep and
+shut down after processing, per-drive cache locations, and a release that is published only when every
+platform has built.
+
+**Gate for calling a platform stable:** feedback from people on real systems. Linux in particular needs
+testing on more than one distribution and on both X11 and Wayland, and macOS on both architectures. Both
+issues stay open until then.
+
+**Other follow-ups (not scheduled; details in the backlog):** macOS notarization and self-update, ARM
+builds for Windows and Linux, a Flatpak.
+
+---
+
 ## Phase 1 — Quick Wins
 
-Small, ready-to-build changes. No architectural dependencies, and neither touches FFmpeg.
+Small, ready-to-build changes. No architectural dependencies, and none touches FFmpeg. 1.1–1.2 were
+planned from the start; 1.3–1.6 are user requests (issues
+[#32](https://github.com/StippieDot/VideoCull/issues/32) and
+[#31](https://github.com/StippieDot/VideoCull/issues/31)).
 
 ### 1.1 Configurable Skip Length in Review
 
@@ -566,6 +587,91 @@ filtered view**, with protections. One undo entry.
 **Tests:** `selectShortVideosForDelete` covers each protection rule and invalid input; **Apply → undo →
 await persistence → reload → statuses restored**; recheck at Apply; undo cost goes into the performance
 diagnostics instead of a machine-dependent timing assertion.
+
+### 1.3 Rating and Favourite Keys, Complete Shortcut Help
+
+**Decision:** Star rating and favourite get configurable keybinds in Review, and the shortcut help lists
+every key that works. Requested in issue #32.
+
+**Implementation notes:**
+- **Verified:** `ALL_SHORTCUTS` (`src/keybinds.ts`) has Keep, Delete, Skip, Reset, Undo, Play, bookmark and
+  seek keys, but nothing for rating or favourite. Both are mouse-only in Review today.
+- Add `keyFavorite` (toggle) and rating keys. Proposed default: the digit keys already seek to a percentage
+  of the video, so rating cannot use them. Pick the defaults by checking `findConflict` against the existing
+  and fixed shortcuts, and decide between one key that cycles the rating and one key per star.
+- The keys do nothing while `features.ratings` / `features.favorites` is off. Otherwise a key press would
+  create a decision the person cannot see.
+- **Shortcut help:** list the digit keys (0–9 jump to that percentage of the video). They come from the
+  player's own hotkeys, not `ALL_SHORTCUTS` **(unverified: confirm where they are bound)**, so they need a
+  fixed entry like the other fixed shortcuts (`FIXED_SHORTCUTS`). Also in
+  `docs/reference/keyboard-shortcuts.mdx`.
+- The seek length shown in the list ("Rewind 5s") should use the 1.1 setting.
+
+**Tests:** each key sets, clears and toggles its field and is saved like a click; hidden feature → no
+effect; conflict detection against the new defaults; the help lists the digit keys.
+
+### 1.4 Pause and Resume in Place
+
+**Decision:** In Review, Space pauses and resumes at the current frame. Leaving playback for the thumbnail
+view is a separate action. Requested in issue #32.
+
+**Implementation notes:**
+- **Verified:** `handlePlay` flips `isPlaying`; with it off, Review shows the thumbnail view and the next
+  play starts the video from 0 (`ReviewMode.tsx`, `currentTime` reset). So Space both pauses and discards
+  the position.
+- Pausing keeps the player and its position; the paused frame stays visible. Escape (or a dedicated key)
+  returns to the thumbnail view, as it does now.
+- Moving to another video still starts in the thumbnail view.
+- The `VideoPlayer` memo stays untouched: pause state is driven through the existing `videoRef`, the same
+  way seek requests are in 2.2.
+- Check how this interacts with `keyPlay` / `keyEnterPlay` and the player's own Space hotkey so one press
+  does not toggle twice.
+
+**Tests:** play → Space → paused on the same frame and time → Space → continues from there; Escape from
+paused returns to the thumbnails; next video starts unplayed.
+
+### 1.5 Clear Decision Indicator and Reset Scope in Review
+
+**Decision:** Review shows the video's decision as a visible label, not only a colour tint. Requested in
+issue #32, where the missing indicator was the main reason a first-time user stopped.
+
+**Implementation notes:**
+- **Verified:** returning to a decided video tints Review (green, red or amber); the grid cards have a
+  badge. Keep, Delete and Skip call `advance()` straight away (`ReviewMode.tsx` `markKeep` / `markDelete` /
+  `skip`), so the choice is never on screen when it is made.
+- Add a status badge in Review, matching the grid card's wording and colours, readable without relying on
+  colour alone. It also shows rating and favourite where those features are on.
+- **Open decision:** confirm the choice with a short flash on the badge before moving on, or keep the
+  immediate advance and rely on the progress bar and undo toast. Keep the current speed for people who
+  cull quickly; make any delay optional.
+- **Open decision:** **Reset** currently sets only the status to `pending` (`resetStatus`). Whether it
+  should also clear rating, favourite and bookmarks is a data-loss question, so it needs a clear label
+  ("Reset status" vs "Clear all decisions") rather than a silent widening. Skip stays a recorded decision.
+
+**Tests:** badge text and class for each status; no badge on pending; Reset leaves rating, favourite and
+bookmarks unchanged unless the explicit clear-all action is used.
+
+### 1.6 Codec in Keeper Priority
+
+**Decision:** Codec becomes one more rule in the reorderable keeper list, with a configurable codec
+preference order. Requested in issue #31 ("planned").
+
+**Implementation notes:**
+- **Verified:** the rules are `resolution`, `videoBitrate`, `duration`, `fps`, `size`, duplicated in
+  `src/keybind-defaults.ts` and `electron/duplicate-utils.js` (backlog #9). A new rule has to be added to
+  **both** copies, and to `KEEPER_RULE_LABELS` in `SettingsModal.tsx`. Both normalizers append missing
+  rules at the end, so existing users get `codec` last without changing their results.
+- Preference order: a list of codec families, default AV1 > HEVC > VP9 > H.264 > others. Videos whose codec
+  is unknown or not in the list tie, and the next rule decides. Ranking compares families, not profiles.
+- **Note for the settings text:** at the end of the list `codec` rarely decides, because bitrate and size
+  usually differ first. The issue's example (H.264 at 10 Mbps against HEVC at 6 Mbps) only keeps the HEVC
+  copy once Codec sits above Bitrate. Say so in the rule's description.
+- It only changes the suggested keeper, never which videos are grouped.
+- Needs a duplicate-defaults parity test now rather than waiting for backlog #9, since this edit touches
+  both copies.
+
+**Tests:** order with codec above and below bitrate; unknown codec ties; existing saved orders gain `codec`
+last; renderer and backend defaults and ranking agree.
 
 ---
 
@@ -697,8 +803,15 @@ folder (`scanDirectory`, `reconcileScannedVideosByFolder` `main.js:1296`) before
 Comes after Phase 2, because it needs 2.1's `library-registry` and `processing-runs`.
 
 **Gate:** L.0 — measure with the existing scan diagnostics how long the walk and the reconcile each take
-on a large library, an HDD, USB and a network share (shares the setup of 3.1). Record an ADR for the move
-from scan-based sessions to a persistent library before L.1 starts.
+on a large library, an HDD, USB, a network share and a **cloud-mounted drive** (shares the setup of 3.1).
+Record an ADR for the move from scan-based sessions to a persistent library before L.1 starts.
+
+**Requested in [issue #2](https://github.com/StippieDot/VideoCull/issues/2):** on cloud-mounted drives
+(confirmed on Google Drive mounts) the first recursive walk is slow after a reboot and fast again once the
+mount layer's own cache is warm. The slow part is directory discovery, not metadata or thumbnails. L.1 and
+L.2 are the answer to that issue: show what the cache already knows, then walk in the background. The L.0
+measurement for a cloud mount should separate a cold mount cache from a warm one, because that is where the
+reported difference is.
 
 ### L.1 Open from the Cache
 
@@ -829,6 +942,13 @@ action, and a bulk action is one entry. Undo stays in memory for the session (se
   removal dropped.
 - Hiding the rating or favourite UI (feature toggles) doesn't change what is recorded.
 - The undo toast and shortcut text name the kind of edit ("Undo rating", "Undo bookmark").
+- **Undo in Review acts on what Review shows** (issue #32). Today Review's `undo` is the same single stack
+  as the grid's, so a press can revert a decision on a video that is not on screen (`ReviewMode.tsx` calls
+  the store's `undo`, with no scope). Proposed: an entry records the video IDs it changed; in Review,
+  undo reverts the newest entry that touched the current Review scope and, when it affects a video other
+  than the one shown, navigates to it first (or says which video it reverted). Open decision: a separate
+  stack per surface, or one stack plus this scoping. One stack with scoping keeps a single history and is
+  the proposed choice.
 
 **Tests:** for each field, edit → undo → await persistence → reload → previous value restored; a bulk
 edit is one entry; undo and redo ordering with interleaved status, rating and tag edits; an undo whose
@@ -1290,6 +1410,7 @@ phase, branch or version until then.
 | Clip crop/resize, audio-only export, ranges off bookmarks, hardware encoders for exact mode | Out of scope for the first version; hardware encoders can come later behind `buildClipArgs` |
 | Auto-skipping already-exported clips | Later, on top of the export record |
 | Unsupported-codec playback | Separate scope decision |
+| Random Review order (issue #5; the light theme from that issue shipped) | Not planned. Review follows the grid's sort; shuffle is left out |
 
 ---
 
@@ -1338,7 +1459,8 @@ Commit messages use conventional types (`feat:`, `fix:`, `refactor:`, `test:`, `
 |---|---|---|
 | P0 — Media toolchain & licence compliance | `2.4.0` | FFmpeg 9.0.2, fluent-ffmpeg removed, licence notices + About licence section |
 | PS — Saved sessions & linked folders | `2.5.0` | Session restore, recent sessions, links and junctions |
-| P1 — Quick wins | `2.6.0` | Skip length, mark short videos |
+| PM — macOS & Linux (beta) | `2.5.0` | Ships with PS; includes AppImage and .deb; stable status waits for tester feedback |
+| P1 — Quick wins | `2.6.0` | Skip length, mark short videos, rating/favourite keys, pause in place, decision indicator, codec keeper rule |
 | P2 — Delete safety & thumbnail seeking | `2.7.0` | Delete reasons, click-to-seek, scrub previews, paint selection |
 | PL — Persistent library | `2.8.0` | Open from the cache, background check, offline folders |
 | P3 — Reliable settings & tags | `2.9.0` | Additive schema; downgrade safety not promised (see Defaults) |
@@ -1405,7 +1527,8 @@ Update the status column as work completes. Merge date recorded when phase lands
 | Phase | Status | Version | Merged |
 |---|---|---|---|
 | P0 — Media toolchain & licence compliance | ✅ Merged to main | `2.4.0` | 2026-10-16 |
-| PS — Saved sessions & linked folders | 🔄 In progress | `2.5.0` | — |
+| PS — Saved sessions & linked folders | ✅ Merged to main | `2.5.0` | 2026-10-31 |
+| PM — macOS & Linux (beta) | 🔄 In progress | `2.5.0` | — |
 | P1 — Quick wins | ⬜ Not started | `2.6.0` | — |
 | P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.7.0` | — |
 | PL — Persistent library | ⬜ Not started | `2.8.0` | — |
@@ -1434,8 +1557,14 @@ PS  Saved sessions (Phase S.1)
 PS  Linked-file delete investigation (Phase S.2a) ← gates the delete part of S.2
 PS  Linked folders and files (Phase S.2)
 
+PM  macOS and Linux beta builds (Phase M) ← ships with PS; stable after tester feedback
+
 P1  Configurable skip length (Phase 1.1)
 P1  Mark short videos for deletion (Phase 1.2)
+P1  Rating and favourite keys, complete shortcut help (Phase 1.3)
+P1  Pause and resume in place (Phase 1.4)
+P1  Clear decision indicator + Reset scope in Review (Phase 1.5)
+P1  Codec in keeper priority (Phase 1.6) ← adds the duplicate-defaults parity test from backlog #9
 
 P2  Delete error investigation (Phase 2.1a)
 P2  library-registry + processing-runs + file-ops-delete + delete reasons (Phase 2.1) ← enables 5.4, 6.1, 7.1
