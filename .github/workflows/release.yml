@@ -28,6 +28,7 @@ jobs:
             script: package:linux
             files: |
               artifacts/packages/VideoCull-*.AppImage
+              artifacts/packages/VideoCull-*.deb
               artifacts/packages/latest-linux.yml
     runs-on: ${{ matrix.os }}
 
@@ -121,4 +122,5 @@ jobs:
             packages/latest.yml
             packages/VideoCull-*.dmg
             packages/VideoCull-*.AppImage
+            packages/VideoCull-*.deb
             packages/latest-linux.yml

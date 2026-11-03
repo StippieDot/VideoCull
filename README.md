@@ -44,11 +44,11 @@ For a direct installation, download `VideoCull.Setup.<version>.exe` from [GitHub
 
 ### macOS and Linux (beta)
 
-Download `VideoCull-<version>-arm64.dmg` (Apple silicon), `VideoCull-<version>-x64.dmg` (Intel Mac) or `VideoCull-<version>-x86_64.AppImage` from [GitHub Releases](https://github.com/StippieDot/VideoCull/releases). These builds are new and tested by the community; please [report problems](https://github.com/StippieDot/VideoCull/issues).
+Download `VideoCull-<version>-arm64.dmg` (Apple silicon), `VideoCull-<version>-x64.dmg` (Intel Mac), `VideoCull-<version>-amd64.deb` (Ubuntu, Debian, Linux Mint and other Debian-based Linux) or `VideoCull-<version>-x86_64.AppImage` (any Linux) from [GitHub Releases](https://github.com/StippieDot/VideoCull/releases). These builds are new and tested by the community; please [report problems](https://github.com/StippieDot/VideoCull/issues).
 
 - FFmpeg comes with VideoCull, as on Windows. Linux needs glibc 2.31 or newer (Ubuntu 20.04, Debian 11, Fedora and later).
 - The macOS app is not notarized yet. After moving it to Applications, run `xattr -cr /Applications/VideoCull.app` once, or allow it under **System Settings > Privacy & Security**. It does not update itself; download new versions from GitHub Releases.
-- On Linux, make the AppImage executable (`chmod +x`) and run it. AppImages need FUSE 2, which Ubuntu 22.04 and newer do not install by default: `sudo apt install libfuse2t64`. It checks GitHub Releases for updates.
+- On Debian-based Linux, install the .deb with `sudo apt install ./VideoCull-<version>-amd64.deb`; VideoCull then appears in the app menu, and updates install after asking for your password. On other Linux, make the AppImage executable (`chmod +x`) and run it. AppImages need FUSE 2, which Ubuntu 22.04 and newer do not install by default: `sudo apt install libfuse2t64`. Both check GitHub Releases for updates.
 
 The Windows direct-download edition checks GitHub Releases for updates. Both editions share `%APPDATA%\VideoCull`, including settings, review decisions, databases, and the default thumbnail cache. Run only one edition at a time and keep both updated before switching. After confirming the Store edition works, you can uninstall the direct edition without deleting the shared profile or cache.
 

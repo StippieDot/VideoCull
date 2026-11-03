@@ -150,10 +150,18 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "src/assets/videocull-icon.png",
       "category": "AudioVideo",
+      "maintainer": "StippieDot",
+      "vendor": "StippieDot",
     "extraResources": [
       {
         "from": "src/assets/videocull-icon.png",
