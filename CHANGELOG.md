@@ -4,6 +4,8 @@ All notable changes to VideoCull will be documented here.
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-04
+
 ### Added
 - **macOS and Linux builds (beta)**: disk images for Apple silicon and Intel Macs, and for 64-bit Linux a .deb package for Debian-based systems, an .rpm package for Fedora and other RPM-based systems, and an AppImage for any distribution. They come with the same FFmpeg build as Windows; the optional hardware acceleration (Settings > Processing) uses VideoToolbox on macOS and VAAPI or NVDEC on Linux; Linux needs glibc 2.31 or newer. On macOS the window buttons and menus follow the system, Cmd works wherever Ctrl does, and the app does not update itself until it is notarized. On Linux every package updates from GitHub Releases; the .deb and .rpm ask for your password to install an update. Sleep and shut down after processing work on both, and the per-drive cache keeps each external drive's cache on that drive and the system disk's cache in the home folder.
 - **Reopen the last session at startup** in Settings > General opens the folders that were loaded when VideoCull closed, with the same **Include subfolders** choice. It is off by default, and a session ended with **Close Session** stays closed. A folder that cannot be reached, such as one on an unplugged drive or an offline share, is left out with a notice naming it and stays part of the saved session, so it opens again once it is back.
