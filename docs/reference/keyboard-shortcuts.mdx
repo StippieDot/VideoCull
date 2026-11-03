@@ -6,6 +6,8 @@ description: "Use keyboard shortcuts to rapidly sort videos in VideoCull: K to K
 
 VideoCull is built around keyboard-first review. The web tables show the defaults. Inside the app, these same marked tables show your currently configured bindings.
 
+Shortcuts are written with `Ctrl`, as VideoCull shows them on Windows and Linux. On macOS the app shows `Cmd` instead, and `Cmd` works wherever a shortcut says `Ctrl`.
+
 ## Grid and general
 
 {/* in-app-shortcuts:Global */}
@@ -16,9 +18,9 @@ VideoCull is built around keyboard-first review. The web tables show the default
 | `Ctrl + F` | Search loaded videos |
 | `F5` | Rescan |
 | `Ctrl + Z` | Undo |
-| `Ctrl + Backspace` | Send marked videos to the Recycle Bin |
+| `Ctrl + Backspace` | Send marked videos to the Recycle Bin or Trash |
 | `Ctrl + Shift + E` | Export an HTML report |
-| `Ctrl + E` | Reveal the open or selected video in Explorer |
+| `Ctrl + E` | Reveal the open or selected video in Explorer, Finder, or File Manager |
 | `Ctrl + P` | Play the open or selected video externally |
 | `Ctrl + +` / `Ctrl + =` / `Ctrl + -` | Larger or smaller cards |
 | `F11` | Toggle fullscreen |
@@ -55,7 +57,7 @@ VideoCull is built around keyboard-first review. The web tables show the default
 
 ## Menu bar
 
-Every command is also in the menu bar at the top of the window, and **Ctrl + K** (or the search icon in the title bar) finds and runs any of them by name, along with folders and videos (see below). Hold `Alt` to see each menu's access key, then press it to open the menu: `Alt + F` File, `Alt + A` Actions, `Alt + V` View, `Alt + D` Video, `Alt + H` Help. Commands that cannot do anything right now, such as **Rescan** without an open folder or **Reveal in Explorer** without an open or selected video, are greyed out.
+Every command is also in the menu bar at the top of the window, and **Ctrl + K** (or the search icon in the title bar) finds and runs any of them by name, along with folders and videos (see below). On Windows, hold `Alt` to see each menu's access key, then press it to open the menu: `Alt + F` File, `Alt + A` Actions, `Alt + V` View, `Alt + D` Video, `Alt + H` Help. Commands that cannot do anything right now, such as **Rescan** without an open folder or **Reveal in Explorer** without an open or selected video, are greyed out.
 
 | Menu | Commands |
 | --- | --- |
@@ -63,7 +65,9 @@ Every command is also in the menu bar at the top of the window, and **Ctrl + K**
 | Actions | Undo, Find Duplicates, Pause Processing, When Processing Finishes, Delete Marked Videos |
 | View | Command Palette, Go to Folder, Sort By, Group by Folder, Clear All Filters, Larger and Smaller Cards, Privacy Screen, Mute In-App Playback (when enabled), Dark / Light theme, Full Screen |
 | Video | Play Externally, Reveal in Explorer, Copy Path and Regenerate Thumbnails and Metadata for the video open in Review or the videos selected in the grid; Play Externally and Reveal in Explorer need exactly one video |
-| Help | Documentation, Online Help, Keyboard Shortcuts, Release Notes, Report a Problem, Open Log Folder, Check for Updates (direct download only), Support VideoCull (GitHub Sponsors or PayPal), About VideoCull |
+| Help | Documentation, Online Help, Keyboard Shortcuts, Release Notes, Report a Problem, Open Log Folder, Check for Updates (not in the Microsoft Store edition or on macOS), Support VideoCull (GitHub Sponsors or PayPal), About VideoCull |
+
+**Reveal in Explorer** is named **Reveal in Finder** on macOS and **Reveal in File Manager** on Linux. On macOS, Settings and Quit are in the VideoCull menu instead of the File menu.
 
 The middle of the title bar shows where you are: in the grid, the folder at the top of the screen when grouped by folder, otherwise the folder you filtered to; in Review, the path of the open video and its place among the videos you are reviewing, such as `34 / 210`; in duplicate groups, which group is at the top, such as `Group 3 of 40`, with buttons for the previous and next group. Type a number in place of the group number and press `Enter` to go to that group. Each part of the path has a menu with counts and actions for that spot:
 
@@ -84,9 +88,9 @@ The actions for a part of the path open from the `▾` after the last part, by r
 
 In these menus and in right-click menus, the arrow keys move through the items, a letter jumps to the next item starting with it, and `Esc` closes the menu. In the path menus, `Left` and `Right` move to the neighbouring part of the path.
 
-While videos are marked for deletion, the right side of the title bar shows how many and their total size; select it to send them to the Recycle Bin, with the usual confirmation. In a narrow window it shows only the count.
+While videos are marked for deletion, the right side of the title bar shows how many and their total size; select it to send them to the Recycle Bin or Trash, with the usual confirmation. In a narrow window it shows only the count.
 
-While VideoCull is processing, the right side of the title bar shows what it is working on and how far it is, with a pause button. A progress line runs along the bar's bottom edge, and the taskbar button shows the progress too. A `+1` means another job runs at the same time, and a moon or power icon means the PC will sleep or shut down afterwards. Select the status for a panel with every running job and, after a few seconds, about how long each has left, plus **Pause Processing** and **When Processing Finishes**. In a narrow window the status shows only how far it is, then only a progress ring; point at it to see the full status.
+While VideoCull is processing, the right side of the title bar shows what it is working on and how far it is, with a pause button. A progress line runs along the bar's bottom edge, and the Windows taskbar button or macOS Dock icon shows the progress too. A `+1` means another job runs at the same time, and a moon or power icon means the PC will sleep or shut down afterwards. Select the status for a panel with every running job and, after a few seconds, about how long each has left, plus **Pause Processing** and **When Processing Finishes**. In a narrow window the status shows only how far it is, then only a progress ring; point at it to see the full status.
 
 While the privacy screen is shown, only **Privacy Screen**, **Full Screen** and **Exit** work.
 

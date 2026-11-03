@@ -1,6 +1,6 @@
 ---
 title: Get started with VideoCull
-description: Open a folder, generate thumbnails, review clips, and safely send unwanted videos to the Recycle Bin.
+description: Open a folder, generate thumbnails, review clips, and safely send unwanted videos to the Recycle Bin or Trash.
 ---
 
 {/* in-app-meta
@@ -39,7 +39,7 @@ description: Open a folder, generate thumbnails, review clips, and safely send u
     {
       "id": "task-delete-safety",
       "title": "Review delete safety before cleanup",
-      "detail": "Confirm what Delete means, what goes to the Recycle Bin, and when a delete may become permanent.",
+      "detail": "Confirm what Delete means, what goes to the Recycle Bin or Trash, and when a delete may become permanent.",
       "pageId": "delete-safety",
       "sectionId": "marking-is-not-deleting"
     }
@@ -73,7 +73,7 @@ Marking a video as Delete only changes cached status. No file leaves disk until 
 
 Stop and verify the selection if the app warns about permanent deletion or if the delete size looks larger than expected.
 
-The full [Delete and safety](/features/delete-and-safety) guide explains batch scope, Recycle Bin fallback, cache cleanup, and recovery.
+The full [Delete and safety](/features/delete-and-safety) guide explains batch scope, Recycle Bin and Trash fallback, cache cleanup, and recovery.
 
 ## Suggested workflow
 
@@ -89,7 +89,7 @@ This matters because VideoCull is fastest when you avoid clip-by-clip review on 
 
 <Steps>
   <Step title="Open a folder">
-    Press `Ctrl+O` to open the directory picker, or drag and drop a folder onto the app window. VideoCull accepts folders only.
+    Press `Ctrl+O` to open the directory picker, or drag and drop a folder onto the app window. VideoCull accepts folders only. Shortcuts here are written with `Ctrl`; on macOS, `Cmd` does the same.
   </Step>
   <Step title="Wait for scanning and thumbnail generation">
     VideoCull scans the folder to find video files, then starts generating thumbnail strips in the background with the bundled FFmpeg. You do not need to wait for all thumbnails to finish. You can start browsing immediately while the rest complete.
@@ -127,7 +127,7 @@ This matters because VideoCull is fastest when you avoid clip-by-clip review on 
     Press `B` while a video is playing to drop a bookmark at the current position.
   </Step>
   <Step title="Commit the delete batch">
-    Press `Ctrl+Backspace` from anywhere in the app to send files marked for deletion to the Recycle Bin when possible.
+    Press `Ctrl+Backspace` from anywhere in the app to send files marked for deletion to the Recycle Bin or Trash when possible.
   </Step>
 </Steps>
 

@@ -4,7 +4,7 @@
   "theme": "almond",
   "name": "VideoCull",
 
-  "description": "VideoCull is a free and open-source Windows app for quickly sorting and culling large video collections using multiple thumbnails per video and keyboard-first Keep, Delete, and Skip controls.",
+  "description": "VideoCull is a free and open-source app for Windows, macOS, and Linux for quickly sorting and culling large video collections using multiple thumbnails per video and keyboard-first Keep, Delete, and Skip controls.",
 
   "seo": {
     "indexing": "navigable",

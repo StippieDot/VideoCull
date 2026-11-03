@@ -33,7 +33,7 @@ After saving:
 - Cache, scan, thumbnail, metadata, and duplicate-matching changes apply when their next relevant scan or processing run starts.
 - Increasing the thumbnail count can prompt you to confirm that existing cached strips need rebuilding.
 - Changing cache storage starts a migration choice before the preference is committed.
-- In the direct-download edition, changing automatic update checks may require an app restart before startup behavior changes.
+- Where VideoCull updates itself (the Windows direct-download edition and Linux), changing automatic update checks may require an app restart before startup behavior changes.
 
 VideoCull blocks saving while configurable shortcut conflicts remain. The conflicting keybind fields identify what must be changed.
 
@@ -48,6 +48,7 @@ These settings change how the main view starts and how you move through a sessio
 | Default sorting | Controls the first sort field and order for new sessions. | `Name` is the safest default. Use `Date` for chronology, `Size` for storage cleanup, or `Duration` for spotting clips that are too short or too long. |
 | Group by folder | Starts the grid grouped by folder instead of one flat list. | Keep it on when folder context matters. Turn it off when you want one global queue. |
 | Keep playback controls visible in Review | Prevents the timeline and playback controls from auto-hiding while a video is playing in Review mode. | Leave it off for a cleaner playback view. Turn it on when you want the scrubber to remain available without moving the mouse. |
+| Tint the title bar with the desktop background | Shows the Windows 11 Mica material behind the title bar. Only available on Windows 11. | Turn it off for a solid title bar. |
 | Export report | Exports an HTML report for all loaded videos or the current filtered set, grouped by folder and review status. | Use it at the end of a pass or before a destructive cleanup. Export never changes statuses or files. |
 
 The sun or moon button switches theme immediately and saves the choice. It is available on the landing screen and in the sidebar header. You can also use the configurable theme shortcut, which defaults to `Ctrl + Shift + L`. The Theme selector in Settings follows the normal draft behavior and changes the interface only after you choose **Save Preferences**.
@@ -119,6 +120,7 @@ Cache settings decide where progress lives and how aggressively old data is clea
 | Cache storage | Chooses `Centralised`, `Per-drive`, or `Distributed`. | Use `Centralised` unless you need the cache to travel with a drive or folder. |
 | Central cache location | Picks the app-controlled cache folder. | Leave it at the default unless the current drive is a bad fit. |
 | Per-drive cache location | Picks a cache folder for the currently opened drive. | Use this only when you deliberately want separate per-drive roots. |
+| Follow symbolic links (Experimental) | Scans folders and videos that symbolic links point to, also outside the opened folder. On Windows, the setting is named **Follow symbolic links and junctions** and also follows directory junctions. | Leave it off unless your library relies on links. See [Sessions and folders](/features/sessions-and-folders). |
 | Auto-clean stale cache after scans | Removes stale cache rows, thumbnail folders, and child-folder cache entries that no longer exist on disk. | Leave it off unless you want ongoing housekeeping. |
 | Remove empty source folders after delete | Removes parent folders that become empty after deleting videos. | Leave it off unless folder cleanup is part of the job. |
 
@@ -136,8 +138,8 @@ Processing settings affect future scans, thumbnail runs, and metadata work. They
 | Skip intro blackframes (delay) | Delays the first thumbnail to avoid fade-ins or blank starts. | Keep the default `3s` unless your clips start cleanly or need a longer skip. |
 | Parallel FFmpeg processes | Caps how many FFmpeg jobs run at once, or uses auto mode. | Leave it on `Auto` unless the machine becomes unresponsive. |
 | Limit each FFmpeg process to 1 CPU thread | Uses more small FFmpeg processes instead of fewer multi-threaded ones. | Leave it on. The app marks it as recommended for a reason. |
-| Enable hardware acceleration (beta) | Tries to route decoding through the GPU. | Leave it off unless CPU decode is the bottleneck and your footage behaves well with it. |
-| Keep the PC awake while processing | Stops Windows from going to sleep on its own while folders are scanned, video info and thumbnails are generated, or duplicates are fingerprinted. Choosing Sleep yourself still works, the screen can still turn off, and paused processing does not keep the PC awake. | Leave it on, especially for long runs on large folders. |
+| Enable hardware acceleration (beta) | Tries to route decoding through the GPU. It is off by default and uses the decoder your system offers: D3D11 or DXVA on Windows, VideoToolbox on macOS, VAAPI or NVDEC on Linux. Duplicate fingerprints always use the CPU. | Leave it off unless CPU decode is the bottleneck and your footage behaves well with it. On Fedora, install the graphics drivers from RPM Fusion first: Fedora's standard drivers leave out H.264 and HEVC, so those videos decode in software. |
+| Keep the PC awake while processing | Stops the computer from going to sleep on its own while folders are scanned, video info and thumbnails are generated, or duplicates are fingerprinted. Choosing Sleep yourself still works, the screen can still turn off, and paused processing does not keep the PC awake. | Leave it on, especially for long runs on large folders. |
 
 ## Keybindings
 
@@ -158,14 +160,20 @@ The Updates tab reflects how your edition is distributed.
 
 The tab shows the installed version and confirms that updates are managed and installed by Microsoft Store. GitHub update controls and the automatic-update setting are not shown.
 
-### Direct-download edition
+### macOS
+
+The tab shows the installed version and says that this version does not update itself yet. Download new versions from GitHub Releases. There are no update controls.
+
+### Direct-download edition and Linux
+
+The Windows direct-download edition and the Linux `.deb`, `.rpm`, and AppImage builds use these controls. The `.deb` and `.rpm` packages ask for your password to install an update.
 
 | Setting | What it does | Suggested default use |
 | --- | --- | --- |
 | Check for updates | Manually checks for a new release. | Use it when you want to pull a release now instead of waiting. |
 | Automatically check for updates on startup | Checks at launch and downloads in the background. | Leave it on unless you want fully manual update control. |
 
-The direct-download edition always notifies you before anything installs. When an update is ready, choose one of these actions:
+VideoCull always notifies you before anything installs. When an update is ready, choose one of these actions:
 
 - **Update now** closes VideoCull, installs the update, and opens the updated version.
 - **Install on exit** keeps the app open and installs only when you later close it.

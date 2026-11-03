@@ -49,14 +49,35 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
     </Steps>
   </Accordion>
 
+  <Accordion title="macOS says VideoCull cannot be opened">
+    The macOS app is not signed or notarized yet, so macOS blocks it on first launch.
+
+    <Steps>
+      <Step title="Remove the quarantine flag">
+        After moving VideoCull to Applications, run `xattr -cr /Applications/VideoCull.app` in Terminal once.
+      </Step>
+      <Step title="Or allow it in System Settings">
+        Try to open VideoCull, then allow it under **System Settings > Privacy & Security**.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="The AppImage does not start on Linux">
+    AppImages need FUSE 2, which Ubuntu 22.04 and newer do not install by default. Install it with `sudo apt install libfuse2t64`, then run the AppImage again. Make sure the file is executable (`chmod +x`).
+  </Accordion>
+
+  <Accordion title="Hardware acceleration does not speed up H.264 or HEVC videos on Fedora">
+    Fedora's standard graphics drivers leave out H.264 and HEVC, so VideoCull decodes those videos in software. Install the graphics drivers from RPM Fusion to let hardware acceleration handle them.
+  </Accordion>
+
   <Accordion title="A video does not play in the built-in player">
     The built-in player depends on Chromium codec support. Open the file in your external player when the format or codec is not supported in-app.
 
     If a format you expect to work still fails, check whether the file opens correctly in your system player first.
   </Accordion>
 
-  <Accordion title="I accidentally sent videos to the Recycle Bin">
-    Restore them from the Windows Recycle Bin, then rescan in VideoCull so the files appear in the grid again.
+  <Accordion title="I accidentally sent videos to the Recycle Bin or Trash">
+    Restore them from the Recycle Bin (Windows) or the Trash (macOS and Linux), then rescan in VideoCull so the files appear in the grid again.
   </Accordion>
 
   <Accordion title="Thumbnail generation uses too much CPU">
@@ -84,7 +105,7 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
   </Accordion>
 
   <Accordion title="VideoCull says another edition is already running">
-    The Microsoft Store and direct-download editions share one profile, so VideoCull prevents them from running at the same time.
+    On Windows, the Microsoft Store and direct-download editions share one profile, so VideoCull prevents them from running at the same time.
 
     Close the other VideoCull window, then start the edition you want to use. If no window is visible, wait for VideoCull to finish closing or end the remaining VideoCull process in Task Manager before trying again.
   </Accordion>
