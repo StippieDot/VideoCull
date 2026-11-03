@@ -10,7 +10,7 @@ import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrate
 import { checkSessionFolders, folderKey, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey } from './sessions';
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
-import { detectVideoCompatibility, folderInsideTest, formatRecentPath, normalizeFolder } from './utils';
+import { detectVideoCompatibility, folderInsideTest, formatRecentPath, isFolderInside, normalizeFolder } from './utils';
 import { getPreloadedColorTheme } from './theme';
 
 export const DUPLICATE_METHOD_NAMES: Record<DuplicateComparisonMode, string> = { phash: 'pHash', visual: 'Visual Similarity' };
@@ -520,14 +520,8 @@ function saveSettingsQuietly(settings: AppSettings) {
   });
 }
 
-function normalizePathForCompare(value: string): string {
-  return value.replace(/[/\\]+/g, '\\').replace(/\\+$/g, '').toLowerCase();
-}
-
 function isPathInsideRoot(filePath: string, rootPath: string): boolean {
-  const file = normalizePathForCompare(filePath);
-  const root = normalizePathForCompare(rootPath);
-  return file === root || file.startsWith(`${root}\\`);
+  return isFolderInside(filePath, rootPath);
 }
 
 function findRootForVideo(video: Video, directories: string[], fallback: string | null): string | null {
@@ -538,11 +532,11 @@ function findRootForVideo(video: Video, directories: string[], fallback: string 
 function uniqueDirectories(dirs: string[]): string[] {
   const result: string[] = [];
   for (const dir of dirs) {
-    const key = normalizePathForCompare(dir);
+    const key = normalizeFolder(dir);
     if (result.some((existing) => isPathInsideRoot(dir, existing))) continue;
     for (let i = result.length - 1; i >= 0; i -= 1) {
       const existing = result[i];
-      if (normalizePathForCompare(existing) !== key && isPathInsideRoot(existing, dir)) {
+      if (normalizeFolder(existing) !== key && isPathInsideRoot(existing, dir)) {
         result.splice(i, 1);
       }
     }

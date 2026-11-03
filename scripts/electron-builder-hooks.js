@@ -29,13 +29,21 @@ function assertLegalFilesPresent(resourcesPath, exists = fs.existsSync) {
   if (missing.length) throw new Error(`Packaged app is missing legal files: ${missing.join(', ')}`);
 }
 
+/** Where electron-builder puts the executable and resources folder on each platform. */
+function packagedLayout({ electronPlatformName, appOutDir, packager }) {
+  const product = packager.appInfo.productFilename;
+  if (electronPlatformName === 'darwin') {
+    const contents = path.join(appOutDir, `${product}.app`, 'Contents');
+    return { executablePath: path.join(contents, 'MacOS', product), resourcesPath: path.join(contents, 'Resources') };
+  }
+  const executable = electronPlatformName === 'win32' ? `${product}.exe` : packager.executableName;
+  return { executablePath: path.join(appOutDir, executable), resourcesPath: path.join(appOutDir, 'resources') };
+}
+
 // Runs after the app folder is assembled and before the installer or Store package is built, so
-// both editions ship the same generated notices.
+// every edition ships the same generated notices.
 async function afterPack(context, dependencies = {}) {
-  if (context.electronPlatformName !== 'win32') return;
-  const executableName = `${context.packager.appInfo.productFilename}.exe`;
-  const executablePath = path.join(context.appOutDir, executableName);
-  const resourcesPath = path.join(context.appOutDir, 'resources');
+  const { executablePath, resourcesPath } = packagedLayout(context);
   const writeNotices = dependencies.writeNotices ?? writeThirdPartyNotices;
   const checkLegalFiles = dependencies.checkLegalFiles ?? assertLegalFilesPresent;
   const runSmoke = dependencies.runSmoke ?? runPackagedSqliteSmoke;

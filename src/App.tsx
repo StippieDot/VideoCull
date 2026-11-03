@@ -19,7 +19,7 @@ import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, MenuAction, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
-import { describeThumbnailWork, detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside } from './utils';
+import { describeThumbnailWork, detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside, normalizeFolder, trashName } from './utils';
 import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
@@ -31,20 +31,10 @@ import { sameSessionFolders } from './sessions';
 const CURRENT_METADATA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
 
-function normalizeFsPath(value: string): string {
-  return value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-}
-
-function isPathInsideRoot(filePath: string, rootPath: string): boolean {
-  const file = normalizeFsPath(filePath);
-  const root = normalizeFsPath(rootPath);
-  return file === root || file.startsWith(`${root}/`);
-}
-
 function groupVideosByLoadedRoot(videos: Video[], roots: string[], fallbackRoot: string | null): Map<string, Video[]> {
   const groups = new Map<string, Video[]>();
   for (const video of videos) {
-    const root = roots.find((candidate) => isPathInsideRoot(video.path, candidate)) ?? fallbackRoot;
+    const root = roots.find((candidate) => isFolderInside(video.path, candidate)) ?? fallbackRoot;
     if (!root) continue;
     const group = groups.get(root) ?? [];
     group.push(video);
@@ -503,14 +493,14 @@ export default function App() {
       if (scanId !== scanIdRef.current) return;
       const preservedVideos = preserveExisting
         ? useStore.getState().videos.filter((video) => (
-          !dirPaths.some((rootPath) => isPathInsideRoot(video.path, rootPath))
+          !dirPaths.some((rootPath) => isFolderInside(video.path, rootPath))
         ))
         : [];
-      const seenVideoPaths = new Set(preservedVideos.map((video) => normalizeFsPath(video.path)));
+      const seenVideoPaths = new Set(preservedVideos.map((video) => normalizeFolder(video.path)));
       const uniqueScannedGroups = scannedGroups.map((group) => ({
         ...group,
         videos: group.videos.filter((video) => {
-          const normalizedPath = normalizeFsPath(video.path);
+          const normalizedPath = normalizeFolder(video.path);
           if (seenVideoPaths.has(normalizedPath)) return false;
           seenVideoPaths.add(normalizedPath);
           return true;
@@ -993,13 +983,13 @@ export default function App() {
             if (permanentSuccessCount > 0 && failedCount > 0) {
               pushToast({
                 title: 'Delete partly failed',
-                detail: `${deletedPaths.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped Recycle Bin.${folderDetail}`,
+                detail: `${deletedPaths.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped ${trashName()}.${folderDetail}`,
                 kind: 'error',
               });
             } else if (permanentSuccessCount > 0) {
               pushToast({
                 title: 'Permanently deleted',
-                detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped Recycle Bin.${folderDetail}`,
+                detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped ${trashName()}.${folderDetail}`,
                 kind: 'warning',
               });
             } else if (permanentFailureCount > 0 || failedCount > 0) {
@@ -1010,7 +1000,7 @@ export default function App() {
               });
             } else {
               pushToast({
-                title: 'Moved to Recycle Bin',
+                title: `Moved to ${trashName()}`,
                 detail: `${deletedPaths.length} ${deletedPaths.length === 1 ? 'video' : 'videos'} removed from the session.${folderDetail}`,
                 kind: 'success',
               });
@@ -1137,12 +1127,12 @@ export default function App() {
     const previous = autoScanStateRef.current;
     if (key === previous.key) return;
 
-    const previousDirectoryKeys = new Set(previous.directories.map(normalizeFsPath));
-    const rootsToScan = directories.filter((rootPath) => !previousDirectoryKeys.has(normalizeFsPath(rootPath)));
+    const previousDirectoryKeys = new Set(previous.directories.map(normalizeFolder));
+    const rootsToScan = directories.filter((rootPath) => !previousDirectoryKeys.has(normalizeFolder(rootPath)));
     const canPreserveExisting = previous.directories.length > 0 &&
       previous.includeSubfolders === includeSubfolders &&
       previous.directories.every((previousRoot) => (
-        directories.some((currentRoot) => isPathInsideRoot(previousRoot, currentRoot))
+        directories.some((currentRoot) => isFolderInside(previousRoot, currentRoot))
       ));
 
     autoScanStateRef.current = {
@@ -1157,7 +1147,7 @@ export default function App() {
     const droppedInPlace = rootsToScan.length === 0 &&
       !useStore.getState().isScanning &&
       previous.includeSubfolders === includeSubfolders &&
-      useStore.getState().videos.every((video) => directories.some((root) => isPathInsideRoot(video.path, root)));
+      useStore.getState().videos.every((video) => directories.some((root) => isFolderInside(video.path, root)));
     if (droppedInPlace) return;
     if (canPreserveExisting && rootsToScan.length > 0) {
       void handleScan(rootsToScan, { preserveExisting: true });
@@ -1492,9 +1482,9 @@ export default function App() {
               if (event.key === 'Escape') settlePermanentDeleteReview(false);
             }}
           >
-            <p className="drop-modal-title" id="permanent-delete-title">Recycle Bin unavailable</p>
+            <p className="drop-modal-title" id="permanent-delete-title">{trashName()} unavailable</p>
             <p className="permanent-delete-warning" id="permanent-delete-warning">
-              {permanentDeletePaths.length} {permanentDeletePaths.length === 1 ? 'file could' : 'files could'} not be moved to the Recycle Bin. Review every path before permanently deleting. This cannot be undone.
+              {permanentDeletePaths.length} {permanentDeletePaths.length === 1 ? 'file could' : 'files could'} not be moved to the {trashName()}. Review every path before permanently deleting. This cannot be undone.
             </p>
             <ul className="permanent-delete-paths" aria-label="Files to permanently delete">
               {permanentDeletePaths.map((filePath) => (

@@ -187,12 +187,21 @@ test('work that starts during the countdown postpones the finish action', () => 
 
 test('shutdown never forces apps with unsaved work to close, and sleep does not hibernate', () => {
   const { powerCommand } = require('../../electron/system-power');
-  const shutdown = powerCommand('shutdown');
+  const shutdown = powerCommand('shutdown', 'win32');
   assert.match(shutdown.file, /System32[\\/]shutdown\.exe$/i);
   assert.deepEqual(shutdown.args, ['/s', '/t', '0']);
   assert.equal(shutdown.detached, true);
-  const sleep = powerCommand('sleep');
+  const sleep = powerCommand('sleep', 'win32');
   assert.match(sleep.args.at(-1), /SetSuspendState\('Suspend', \$false, \$false\)/);
   // A detached PowerShell exits without running its command, so the PC would never sleep.
   assert.equal(sleep.detached, false);
+});
+
+test('macOS and Linux use their own sleep and shutdown commands', () => {
+  const { powerCommand } = require('../../electron/system-power');
+  assert.deepEqual(powerCommand('sleep', 'darwin'), { file: '/usr/bin/pmset', args: ['sleepnow'], detached: false });
+  assert.equal(powerCommand('shutdown', 'darwin').file, '/usr/bin/osascript');
+  assert.equal(powerCommand('shutdown', 'darwin').detached, true);
+  assert.deepEqual(powerCommand('sleep', 'linux'), { file: 'systemctl', args: ['suspend'], detached: false });
+  assert.deepEqual(powerCommand('shutdown', 'linux'), { file: 'systemctl', args: ['poweroff'], detached: true });
 });

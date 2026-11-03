@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict');
 
+// These cases use Windows drive paths, which only parse as such on Windows.
+const windowsPaths = { skip: process.platform !== 'win32' };
+
 const {
   canRevealInExplorerPath,
   canServeThumbPath,
@@ -313,14 +316,14 @@ describe('custom protocol paths', () => {
 });
 
 describe('cache path helpers', () => {
-  test('normalizes drive and folder identity comparisons', () => {
+  test('normalizes drive and folder identity comparisons', windowsPaths, () => {
     assert.equal(getDriveKeyForPath('d:\\media\\clip.mp4'), 'D:');
     assert.equal(isFolderInsideSync('D:\\media\\clips', 'D:\\media'), true);
     assert.equal(isFolderInsideSync('D:\\media', 'D:\\media'), false);
     assert.equal(isSameFolderSync('D:\\media\\', 'd:/media'), true);
   });
 
-  test('stores thumbnails relative to the cache root whenever possible', () => {
+  test('stores thumbnails relative to the cache root whenever possible', windowsPaths, () => {
     const cacheRoot = 'D:\\cache';
     const absoluteThumb = thumbAbsolute('thumbs\\a\\thumb_01.jpg', cacheRoot);
     assert.equal(absoluteThumb, 'D:\\cache\\thumbs\\a\\thumb_01.jpg');
@@ -378,7 +381,7 @@ describe('cache safety checks', () => {
     ]);
   });
 
-  test('finds only descendant cache folders that no longer exist on disk', async () => {
+  test('finds only descendant cache folders that no longer exist on disk', windowsPaths, async () => {
     const missing = await listMissingDescendantCacheFolders({
       rootFolder: 'D:\\Media',
       knownCacheFolders: [
@@ -399,7 +402,7 @@ describe('cache safety checks', () => {
     assert.deepEqual(missing, ['D:\\Media\\Missing', 'D:\\Media\\Deep\\MissingToo']);
   });
 
-  test('does not treat inaccessible descendant cache folders as missing', async () => {
+  test('does not treat inaccessible descendant cache folders as missing', windowsPaths, async () => {
     const missing = await listMissingDescendantCacheFolders({
       rootFolder: 'D:\\Media',
       knownCacheFolders: ['D:\\Media\\Missing', 'D:\\Media\\Inaccessible'],
@@ -414,7 +417,7 @@ describe('cache safety checks', () => {
     assert.deepEqual(missing, ['D:\\Media\\Missing']);
   });
 
-  test('skips cleanup candidates that still resolve to directories', async () => {
+  test('skips cleanup candidates that still resolve to directories', windowsPaths, async () => {
     const missing = await listMissingDescendantCacheFolders({
       rootFolder: 'D:\\Media',
       knownCacheFolders: ['D:\\Media\\Keep', 'D:\\Media\\FileLike'],
@@ -523,7 +526,7 @@ describe('cache safety checks', () => {
 });
 
 describe('empty folder cleanup safety', () => {
-  test('removes only immediate parent folders with an atomic empty-folder remove', async () => {
+  test('removes only immediate parent folders with an atomic empty-folder remove', windowsPaths, async () => {
     const removed = await removeEmptyDeletedVideoFolders({
       deletedFilePaths: [
         'D:\\Media\\Trip\\Day1\\clip.mp4',
@@ -546,7 +549,7 @@ describe('empty folder cleanup safety', () => {
     assert.deepEqual(Array.from(removed), ['D:\\Media\\Trip\\Day1']);
   });
 
-  test('never removes a folder that is a junction or symbolic link', async () => {
+  test('never removes a folder that is a junction or symbolic link', windowsPaths, async () => {
     const removeCalls = [];
     const removed = await removeEmptyDeletedVideoFolders({
       deletedFilePaths: ['D:\\Media\\Linked\\clip.mp4', 'D:\\Media\\Plain\\clip.mp4'],
@@ -562,7 +565,7 @@ describe('empty folder cleanup safety', () => {
     assert.deepEqual(Array.from(removed), ['D:\\Media\\Plain']);
   });
 
-  test('does not walk upward and remove ancestor folders after child cleanup', async () => {
+  test('does not walk upward and remove ancestor folders after child cleanup', windowsPaths, async () => {
     const removeCalls = [];
     await removeEmptyDeletedVideoFolders({
       deletedFilePaths: ['D:\\Media\\Trip\\Day1\\clip.mp4'],
@@ -576,7 +579,7 @@ describe('empty folder cleanup safety', () => {
     assert.deepEqual(removeCalls, ['D:\\Media\\Trip\\Day1']);
   });
 
-  test('quietly skips expected cleanup failures', async () => {
+  test('quietly skips expected cleanup failures', windowsPaths, async () => {
     const warnings = [];
     const codes = ['ENOENT', 'ENOTEMPTY', 'EEXIST', 'EPERM', 'EACCES', 'EBUSY'];
     const removed = await removeEmptyDeletedVideoFolders({

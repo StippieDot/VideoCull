@@ -159,7 +159,10 @@ function buildFfmpegSection(ffmpegDir) {
   ].join('\n');
 }
 
-/** @param {string} resourcesPath @returns {string} the written file */
+/**
+ * @param {string} resourcesPath
+ * @returns {string} the written file
+ */
 function writeThirdPartyNotices(resourcesPath) {
   const overrides = JSON.parse(fs.readFileSync(path.join(__dirname, 'license-overrides.json'), 'utf8'));
   const notices = buildNotices(

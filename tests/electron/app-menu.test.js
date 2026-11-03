@@ -294,3 +294,14 @@ test('the command palette lists items below a disabled submenu as disabled', () 
   assert.equal(byId('Actions > When Processing Finishes > Sleep').enabled, false);
   assert.equal(byId('View > Toggle Dark / Light Theme').enabled, true);
 });
+
+test('macOS gets the app menu and an Edit menu, and File drops Settings and Exit', () => {
+  const template = menu({ platform: 'darwin' });
+  assert.deepEqual(template.slice(0, 3).map((entry) => entry.label ?? entry.role), ['VideoCull', 'File', 'editMenu']);
+  assert.notEqual(item(template, 'VideoCull', 'Settings...'), undefined);
+  assert.notEqual(item(template, 'VideoCull', 'quit'), undefined);
+  assert.equal(item(template, 'File', 'Settings...'), undefined);
+  assert.equal(item(template, 'File', 'quit'), undefined);
+  assert.notEqual(item(template, 'Video', 'Reveal in Finder'), undefined);
+  assert.notEqual(item(menu({ platform: 'linux' }), 'Video', 'Reveal in File Manager'), undefined);
+});

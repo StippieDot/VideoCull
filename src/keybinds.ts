@@ -1,3 +1,5 @@
+import { fileManagerName, isModKeyDown, modKeyName } from './utils';
+
 // ── Keybind data type ──────────────────────────────────────────────
 export interface Keybind {
   readonly key: string;    // KeyboardEvent.key, lowercased (e.g. 'k', 'arrowleft', ' ')
@@ -63,21 +65,23 @@ export interface FixedShortcut {
   readonly group: ShortcutGroup;
 }
 
+const MOD = modKeyName();
+
 export const FIXED_SHORTCUTS: FixedShortcut[] = [
   { keys: ['Esc'], description: 'Stop playing / Exit review', group: 'Review mode' },
-  { keys: ['Ctrl+,'],          description: 'Open settings',         group: 'Global' },
-  { keys: ['Ctrl+O'],          description: 'Open folder',           group: 'Global' },
+  { keys: [`${MOD}+,`],          description: 'Open settings',         group: 'Global' },
+  { keys: [`${MOD}+O`],          description: 'Open folder',           group: 'Global' },
   { keys: ['F5'],              description: 'Rescan',                group: 'Global' },
-  { keys: ['Ctrl+Shift+E'],    description: 'Export report',         group: 'Global' },
-  { keys: ['Ctrl+Z'],          description: 'Undo last action',      group: 'Global' },
-  { keys: ['Ctrl+Backspace'],  description: 'Delete marked videos',  group: 'Global' },
-  { keys: ['Ctrl++', 'Ctrl+='], description: 'Larger cards',         group: 'Global' },
-  { keys: ['Ctrl+-'],          description: 'Smaller cards',         group: 'Global' },
-  { keys: ['Ctrl+E'],          description: 'Reveal in Explorer',    group: 'Global' },
-  { keys: ['Ctrl+P'],          description: 'Play externally',      group: 'Global' },
-  { keys: ['Ctrl+K'],          description: 'Find a command, folder or video', group: 'Global' },
-  { keys: ['Ctrl+G'],          description: 'Go to folder',          group: 'Global' },
-  { keys: ['Ctrl+L'],          description: 'Focus the path',        group: 'Global' },
+  { keys: [`${MOD}+Shift+E`],    description: 'Export report',         group: 'Global' },
+  { keys: [`${MOD}+Z`],          description: 'Undo last action',      group: 'Global' },
+  { keys: [`${MOD}+Backspace`],  description: 'Delete marked videos',  group: 'Global' },
+  { keys: [`${MOD}++`, `${MOD}+=`], description: 'Larger cards',         group: 'Global' },
+  { keys: [`${MOD}+-`],          description: 'Smaller cards',         group: 'Global' },
+  { keys: [`${MOD}+E`],         description: `Reveal in ${fileManagerName()}`, group: 'Global' },
+  { keys: [`${MOD}+P`],          description: 'Play externally',      group: 'Global' },
+  { keys: [`${MOD}+K`],          description: 'Find a command, folder or video', group: 'Global' },
+  { keys: [`${MOD}+G`],          description: 'Go to folder',          group: 'Global' },
+  { keys: [`${MOD}+L`],          description: 'Focus the path',        group: 'Global' },
   { keys: ['Alt+Left', 'Alt+Right'], description: 'Previous / next folder filter', group: 'Global' },
   { keys: ['F1'],              description: 'Open documentation',    group: 'Global' },
   { keys: ['F11'],             description: 'Toggle fullscreen',     group: 'Global' },
@@ -98,10 +102,11 @@ export function kb(
 }
 
 // ── Match a KeyboardEvent against a stored Keybind ─────────────────
+// Cmd on macOS stands in for Ctrl, so stored "Ctrl" binds work on every platform.
 export function matchesKeybind(event: KeyboardEvent, bind: Keybind): boolean {
   return (
     event.key.toLowerCase() === bind.key &&
-    event.ctrlKey  === bind.ctrl  &&
+    isModKeyDown(event) === bind.ctrl &&
     event.shiftKey === bind.shift &&
     event.altKey   === bind.alt
   );
@@ -118,7 +123,7 @@ export function keybindFromEvent(event: KeyboardEvent): Keybind | null {
   if (['control', 'shift', 'alt', 'meta'].includes(event.key.toLowerCase())) return null;
   return {
     key:   event.key.toLowerCase(),
-    ctrl:  event.ctrlKey,
+    ctrl:  isModKeyDown(event),
     shift: event.shiftKey,
     alt:   event.altKey,
   };
@@ -127,7 +132,7 @@ export function keybindFromEvent(event: KeyboardEvent): Keybind | null {
 // ── Format a Keybind for display ───────────────────────────────────
 export function formatKeybind(bind: Keybind): string {
   const parts: string[] = [];
-  if (bind.ctrl)  parts.push('Ctrl');
+  if (bind.ctrl)  parts.push(modKeyName());
   if (bind.shift) parts.push('Shift');
   if (bind.alt)   parts.push('Alt');
   parts.push(formatKeyName(bind.key));

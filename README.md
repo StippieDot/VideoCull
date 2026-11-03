@@ -1,7 +1,7 @@
 # VideoCull
 [![Release](https://img.shields.io/github/v/release/StippieDot/VideoCull?style=for-the-badge)](https://github.com/StippieDot/VideoCull/releases)
 [![License](https://img.shields.io/github/license/StippieDot/VideoCull?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=for-the-badge)](https://github.com/StippieDot/VideoCull/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D6?style=for-the-badge)](https://github.com/StippieDot/VideoCull/releases)
 [![Docs](https://img.shields.io/badge/docs-videocull.app-1f2937?style=for-the-badge&logo=readthedocs&logoColor=white)](https://docs.videocull.app)
 <a href="https://alternativeto.net/software/videocull/about/?utm_source=badge&amp;utm_medium=referral"><img src="https://alternativeto.net/static/badges/badge-compact-color.svg" alt="VideoCull | AlternativeTo" height="28" /></a>
 
@@ -9,11 +9,11 @@
 
 **[Website](https://videocull.app/) · [Documentation](https://docs.videocull.app/) · [Download](#download)**
 
-VideoCull is a free, open-source Windows app for local video collections that are too large or messy to review file by file: downloaded videos, old archives and backups, external drives, screen recordings, and camera footage. It samples several frames from every video and lays them out in a grid, so you can identify clips without opening each one.
+VideoCull is a free, open-source app for Windows, macOS and Linux for local video collections that are too large or messy to review file by file: downloaded videos, old archives and backups, external drives, screen recordings, and camera footage. It samples several frames from every video and lays them out in a grid, so you can identify clips without opening each one.
 
 Make Keep, Delete, and Skip decisions from the grid or work through a focused keyboard queue. Play and scrub uncertain clips inside the app, add ratings or favorites, and find exact copies and visually similar videos as separate comparison groups.
 
-The workflow stays local. Marking Delete only changes the review state. Files move to the Windows Recycle Bin when possible after you inspect and confirm the complete batch.
+The workflow stays local. Marking Delete only changes the review state. Files move to the Recycle Bin (Trash on macOS and Linux) when possible after you inspect and confirm the complete batch.
 
 ---
 
@@ -42,7 +42,15 @@ VideoCull requires 64-bit Windows 10 version 22H2 (build 19045) or Windows 11. T
 
 For a direct installation, download `VideoCull.Setup.<version>.exe` from [GitHub Releases](https://github.com/StippieDot/VideoCull/releases). It installs for the current user without administrator rights and lets you choose the install location and shortcuts. Because the direct installer is not code-signed yet, Windows may show a SmartScreen prompt on first launch; click **More info**, then **Run anyway** if you downloaded it from the official repository.
 
-The direct-download edition checks GitHub Releases for updates. Both editions share `%APPDATA%\VideoCull`, including settings, review decisions, databases, and the default thumbnail cache. Run only one edition at a time and keep both updated before switching. After confirming the Store edition works, you can uninstall the direct edition without deleting the shared profile or cache.
+### macOS and Linux (beta)
+
+Download `VideoCull-<version>-arm64.dmg` (Apple silicon), `VideoCull-<version>-x64.dmg` (Intel Mac), `VideoCull-<version>-amd64.deb` (Ubuntu, Debian, Linux Mint and other Debian-based Linux), `VideoCull-<version>-x86_64.rpm` (Fedora and other RPM-based Linux) or `VideoCull-<version>-x86_64.AppImage` (any Linux) from [GitHub Releases](https://github.com/StippieDot/VideoCull/releases). These builds are new and tested by the community; please [report problems](https://github.com/StippieDot/VideoCull/issues).
+
+- FFmpeg comes with VideoCull, as on Windows. Linux needs glibc 2.31 or newer (Ubuntu 20.04, Debian 11, Fedora and later).
+- The macOS app is not notarized yet. After moving it to Applications, run `xattr -cr /Applications/VideoCull.app` once, or allow it under **System Settings > Privacy & Security**. It does not update itself; download new versions from GitHub Releases.
+- On Debian-based Linux, install the .deb with `sudo apt install ./VideoCull-<version>-amd64.deb`; on Fedora, install the .rpm with `sudo dnf install ./VideoCull-<version>-x86_64.rpm`. VideoCull then appears in the app menu, and updates install after asking for your password. If you turn on hardware acceleration (Settings > Processing) on Fedora, install the graphics drivers from RPM Fusion: Fedora's standard drivers leave out H.264 and HEVC, so VideoCull decodes those videos in software. On other Linux, make the AppImage executable (`chmod +x`) and run it. AppImages need FUSE 2, which Ubuntu 22.04 and newer do not install by default: `sudo apt install libfuse2t64`. All Linux packages check GitHub Releases for updates.
+
+The Windows direct-download edition checks GitHub Releases for updates. Both editions share `%APPDATA%\VideoCull`, including settings, review decisions, databases, and the default thumbnail cache. Run only one edition at a time and keep both updated before switching. After confirming the Store edition works, you can uninstall the direct edition without deleting the shared profile or cache.
 
 ---
 
@@ -199,7 +207,7 @@ The built-in player is intended for compatible web-playable media such as `.mp4`
 
 - Initial scanning can be very slow on some cloud-mounted drives, confirmed on mounted Google Drive setups. See [issue #2](https://github.com/StippieDot/VideoCull/issues/2).
 - Duplicate review does not detect clips cut from a longer video or trimmed versions of the same file.
-- VideoCull is Windows-only.
+- macOS and Linux builds are in beta.
 
 Found a bug or something that is not obvious in the workflow? [Open an issue](https://github.com/StippieDot/VideoCull/issues). Reports from large, messy collections are especially useful.
 
@@ -207,7 +215,7 @@ Found a bug or something that is not obvious in the workflow? [Open an issue](ht
 
 ## Building from Source
 
-Requires Node.js 24 LTS and npm 11.19.0 or newer. `npm ci` also downloads the pinned FFmpeg and FFprobe build into `vendor/ffmpeg` and checks its SHA-256.
+Requires Node.js 24 LTS and npm 11.19.0 or newer. `npm ci` also downloads the pinned FFmpeg and FFprobe build for your platform into `vendor/ffmpeg/<platform>-<arch>` and checks its SHA-256.
 
 If `npm --version` is below 11.19.0, run `npm install --global npm@11.19.0` before `npm ci`.
 
@@ -224,6 +232,8 @@ npm run dev
 | `npm run test:ci` | IPC contract check, test TS compile, and full coverage run |
 | `npm run test:e2e` | Build the renderer and run the Electron Playwright regression flows |
 | `npm run package` | Full build + Windows installer (NSIS) |
+| `npm run package:mac` | Full build + macOS disk images (run on a Mac) |
+| `npm run package:linux` | Full build + Linux AppImage (run on Linux) |
 
 Development documentation: [Roadmap](engineering/roadmap.md), [architecture](engineering/architecture/README.md), and [backlog](engineering/backlog.md).
 

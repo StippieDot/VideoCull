@@ -1,7 +1,9 @@
 // @ts-check
-// Installs the pinned FFmpeg runtime (config/ffmpeg-toolchain.json) into vendor/ffmpeg, where development
-// runs and packaging pick it up. Runs on npm install; does nothing when the pinned build is already
-// in place. The archive's SHA-256 must match before anything is extracted.
+// Installs the pinned FFmpeg runtime (config/ffmpeg-toolchain.json) into vendor/ffmpeg/<platform>-<arch>,
+// where development runs and packaging pick it up. Runs on npm install for this machine; does nothing
+// when the pinned build is already in place. The archive's SHA-256 must match before anything is
+// extracted. Targets given as arguments (e.g. darwin-arm64 darwin-x64) are installed instead, which
+// packaging needs when one run builds several architectures.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -11,12 +13,19 @@ const root = path.resolve(__dirname, '..');
 const MARKER = '.toolchain-sha256';
 
 /**
- * @typedef {{ repository: string, tag: string, asset: string, sha256: string }} ToolchainPin
+ * @typedef {{ asset: string, sha256: string }} ToolchainAsset
+ * @typedef {{ repository: string, tag: string, assets: Record<string, ToolchainAsset> }} ToolchainPin
  */
 
-/** @param {ToolchainPin} pin */
-function downloadUrl(pin) {
-  return `https://github.com/${pin.repository}/releases/download/${pin.tag}/${pin.asset}`;
+/** @param {ToolchainPin} pin @param {ToolchainAsset} asset */
+function downloadUrl(pin, asset) {
+  return `https://github.com/${pin.repository}/releases/download/${pin.tag}/${asset.asset}`;
+}
+
+/** @param {string} target e.g. win32-x64 or linux-x64 */
+function requiredFiles(target) {
+  const exe = target.startsWith('win32-') ? '.exe' : '';
+  return [`ffmpeg${exe}`, `ffprobe${exe}`, 'LICENSE.txt'];
 }
 
 /** @param {Buffer} data */
@@ -26,45 +35,49 @@ function sha256(data) {
 
 /**
  * @param {ToolchainPin} pin
+ * @param {string} target platform-arch key of pin.assets
  * @param {string} vendorDir
  * @param {{
  *   download: (url: string) => Promise<Buffer>,
- *   extract: (zipPath: string, targetDir: string) => void,
+ *   extract: (archivePath: string, targetDir: string) => void,
  *   log?: (message: string) => void,
  * }} io
  * @returns {Promise<'current' | 'installed'>}
  */
-async function installPinnedFfmpeg(pin, vendorDir, io) {
+async function installPinnedFfmpeg(pin, target, vendorDir, io) {
   const log = io.log ?? (() => {});
+  const asset = pin.assets[target];
+  if (!asset) throw new Error(`No pinned FFmpeg build for ${target}`);
+  const required = requiredFiles(target);
   const marker = path.join(vendorDir, MARKER);
-  if (fs.existsSync(path.join(vendorDir, 'ffmpeg.exe')) && readIfExists(marker) === pin.sha256) return 'current';
+  if (fs.existsSync(path.join(vendorDir, required[0])) && readIfExists(marker) === asset.sha256) return 'current';
 
-  const url = downloadUrl(pin);
+  const url = downloadUrl(pin, asset);
   log(`Downloading ${url}`);
   const data = await io.download(url);
   const actual = sha256(data);
-  if (actual !== pin.sha256) {
-    throw new Error(`FFmpeg archive hash mismatch for ${pin.asset}: expected ${pin.sha256}, got ${actual}`);
+  if (actual !== asset.sha256) {
+    throw new Error(`FFmpeg archive hash mismatch for ${asset.asset}: expected ${asset.sha256}, got ${actual}`);
   }
 
   // Extract next to the target and swap, so an interrupted install never leaves a half folder.
   const staging = `${vendorDir}.staging`;
-  const zipPath = `${vendorDir}.zip`;
+  const archivePath = path.join(path.dirname(vendorDir), asset.asset);
   fs.rmSync(staging, { recursive: true, force: true });
   fs.mkdirSync(staging, { recursive: true });
-  fs.writeFileSync(zipPath, data);
+  fs.writeFileSync(archivePath, data);
   try {
-    io.extract(zipPath, staging);
+    io.extract(archivePath, staging);
   } finally {
-    fs.rmSync(zipPath, { force: true });
+    fs.rmSync(archivePath, { force: true });
   }
-  for (const required of ['ffmpeg.exe', 'ffprobe.exe', 'LICENSE.txt']) {
-    if (!fs.existsSync(path.join(staging, required))) throw new Error(`FFmpeg archive lacks ${required}`);
+  for (const file of required) {
+    if (!fs.existsSync(path.join(staging, file))) throw new Error(`FFmpeg archive lacks ${file}`);
   }
-  fs.writeFileSync(path.join(staging, MARKER), pin.sha256);
+  fs.writeFileSync(path.join(staging, MARKER), asset.sha256);
   fs.rmSync(vendorDir, { recursive: true, force: true });
   fs.renameSync(staging, vendorDir);
-  log(`Installed ${pin.tag} into ${path.relative(root, vendorDir)}`);
+  log(`Installed ${pin.tag} (${target}) into ${path.relative(root, vendorDir)}`);
   return 'installed';
 }
 
@@ -84,14 +97,14 @@ async function download(url) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-/** @param {string} zipPath @param {string} targetDir */
-function extractWithTar(zipPath, targetDir) {
+/** @param {string} archivePath @param {string} targetDir */
+function extractWithTar(archivePath, targetDir) {
   // Windows 10+ ships bsdtar, which reads zip archives. Called by full path because a GNU tar
-  // earlier on PATH (Git for Windows, MSYS2) cannot.
+  // earlier on PATH (Git for Windows, MSYS2) cannot. GNU tar and macOS tar detect .tar.xz themselves.
   const tar = process.platform === 'win32'
     ? path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
     : 'tar';
-  const result = spawnSync(tar, ['-xf', zipPath, '-C', targetDir], { stdio: 'inherit', shell: false });
+  const result = spawnSync(tar, ['-xf', archivePath, '-C', targetDir], { stdio: 'inherit', shell: false });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`tar exited with code ${result.status}`);
 }
@@ -99,14 +112,25 @@ function extractWithTar(zipPath, targetDir) {
 if (require.main === module) {
   /** @type {ToolchainPin} */
   const pin = JSON.parse(fs.readFileSync(path.join(root, 'config', 'ffmpeg-toolchain.json'), 'utf8'));
-  installPinnedFfmpeg(pin, path.join(root, 'vendor', 'ffmpeg'), {
-    download,
-    extract: extractWithTar,
-    log: (message) => console.log(`[fetch-ffmpeg] ${message}`),
-  }).catch((error) => {
-    console.error(`[fetch-ffmpeg] ${error.message}`);
-    process.exit(1);
-  });
+  const host = `${process.platform}-${process.arch}`;
+  const targets = process.argv.slice(2);
+  if (!targets.length && !pin.assets[host]) {
+    // Lets npm install finish on unsupported machines; the app then reports FFmpeg as missing.
+    console.warn(`[fetch-ffmpeg] Skipped: no pinned FFmpeg build for ${host}.`);
+  } else {
+    (async () => {
+      for (const target of targets.length ? targets : [host]) {
+        await installPinnedFfmpeg(pin, target, path.join(root, 'vendor', 'ffmpeg', target), {
+          download,
+          extract: extractWithTar,
+          log: (message) => console.log(`[fetch-ffmpeg] ${message}`),
+        });
+      }
+    })().catch((error) => {
+      console.error(`[fetch-ffmpeg] ${error.message}`);
+      process.exit(1);
+    });
+  }
 }
 
 module.exports = { installPinnedFfmpeg, downloadUrl };

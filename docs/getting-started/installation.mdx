@@ -1,11 +1,19 @@
 ---
-title: Install VideoCull on Windows
-description: Install VideoCull from Microsoft Store or with the direct Windows installer. FFmpeg and FFprobe are bundled.
+title: Install VideoCull
+description: Install VideoCull on Windows, macOS, or Linux. FFmpeg and FFprobe are bundled.
 ---
 
-VideoCull is free and open source. It is available through Microsoft Store or as a direct Windows installer. Both editions include FFmpeg and FFprobe, use the same core features, and share your VideoCull profile and default cache.
+VideoCull is free and open source. It runs on Windows, macOS, and Linux, and every build includes FFmpeg and FFprobe. Find your system below.
 
-## Install from Microsoft Store
+<Note>
+  The macOS and Linux builds are in beta: they are new and tested by the community. Please [report problems](https://github.com/StippieDot/VideoCull/issues).
+</Note>
+
+## Install on Windows
+
+VideoCull is available through Microsoft Store or as a direct Windows installer. Both editions use the same core features and share your VideoCull profile and default cache.
+
+### Install from Microsoft Store
 
 <a href="https://apps.microsoft.com/detail/9NG9Z0CL73PC?referrer=appbadge&amp;cid=docs_videocull_app&amp;mode=full" target="_blank" rel="noopener noreferrer">
   <img className="block dark:hidden" src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get VideoCull from Microsoft" width="200" />
@@ -14,7 +22,7 @@ VideoCull is free and open source. It is available through Microsoft Store or as
 
 Open VideoCull from the Store badge and follow the installation prompt. Microsoft Store manages later updates.
 
-## Install directly from GitHub
+### Install directly from GitHub
 
 <Steps>
   <Step title="Download the latest installer">
@@ -31,20 +39,84 @@ Open VideoCull from the Store badge and follow the installation prompt. Microsof
   </Step>
 </Steps>
 
+## Install on macOS (beta)
+
+<Steps>
+  <Step title="Download the disk image">
+    Open the [GitHub Releases](https://github.com/StippieDot/VideoCull/releases) page and download `VideoCull-<version>-arm64.dmg` for an Apple silicon Mac, or `VideoCull-<version>-x64.dmg` for an Intel Mac.
+  </Step>
+  <Step title="Move VideoCull to Applications">
+    Open the `.dmg` file and drag VideoCull to your Applications folder.
+  </Step>
+  <Step title="Allow the app to open">
+    The macOS app is not signed or notarized yet, so macOS blocks it on first launch. Run this command in Terminal once:
+
+    ```bash
+    xattr -cr /Applications/VideoCull.app
+    ```
+
+    Alternatively, try to open VideoCull, then allow it under **System Settings > Privacy & Security**.
+  </Step>
+  <Step title="Launch VideoCull">
+    Start the app from Applications or Launchpad.
+  </Step>
+</Steps>
+
+## Install on Linux (beta)
+
+Download the package that fits your distribution from [GitHub Releases](https://github.com/StippieDot/VideoCull/releases). VideoCull then appears in your app menu.
+
+### Debian, Ubuntu, Linux Mint, and Zorin (.deb)
+
+```bash
+sudo apt install ./VideoCull-<version>-amd64.deb
+```
+
+### Fedora and other RPM-based distributions (.rpm)
+
+```bash
+sudo dnf install ./VideoCull-<version>-x86_64.rpm
+```
+
+### Any distribution (AppImage)
+
+Make `VideoCull-<version>-x86_64.AppImage` executable (`chmod +x`) and run it.
+
+AppImages need FUSE 2, which Ubuntu 22.04 and newer do not install by default:
+
+```bash
+sudo apt install libfuse2t64
+```
+
+<Note>
+  Hardware acceleration is optional and off by default. On Fedora, install the graphics drivers from RPM Fusion before you turn it on: Fedora's standard drivers leave out H.264 and HEVC, so VideoCull would decode those videos in software.
+</Note>
+
 ## System requirements
 
-- VideoCull requires 64-bit Windows 10 version 22H2 (build 19045) or Windows 11. The Microsoft Store edition enforces this minimum.
-- The direct installer installs per user, not system-wide, and does not require administrator rights.
-- Windows is the primary supported platform.
+- **Windows:** 64-bit Windows 10 version 22H2 (build 19045) or Windows 11. The Microsoft Store edition enforces this minimum. The direct installer installs per user, not system-wide, and does not require administrator rights.
+- **macOS:** an Apple silicon or Intel Mac.
+- **Linux:** a 64-bit x86 (x86_64 or amd64) system with glibc 2.31 or newer, such as Ubuntu 20.04, Debian 11, or Fedora.
 - End users do not need Node.js.
 - FFmpeg and FFprobe are bundled with the app.
 
 ## Updates and shared data
 
+VideoCull keeps settings, review decisions, databases, and the default thumbnail cache in one profile folder:
+
+| System | Profile folder |
+| --- | --- |
+| Windows | `%APPDATA%\VideoCull` |
+| macOS | `~/Library/Application Support/VideoCull` |
+| Linux | `~/.config/VideoCull` |
+
+The default thumbnail cache is the `video-cache` folder inside it.
+
+### Windows
+
 - Microsoft Store installs and updates the Store edition.
 - The direct-download edition checks GitHub Releases when automatic update checks are enabled. It asks before installing a downloaded update.
-- Both editions use `%APPDATA%\VideoCull` for settings, review decisions, databases, and the default thumbnail cache.
-- Only run one edition at a time. VideoCull blocks a second packaged edition from opening the shared profile concurrently.
+- Both editions share the same profile. Only run one edition at a time. VideoCull blocks a second packaged edition from opening the shared profile concurrently.
 - Keep both editions updated before switching between them. After confirming the Store edition works, you can remove the direct installation without deleting the shared profile or cache.
 - Updating from v2.2.0 renames the old `%APPDATA%\video-cull` profile to `%APPDATA%\VideoCull`. If Windows cannot rename it, VideoCull uses the old profile for that launch and tries again next time. If both folders already exist, VideoCull uses `%APPDATA%\VideoCull` and leaves both untouched. You may need to re-pin the renamed app on the taskbar.
 
@@ -53,3 +125,11 @@ The direct installer creates Start Menu and Desktop shortcuts named **VideoCull*
 <Note>
   Resetting or uninstalling the Store package does not remove the shared profile or default cache. Custom central, per-drive, and distributed caches also remain user-managed.
 </Note>
+
+### macOS
+
+VideoCull does not update itself on macOS. Download new versions from GitHub Releases and replace the app in Applications. Your profile stays in place.
+
+### Linux
+
+The `.deb`, `.rpm`, and AppImage builds check GitHub Releases for updates when automatic update checks are enabled, and ask before installing a downloaded update. The `.deb` and `.rpm` packages ask for your password to install an update.

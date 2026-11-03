@@ -3,6 +3,7 @@ import { applyDocumentTheme, getPreloadedColorTheme } from './theme';
 
 applyDocumentTheme(getPreloadedColorTheme());
 if (window.electronAPI?.usesMica) document.documentElement.classList.add('mica');
+if (window.electronAPI?.platform === 'darwin') document.documentElement.classList.add('macos');
 
 function disableReactDevUserTiming() {
   if (!import.meta.env.DEV) return;

@@ -62,6 +62,13 @@ Proposed direction:
 - Introduce purpose-specific IPC payloads and targeted SQLite column queries for the highest-volume paths.
 - This can reduce peak memory and serialization work, but requires coordinated contract changes across the main process, preload, renderer, and tests.
 
+### 16. macOS builds are not notarized and cannot update themselves
+
+- Issue #29. The macOS beta ships unsigned, so Gatekeeper blocks the first launch until the person runs `xattr -cr` or allows it in System Settings (README documents this), and the app does not update itself.
+- Self-update on macOS needs a signed and notarized app, which needs an Apple Developer ID and signing secrets in the release workflow. Until then new versions are a manual download.
+- Proposed direction: sign and notarize in `release.yml` once an Apple Developer account exists, then enable the updater for the macOS build. Keep the manual-download note in the README until it does.
+- The macOS beta should not be called stable before this lands or the first-launch step is judged acceptable by testers.
+
 ## Low
 
 ### 7. Duplicate matching is weak for trimmed or offset copies
@@ -75,6 +82,7 @@ Proposed direction:
 - Keeper selection can prioritize resolution, bitrate, duration, frame rate, and file size.
 - It cannot prefer trusted source folders or account for structural file health, silent variants, or likely reframing when candidates are otherwise close.
 - If real libraries need it, add optional reorderable soft rules such as source-path priority and metadata-based container health. Keep them disabled by default and do not let them change duplicate grouping.
+- Codec preference is the one rule from this family that is committed: roadmap 1.6 (issue #31).
 
 ### 9. Duplicate defaults and keeper ranking have manually synchronized copies
 
@@ -82,6 +90,7 @@ Proposed direction:
 - Keeper comparison logic is also mirrored in renderer and backend code.
 - Sync comments and separate tests reduce the immediate risk, but there is no single shared implementation or direct parity test.
 - Prefer a shared side-effect-free module if it fits both build environments. Otherwise add an explicit parity test covering defaults and keeper ordering.
+- The keeper rule list itself is a third copy: `KEEPER_RULES` in both `src/keybind-defaults.ts` and `electron/duplicate-utils.js`. Roadmap 1.6 adds a rule and so adds the parity test for defaults and rule names first.
 
 ### 10. FFprobe has no cancellable per-file timeout
 
@@ -121,6 +130,55 @@ Proposed direction:
 - Highlights are written by hand per release, never generated from the changelog, and ship with the app so they work offline. A release check refuses more than three highlights or a highlight without an action.
 - Pictures per highlight, in light and dark, captured by a script that reuses the Playwright Electron harness: each highlight names the steps to stage it, the script crops and saves the result, and refuses a capture that shows the user's name in a path. A highlight without a picture falls back to its icon.
 - Blocked on demo footage: the source footage behind the existing screenshots is gone, and the test fixtures are plain black clips. Record or license a small demo set first, keep it outside the repository, and note where it lives.
+
+### 17. Play videos inside the grid
+
+- Issue #32. A first-time user expected the large grid cards to play in place, so a decision could be made without leaving the grid. Today a card shows its frames and playback means opening Review.
+- Not committed. The deliberate design is click-to-seek on frames (roadmap 2.2) with no hover-scrub. In-place playback would also add one more concurrent decode and storage reader per playing card, which conflicts with the contention described in item 1.
+- If revisited: one card plays at a time, started by an explicit action, using the same player path and permission checks as Review.
+
+### 18. Theater mode in Review
+
+- Issue #32. Let the player grow to fill the window while the metadata and decision controls stay visible, without going full screen.
+- Not committed. Review already sizes the media to the viewport (`getReviewMediaWidth`), so this is a layout option, not a new player.
+
+### 19. Adjustable threshold for single-frame thumbnails
+
+- Issue #32. Videos under 10 seconds get one thumbnail instead of the usual set, and the person cannot change that. Someone who works mainly with short clips would want the full set, or a different cut-off.
+- The constant `SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10` is declared three times (`electron/processor.js`, `electron/main.js`, `src/App.tsx`) and must be read from one setting if it becomes configurable. A copy left behind makes the expected thumbnail count disagree with what was generated.
+- Changing it leaves existing thumbnails with the old count. Treat that like a thumbnail count change: regenerate only on request, never silently (roadmap 2.2 provenance rule).
+
+### 20. ARM builds for Windows and Linux
+
+- Not built today. The pinned FFmpeg toolchain covers `win32-x64`, `linux-x64`, `darwin-arm64` and `darwin-x64` (`config/ffmpeg-toolchain.json`), so Windows ARM and Linux ARM have no FFmpeg build, no `better-sqlite3` prebuild check and no release job.
+- Viability and demand have not been recorded here. Measure demand from feedback first; each added platform adds a build in `VideoCull-FFmpeg`, a test target and a release job.
+
+### 21. Flatpak and Flathub
+
+- Issue #4 asks for a Flatpak. Linux releases ship an AppImage for any distribution and a .deb for Debian-based ones; a Flatpak would add a real installer and system-managed updates on Fedora, Linux Mint, Zorin, Pop!_OS and the Steam Deck, whose app stores are built on Flathub.
+- Not committed. The AppImage and .deb already cover every distribution, so a Flatpak adds reach through the app stores, not new capability. Taken off the roadmap (it was Phase M.1 for `2.5.0`) until the beta builds have real feedback.
+- Packaging: the simplest Flathub route repackages the released .deb (or a tarball) with a pinned checksum on the Electron base app (`org.electronjs.Electron2.BaseApp`), as many Electron apps on Flathub do. Nothing is rebuilt on Flathub's builders, and the bundled FFmpeg arrives inside the package with its corresponding source already published by `VideoCull-FFmpeg`. Confirm Flathub's current policy on repackaged binaries before submitting.
+- App ID must map to a domain or account we control: `app.videocull.VideoCull` (videocull.app) or `io.github.StippieDot.VideoCull`.
+- Every release then needs a version and checksum update in the Flathub repository; their external-data checker can open that pull request automatically.
+
+What the sandbox changes:
+
+| Needed by VideoCull | In the Flatpak sandbox | Required |
+|---|---|---|
+| Scan any folder, recent sessions, per-drive cache | The file-chooser portal hands out document-portal paths (`/run/user/<uid>/doc/...`), which break recent sessions, real-path checks and the per-drive cache | Broad access: `--filesystem=host`, or home plus `/media`, `/run/media` and `/mnt`. Flathub accepts this for media tools with a justification |
+| Delete to Trash | Works with that filesystem access | Test on the home disk and on an external drive |
+| Reveal in file manager | `shell.showItemInFolder` uses the file manager's DBus service | `--talk-name=org.freedesktop.FileManager1` |
+| Sleep or shut down after processing | `electron/system-power.js` runs `systemctl`, which does not exist inside the sandbox | Code change: call logind over DBus, plus `--system-talk-name=org.freedesktop.login1` |
+| Keep the computer awake | `powerSaveBlocker` goes through the desktop's inhibit service | Test |
+| Hardware decoding (VAAPI) | The bundled FFmpeg ships its own `libva` and loads the system's drivers; the runtime provides drivers through its GL extension | `--device=dri`, then test; NVDEC needs the NVIDIA GL extension |
+| Self-update | Updates come from the Flatpak remote | Code change: detect `FLATPAK_ID` and disable the in-app updater, as for the Microsoft Store edition |
+| Settings and cache | Move to `~/.var/app/<app id>/` | Acceptable; no shared profile with an AppImage or .deb install |
+
+Proposed direction:
+
+- First the two code changes, since they are useful on their own: logind over DBus for sleep and shut down, and turning the updater off inside a sandbox.
+- Then a local Flatpak build to test filesystem access, Trash, VAAPI and session restore on an external drive, on at least two distributions.
+- Submit to Flathub only after that. The Linux notes in the README gain a Flatpak line when it ships.
 
 ## Recommended order
 

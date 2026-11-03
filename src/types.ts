@@ -712,6 +712,8 @@ export interface ElectronAPI {
   usesMica: boolean;
   /** Windows 11 22H2 or newer, where Mica is available. */
   micaSupported: boolean;
+  /** Node's process.platform: 'win32', 'darwin' or 'linux'. */
+  platform: string;
   selectDirectory: () => Promise<string | null>;
   getPathForFile: (file: File) => string;
   validateDroppedPath: (droppedPath: string) => Promise<{ valid: boolean; isDirectory: boolean }>;

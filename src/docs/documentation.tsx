@@ -10,6 +10,7 @@ import keyboardShortcutsSource from '../../docs/reference/keyboard-shortcuts.mdx
 import cacheProcessingSource from '../../docs/reference/cache-and-processing.mdx?raw';
 import settingsSource from '../../docs/reference/settings.mdx?raw';
 import supportedFormatsSource from '../../docs/reference/supported-formats.mdx?raw';
+import { platformName } from '../utils';
 
 const DOC_IMAGES = import.meta.glob('../../docs/screenshots/*', {
   eager: true,
@@ -170,6 +171,24 @@ function stripFrontmatterAndMeta(raw: string) {
     .replace(FRONTMATTER_RE, '')
     .replace(IN_APP_META_RE, '')
     .trim();
+}
+
+/**
+ * The website shows every `<Tabs>` tab; the app keeps only the tab titled for the system it runs on,
+ * so platform-specific text never reaches the wrong reader. A title may name several systems
+ * (`macOS and Linux`); a tab group should not name one system twice. Runs on the raw source, which
+ * also covers tabs inside steps and accordions. Tabs must not contain headings: the website's
+ * outline would not list them.
+ */
+function keepPlatformTab(raw: string, platform: string) {
+  const named = new RegExp(`\\b${platform}\\b`);
+  return raw.replace(/<Tabs>([\s\S]*?)<\/Tabs>/g, (_, tabs: string) => {
+    const tab = Array.from(tabs.matchAll(/<Tab title="([^"]+)">([\s\S]*?)<\/Tab>/g)).find((match) => named.test(match[1]));
+    if (!tab) return '';
+    // Dedent the body, or its nested list items would read as continuation lines.
+    const indent = Math.min(...(tab[2].match(/^[ \t]*(?=\S)/gm) ?? ['']).map((lead) => lead.length));
+    return tab[2].replace(new RegExp(`^[ \\t]{${indent}}`, 'gm'), '').trim();
+  });
 }
 
 function normalizeInlineMarkdown(value: string) {
@@ -483,10 +502,10 @@ function collectSearchText(nodes: DocumentationNode[]): string[] {
   });
 }
 
-export function parseDocumentationPage(source: DocumentationSource): DocumentationPage {
+export function parseDocumentationPage(source: DocumentationSource, platform = platformName()): DocumentationPage {
   const frontmatter = parseFrontmatter(source.raw);
   const meta = parseInAppMeta(source.raw);
-  const nodes = parseBlocks(stripFrontmatterAndMeta(source.raw));
+  const nodes = parseBlocks(keepPlatformTab(stripFrontmatterAndMeta(source.raw), platform));
   const headings = collectHeadings(nodes);
   const title = frontmatter.title ?? source.id;
   const navigationTitle = source.navigationTitle ?? title;
@@ -517,7 +536,7 @@ export function resolveDocumentationHref(href: string) {
   return href.startsWith('/') ? `${DOCUMENTATION_SITE_URL}${href}` : href;
 }
 
-export const DOCUMENTATION_PAGES: DocumentationPage[] = DOCUMENTATION_SOURCES.map(parseDocumentationPage);
+export const DOCUMENTATION_PAGES: DocumentationPage[] = DOCUMENTATION_SOURCES.map((source) => parseDocumentationPage(source));
 
 export const DOCUMENTATION_PAGE_ID_BY_HREF = Object.fromEntries(
   DOCUMENTATION_PAGES.map((page) => [page.href, page.id]),

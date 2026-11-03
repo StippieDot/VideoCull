@@ -3,7 +3,7 @@ import { Check, Search } from 'lucide-react';
 import useStore, { videosOutsideFolderFilter } from '../store';
 import type { AppCommand, Video } from '../types';
 import { runAppCommand } from '../appCommands';
-import { getFolderLabel, isFolderShownByFilter } from '../utils';
+import { getFolderLabel, isFolderShownByFilter, isModKeyDown, modKeyName } from '../utils';
 import { listGridFolders, type FolderEntry } from './locationMenus';
 import './CommandPalette.css';
 
@@ -17,10 +17,10 @@ const RECENT_LIMIT = 20;
 /** Picks this session, newest first, as `kind:id`; they rank first in every source. */
 let recentPicks: string[] = [];
 
-/** Electron accelerator text as people know it: "CmdOrCtrl+Plus" becomes "Ctrl++". */
+/** Electron accelerator text as people know it: "CmdOrCtrl+Plus" becomes "Ctrl++" ("Cmd++" on macOS). */
 export function formatAccelerator(accelerator: string): string {
   return accelerator
-    .replace(/CmdOrCtrl|CommandOrControl/g, 'Ctrl')
+    .replace(/CmdOrCtrl|CommandOrControl/g, modKeyName())
     .replace(/Plus/g, '+')
     .replace(/Escape/g, 'Esc')
     .replace(/Comma/g, ',');
@@ -175,7 +175,7 @@ function buildRows(query: string, { commands, folders, videos, directories }: Pa
         section: SECTION_TITLES.videos,
         label: video.filename,
         parent: splitLabel(getFolderLabel(video, directories)).join(' › '),
-        hint: 'Enter to select it in the grid · Ctrl+Enter to review it',
+        hint: `Enter to select it in the grid · ${modKeyName()}+Enter to review it`,
         run: ({ ctrl }) => {
           onClose();
           const state = useStore.getState();
@@ -247,7 +247,7 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
       setActiveIndex((rows.length + safeIndex + step) % Math.max(1, rows.length));
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      run(activeRow, { shift: event.shiftKey, ctrl: event.ctrlKey });
+      run(activeRow, { shift: event.shiftKey, ctrl: isModKeyDown(event) });
     } else if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -290,7 +290,7 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
                 aria-disabled={row.disabled || undefined}
                 className={`command-palette-item${index === safeIndex ? ' active' : ''}${row.disabled || row.muted ? ' disabled' : ''}`}
                 onMouseMove={() => setActiveIndex(index)}
-                onClick={(event) => run(row, { shift: event.shiftKey, ctrl: event.ctrlKey })}
+                onClick={(event) => run(row, { shift: event.shiftKey, ctrl: isModKeyDown(event) })}
               >
                 <span className="command-palette-check">{row.checked && <Check size={13} />}</span>
                 <span className="command-palette-label">

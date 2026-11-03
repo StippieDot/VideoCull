@@ -1,31 +1,36 @@
 // @ts-check
-// Single place that resolves the bundled FFmpeg/FFprobe binaries. The runtime folder (executables
-// plus FFmpeg's DLLs) is fetched by scripts/fetch-ffmpeg.js into vendor/ffmpeg and packaged as
-// resources/ffmpeg, outside app.asar, because child processes cannot run from inside the archive.
+// Single place that resolves the FFmpeg/FFprobe binaries. The runtime folder (executables plus FFmpeg's
+// shared libraries), built in StippieDot/VideoCull-FFmpeg for every platform, is fetched by
+// scripts/fetch-ffmpeg.js into vendor/ffmpeg/<platform>-<arch> and packaged as resources/ffmpeg,
+// outside app.asar, because child processes cannot run from inside the archive.
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 
+/** @param {string} name @param {string} platform */
+const executableName = (name, platform) => (platform === 'win32' ? `${name}.exe` : name);
+
 /**
- * @param {{ override?: string, appDir: string, resourcesPath?: string }} location
- * @returns {string} folder that holds ffmpeg.exe, ffprobe.exe and their DLLs
+ * @param {{ override?: string, appDir: string, resourcesPath?: string, platform?: string, arch?: string }} location
+ * @returns {string} folder that holds ffmpeg, ffprobe and their libraries
  */
-function resolveMediaToolsDir({ override, appDir, resourcesPath }) {
+function resolveMediaToolsDir({ override, appDir, resourcesPath, platform = process.platform, arch = process.arch }) {
   if (override) return override;
   // Packaged builds load this file from inside app.asar.
-  if (resourcesPath && appDir.includes(`${path.sep}app.asar`)) return path.join(resourcesPath, 'ffmpeg');
-  return path.join(appDir, '..', 'vendor', 'ffmpeg');
+  return resourcesPath && appDir.includes(`${path.sep}app.asar`)
+    ? path.join(resourcesPath, 'ffmpeg')
+    : path.join(appDir, '..', 'vendor', 'ffmpeg', `${platform}-${arch}`);
 }
 
 const mediaToolsDir = resolveMediaToolsDir({
-  // Tests only: lets a test run against another runtime folder.
+  // Lets tests, and packagers who ship their own FFmpeg (e.g. Flatpak), use another runtime folder.
   override: process.env.VIDEOCULL_FFMPEG_DIR,
   appDir: __dirname,
   resourcesPath: process.resourcesPath,
 });
-const ffmpegPath = path.join(mediaToolsDir, 'ffmpeg.exe');
-const ffprobePath = path.join(mediaToolsDir, 'ffprobe.exe');
+const ffmpegPath = path.join(mediaToolsDir, executableName('ffmpeg', process.platform));
+const ffprobePath = path.join(mediaToolsDir, executableName('ffprobe', process.platform));
 
 /**
  * Logs which FFmpeg build is in use, or why none is usable. Called once at startup so a broken
@@ -36,7 +41,7 @@ const ffprobePath = path.join(mediaToolsDir, 'ffprobe.exe');
 async function checkMediaTools(log) {
   const missing = [ffmpegPath, ffprobePath].filter((file) => !fs.existsSync(file));
   if (missing.length) {
-    log.error('[media-tools] Missing bundled binaries:', missing.join(', '));
+    log.error('[media-tools] Missing FFmpeg binaries:', missing.join(', '));
     return false;
   }
   try {
@@ -45,7 +50,7 @@ async function checkMediaTools(log) {
     log.info('[media-tools]', version, 'from', mediaToolsDir);
     return true;
   } catch (error) {
-    log.error('[media-tools] Bundled FFmpeg does not start:', error);
+    log.error('[media-tools] FFmpeg does not start:', error);
     return false;
   }
 }

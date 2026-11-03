@@ -3,21 +3,21 @@ title: "What is VideoCull?"
 description: "How VideoCull works: scanning folders, thumbnail strips, keyboard decisions, duplicate review, and the confirmed delete step."
 ---
 
-VideoCull is a free and open-source Windows desktop app built specifically for culling, sorting, and cleaning up large collections of local video files. Point it at a folder, and it scans the files, generates a strip of thumbnails for each video, and gives you a keyboard-driven workflow to decide what stays and what goes. The [VideoCull website](https://videocull.app/) has a product overview with screenshots and download options.
+VideoCull is a free and open-source desktop app for Windows, macOS, and Linux (macOS and Linux are in beta), built specifically for culling, sorting, and cleaning up large collections of local video files. Point it at a folder, and it scans the files, generates a strip of thumbnails for each video, and gives you a keyboard-driven workflow to decide what stays and what goes. The [VideoCull website](https://videocull.app/) has a product overview with screenshots and download options.
 
 The source of those files does not matter. The folder can contain a personal archive, downloaded videos, an old backup, screen recordings, or footage from phones and cameras. VideoCull applies the same visual review workflow to all of them.
 
 Nothing is uploaded. Nothing needs an account. Nothing is permanently removed until you confirm the delete step.
 
-The core workflow is straightforward: open a folder, let thumbnails generate in the background, browse the grid to get a quick visual read on each clip, enter review mode for a closer look, make a decision, and move on. When you are ready, one command sends everything marked for deletion to the Recycle Bin when possible.
+The core workflow is straightforward: open a folder, let thumbnails generate in the background, browse the grid to get a quick visual read on each clip, enter review mode for a closer look, make a decision, and move on. When you are ready, one command sends everything marked for deletion to the Recycle Bin (the Trash on macOS and Linux) when possible.
 
-VideoCull runs locally. There is no account and no cloud sync, and your videos, thumbnails, and review data stay on your computer. The only network access is the optional update check in the direct-download edition, as described in the [privacy policy](https://videocull.app/privacy/). It installs per user on Windows and does not require administrator rights.
+VideoCull runs locally. There is no account and no cloud sync, and your videos, thumbnails, and review data stay on your computer. The only network access is the optional update check in builds that update themselves (not the Microsoft Store edition or the macOS app), as described in the [privacy policy](https://videocull.app/privacy/). The Windows installer installs per user and does not require administrator rights.
 
 ## How it works
 
 <Steps>
   <Step title="Open a folder">
-    Drag a folder onto the app window or press `Ctrl+O` to open the directory picker. VideoCull scans the folder and finds the video files inside it.
+    Drag a folder onto the app window or press `Ctrl+O` (`Cmd+O` on macOS) to open the directory picker. VideoCull scans the folder and finds the video files inside it.
   </Step>
   <Step title="Generate thumbnails in the background">
     FFmpeg and FFprobe are bundled with the app, so VideoCull can start extracting frames immediately. You can begin reviewing before every thumbnail finishes. Thumbnails appear as they complete and are stored in local cache.
@@ -29,7 +29,7 @@ VideoCull runs locally. There is no account and no cloud sync, and your videos, 
     Stay in the grid or switch to review mode to go through videos one at a time. Use the keyboard to mark each file as Keep, Delete, or Skip.
   </Step>
   <Step title="Commit the delete batch">
-    Press `Ctrl+Backspace` to send everything marked for deletion to the Recycle Bin. Until you do, every decision is reversible.
+    Press `Ctrl+Backspace` (`Cmd+Backspace` on macOS) to send everything marked for deletion to the Recycle Bin or Trash. Until you do, every decision is reversible.
   </Step>
 </Steps>
 
@@ -41,7 +41,7 @@ VideoCull runs locally. There is no account and no cloud sync, and your videos, 
 
 **Grid batch selection** lets you `Shift`-click a visible range and apply Keep, Delete, Skip, Reset, or thumbnail regeneration without opening each card.
 
-**Recycle Bin safety** means deleted files go to the Windows Recycle Bin when possible, not straight to permanent deletion.
+**Recycle Bin and Trash safety** means deleted files go to the Windows Recycle Bin, or the Trash on macOS and Linux, when possible, not straight to permanent deletion.
 
 **Bookmarks** let you drop timestamped markers while a video is playing and return to them later.
 
@@ -59,7 +59,7 @@ VideoCull runs locally. There is no account and no cloud sync, and your videos, 
 
 <CardGroup cols={2}>
   <Card title="Install VideoCull" icon="download" href="/getting-started/installation">
-    Choose Microsoft Store or the direct installer, then launch the app.
+    Install on Windows, macOS, or Linux, then launch the app.
   </Card>
   <Card title="Quickstart" icon="bolt" href="/getting-started/quickstart">
     Open your first folder, generate thumbnails, and make your first keep or delete decisions.

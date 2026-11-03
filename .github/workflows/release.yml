@@ -1,15 +1,41 @@
 name: Release
 
+# A version tag builds every platform and publishes the release only when all of them succeeded.
+# Running it by hand builds the same packages as workflow artifacts and publishes nothing.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+
+# Building needs only to read the code; the publish job asks for write access itself.
+permissions:
+  contents: read
 
 jobs:
   build:
-    runs-on: windows-latest
-    permissions:
-      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: package
+            files: |
+              artifacts/packages/VideoCull.Setup.*.exe
+              artifacts/packages/VideoCull.Setup.*.exe.blockmap
+              artifacts/packages/latest.yml
+          - os: macos-latest
+            script: package:mac
+            files: |
+              artifacts/packages/VideoCull-*.dmg
+          - os: ubuntu-latest
+            script: package:linux
+            files: |
+              artifacts/packages/VideoCull-*.AppImage
+              artifacts/packages/VideoCull-*.deb
+              artifacts/packages/VideoCull-*.rpm
+              artifacts/packages/latest-linux.yml
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -24,48 +50,62 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Resolve version from tag
-        id: vars
+      - name: Check the tag matches the app version
+        if: github.ref_type == 'tag'
         shell: bash
         run: |
-          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
 
-      - name: Clean release output
+      - name: Install the RPM build tool
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm
+
+      - name: Build packages
+        run: npm run ${{ matrix.script }}
+
+      - name: Validate Windows update metadata
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          if (Test-Path artifacts/packages) {
-            Remove-Item -Path "artifacts/packages/*.exe","artifacts/packages/*.blockmap","artifacts/packages/latest.yml" -Force -ErrorAction SilentlyContinue
-          }
-
-      - name: Build installer
-        run: npm run package
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate release metadata
-        shell: pwsh
-        run: |
-          $version = '${{ steps.vars.outputs.version }}'
+          $version = node -p "require('./package.json').version"
           $expectedExe = "VideoCull.Setup.$version.exe"
-          $expectedBlockmap = "VideoCull.Setup.$version.exe.blockmap"
-          $latestPath = "artifacts/packages/latest.yml"
-
-          if (-not (Test-Path "artifacts/packages/$expectedExe")) {
-            throw "Missing expected installer: artifacts/packages/$expectedExe"
+          foreach ($file in @($expectedExe, "$expectedExe.blockmap", 'latest.yml')) {
+            if (-not (Test-Path "artifacts/packages/$file")) { throw "Missing artifacts/packages/$file" }
           }
-
-          if (-not (Test-Path "artifacts/packages/$expectedBlockmap")) {
-            throw "Missing expected blockmap: artifacts/packages/$expectedBlockmap"
-          }
-
-          if (-not (Test-Path $latestPath)) {
-            throw "Missing latest.yml"
-          }
-
-          $latest = Get-Content $latestPath -Raw
+          $latest = Get-Content artifacts/packages/latest.yml -Raw
           if ($latest -notmatch "path:\s*$([regex]::Escape($expectedExe))") {
             throw "latest.yml path does not match expected installer name $expectedExe"
           }
+
+      - name: Keep the packages for the release
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-${{ runner.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    # Only a pushed tag publishes; a manual run never does, even when started from a tag.
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Collect the packages
+        uses: actions/download-artifact@v8
+        with:
+          pattern: packages-*
+          path: packages
+          merge-multiple: true
 
       - name: Extract changelog section
         id: changelog
@@ -85,7 +125,13 @@ jobs:
           name: VideoCull ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
           generate_release_notes: false
+          fail_on_unmatched_files: true
           files: |
-            artifacts/packages/VideoCull.Setup.${{ steps.vars.outputs.version }}.exe
-            artifacts/packages/VideoCull.Setup.${{ steps.vars.outputs.version }}.exe.blockmap
-            artifacts/packages/latest.yml
+            packages/VideoCull.Setup.*.exe
+            packages/VideoCull.Setup.*.exe.blockmap
+            packages/latest.yml
+            packages/VideoCull-*.dmg
+            packages/VideoCull-*.AppImage
+            packages/VideoCull-*.deb
+            packages/VideoCull-*.rpm
+            packages/latest-linux.yml

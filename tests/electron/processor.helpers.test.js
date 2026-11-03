@@ -17,7 +17,7 @@ test('parseBitrate only returns positive finite integer values', () => {
   assert.equal(__test.parseBitrate('abc'), null);
 });
 
-test('toFfmpegInputPath preserves short paths and prefixes long windows paths', () => {
+test('toFfmpegInputPath preserves short paths and prefixes long windows paths', { skip: process.platform !== 'win32' }, () => {
   const shortPath = 'D:\\videos\\clip.mp4';
   assert.equal(__test.toFfmpegInputPath(shortPath), shortPath);
 

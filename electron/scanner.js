@@ -2,6 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
 const { createFileIdentity } = require('./main-helpers');
+const { pathKey } = require('./path-key');
 
 const VIDEO_EXTENSIONS = new Set([
   '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm', '.flv', '.m4v', '.ts', '.mts', '.mpg', '.mpeg',
@@ -45,11 +46,6 @@ function createProgressReporter(onProgress) {
       pendingProgress = null;
     },
   };
-}
-
-/** Windows paths compare without regard to case. Kept in step with `folderKey` in src/sessions.ts. */
-function realPathKey(realPath) {
-  return path.resolve(realPath).toLowerCase();
 }
 
 async function statVideoEntries(entries, statPath = fs.stat) {
@@ -138,7 +134,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
 
   async function walk(currentDir, realDir) {
     assertNotCancelled();
-    const realDirKey = realPathKey(realDir);
+    const realDirKey = pathKey(realDir);
     if (walkedRealDirs.has(realDirKey)) return;
     walkedRealDirs.add(realDirKey);
     let entries;
@@ -212,7 +208,7 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
         assertNotCancelled();
         await walk(fullPath, realPath);
       } else if (isFile && isVideoFile(entry.name)) {
-        const realFileKey = realPathKey(realPath);
+        const realFileKey = pathKey(realPath);
         if (seenRealFiles.has(realFileKey)) continue;
         seenRealFiles.add(realFileKey);
         pendingVideoEntries.push({ entryName: entry.name, fullPath, realPath });
@@ -237,7 +233,6 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
 
 module.exports = {
   scanDirectory,
-  realPathKey,
   __test__: {
     createProgressReporter,
     statVideoEntries,

@@ -5,6 +5,7 @@ import type { AppSettings, CacheLocationInfo, DistributionInfo, LegacyInstallSta
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
+import { isWindows as isWindowsPlatform, modKeyName } from '../utils';
 import KeybindInput from './KeybindInput';
 import { PRODUCT } from '../product';
 import './SettingsModal.css';
@@ -52,6 +53,7 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ initialTab = 'interface', tabRequestId = 0 }: SettingsModalProps) {
+  const isWindows = isWindowsPlatform();
   const isOpen = useStore((s) => s.isSettingsModalOpen);
   const close = () => useStore.getState().setIsSettingsModalOpen(false);
   const globalSettings = useStore((s) => s.settings);
@@ -1025,9 +1027,9 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                       checked={localSettings.followLinks}
                       onChange={(e) => handleChange('followLinks', e.target.checked)}
                     />
-                    Follow symbolic links and junctions (Experimental)
+                    Follow symbolic links{isWindows ? ' and junctions' : ''} (Experimental)
                   </label>
-                  <span className="help-text">Scans folders and videos that links or directory junctions point to, also outside the opened folder. A video reached by more than one path is listed once. Applies from the next scan. Experimental: off by default while it is being tested.</span>
+                  <span className="help-text">Scans folders and videos that {isWindows ? 'links or directory junctions' : 'symbolic links'} point to, also outside the opened folder. A video reached by more than one path is listed once. Applies from the next scan. Experimental: off by default while it is being tested.</span>
                 </div>
 
                 <div className="form-group checkbox-group">
@@ -1051,7 +1053,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     />
                     Remove empty source folders after delete
                   </label>
-                  <span className="help-text">After deleting videos, remove only their empty parent folders. Folders that are not empty, unavailable, outside the loaded scan roots, or links and junctions are skipped.</span>
+                  <span className="help-text">After deleting videos, remove only their empty parent folders. Folders that are not empty, unavailable, outside the loaded scan roots, or {isWindows ? 'links and junctions' : 'symbolic links'} are skipped.</span>
                 </div>
               </div>
             )}
@@ -1132,7 +1134,7 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                     <input type="checkbox" checked={localSettings.keepAwakeWhileProcessing} onChange={(e) => handleChange('keepAwakeWhileProcessing', e.target.checked)} />
                     Keep the PC awake while processing
                   </label>
-                  <span className="help-text">Stops Windows from going to sleep on its own while videos are scanned, read or fingerprinted, so long runs can finish unattended. Sleeping manually still works, and the screen can still turn off.</span>
+                  <span className="help-text">Stops the computer from going to sleep on its own while videos are scanned, read or fingerprinted, so long runs can finish unattended. Sleeping manually still works, and the screen can still turn off.</span>
                 </div>
               </div>
             )}
@@ -1184,13 +1186,15 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                 })}
 
                 <p className="help-text" style={{ marginTop: 12 }}>
-                  <strong>Note:</strong> Esc always closes/stops. System shortcuts (Ctrl+O, F5, etc.) cannot be rebound here.
+                  <strong>Note:</strong> Esc always closes/stops. System shortcuts ({modKeyName()}+O, F5, etc.) cannot be rebound here.
                 </p>
               </div>
             )}
 
             {activeTab === 'updates' && (() => {
-              if (distributionInfo?.channel === 'microsoft-store') {
+              const isStore = distributionInfo?.channel === 'microsoft-store';
+              // macOS builds are not signed yet, which self-updating requires (see updatesEnabled in electron/main.js).
+              if (isStore || window.electronAPI?.platform === 'darwin') {
                 return (
                   <div className="settings-form">
                     <div className="form-group">
@@ -1198,8 +1202,8 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                       <span className="version-display">v{appVersionLabel}</span>
                     </div>
                     <div className="form-group">
-                      <label>Microsoft Store edition</label>
-                      <span className="help-text">Updates are managed and installed by Microsoft Store.</span>
+                      <label>{isStore ? 'Microsoft Store edition' : 'Updates'}</label>
+                      <span className="help-text">{isStore ? 'Updates are managed and installed by Microsoft Store.' : 'This version does not update itself yet. Download new versions from GitHub Releases.'}</span>
                     </div>
                   </div>
                 );

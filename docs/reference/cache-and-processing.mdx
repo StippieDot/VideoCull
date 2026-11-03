@@ -24,6 +24,20 @@ VideoCull stores SQLite databases and generated thumbnails locally. The cache pr
 
 Centralised is the safest default. Distributed mode is deliberately marked as a power-user option because it writes cache folders into the media tree.
 
+In Per-drive mode, each drive's cache folder defaults to:
+
+<Tabs>
+  <Tab title="Windows">
+    `<drive>\Users\<your user name>\.videocull\cache` when that folder exists, otherwise `<drive>\.videocull\cache`.
+  </Tab>
+  <Tab title="macOS">
+    `.videocull/cache` at the top of an external or network drive under `/Volumes`, such as `/Volumes/Archive/.videocull/cache`. Folders on the system disk use `~/.videocull/cache` in your home folder, because the top of the system disk cannot be written to.
+  </Tab>
+  <Tab title="Linux">
+    `.videocull/cache` at the top of an external or network drive mounted under `/media`, `/run/media`, or `/mnt`, such as `/media/<your user name>/Archive/.videocull/cache`. Folders on the system disk use `~/.videocull/cache` in your home folder, because the top of the system disk is owned by root.
+  </Tab>
+</Tabs>
+
 ## Change cache location
 
 Saving a changed cache mode or root starts the cache migration flow. You can migrate existing data, start fresh, or cancel.
@@ -36,7 +50,21 @@ When using a custom central folder, choose **Use Default** to return to VideoCul
 
 Do not disconnect a source or destination drive during migration. If a partial migration is reported, read the error before rescanning or deleting the old cache manually.
 
-The Microsoft Store and direct-download editions use the same default cache at `%APPDATA%\VideoCull\video-cache`. Resetting or uninstalling the Store package does not remove this shared cache. Custom central, per-drive, and distributed caches also remain in place when VideoCull is uninstalled.
+The default cache is the `video-cache` folder in the VideoCull profile:
+
+<Tabs>
+  <Tab title="Windows">
+    `%APPDATA%\VideoCull\video-cache`. The Microsoft Store and direct-download editions use this same cache, and resetting or uninstalling the Store package does not remove it.
+  </Tab>
+  <Tab title="macOS">
+    `~/Library/Application Support/VideoCull/video-cache`
+  </Tab>
+  <Tab title="Linux">
+    `~/.config/VideoCull/video-cache`
+  </Tab>
+</Tabs>
+
+Custom central, per-drive, and distributed caches also remain in place when VideoCull is uninstalled.
 
 ## Know when settings apply
 
@@ -63,9 +91,21 @@ Intro skip delay moves the first sample away from fades and blank lead-ins. Incr
 
 - Leave **Parallel FFmpeg processes** on Auto unless the machine becomes unresponsive or storage is saturated.
 - Keep **Limit each FFmpeg process to 1 CPU thread** enabled for predictable parallel work.
-- Treat **Hardware acceleration** as experimental. Disable it first when GPU decoding crashes or behaves poorly with older formats.
+- Treat **Hardware acceleration** as experimental. It is off by default. Duplicate fingerprints always use the CPU. Disable it first when GPU decoding crashes or behaves poorly with older formats.
 - Lower concurrency for slow external, network, or cloud-mounted drives.
-- Leave **Keep the PC awake while processing** on for long runs. Windows then does not go to sleep on its own until processing finishes or is paused.
+- Leave **Keep the PC awake while processing** on for long runs. The computer then does not go to sleep on its own until processing finishes or is paused.
+
+<Tabs>
+  <Tab title="Windows">
+    Hardware acceleration uses D3D11 or DXVA.
+  </Tab>
+  <Tab title="macOS">
+    Hardware acceleration uses VideoToolbox.
+  </Tab>
+  <Tab title="Linux">
+    Hardware acceleration uses VAAPI or NVDEC. On Fedora, install the graphics drivers from RPM Fusion before turning it on: Fedora's standard drivers leave out H.264 and HEVC, so those videos decode in software.
+  </Tab>
+</Tabs>
 
 ## Sleep or shut down when processing finishes
 
@@ -73,9 +113,17 @@ For long runs, such as the first scan of a large library or fingerprinting it fo
 
 - **Do Nothing** is the default.
 - **Sleep** puts the PC to sleep.
-- **Shut Down** closes VideoCull cleanly and shuts the PC down. Other apps with unsaved work are not forced to close, so Windows waits for them.
-
+- **Shut Down** closes VideoCull cleanly and shuts the PC down.
 The choice covers everything that is processing at that moment, including stages that start right after, such as thumbnails after video info. It applies to this run only: once it has run, or when you close the session or open another folder, it resets to **Do Nothing**, so a later rescan never triggers it. While Sleep or Shut Down is chosen, the PC stays awake until it runs, even when **Keep the PC awake while processing** is off. When processing has finished, a 60-second countdown appears; select **Cancel** to stay awake. The menu is only available while processing runs.
+
+<Tabs>
+  <Tab title="Windows and macOS">
+    Other apps with unsaved work are not forced to close, so Shut Down waits for them.
+  </Tab>
+  <Tab title="Linux">
+    Sleep and Shut Down go through systemd.
+  </Tab>
+</Tabs>
 
 You can browse and review while thumbnails continue in the background. Metadata-dependent actions, including duplicate detection, may wait until the required metadata is ready.
 

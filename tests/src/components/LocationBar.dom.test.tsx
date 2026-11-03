@@ -147,7 +147,7 @@ describe('LocationBar', () => {
 
   test('the › lists filter the grid to a folder and everything below it, and back', () => {
     render(<LocationBar sessionTitle="Media" appActions={appActions()} />);
-    expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Media actions', 'Folders in Media']);
+    expect(buttonNames()).toEqual(['Location of Media', 'Media', 'Media actions', 'Folders in Media']);
 
     act(() => screen.getByRole('button', { name: 'Folders in Media' }).click());
     // Opens on what is shown: all of the loaded folder.
@@ -155,7 +155,7 @@ describe('LocationBar', () => {
     act(() => screen.getByRole('menuitemradio', { name: /^Trips/ }).click());
     expect(useStore.getState().folderFilter?.path).toBe(`${ROOT}\\Trips`);
     expect(shownIds()).toEqual(['a', 'b']);
-    expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips, filtered', 'Clear folder filter', 'Trips actions']);
+    expect(buttonNames()).toEqual(['Location of Media', 'Media', 'Folders in Media', 'Trips, filtered', 'Clear folder filter', 'Trips actions']);
 
     act(() => screen.getByRole('button', { name: 'Folders in Media' }).click());
     expect(document.activeElement?.textContent).toBe('Trips1 to review');
@@ -169,17 +169,17 @@ describe('LocationBar', () => {
     const videos = [...VIDEOS, makeVideo('d', {}, `${ROOT}\\Trips\\June`)];
     useStore.setState({ videos, filteredVideos: videos, gridTopFolder: `${ROOT}\\Clips` });
     render(<LocationBar sessionTitle="Media" appActions={appActions()} />);
-    expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Clips', 'Clips actions']);
+    expect(buttonNames()).toEqual(['Location of Media', 'Media', 'Folders in Media', 'Clips', 'Clips actions']);
     // Past the loaded folder, the path only shows where the grid is scrolled to.
     expect(screen.getByRole('button', { name: 'Clips' }).getAttribute('title')).toBe(`Scrolled to: ${ROOT}\\Clips`);
     expect(screen.getByRole('button', { name: 'Media' }).getAttribute('title')).toBeNull();
 
     // Right after filtering, the old top folder lies outside the filter and is ignored.
     act(() => useStore.getState().setFolderFilter({ path: `${ROOT}\\Trips`, includeSubfolders: true }));
-    expect(buttonNames()).toEqual(['D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips, filtered', 'Clear folder filter', 'Trips actions', 'Folders in Trips']);
+    expect(buttonNames()).toEqual(['Location of Media', 'Media', 'Folders in Media', 'Trips, filtered', 'Clear folder filter', 'Trips actions', 'Folders in Trips']);
     act(() => useStore.getState().setGridTopFolder(`${ROOT}\\Trips\\June`));
     expect(buttonNames()).toEqual([
-      'D:', 'Folders in D:', 'Media', 'Folders in Media', 'Trips, filtered', 'Clear folder filter', 'Folders in Trips', 'June', 'June actions',
+      'Location of Media', 'Media', 'Folders in Media', 'Trips, filtered', 'Clear folder filter', 'Folders in Trips', 'June', 'June actions',
     ]);
   });
 
@@ -230,8 +230,8 @@ describe('LocationBar', () => {
     fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true });
     expect(useStore.getState().folderFilter?.path).toBe(`${ROOT}\\Trips`);
 
-    // A folder that holds the loaded folder shows everything again.
-    act(() => screen.getByRole('button', { name: 'D:' }).click());
+    // The loaded folder shows everything again.
+    act(() => screen.getByRole('button', { name: 'Media' }).click());
     expect(useStore.getState().folderFilter).toBeNull();
   });
 
@@ -240,13 +240,15 @@ describe('LocationBar', () => {
     fireEvent.keyDown(window, { key: 'l', ctrlKey: true });
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Media');
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
-    expect(document.activeElement?.getAttribute('aria-label')).toBe('Folders in D:');
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Location of Media');
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Media actions');
 
-    fireEvent.contextMenu(screen.getByRole('button', { name: 'D:' }));
-    expect(screen.getByRole('menu', { name: 'D:' })).toBeTruthy();
+    // The folders above the loaded one are one "…", whose menu only shows where it is.
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Location of Media' }));
+    expect(screen.getByRole('menu', { name: 'D:\\Media' })).toBeTruthy();
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Reveal in Explorer', 'Copy Path']);
   });
 
   test('path parts keep their action menus, run from the keyboard', () => {
@@ -346,7 +348,7 @@ describe('LocationBar', () => {
     useStore.setState({ reviewMode: true, activeReviewVideoPath: VIDEOS[1].path, reviewPosition: { index: 33, total: 210 } });
     const { rerender } = render(<LocationBar sessionTitle="Media" appActions={appActions()} />);
     // Review shows a plain path: no subfolder lists.
-    expect(buttonNames()).toEqual(['D:', 'Media', 'Trips', 'b.mp4']);
+    expect(buttonNames()).toEqual(['Location of Media', 'Media', 'Trips', 'b.mp4']);
     expect(screen.getByRole('button', { name: 'b.mp4' }).textContent).toContain('34 / 210');
 
     useStore.setState({
@@ -369,7 +371,7 @@ describe('LocationBar', () => {
     // A video played from a duplicate group is Review, with the duplicate list still open underneath.
     act(() => useStore.setState({ reviewMode: true, activeReviewVideoPath: VIDEOS[1].path }));
     rerender(<LocationBar sessionTitle="Media" appActions={appActions()} />);
-    expect(buttonNames()).toEqual(['D:', 'Media', 'Trips', 'b.mp4']);
+    expect(buttonNames()).toEqual(['Location of Media', 'Media', 'Trips', 'b.mp4']);
     expect(screen.queryByRole('button', { name: 'Next group' })).toBeNull();
     act(() => useStore.setState({ reviewMode: false }));
     rerender(<LocationBar sessionTitle="Media" appActions={appActions()} />);

@@ -48,7 +48,7 @@ test('packaged smoke runner isolates module resolution and fails the build on a 
     invocation = { executablePath, args, options };
     return { status: 0 };
   };
-  runPackagedSqliteSmoke('D:\\release\\VideoCull.exe', 'D:\\release\\resources', spawn);
+  runPackagedSqliteSmoke(path.join('D:\\release', 'VideoCull.exe'), 'D:\\release\\resources', spawn);
 
   assert.equal(invocation.options.cwd, 'D:\\release');
   assert.equal(invocation.options.env.ELECTRON_RUN_AS_NODE, '1');
@@ -59,4 +59,24 @@ test('packaged smoke runner isolates module resolution and fails the build on a 
     () => runPackagedSqliteSmoke('D:\\release\\VideoCull.exe', 'D:\\release\\resources', () => ({ status: 7 })),
     /exit code 7/,
   );
+});
+
+test('afterPack finds the macOS bundle and Linux folder', async () => {
+  const run = async (context) => {
+    const calls = [];
+    await afterPack({ packager: { appInfo: { productFilename: 'VideoCull' }, executableName: 'videocull' }, ...context }, {
+      writeNotices: (resourcesPath) => calls.push(['notices', resourcesPath]),
+      checkLegalFiles: (resourcesPath) => calls.push(['legal', resourcesPath]),
+      runSmoke: (executablePath, resourcesPath) => calls.push(['smoke', executablePath, resourcesPath]),
+    });
+    return calls;
+  };
+  const contents = path.join('/out/mac', 'VideoCull.app', 'Contents');
+  assert.deepEqual(await run({ electronPlatformName: 'darwin', appOutDir: '/out/mac' }), [
+    ['notices', path.join(contents, 'Resources')],
+    ['legal', path.join(contents, 'Resources')],
+    ['smoke', path.join(contents, 'MacOS', 'VideoCull'), path.join(contents, 'Resources')],
+  ]);
+  assert.deepEqual((await run({ electronPlatformName: 'linux', appOutDir: '/out/linux' }))[2],
+    ['smoke', path.join('/out/linux', 'videocull'), path.join('/out/linux', 'resources')]);
 });

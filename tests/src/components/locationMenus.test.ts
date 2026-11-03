@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { collapseSegments, hasSubfolders, listSubfolders, splitPath } from '../../../src/components/locationMenus';
 import { makeVideo } from '../../helpers/videoFactory';
 
@@ -61,6 +61,19 @@ describe('subfolders', () => {
   test('a drive root lists its folders with their paths', () => {
     const drive = [inFolder('1', 'P:\\Clips'), inFolder('2', 'P:\\Clips\\More'), inFolder('3', 'P:')];
     expect(listSubfolders(drive, 'P:\\')).toEqual([{ path: 'P:\\Clips', label: 'Clips', count: 2, toReview: 2 }]);
+  });
+
+  test('sibling folders that differ only in letter case stay apart on Linux', () => {
+    vi.stubGlobal('window', { electronAPI: { platform: 'linux' } });
+    try {
+      const linux = ['Project/1', 'project/2', 'project/3'].map((file) => makeVideo(file, { path: `/media/Case/${file}.mp4` }));
+      expect(listSubfolders(linux, '/media/Case').map(({ path, count }) => ({ path, count }))).toEqual([
+        { path: '/media/Case/Project', count: 1 },
+        { path: '/media/Case/project', count: 2 },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test('a network share lists real child folders with labels and paths', () => {

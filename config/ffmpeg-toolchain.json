@@ -1,6 +1,22 @@
 {
   "repository": "StippieDot/VideoCull-FFmpeg",
-  "tag": "ffmpeg-9.0.2-r1",
-  "asset": "videocull-ffmpeg-9.0.2-r1-win64.zip",
-  "sha256": "884c577172588758add7bdd577d87bda2357dddd7a9664c472fab4aa9788ec69"
+  "tag": "ffmpeg-9.0.2-r2",
+  "assets": {
+    "win32-x64": {
+      "asset": "videocull-ffmpeg-9.0.2-r2-win64.zip",
+      "sha256": "91b5746a5518dc9bd276eb7c8c7926b87508aa81666c4a088a5b2d545a7d3fe4"
+    },
+    "linux-x64": {
+      "asset": "videocull-ffmpeg-9.0.2-r2-linux-x64.tar.xz",
+      "sha256": "739d259c4be38a3c0e9d5887aca4ee25b54f3050244be0fdd4e70a38ebfeb055"
+    },
+    "darwin-arm64": {
+      "asset": "videocull-ffmpeg-9.0.2-r2-macos-arm64.tar.xz",
+      "sha256": "f050f577528f7a74494e3c0b47547891d4e90b0017f3a31d390703397a30b99b"
+    },
+    "darwin-x64": {
+      "asset": "videocull-ffmpeg-9.0.2-r2-macos-x64.tar.xz",
+      "sha256": "1f92877b020020bf6904c786fda0845c9b1ef8013b3571ddb4962fd414b90f31"
+    }
+  }
 }

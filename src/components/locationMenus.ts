@@ -17,7 +17,7 @@ import {
 import type { DuplicateGroup, FolderFilter, Video, VideoStatus } from '../types';
 import { trimSeparators, type AppMenuItem } from './AppMenu';
 import { sameSessionFolders, sessionKey, sessionLabel, shownFolders } from '../sessions';
-import { formatDuration, formatResolutionLabel, formatSize, folderInsideTest, getFolderLabel, getFolderPath, isFolderInside, normalizeFolder, plural } from '../utils';
+import { formatDuration, formatResolutionLabel, formatSize, fileManagerName, folderInsideTest, foldPathCase, getFolderLabel, getFolderPath, isFolderInside, modKeyName, normalizeFolder, plural } from '../utils';
 
 export type LocationMenuItem = AppMenuItem;
 
@@ -111,7 +111,7 @@ export function listSubfolders(videos: Video[], parent: string): FolderEntry[] {
     const folder = getFolderPath(video);
     if (folder.length < prefixLength || !isFolderInside(folder, parent)) continue;
     const label = folder.slice(prefixLength).split(/[\\/]/)[0];
-    const key = label.toLowerCase();
+    const key = foldPathCase(label);
     const entry = children.get(key);
     if (entry) entry.videos.push(video);
     else children.set(key, { path: folder.slice(0, prefixLength + label.length), label, videos: [video] });
@@ -305,14 +305,14 @@ export function buildFolderMenu(context: FolderMenuContext, actions: LocationAct
   }
   items.push(
     SEPARATOR('sep-path'),
-    { type: 'item', key: 'reveal', label: 'Reveal in Explorer', icon: FolderOpen, onSelect: () => actions.reveal(folder) },
+    { type: 'item', key: 'reveal', label: `Reveal in ${fileManagerName()}`, icon: FolderOpen, onSelect: () => actions.reveal(folder) },
     { type: 'item', key: 'copy', label: 'Copy Path', icon: Copy, onSelect: () => actions.copyPath(folder) },
   );
 
   const firstFolder = context.filteredVideos[0] && getFolderPath(context.filteredVideos[0]);
   if (mode === 'grid' && context.filteredVideos.some((video) => getFolderPath(video) !== firstFolder)) {
     items.push(SEPARATOR('sep-go'), {
-      type: 'item', key: 'go-to', label: 'Go to Folder...', icon: FolderTree, detail: 'Ctrl+G', onSelect: actions.openFolderSearch,
+      type: 'item', key: 'go-to', label: 'Go to Folder...', icon: FolderTree, detail: `${modKeyName()}+G`, onSelect: actions.openFolderSearch,
     });
   }
 
@@ -321,6 +321,21 @@ export function buildFolderMenu(context: FolderMenuContext, actions: LocationAct
     title: lastPart(folder),
     detail: describeFolder(context.videos, folder),
     items: trimSeparators(items),
+  };
+}
+
+/**
+ * Behind the "…" before the loaded folder: where that folder is on disk. Its actions act on the loaded
+ * folder itself, because the main process refuses paths outside the loaded folders (open-in-explorer).
+ */
+export function buildParentsMenu(folder: string, actions: LocationActions): LocationMenu {
+  return {
+    kind: 'folder',
+    title: folder,
+    items: [
+      { type: 'item', key: 'reveal', label: `Reveal in ${fileManagerName()}`, icon: FolderOpen, onSelect: () => actions.reveal(folder) },
+      { type: 'item', key: 'copy', label: 'Copy Path', icon: Copy, onSelect: () => actions.copyPath(folder) },
+    ],
   };
 }
 
@@ -335,7 +350,7 @@ export function buildVideoMenu(video: Video, canNarrowReview: boolean, actions: 
     STATUS_LABELS[video.status],
   ].filter(Boolean);
   const items: LocationMenuItem[] = [
-    { type: 'item', key: 'reveal', label: 'Reveal in Explorer', icon: FolderOpen, onSelect: () => actions.reveal(video.path) },
+    { type: 'item', key: 'reveal', label: `Reveal in ${fileManagerName()}`, icon: FolderOpen, onSelect: () => actions.reveal(video.path) },
     { type: 'item', key: 'external', label: 'Play Externally', icon: ExternalLink, onSelect: () => actions.playExternally(video.path) },
     { type: 'item', key: 'copy', label: 'Copy Path', icon: Copy, onSelect: () => actions.copyPath(video.path) },
     SEPARATOR('sep-folder'),

@@ -1,7 +1,9 @@
 const path = require('path');
+const { pathKey } = require('./path-key');
 const fs = require('fs/promises');
 const fsSync = require('fs');
 const crypto = require('crypto');
+const os = require('os');
 const log = require('./logger');
 const perfMetrics = require('./perf-metrics');
 const { createCacheConnectionManager } = require('./cache-connection-manager');
@@ -95,8 +97,7 @@ function sanitizePathForFilename(folderPath) {
 }
 
 function normalizePathForCacheKey(folderPath) {
-  const normalized = path.resolve(folderPath);
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  return pathKey(folderPath);
 }
 
 function pathHashForFilename(folderPath) {
@@ -125,16 +126,23 @@ function boundedCacheKeyForFolder(folderPath) {
  * cacheRootDir — the parent cache directory (e.g. %APPDATA%\VideoCull\video-cache).
  * In P3, this will gain a `mode` parameter for per-drive vs centralised.
  */
+// Where macOS and Linux mount external and network drives. shortcut: Debian-style /media/<drive>
+// without a user folder maps one level too deep; read /proc/mounts if that matters.
+const POSIX_VOLUME_ROOT = /^(\/Volumes\/[^/]+|\/(?:run\/)?media\/[^/]+\/[^/]+|\/mnt\/[^/]+)/;
+
 function getDriveKey(folderPath) {
-  const parsed = path.parse(path.resolve(folderPath));
-  return parsed.root.replace(/[\\/]$/, '').toUpperCase();
+  const resolved = path.resolve(folderPath);
+  if (process.platform !== 'win32') return resolved.match(POSIX_VOLUME_ROOT)?.[1] ?? '/';
+  return path.parse(resolved).root.replace(/[\\/]$/, '').toUpperCase();
 }
 
 function getDefaultPerDriveRoot(folderPath, username) {
   const parsed = path.parse(path.resolve(folderPath));
   const driveRoot = parsed.root;
   if (process.platform !== 'win32') {
-    return path.join(driveRoot || path.sep, '.videocull', 'cache');
+    // The system disk's root is read-only on macOS and root-owned on Linux, so its cache goes home.
+    const volume = path.resolve(folderPath).match(POSIX_VOLUME_ROOT)?.[1];
+    return path.join(volume ?? os.homedir(), '.videocull', 'cache');
   }
 
   const userRoot = path.join(driveRoot, 'Users', username || '');

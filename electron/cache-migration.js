@@ -1,11 +1,8 @@
 const fs = require('node:fs/promises');
 const { constants } = require('node:fs');
 const path = require('node:path');
+const { pathKey } = require('./path-key');
 
-function pathKey(filePath) {
-  const resolved = path.resolve(filePath);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-}
 
 async function pathExists(filePath, access = fs.access) {
   try {

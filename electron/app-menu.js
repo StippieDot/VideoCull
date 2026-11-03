@@ -34,6 +34,7 @@
  *   processing: boolean,
  *   paused: boolean,
  *   finishAction: 'none' | 'sleep' | 'shutdown',
+ *   platform?: string,
  * }} MenuState
  */
 
@@ -145,9 +146,13 @@ function buildMenuTemplate(state, actions) {
   // Disabled submenus still display their labels, so private paths must be omitted entirely.
   if (state.isPrivate) state = { ...state, folders: [], recentSessions: [] };
 
+  const isMac = state.platform === 'darwin';
   /** @type {Electron.MenuItemConstructorOptions[]} */
   const template = [
+    ...(isMac ? [macAppMenu(actions)] : []),
     fileMenu(state, actions),
+    // macOS routes Cmd+C/V/X/A in text fields through the Edit menu; without it they do nothing.
+    ...(isMac ? [{ role: /** @type {const} */ ('editMenu') }] : []),
     actionsMenu(state, actions),
     viewMenu(state, actions),
     videoMenu(state, actions),
@@ -158,9 +163,37 @@ function buildMenuTemplate(state, actions) {
   return state.isPrivate ? withIds.map(disableForPrivacy) : withIds;
 }
 
+/** @param {MenuActions} actions @returns {Electron.MenuItemConstructorOptions} */
+function macAppMenu(actions) {
+  const { send } = actions;
+  return {
+    label: 'VideoCull',
+    submenu: [
+      { label: 'About VideoCull', click: () => send('open-about') },
+      { type: 'separator' },
+      { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: () => send('open-settings') },
+      { type: 'separator' },
+      { role: 'services' },
+      { type: 'separator' },
+      { role: 'hide' },
+      { role: 'hideOthers' },
+      { role: 'unhide' },
+      { type: 'separator' },
+      { role: 'quit' },
+    ],
+  };
+}
+
+/** The app that shows files: named so the menu reads like the rest of the system. */
+function fileManagerName(/** @type {string | undefined} */ platform) {
+  if (platform === 'darwin') return 'Finder';
+  return platform === 'linux' ? 'File Manager' : 'Explorer';
+}
+
 /** @param {MenuState} state @param {MenuActions} actions @returns {Electron.MenuItemConstructorOptions} */
 function fileMenu(state, actions) {
   const { send } = actions;
+  const isMac = state.platform === 'darwin';
   return {
     label: 'File',
     submenu: [
@@ -170,21 +203,20 @@ function fileMenu(state, actions) {
       openRecentItem(state, send),
       { type: 'separator' },
       { label: 'Rescan', accelerator: 'F5', enabled: state.hasSession, click: () => send('rescan-directory') },
-      revealFolderItem(state, send, 'Reveal Folder in Explorer'),
+      revealFolderItem(state, send, `Reveal Folder in ${fileManagerName(state.platform)}`),
       { label: 'Close Session', enabled: state.hasSession, click: () => send('close-session') },
       { type: 'separator' },
       { label: 'Export Report...', accelerator: 'CmdOrCtrl+Shift+E', enabled: state.canExport, click: () => send('export-report') },
       { type: 'separator' },
-      { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: () => send('open-settings') },
-      { type: 'separator' },
+      // macOS keeps Settings and Quit in the app menu.
+      ...(isMac ? [] : [{ label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: () => send('open-settings') }, { type: /** @type {const} */ ('separator') }]),
       {
         // No shortcut: it discards every review decision, and Ctrl+Shift+R is "hard refresh" muscle memory.
         label: 'Clear Cache and Reload...',
         enabled: state.hasSession,
         click: () => send('clear-cache'),
       },
-      { type: 'separator' },
-      { role: 'quit', label: 'Exit' },
+      ...(isMac ? [] : [{ type: /** @type {const} */ ('separator') }, { role: /** @type {const} */ ('quit'), label: 'Exit' }]),
     ],
   };
 }
@@ -297,7 +329,7 @@ function videoMenu(state, actions) {
     label: 'Video',
     submenu: [
       { label: 'Play Externally', accelerator: 'CmdOrCtrl+P', enabled: state.activeVideoCount === 1, click: () => send('play-external') },
-      { label: 'Reveal in Explorer', accelerator: 'CmdOrCtrl+E', enabled: state.activeVideoCount === 1, click: () => send('reveal-video') },
+      { label: `Reveal in ${fileManagerName(state.platform)}`, accelerator: 'CmdOrCtrl+E', enabled: state.activeVideoCount === 1, click: () => send('reveal-video') },
       {
         label: state.activeVideoCount > 1 ? `Copy Paths (${state.activeVideoCount})` : 'Copy Path',
         enabled: state.activeVideoCount > 0,

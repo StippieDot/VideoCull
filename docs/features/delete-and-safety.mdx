@@ -1,6 +1,6 @@
 ---
 title: Delete and safety
-description: Understand the difference between marking videos and removing files, including Recycle Bin fallback and empty-folder cleanup.
+description: Understand the difference between marking videos and removing files, including Recycle Bin and Trash fallback and empty-folder cleanup.
 ---
 
 {/* in-app-meta
@@ -41,12 +41,12 @@ The sidebar delete count is global to the loaded session, not the current filter
 
 The report export can include all loaded videos or only the current filtered result. Exporting never changes files or decisions.
 
-## Recycle Bin and permanent fallback
+## Recycle Bin, Trash, and permanent fallback
 
-VideoCull first sends each marked file to the Windows Recycle Bin. If that fails for some files, the app asks whether those failed files may be deleted permanently.
+VideoCull first sends each marked file to the Recycle Bin or Trash. If that fails for some files, the app asks whether those failed files may be deleted permanently.
 
-- Choose **Cancel** to leave the failed files in place. Files already moved to the Recycle Bin remain there.
-- Choose **Delete Permanently** only when you accept that those files cannot be restored through VideoCull or the Recycle Bin.
+- Choose **Cancel** to leave the failed files in place. Files already moved to the Recycle Bin or Trash remain there.
+- Choose **Delete Permanently** only when you accept that those files cannot be restored through VideoCull or the Recycle Bin or Trash.
 - A result message reports successful, failed, and permanent deletions separately.
 
 ## Path and cache safety
@@ -63,7 +63,7 @@ Leave it off unless cleaning the folder tree is part of your intended workflow. 
 
 ## Recover a mistaken deletion
 
-Restore files from the Windows Recycle Bin, then rescan the containing folder so they return to the session. A permanent fallback cannot be undone by VideoCull.
+Restore files from the Recycle Bin or Trash, then rescan the containing folder so they return to the session. A permanent fallback cannot be undone by VideoCull.
 
 <CardGroup cols={2}>
   <Card title="Quick start" icon="bolt" href="/getting-started/quickstart">

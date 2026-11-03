@@ -11,6 +11,50 @@ export function formatSize(bytes: number): string {
   return `${value.toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
 }
 
+/** The system the app runs on; undefined outside Electron (tests, a plain browser), which reads as Windows. */
+function currentPlatform(): string | undefined {
+  return typeof window === 'undefined' ? undefined : window.electronAPI?.platform;
+}
+
+/** Windows, or no platform at all (tests, a plain browser), which the app treats as Windows. */
+export function isWindows(): boolean {
+  const platform = currentPlatform();
+  return !platform || platform === 'win32';
+}
+
+/** What the system calls deleted-file storage: the Recycle Bin on Windows, the Trash elsewhere. */
+export function trashName(): string {
+  const platform = currentPlatform();
+  return platform && platform !== 'win32' ? 'Trash' : 'Recycle Bin';
+}
+
+/** The app that shows files, named as the native menu names it (`fileManagerName` in electron/app-menu.js). */
+export function fileManagerName(): string {
+  const platform = currentPlatform();
+  return platform === 'darwin' ? 'Finder' : platform === 'linux' ? 'File Manager' : 'Explorer';
+}
+
+/** The system's name as the documentation titles its platform tabs (`<Tab title="macOS">`). */
+export function platformName(): 'Windows' | 'macOS' | 'Linux' {
+  const platform = currentPlatform();
+  return platform === 'darwin' ? 'macOS' : platform === 'linux' ? 'Linux' : 'Windows';
+}
+
+/** The modifier shortcuts show: Cmd on macOS, where it stands in for Ctrl (see `matchesKeybind`). */
+export function modKeyName(): string {
+  return currentPlatform() === 'darwin' ? 'Cmd' : 'Ctrl';
+}
+
+/** Ctrl is held, or Cmd on macOS. Elsewhere Meta is the Windows or Super key and must not act as Ctrl. */
+export function isModKeyDown(event: { ctrlKey: boolean; metaKey: boolean }): boolean {
+  return event.ctrlKey || (event.metaKey && currentPlatform() === 'darwin');
+}
+
+/** Windows paths ignore letter case; macOS and Linux paths keep it. Kept in step with electron/path-key.js. */
+export function foldPathCase(value: string): string {
+  return isWindows() ? value.toLowerCase() : value;
+}
+
 export function formatDeleteConfirmation({
   count,
   sizeBytes,
@@ -24,7 +68,7 @@ export function formatDeleteConfirmation({
   const folderDetail = removeEmptyFoldersAfterDelete
     ? ' Empty source folders will be cleaned up when they are truly empty.'
     : ' Empty source folders will not be removed.';
-  return `Move ${count} ${videoLabel} (${formatSize(sizeBytes)}) to the Recycle Bin? If the Recycle Bin is unavailable, VideoCull will ask before permanently deleting.${folderDetail}`;
+  return `Move ${count} ${videoLabel} (${formatSize(sizeBytes)}) to the ${trashName()}? If the ${trashName()} is unavailable, VideoCull will ask before permanently deleting.${folderDetail}`;
 }
 
 /**
@@ -227,13 +271,13 @@ const normalizedFolders = new Map<string, string>();
 export function normalizeFolder(value: string): string {
   let normalized = normalizedFolders.get(value);
   if (normalized === undefined) {
-    normalized = value.replace(/[\\/]+/g, '\\').replace(/\\$/, '').toLowerCase();
+    normalized = foldPathCase(value.replace(/[\\/]+/g, '\\').replace(/\\$/, ''));
     normalizedFolders.set(value, normalized);
   }
   return normalized;
 }
 
-/** Tests whether a folder is `ancestor` or lies below it; Windows paths, so case and separators do not matter. */
+/** Tests whether a folder is `ancestor` or lies below it, compared as `normalizeFolder` compares them. */
 export function folderInsideTest(ancestor: string): (folder: string) => boolean {
   const base = normalizeFolder(ancestor);
   const prefix = `${base}\\`;

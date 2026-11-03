@@ -892,3 +892,11 @@ test('deleteDb suppresses missing files but propagates real unlink failures', ()
     (error) => error.code === 'EACCES' && error.message === 'WAL is locked'
   );
 });
+
+test('per-drive caches on macOS and Linux go to the mounted drive, or home for the system disk', { skip: process.platform === 'win32' }, () => {
+  const rootOf = (folder) => path.dirname(cache.resolveCachePaths(folder, { mode: 'per-drive', username: 'me' }).dbPath);
+  assert.equal(rootOf('/Volumes/Footage/2024/trip'), '/Volumes/Footage/.videocull/cache');
+  assert.equal(rootOf('/run/media/me/Footage/trip'), '/run/media/me/Footage/.videocull/cache');
+  assert.equal(rootOf('/mnt/nas/trip'), '/mnt/nas/.videocull/cache');
+  assert.equal(rootOf('/home/me/Videos'), path.join(os.homedir(), '.videocull', 'cache'));
+});
