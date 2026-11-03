@@ -33,7 +33,7 @@
     "stress:cache-overcap": "node scripts/cache-overcap-smoke.js",
     "cleanup:cache": "node scripts/cleanup-cache-clutter.js",
     "package": "vite build && electron-builder --win --publish never",
-    "package:mac": "vite build && electron-builder --mac --publish never",
+    "package:mac": "vite build && node scripts/fetch-ffmpeg.js darwin-arm64 darwin-x64 && electron-builder --mac --publish never",
     "package:linux": "vite build && electron-builder --linux --publish never",
     "package:store": "node scripts/package-store.js"
   },
@@ -93,6 +93,14 @@
       {
         "from": "LICENSE",
         "to": "LICENSE.txt"
+      },
+      {
+        "from": "vendor/ffmpeg/${platform}-${arch}",
+        "to": "ffmpeg",
+        "filter": [
+          "**/*",
+          "!.toolchain-sha256"
+        ]
       }
     ],
     "asarUnpack": [
@@ -114,14 +122,6 @@
         {
           "from": "build/videocull.ico",
           "to": "videocull.ico"
-        },
-        {
-          "from": "vendor/ffmpeg",
-          "to": "ffmpeg",
-          "filter": [
-            "**/*",
-            "!.toolchain-sha256"
-          ]
         }
       ]
     },

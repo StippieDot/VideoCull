@@ -305,14 +305,17 @@ repository's releases, so a toolchain release can never be mistaken for an app u
   winpthreads and MinGW-w64 CRT), manifest (versions, configure line, hashes) and `SHA256SUMS`.
 
 **In VideoCull:**
-- `config/ffmpeg-toolchain.json` pins repository, tag, asset and SHA-256. `scripts/fetch-ffmpeg.js` (run from
-  `postinstall`) downloads that asset, refuses a hash mismatch, and installs it into `vendor/ffmpeg/`
-  (git-ignored) by extracting next to it and swapping.
-- electron-builder `extraResources` copies `vendor/ffmpeg/` to `resources/ffmpeg/` for both editions;
+- `config/ffmpeg-toolchain.json` pins repository, tag, and an asset with SHA-256 for each of `win32-x64`,
+  `linux-x64`, `darwin-arm64` and `darwin-x64` (one release covers all). `scripts/fetch-ffmpeg.js` (run from
+  `postinstall` for the host, and by `package:mac` for both Mac architectures) downloads the asset, refuses a
+  hash mismatch, and installs it into `vendor/ffmpeg/<platform>-<arch>/` (git-ignored) by extracting next to
+  it and swapping.
+- electron-builder `extraResources` copies `vendor/ffmpeg/${platform}-${arch}/` to `resources/ffmpeg/` on
+  every platform;
   `@ffmpeg-installer/*` and `@ffprobe-installer/*` are removed. Installer and Store package checks require
   `ffmpeg.exe`, `ffprobe.exe` and the GPL text there.
-- `electron/media-tools.js` resolves `resources/ffmpeg` when packaged, `vendor/ffmpeg` in development and
-  an env override for tests, and logs the FFmpeg version once at startup.
+- `electron/media-tools.js` resolves `resources/ffmpeg` when packaged, `vendor/ffmpeg/<platform>-<arch>` in
+  development and an env override (tests, or packagers with their own FFmpeg), and logs the FFmpeg version once at startup.
 - **Windows minimum:** raised to Windows 10 22H2 (build 19045) for both editions (decided 2026-10-04).
 - **Updates:** change a line in `sources.lock` (or delete `msys2.lock` to move the compiler), raise
   `REVISION`, let CI build and verify, publish, then update `config/ffmpeg-toolchain.json` in VideoCull.

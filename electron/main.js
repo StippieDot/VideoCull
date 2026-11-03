@@ -437,18 +437,7 @@ app.whenReady().then(async () => {
     });
   }
   defaultCentralCacheRoot = profileBootstrap?.defaultCentralCacheRoot ?? path.join(app.getPath('userData'), 'video-cache');
-  void checkMediaTools(log).then((ok) => {
-    if (ok || process.platform === 'win32') return;
-    const notice = {
-      title: 'FFmpeg not found',
-      detail: process.platform === 'darwin'
-        ? 'Install it with "brew install ffmpeg" and restart VideoCull to get thumbnails and previews.'
-        : 'Install the ffmpeg package and restart VideoCull to get thumbnails and previews.',
-      kind: 'warning',
-    };
-    if (mainWindow?.isVisible()) sendToRenderer('app-notification', notice);
-    else pendingProfileWarning ??= notice;
-  });
+  void checkMediaTools(log);
 
   protocol.handle('thumb', async (request) => {
     let filePath = getFilePathFromProtocolRequest(request, 'thumb');

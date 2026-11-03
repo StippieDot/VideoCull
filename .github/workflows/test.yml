@@ -28,11 +28,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # macOS and Linux builds use the system FFmpeg, which the media tests run against.
-      - name: Install FFmpeg
-        if: runner.os != 'Windows'
-        run: ${{ runner.os == 'macOS' && 'brew install ffmpeg' || 'sudo apt-get update && sudo apt-get install -y ffmpeg' }}
-
       - name: Run CI test suite
         run: npm run test:ci
 

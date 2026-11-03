@@ -22,12 +22,10 @@ function runPackagedSqliteSmoke(executablePath, resourcesPath, spawn = spawnSync
   }
 }
 
-const REQUIRED_LEGAL_FILES = ['LICENSE.txt', NOTICES_FILE];
-const FFMPEG_LICENSE = path.join('ffmpeg', 'LICENSE.txt');
+const REQUIRED_LEGAL_FILES = ['LICENSE.txt', NOTICES_FILE, path.join('ffmpeg', 'LICENSE.txt')];
 
-function assertLegalFilesPresent(resourcesPath, exists = fs.existsSync, bundlesFfmpeg = true) {
-  const required = bundlesFfmpeg ? [...REQUIRED_LEGAL_FILES, FFMPEG_LICENSE] : REQUIRED_LEGAL_FILES;
-  const missing = required.filter((name) => !exists(path.join(resourcesPath, name)));
+function assertLegalFilesPresent(resourcesPath, exists = fs.existsSync) {
+  const missing = REQUIRED_LEGAL_FILES.filter((name) => !exists(path.join(resourcesPath, name)));
   if (missing.length) throw new Error(`Packaged app is missing legal files: ${missing.join(', ')}`);
 }
 
@@ -43,15 +41,14 @@ function packagedLayout({ electronPlatformName, appOutDir, packager }) {
 }
 
 // Runs after the app folder is assembled and before the installer or Store package is built, so
-// every edition ships the same generated notices. Only Windows bundles FFmpeg.
+// every edition ships the same generated notices.
 async function afterPack(context, dependencies = {}) {
   const { executablePath, resourcesPath } = packagedLayout(context);
-  const bundlesFfmpeg = context.electronPlatformName === 'win32';
   const writeNotices = dependencies.writeNotices ?? writeThirdPartyNotices;
   const checkLegalFiles = dependencies.checkLegalFiles ?? assertLegalFilesPresent;
   const runSmoke = dependencies.runSmoke ?? runPackagedSqliteSmoke;
-  writeNotices(resourcesPath, { includeBundledFfmpeg: bundlesFfmpeg });
-  checkLegalFiles(resourcesPath, undefined, bundlesFfmpeg);
+  writeNotices(resourcesPath);
+  checkLegalFiles(resourcesPath);
   runSmoke(executablePath, resourcesPath);
 }
 

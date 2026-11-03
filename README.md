@@ -46,7 +46,7 @@ For a direct installation, download `VideoCull.Setup.<version>.exe` from [GitHub
 
 Download `VideoCull-<version>-arm64.dmg` (Apple silicon), `VideoCull-<version>-x64.dmg` (Intel Mac) or `VideoCull-<version>-x86_64.AppImage` from [GitHub Releases](https://github.com/StippieDot/VideoCull/releases). These builds are new and tested by the community; please [report problems](https://github.com/StippieDot/VideoCull/issues).
 
-- VideoCull uses the FFmpeg installed on your system: `brew install ffmpeg` on macOS, or the `ffmpeg` package of your distribution.
+- FFmpeg comes with VideoCull, as on Windows. Linux needs glibc 2.31 or newer (Ubuntu 20.04, Debian 11, Fedora and later).
 - The macOS app is not notarized yet. After moving it to Applications, run `xattr -cr /Applications/VideoCull.app` once, or allow it under **System Settings > Privacy & Security**. It does not update itself; download new versions from GitHub Releases.
 - On Linux, make the AppImage executable (`chmod +x`) and run it. AppImages need FUSE 2, which Ubuntu 22.04 and newer do not install by default: `sudo apt install libfuse2t64`. It checks GitHub Releases for updates.
 
@@ -215,7 +215,7 @@ Found a bug or something that is not obvious in the workflow? [Open an issue](ht
 
 ## Building from Source
 
-Requires Node.js 24 LTS and npm 11.19.0 or newer. On Windows, `npm ci` also downloads the pinned FFmpeg and FFprobe build into `vendor/ffmpeg` and checks its SHA-256. On macOS and Linux, install FFmpeg with your package manager.
+Requires Node.js 24 LTS and npm 11.19.0 or newer. `npm ci` also downloads the pinned FFmpeg and FFprobe build for your platform into `vendor/ffmpeg/<platform>-<arch>` and checks its SHA-256.
 
 If `npm --version` is below 11.19.0, run `npm install --global npm@11.19.0` before `npm ci`.
 

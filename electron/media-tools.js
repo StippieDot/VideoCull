@@ -1,41 +1,30 @@
 // @ts-check
-// Single place that resolves the FFmpeg/FFprobe binaries. On Windows the runtime folder (executables
-// plus FFmpeg's DLLs) is fetched by scripts/fetch-ffmpeg.js into vendor/ffmpeg and packaged as
-// resources/ffmpeg, outside app.asar, because child processes cannot run from inside the archive.
-// macOS and Linux use the FFmpeg the user installed, unless a bundled folder is present.
+// Single place that resolves the FFmpeg/FFprobe binaries. The runtime folder (executables plus FFmpeg's
+// shared libraries), built in StippieDot/VideoCull-FFmpeg for every platform, is fetched by
+// scripts/fetch-ffmpeg.js into vendor/ffmpeg/<platform>-<arch> and packaged as resources/ffmpeg,
+// outside app.asar, because child processes cannot run from inside the archive.
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 
-// Apps started from Finder or a desktop launcher do not inherit the shell PATH, so the usual
-// Homebrew and distribution folders are searched by name.
-const SYSTEM_TOOL_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin'];
-
 /** @param {string} name @param {string} platform */
 const executableName = (name, platform) => (platform === 'win32' ? `${name}.exe` : name);
 
 /**
- * @param {{
- *   override?: string, appDir: string, resourcesPath?: string,
- *   platform?: string, pathEnv?: string, exists?: (file: string) => boolean,
- * }} location
- * @returns {string} folder that holds ffmpeg and ffprobe (on Windows also their DLLs)
+ * @param {{ override?: string, appDir: string, resourcesPath?: string, platform?: string, arch?: string }} location
+ * @returns {string} folder that holds ffmpeg, ffprobe and their libraries
  */
-function resolveMediaToolsDir({ override, appDir, resourcesPath, platform = process.platform, pathEnv = process.env.PATH ?? '', exists = fs.existsSync }) {
+function resolveMediaToolsDir({ override, appDir, resourcesPath, platform = process.platform, arch = process.arch }) {
   if (override) return override;
   // Packaged builds load this file from inside app.asar.
-  const bundled = resourcesPath && appDir.includes(`${path.sep}app.asar`)
+  return resourcesPath && appDir.includes(`${path.sep}app.asar`)
     ? path.join(resourcesPath, 'ffmpeg')
-    : path.join(appDir, '..', 'vendor', 'ffmpeg');
-  if (platform === 'win32') return bundled;
-  // shortcut: macOS and Linux rely on a system FFmpeg; bundle one when its version causes reports.
-  const candidates = [bundled, ...SYSTEM_TOOL_DIRS, ...pathEnv.split(path.delimiter)].filter(Boolean);
-  return candidates.find((dir) => exists(path.join(dir, 'ffmpeg')) && exists(path.join(dir, 'ffprobe'))) ?? bundled;
+    : path.join(appDir, '..', 'vendor', 'ffmpeg', `${platform}-${arch}`);
 }
 
 const mediaToolsDir = resolveMediaToolsDir({
-  // Tests only: lets a test run against another runtime folder.
+  // Lets tests, and packagers who ship their own FFmpeg (e.g. Flatpak), use another runtime folder.
   override: process.env.VIDEOCULL_FFMPEG_DIR,
   appDir: __dirname,
   resourcesPath: process.resourcesPath,

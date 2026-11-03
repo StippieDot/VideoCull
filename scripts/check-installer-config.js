@@ -44,7 +44,7 @@ assert.ok(
   'packaged resources must include the application license as LICENSE.txt',
 );
 assert.ok(
-  packageJson.build?.win?.extraResources?.some((resource) => resource.from === 'vendor/ffmpeg' && resource.to === 'ffmpeg'),
+  packageJson.build?.extraResources?.some((resource) => resource.from === 'vendor/ffmpeg/${platform}-${arch}' && resource.to === 'ffmpeg'),
   'packaged resources must include the bundled FFmpeg runtime folder',
 );
 assert.equal(nsis.installerHeader, 'build/installerHeader.bmp', 'custom installer header must be configured');

@@ -161,16 +161,15 @@ function buildFfmpegSection(ffmpegDir) {
 
 /**
  * @param {string} resourcesPath
- * @param {{ includeBundledFfmpeg?: boolean }} [options] macOS and Linux use the system FFmpeg
  * @returns {string} the written file
  */
-function writeThirdPartyNotices(resourcesPath, { includeBundledFfmpeg = true } = {}) {
+function writeThirdPartyNotices(resourcesPath) {
   const overrides = JSON.parse(fs.readFileSync(path.join(__dirname, 'license-overrides.json'), 'utf8'));
   const notices = buildNotices(
     readShippedPackages(resourcesPath),
     overrides,
     (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8'),
-    includeBundledFfmpeg ? [buildFfmpegSection(path.join(resourcesPath, 'ffmpeg'))] : [],
+    [buildFfmpegSection(path.join(resourcesPath, 'ffmpeg'))],
   );
   const target = path.join(resourcesPath, NOTICES_FILE);
   fs.writeFileSync(target, notices, 'utf8');
