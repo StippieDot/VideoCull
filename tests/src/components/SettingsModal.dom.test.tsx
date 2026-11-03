@@ -200,6 +200,36 @@ describe('SettingsModal integration behavior', () => {
     expect(useStore.getState().settings.keepReviewControlsVisible).toBe(true);
   });
 
+  test('warns when Codec is ranked below bitrate, and one click moves it above them', async () => {
+    render(<SettingsModal initialTab="duplicates" />);
+
+    // Collapsed by default: neither the list nor the warning shows until it is opened.
+    expect(screen.queryByText(/so codec rarely decides/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /move codec above them/i })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /codec preference/i }));
+    expect(screen.getByText(/so codec rarely decides/i)).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: /move codec above them/i }));
+
+    expect(screen.queryByText(/so codec rarely decides/i)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
+    await waitFor(() => {
+      expect(useStore.getState().settings.duplicates.keeperOrder).toEqual(['resolution', 'codec', 'videoBitrate', 'duration', 'fps', 'size']);
+    });
+  });
+
+  test('reorders the codec preference without changing the rule order', async () => {
+    render(<SettingsModal initialTab="duplicates" />);
+
+    await userEvent.click(screen.getByRole('button', { name: /codec preference/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Move H.264 / AVC up' }));
+    await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
+
+    await waitFor(() => {
+      expect(useStore.getState().settings.duplicates.codecOrder.slice(0, 4)).toEqual(['av1', 'hevc', 'h264', 'vp9']);
+    });
+    expect(useStore.getState().settings.duplicates.keeperOrder).toEqual(['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec']);
+  });
+
   test('shows Appearance first and saves the selected color theme', async () => {
     render(<SettingsModal initialTab="interface" />);
 

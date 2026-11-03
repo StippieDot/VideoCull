@@ -95,7 +95,7 @@ Find likely duplicates across all loaded videos or just the current filtered vie
 - Two visual comparison methods: pHash (strict, few false positives) and visual similarity (catches more alternate encodes and resized copies, with more false positives)
 - Adjustable similarity threshold and sample count; results below roughly 95% deserve careful review
 - Optional mirrored-copy comparison
-- Suggested keeper priority based on resolution, bitrate, duration, FPS, and file size
+- Suggested keeper priority based on resolution, bitrate, duration, FPS, file size, and codec
 - Protection rules for videos already marked Keep or Skip
 - Manual keeper overrides and "Not a match" ignored-pair handling that survives reruns
 - Right-click actions for duplicate rows and groups, including keeper selection, exclusion, and group dismissal

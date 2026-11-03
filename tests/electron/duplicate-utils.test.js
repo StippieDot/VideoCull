@@ -48,7 +48,7 @@ test('default settings follow the simplified VDF-style model', () => {
   assert.equal(settings.durationTolerancePercent, 20);
   assert.equal(settings.checkpointIntervalMinutes, 5);
   assert.equal(settings.requireEverySample, false);
-  assert.deepEqual(settings.keeperOrder, ['resolution', 'videoBitrate', 'duration', 'fps', 'size']);
+  assert.deepEqual(settings.keeperOrder, ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec']);
 });
 
 test('similarity threshold accepts any value from 0 to 100 percent', () => {
@@ -207,7 +207,35 @@ test('keeper ordering normalization removes legacy metadata and filename rules',
   const settings = normalizeDuplicateSettings({
     keeperOrder: ['metadataDate', 'size', 'filename', 'fps'],
   });
-  assert.deepEqual(settings.keeperOrder, ['size', 'fps', 'resolution', 'videoBitrate', 'duration']);
+  assert.deepEqual(settings.keeperOrder, ['size', 'fps', 'resolution', 'videoBitrate', 'duration', 'codec']);
+});
+
+test('codec ranks above bitrate when the user puts it first, and falls back to the next rule when codecs tie', () => {
+  const h264 = { id: 'h264', path: 'a.mp4', videoCodec: 'h264', videoBitrate: 10_000_000, sizeBytes: 1200 };
+  const hevc = { id: 'hevc', path: 'b.mp4', videoCodec: 'HEVC', videoBitrate: 6_000_000, sizeBytes: 750 };
+  const unknown = { id: 'unknown', path: 'c.mp4', videoCodec: 'mpeg4', videoBitrate: 20_000_000, sizeBytes: 50 };
+  const codecFirst = normalizeDuplicateSettings({ keeperOrder: ['codec', 'videoBitrate'] });
+  assert.equal(chooseSuggestedKeeper([h264, hevc], codecFirst)?.id, 'hevc');
+  assert.equal(chooseSuggestedKeeper([h264, hevc], normalizeDuplicateSettings({ keeperOrder: ['videoBitrate', 'codec'] }))?.id, 'h264');
+  // Unlisted codecs tie with each other and rank below every listed one.
+  assert.equal(chooseSuggestedKeeper([unknown, h264], codecFirst)?.id, 'h264');
+  assert.equal(chooseSuggestedKeeper([unknown, { ...unknown, id: 'other', path: 'd.mp4', videoBitrate: 1 }], codecFirst)?.id, 'unknown');
+});
+
+test('codec preference order is configurable and normalized', () => {
+  const h264First = normalizeDuplicateSettings({ keeperOrder: ['codec'], codecOrder: ['h264', 'bogus', 'h264'] });
+  assert.deepEqual(h264First.codecOrder, ['h264', 'av1', 'hevc', 'vp9', 'vp8', 'mpeg4', 'mpeg2video', 'vc1']);
+  const hevc = { id: 'hevc', path: 'b.mp4', videoCodec: 'hevc' };
+  const h264 = { id: 'h264', path: 'a.mp4', videoCodec: 'h264' };
+  assert.equal(chooseSuggestedKeeper([hevc, h264], h264First)?.id, 'h264');
+  assert.deepEqual(normalizeDuplicateSettings({}).codecOrder, ['av1', 'hevc', 'vp9', 'h264', 'vp8', 'mpeg4', 'mpeg2video', 'vc1']);
+  // Alternative ffprobe names count as their family.
+  const wmv = { id: 'wmv', path: 'w.wmv', videoCodec: 'wmv3' };
+  const mpeg4 = { id: 'mpeg4', path: 'm.avi', videoCodec: 'mpeg4' };
+  const hevcAlias = { id: 'h265', path: 'h.mkv', videoCodec: 'h265' };
+  const codecOnly = normalizeDuplicateSettings({ keeperOrder: ['codec'] });
+  assert.equal(chooseSuggestedKeeper([wmv, mpeg4], codecOnly)?.id, 'mpeg4');
+  assert.equal(chooseSuggestedKeeper([mpeg4, hevcAlias], codecOnly)?.id, 'h265');
 });
 
 test('fingerprints made with the 2018 FFmpeg build are not reused', () => {

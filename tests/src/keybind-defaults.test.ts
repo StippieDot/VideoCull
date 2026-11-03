@@ -159,7 +159,7 @@ describe('migrateSettings', () => {
       ...DEFAULT_DUPLICATE_SETTINGS,
       comparisonMode: DEFAULT_DUPLICATE_SETTINGS.comparisonMode,
       sampleCount: DEFAULT_DUPLICATE_SETTINGS.sampleCount,
-      keeperOrder: ['fps', 'resolution', 'videoBitrate', 'duration', 'size'],
+      keeperOrder: ['fps', 'resolution', 'videoBitrate', 'duration', 'size', 'codec'],
       ignoredDuplicatePairs: ['abcdefabcdefabcd|0011223344556677'],
     });
   });
@@ -190,5 +190,15 @@ describe('migrateSettings', () => {
     expect('keyToggleAppMode' in migrated).toBe(false);
     expect('keyPreviewSeekBack' in migrated).toBe(false);
     expect('keyPreviewSeekForward' in migrated).toBe(false);
+  });
+});
+
+describe('duplicate keeper defaults match the backend copy', () => {
+  test('rules, codec order and ranking agree', async () => {
+    const backend = (await import('../../electron/duplicate-utils.js')).default;
+    expect(backend.DEFAULT_DUPLICATE_SETTINGS.keeperOrder).toEqual(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
+    expect(backend.DEFAULT_DUPLICATE_SETTINGS.codecOrder).toEqual(DEFAULT_DUPLICATE_SETTINGS.codecOrder);
+    expect(backend.normalizeDuplicateSettings({ keeperOrder: ['codec'], codecOrder: ['vp9'] }))
+      .toMatchObject(migrateSettings({ duplicates: { keeperOrder: ['codec'], codecOrder: ['vp9'] } }).duplicates ?? {});
   });
 });

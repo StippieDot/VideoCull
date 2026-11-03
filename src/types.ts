@@ -242,6 +242,7 @@ export interface DuplicateSettings {
   protectKeep: boolean;
   protectSkipped: boolean;
   keeperOrder: string[];
+  codecOrder: string[];
   samplingWindow: DuplicateSamplingWindow;
   customStartPercent: number;
   customEndPercent: number;

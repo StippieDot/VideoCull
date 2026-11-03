@@ -216,6 +216,31 @@ describe('keeper suggestions', () => {
     expect(groups[0]?.suggestedKeeperId).toBe('higher-bitrate');
   });
 
+  test('prefers the higher-ranked codec only when the codec rule comes first', () => {
+    const videos = [
+      makeVideo('h264', { path: 'C:\\h264.mp4', videoCodec: 'h264', videoBitrate: 10000000 }),
+      makeVideo('hevc', { path: 'C:\\hevc.mp4', videoCodec: 'hevc', videoBitrate: 6000000 }),
+    ];
+    const group = [makeGroup({ videoIds: ['h264', 'hevc'] })];
+    const codecOrder = ['av1', 'hevc', 'vp9', 'h264'];
+
+    expect(__test__.applyKeeperOrderToGroups(group, videos, ['codec', 'videoBitrate'], codecOrder)[0]?.suggestedKeeperId).toBe('hevc');
+    expect(__test__.applyKeeperOrderToGroups(group, videos, ['videoBitrate', 'codec'], codecOrder)[0]?.suggestedKeeperId).toBe('h264');
+  });
+
+  test('counts alternative ffprobe codec names as their family', () => {
+    const videos = [
+      makeVideo('wmv', { path: 'C:\\wmv.wmv', videoCodec: 'wmv3' }),
+      makeVideo('mpeg4', { path: 'C:\\mpeg4.avi', videoCodec: 'mpeg4' }),
+      makeVideo('h265', { path: 'C:\\h265.mkv', videoCodec: 'h265' }),
+    ];
+    const codecOrder = ['av1', 'hevc', 'vp9', 'h264', 'vp8', 'mpeg4', 'mpeg2video', 'vc1'];
+    const keeper = (ids: string[]) => __test__.applyKeeperOrderToGroups([makeGroup({ videoIds: ids })], videos, ['codec'], codecOrder)[0]?.suggestedKeeperId;
+
+    expect(keeper(['wmv', 'mpeg4'])).toBe('mpeg4');
+    expect(keeper(['mpeg4', 'h265'])).toBe('h265');
+  });
+
   test('does not assign a resolution tier to incomplete metadata', () => {
     const videos = [
       makeVideo('incomplete', { path: 'C:\\incomplete.mp4', width: 1920, height: null, videoBitrate: 6008000 }),

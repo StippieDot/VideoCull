@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import useStore from '../store';
-import { ArrowDown, ArrowUp, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake, FolderOpen, Copy, Trash2, FileText } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake, FolderOpen, Copy, Trash2, FileText } from 'lucide-react';
 import type { AppSettings, CacheLocationInfo, DistributionInfo, LegacyInstallStatus, LegalFileName, ToastInput, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
@@ -40,6 +40,18 @@ const KEEPER_RULE_LABELS: Record<string, { title: string; description: string }>
   duration: { title: 'Duration', description: 'Prefer the longest version.' },
   fps: { title: 'FPS', description: 'Prefer smoother playback.' },
   size: { title: 'File size', description: 'Prefer the largest file.' },
+  codec: { title: 'Codec', description: 'Prefer the codec ranked higher in the codec preference.' },
+};
+
+const CODEC_FAMILY_INFO: Record<string, { title: string; description: string }> = {
+  av1: { title: 'AV1', description: 'Newest and most efficient' },
+  hevc: { title: 'H.265 / HEVC', description: 'Efficient, widely used for 4K' },
+  vp9: { title: 'VP9', description: 'Efficient, common for web video' },
+  h264: { title: 'H.264 / AVC', description: 'Most compatible' },
+  vp8: { title: 'VP8', description: 'Older web video' },
+  mpeg4: { title: 'MPEG-4 (Xvid, DivX)', description: 'Common in older AVI files' },
+  mpeg2video: { title: 'MPEG-2', description: 'DVDs and broadcast recordings' },
+  vc1: { title: 'WMV / VC-1', description: 'Windows Media video' },
 };
 
 type SaveChangeSummary = {
@@ -69,6 +81,8 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
   const [activeTab, setActiveTab] = useState<SettingsTab>('interface');
   const [localSettings, setLocalSettings] = useState<AppSettings>(globalSettings);
   const [appVersion, setAppVersion] = useState<string>('');
+  // Collapsed by default: most people never change the codec preference.
+  const [codecListOpen, setCodecListOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [exportMessage, setExportMessage] = useState<string>('');
   const [cacheMessage, setCacheMessage] = useState<string>('');
@@ -207,17 +221,28 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
     }));
   };
 
-  const moveKeeperRule = (index: number, direction: -1 | 1) => {
+  const moveInOrder = (field: 'keeperOrder' | 'codecOrder', index: number, direction: -1 | 1) => {
     const nextIndex = index + direction;
-    const currentOrder = localSettings.duplicates.keeperOrder;
+    const currentOrder = localSettings.duplicates[field];
     if (nextIndex < 0 || nextIndex >= currentOrder.length) return;
     const nextOrder = [...currentOrder];
     [nextOrder[index], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[index]];
-    handleDuplicateChange('keeperOrder', nextOrder);
+    handleDuplicateChange(field, nextOrder);
+  };
+
+  // Bitrate and file size nearly always differ between copies, so a Codec rule below them almost never decides.
+  const rulesAboveCodec = localSettings.duplicates.keeperOrder.slice(0, localSettings.duplicates.keeperOrder.indexOf('codec'));
+  const codecOutranked = rulesAboveCodec.some((rule) => rule === 'videoBitrate' || rule === 'size');
+
+  const moveCodecAboveBitrateAndSize = () => {
+    const rest = localSettings.duplicates.keeperOrder.filter((rule) => rule !== 'codec');
+    const target = rest.findIndex((rule) => rule === 'videoBitrate' || rule === 'size');
+    handleDuplicateChange('keeperOrder', [...rest.slice(0, target), 'codec', ...rest.slice(target)]);
   };
 
   const resetKeeperOrder = () => {
     handleDuplicateChange('keeperOrder', [...DEFAULT_DUPLICATE_SETTINGS.keeperOrder]);
+    handleDuplicateChange('codecOrder', [...DEFAULT_DUPLICATE_SETTINGS.codecOrder]);
   };
 
   const handleCacheLocationChange = async (val: string) => {
@@ -772,20 +797,72 @@ export default function SettingsModal({ initialTab = 'interface', tabRequestId =
                           {localSettings.duplicates.keeperOrder.map((rule, index) => {
                             const label = KEEPER_RULE_LABELS[rule] ?? { title: rule, description: 'Custom rule.' };
                             return (
-                              <div className="duplicates-keeper-row" key={rule}>
-                                <span className="duplicates-keeper-rank">{index + 1}</span>
-                                <span className="duplicates-keeper-copy">
-                                  <strong>{label.title}</strong>
-                                  <span>{label.description}</span>
-                                </span>
-                                <span className="duplicates-keeper-actions">
-                                  <button type="button" onClick={() => moveKeeperRule(index, -1)} disabled={index === 0} aria-label={`Move ${label.title} up`}>
-                                    <ArrowUp size={14} />
-                                  </button>
-                                  <button type="button" onClick={() => moveKeeperRule(index, 1)} disabled={index === localSettings.duplicates.keeperOrder.length - 1} aria-label={`Move ${label.title} down`}>
-                                    <ArrowDown size={14} />
-                                  </button>
-                                </span>
+                              <div className="duplicates-keeper-item" key={rule}>
+                                <div className="duplicates-keeper-row">
+                                  <span className="duplicates-keeper-rank">{index + 1}</span>
+                                  <span className="duplicates-keeper-copy">
+                                    <strong>{label.title}</strong>
+                                    <span>{label.description}</span>
+                                  </span>
+                                  <span className="duplicates-keeper-actions">
+                                    <button type="button" onClick={() => moveInOrder('keeperOrder', index, -1)} disabled={index === 0} aria-label={`Move ${label.title} up`}>
+                                      <ArrowUp size={14} />
+                                    </button>
+                                    <button type="button" onClick={() => moveInOrder('keeperOrder', index, 1)} disabled={index === localSettings.duplicates.keeperOrder.length - 1} aria-label={`Move ${label.title} down`}>
+                                      <ArrowDown size={14} />
+                                    </button>
+                                  </span>
+                                </div>
+                                {rule === 'codec' && (
+                                  <div className="duplicates-codec-panel">
+                                    <button
+                                      type="button"
+                                      className="duplicates-codec-toggle"
+                                      aria-expanded={codecListOpen}
+                                      onClick={() => setCodecListOpen((open) => !open)}
+                                    >
+                                      {codecListOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                      Codec preference
+                                    </button>
+                                    {codecListOpen && (
+                                      <>
+                                        {codecOutranked && (
+                                          <div className="duplicates-keeper-hint" role="note">
+                                            <span>Video bitrate or File size is ranked above Codec and nearly always differs between copies, so Codec rarely decides.</span>
+                                            <button type="button" className="duplicates-clear-btn" onClick={moveCodecAboveBitrateAndSize}>
+                                              Move Codec above them
+                                            </button>
+                                          </div>
+                                        )}
+                                        <span className="help-text">
+                                          Higher decides first. Videos with the same codec, or one not listed here, tie and the next rule decides.
+                                        </span>
+                                        <div className="duplicates-keeper-list">
+                                          {localSettings.duplicates.codecOrder.map((family, codecIndex) => {
+                                            const info = CODEC_FAMILY_INFO[family] ?? { title: family, description: '' };
+                                            return (
+                                              <div className="duplicates-keeper-row" key={family}>
+                                                <span className="duplicates-keeper-rank">{codecIndex + 1}</span>
+                                                <span className="duplicates-keeper-copy">
+                                                  <strong>{info.title}</strong>
+                                                  <span>{info.description}</span>
+                                                </span>
+                                                <span className="duplicates-keeper-actions">
+                                                  <button type="button" onClick={() => moveInOrder('codecOrder', codecIndex, -1)} disabled={codecIndex === 0} aria-label={`Move ${info.title} up`}>
+                                                    <ArrowUp size={14} />
+                                                  </button>
+                                                  <button type="button" onClick={() => moveInOrder('codecOrder', codecIndex, 1)} disabled={codecIndex === localSettings.duplicates.codecOrder.length - 1} aria-label={`Move ${info.title} down`}>
+                                                    <ArrowDown size={14} />
+                                                  </button>
+                                                </span>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             );
                           })}

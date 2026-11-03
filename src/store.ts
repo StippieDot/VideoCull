@@ -434,7 +434,16 @@ function resolutionSortValue(video: Video) {
 
 // SYNC NOTE: This function mirrors compareKeeperCandidates in electron/duplicate-utils.js.
 // The renderer copy exists for instant keeper re-computation when settings change.
-function compareKeeperCandidates(a: Video, b: Video, order: string[]): number {
+// ffprobe names other than the family keys in codecOrder. SYNC NOTE: mirrors electron/duplicate-utils.js.
+const CODEC_ALIASES: Record<string, string> = { h265: 'hevc', wmv1: 'vc1', wmv2: 'vc1', wmv3: 'vc1' };
+
+function codecPreferenceScore(video: Video, codecOrder: string[]): number {
+  const name = (video.videoCodec ?? '').toLowerCase();
+  const index = codecOrder.indexOf(CODEC_ALIASES[name] ?? name);
+  return index === -1 ? 0 : codecOrder.length - index;
+}
+
+function compareKeeperCandidates(a: Video, b: Video, order: string[], codecOrder: string[]): number {
   for (const rule of order) {
     let diff = 0;
     if (rule === 'resolution') diff = resolutionDisplayTier(a) - resolutionDisplayTier(b);
@@ -442,16 +451,17 @@ function compareKeeperCandidates(a: Video, b: Video, order: string[]): number {
     else if (rule === 'duration') diff = finiteNumber(a.durationSecs) - finiteNumber(b.durationSecs);
     else if (rule === 'fps') diff = finiteNumber(a.fps) - finiteNumber(b.fps);
     else if (rule === 'size') diff = finiteNumber(a.sizeBytes) - finiteNumber(b.sizeBytes);
+    else if (rule === 'codec') diff = codecPreferenceScore(a, codecOrder) - codecPreferenceScore(b, codecOrder);
     if (Number.isFinite(diff) && diff !== 0) return diff;
   }
   return String(b.path ?? '').localeCompare(String(a.path ?? ''));
 }
 
-function chooseSuggestedKeeperId(videos: Video[], order: string[]): string | null {
-  return [...videos].sort((a, b) => -compareKeeperCandidates(a, b, order))[0]?.id ?? null;
+function chooseSuggestedKeeperId(videos: Video[], order: string[], codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder): string | null {
+  return [...videos].sort((a, b) => -compareKeeperCandidates(a, b, order, codecOrder))[0]?.id ?? null;
 }
 
-function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], order: string[]): DuplicateGroup[] {
+function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], order: string[], codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder): DuplicateGroup[] {
   if (groups.length === 0) return groups;
   const videosById = new Map(videos.map((video) => [video.id, video]));
   return groups.map((group) => {
@@ -464,7 +474,7 @@ function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], ord
     return {
       ...group,
       manualSuggestedKeeperId,
-      suggestedKeeperId: manualSuggestedKeeperId ?? chooseSuggestedKeeperId(groupVideos, order),
+      suggestedKeeperId: manualSuggestedKeeperId ?? chooseSuggestedKeeperId(groupVideos, order, codecOrder),
     };
   });
 }
@@ -1624,7 +1634,7 @@ const useStore = create<VideoStore>((set, get) => ({
   setDuplicateGroupsMode: (duplicateGroupsMode: boolean) => set({ duplicateGroupsMode }),
   setDuplicateGroups: (duplicateGroups) => {
     const stateBefore = get();
-    const groupsWithKeepers = applyKeeperOrderToGroups(duplicateGroups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder);
+    const groupsWithKeepers = applyKeeperOrderToGroups(duplicateGroups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder, stateBefore.settings.duplicates.codecOrder);
     const videos = applyDuplicateGroupsToVideos(stateBefore.videos, groupsWithKeepers);
     set(buildVideoStateUpdate(stateBefore, videos, ['duplicate'], {
       duplicateGroups: groupsWithKeepers,
@@ -1641,7 +1651,8 @@ const useStore = create<VideoStore>((set, get) => ({
     const groupVideoIds = new Set(group.videoIds);
     const suggestedKeeperId = manualSuggestedKeeperId ?? chooseSuggestedKeeperId(
       stateBefore.videos.filter((video) => groupVideoIds.has(video.id)),
-      stateBefore.settings.duplicates.keeperOrder
+      stateBefore.settings.duplicates.keeperOrder,
+      stateBefore.settings.duplicates.codecOrder
     );
     if (
       group.manualSuggestedKeeperId === manualSuggestedKeeperId &&
@@ -1677,7 +1688,7 @@ const useStore = create<VideoStore>((set, get) => ({
   applyDuplicateResult: (result) => {
     const stateBefore = get();
     const groupsWithKeepers = result.groups
-      ? applyKeeperOrderToGroups(result.groups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder)
+      ? applyKeeperOrderToGroups(result.groups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder, stateBefore.settings.duplicates.codecOrder)
       : [];
     const videos = result.groups
       ? applyDuplicateGroupsToVideos(stateBefore.videos, groupsWithKeepers)
@@ -1850,7 +1861,8 @@ const useStore = create<VideoStore>((set, get) => ({
           }))
           .filter((group) => group.videoIds.length >= 2),
         videos,
-        stateBefore.settings.duplicates.keeperOrder
+        stateBefore.settings.duplicates.keeperOrder,
+        stateBefore.settings.duplicates.codecOrder
       )
       : prevGroups;
     const groupsChanged = prunedGroups !== prevGroups;
@@ -2006,7 +2018,7 @@ const useStore = create<VideoStore>((set, get) => ({
     const defaultSortOrderChanged = mergedSettings.defaultSortOrder !== state.settings.defaultSortOrder;
     const defaultGroupByFolderChanged = mergedSettings.defaultGroupByFolder !== state.settings.defaultGroupByFolder;
     const defaultCardScaleChanged = mergedSettings.defaultCardScale !== state.settings.defaultCardScale;
-    const duplicateGroups = applyKeeperOrderToGroups(state.duplicateGroups, state.videos, mergedSettings.duplicates.keeperOrder);
+    const duplicateGroups = applyKeeperOrderToGroups(state.duplicateGroups, state.videos, mergedSettings.duplicates.keeperOrder, mergedSettings.duplicates.codecOrder);
     const videos = duplicateGroups.length > 0
       ? applyDuplicateGroupsToVideos(state.videos, duplicateGroups)
       : state.videos;

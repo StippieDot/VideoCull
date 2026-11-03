@@ -9,7 +9,8 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   defaultScope: 'all',
   protectKeep: true,
   protectSkipped: false,
-  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size'],
+  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec'],
+  codecOrder: ['av1', 'hevc', 'vp9', 'h264', 'vp8', 'mpeg4', 'mpeg2video', 'vc1'],
   samplingWindow: 'even',
   customStartPercent: 0,
   customEndPercent: 100,
@@ -33,7 +34,8 @@ const DEFAULT_DUPLICATE_SETTINGS = {
 
 const SAMPLE_COUNT_OPTIONS = new Set([1, 2, 3, 4, 5, 7, 9]);
 const COMPARISON_MODES = new Set(['phash', 'visual']);
-const KEEPER_RULES = new Set(['resolution', 'videoBitrate', 'duration', 'fps', 'size']);
+const KEEPER_RULES = new Set(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
+const CODEC_FAMILIES = new Set(DEFAULT_DUPLICATE_SETTINGS.codecOrder);
 
 function normalizeDuplicateSettings(input = {}) {
   const sampleCount = SAMPLE_COUNT_OPTIONS.has(Number(input.sampleCount))
@@ -62,6 +64,7 @@ function normalizeDuplicateSettings(input = {}) {
     checkpointIntervalMinutes: clamp(input.checkpointIntervalMinutes ?? DEFAULT_DUPLICATE_SETTINGS.checkpointIntervalMinutes, 0, 60),
     ignoredDuplicatePairs: normalizeIgnoredDuplicatePairs(input.ignoredDuplicatePairs),
     keeperOrder: normalizeKeeperOrder(input.keeperOrder),
+    codecOrder: normalizeCodecOrder(input.codecOrder),
   };
 }
 
@@ -72,6 +75,15 @@ function normalizeKeeperOrder(value) {
     if (!normalized.includes(rule)) normalized.push(rule);
   }
   return normalized.length > 0 ? normalized : DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
+}
+
+function normalizeCodecOrder(value) {
+  if (!Array.isArray(value)) return DEFAULT_DUPLICATE_SETTINGS.codecOrder;
+  const normalized = Array.from(new Set(value.filter((family) => CODEC_FAMILIES.has(family))));
+  for (const family of DEFAULT_DUPLICATE_SETTINGS.codecOrder) {
+    if (!normalized.includes(family)) normalized.push(family);
+  }
+  return normalized;
 }
 
 function normalizeIgnoredDuplicatePairs(value) {
@@ -284,7 +296,17 @@ function resolutionDisplayTier(video) {
   return shortestEdge;
 }
 
-function compareKeeperCandidates(a, b, order) {
+// ffprobe names other than the family keys in codecOrder. SYNC NOTE: mirrored in src/store.ts.
+const CODEC_ALIASES = { h265: 'hevc', wmv1: 'vc1', wmv2: 'vc1', wmv3: 'vc1' };
+
+// Higher is better; codecs outside the preference list all score 0 and tie.
+function codecPreferenceScore(video, codecOrder) {
+  const name = String(video.videoCodec ?? '').toLowerCase();
+  const index = codecOrder.indexOf(CODEC_ALIASES[name] ?? name);
+  return index === -1 ? 0 : codecOrder.length - index;
+}
+
+function compareKeeperCandidates(a, b, order, codecOrder = DEFAULT_DUPLICATE_SETTINGS.codecOrder) {
   for (const rule of order) {
     let diff = 0;
     if (rule === 'resolution') diff = resolutionDisplayTier(a) - resolutionDisplayTier(b);
@@ -292,13 +314,14 @@ function compareKeeperCandidates(a, b, order) {
     else if (rule === 'duration') diff = finiteNumber(a.durationSecs) - finiteNumber(b.durationSecs);
     else if (rule === 'fps') diff = finiteNumber(a.fps) - finiteNumber(b.fps);
     else if (rule === 'size') diff = finiteNumber(a.sizeBytes) - finiteNumber(b.sizeBytes);
+    else if (rule === 'codec') diff = codecPreferenceScore(a, codecOrder) - codecPreferenceScore(b, codecOrder);
     if (Number.isFinite(diff) && diff !== 0) return diff;
   }
   return String(b.path ?? '').localeCompare(String(a.path ?? ''));
 }
 
 function chooseSuggestedKeeper(videos, settings) {
-  return [...videos].sort((a, b) => -compareKeeperCandidates(a, b, settings.keeperOrder))[0] ?? null;
+  return [...videos].sort((a, b) => -compareKeeperCandidates(a, b, settings.keeperOrder, settings.codecOrder))[0] ?? null;
 }
 
 module.exports = {

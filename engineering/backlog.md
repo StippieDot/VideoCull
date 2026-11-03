@@ -90,7 +90,7 @@ Proposed direction:
 - Keeper comparison logic is also mirrored in renderer and backend code.
 - Sync comments and separate tests reduce the immediate risk, but there is no single shared implementation or direct parity test.
 - Prefer a shared side-effect-free module if it fits both build environments. Otherwise add an explicit parity test covering defaults and keeper ordering.
-- The keeper rule list itself is a third copy: `KEEPER_RULES` in both `src/keybind-defaults.ts` and `electron/duplicate-utils.js`. Roadmap 1.6 adds a rule and so adds the parity test for defaults and rule names first.
+- The keeper rule list itself is a third copy: `KEEPER_RULES` in both `src/keybind-defaults.ts` and `electron/duplicate-utils.js`. A parity test now covers the defaults, rule names and codec order (`tests/src/keybind-defaults.test.ts`); the ranking functions are still two copies.
 
 ### 10. FFprobe has no cancellable per-file timeout
 

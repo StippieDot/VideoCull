@@ -64,7 +64,8 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   defaultScope: 'all',
   protectKeep: true,
   protectSkipped: false,
-  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size'],
+  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec'],
+  codecOrder: ['av1', 'hevc', 'vp9', 'h264', 'vp8', 'mpeg4', 'mpeg2video', 'vc1'],
   samplingWindow: 'even',
   customStartPercent: 0,
   customEndPercent: 100,
@@ -87,6 +88,7 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
 };
 
 const KEEPER_RULES = new Set(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
+const CODEC_FAMILIES = new Set(DEFAULT_DUPLICATE_SETTINGS.codecOrder);
 
 function normalizeKeeperOrder(value: unknown): string[] {
   if (!Array.isArray(value)) return DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
@@ -95,6 +97,15 @@ function normalizeKeeperOrder(value: unknown): string[] {
     if (!normalized.includes(rule)) normalized.push(rule);
   }
   return normalized.length > 0 ? normalized : DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
+}
+
+function normalizeCodecOrder(value: unknown): string[] {
+  if (!Array.isArray(value)) return DEFAULT_DUPLICATE_SETTINGS.codecOrder;
+  const normalized = Array.from(new Set(value.filter((family): family is string => typeof family === 'string' && CODEC_FAMILIES.has(family))));
+  for (const family of DEFAULT_DUPLICATE_SETTINGS.codecOrder) {
+    if (!normalized.includes(family)) normalized.push(family);
+  }
+  return normalized;
 }
 
 // Keys that existed in the old single-char string format
@@ -188,6 +199,7 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
       ))
       : [];
     migratedDuplicates.keeperOrder = normalizeKeeperOrder(migratedDuplicates.keeperOrder);
+    migratedDuplicates.codecOrder = normalizeCodecOrder(migratedDuplicates.codecOrder);
     delete migratedDuplicates.phashCandidateThreshold;
     delete migratedDuplicates.rawGrayThreshold;
     delete migratedDuplicates.profile;

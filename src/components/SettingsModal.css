@@ -431,6 +431,50 @@ input[type="range"] {
   background: var(--bg-subtle-hover);
 }
 
+.duplicates-keeper-item {
+  display: grid;
+  gap: 7px;
+}
+
+.duplicates-codec-panel {
+  display: grid;
+  gap: 8px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--border-color));
+}
+
+.duplicates-codec-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  padding: 2px 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.duplicates-codec-toggle:hover {
+  color: var(--text-primary);
+}
+
+.duplicates-keeper-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(142, 117, 255, 0.1);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.duplicates-keeper-hint button {
+  flex-shrink: 0;
+}
+
 .duplicates-keeper-rank {
   display: grid;
   place-items: center;
