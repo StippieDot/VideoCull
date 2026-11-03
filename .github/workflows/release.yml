@@ -89,3 +89,47 @@ jobs:
             artifacts/packages/VideoCull.Setup.${{ steps.vars.outputs.version }}.exe
             artifacts/packages/VideoCull.Setup.${{ steps.vars.outputs.version }}.exe.blockmap
             artifacts/packages/latest.yml
+
+  build-unix:
+    # Runs after the Windows job so it adds files to the release that job created.
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: package:mac
+            files: |
+              artifacts/packages/VideoCull-*.dmg
+          - os: ubuntu-latest
+            script: package:linux
+            files: |
+              artifacts/packages/VideoCull-*.AppImage
+              artifacts/packages/latest-linux.yml
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.21.0'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run ${{ matrix.script }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add packages to the GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          fail_on_unmatched_files: true
+          files: ${{ matrix.files }}

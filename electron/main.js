@@ -93,7 +93,8 @@ const updatesEnabled = shouldEnableUpdates({
   isDev,
   isE2E,
   distributionChannel,
-  disableUpdates: process.env.VC_DISABLE_UPDATES === '1',
+  // shortcut: macOS updates need a signed app; enable them once releases are signed and notarized.
+  disableUpdates: process.env.VC_DISABLE_UPDATES === '1' || process.platform === 'darwin',
 });
 let pendingProfileWarning = profileBootstrap?.warning ?? null;
 let storeWindowReady = false;
@@ -288,13 +289,15 @@ function folderDisplayName(folderPath) {
 // ── Window ──────────────────────────────────────────────────────────────
 // The title bar can show the Windows 11 Mica material; the rest of the window stays opaque.
 const micaSupported = process.platform === 'win32' && supportsMica(os.release());
+// macOS draws its own window buttons on the left and has no title bar overlay.
+const isMac = process.platform === 'darwin';
 let useMica = false;
 let currentTheme = 'dark';
 
 /** Switches Mica behind the title bar on or off (Settings > Interface), without a restart. */
 function applyWindowMaterial(enabled) {
   useMica = micaSupported && enabled;
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!micaSupported || !mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.setBackgroundMaterial(useMica ? 'mica' : 'none');
   mainWindow.setBackgroundColor(useMica ? '#00000000' : getThemeBackgroundColor(currentTheme));
   mainWindow.setTitleBarOverlay(getTitleBarOverlay(currentTheme, useMica));
@@ -306,7 +309,7 @@ function applyNativeTheme(value) {
   nativeTheme.themeSource = theme;
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (!useMica) mainWindow.setBackgroundColor(getThemeBackgroundColor(theme));
-    mainWindow.setTitleBarOverlay(getTitleBarOverlay(theme, useMica));
+    if (!isMac) mainWindow.setTitleBarOverlay(getTitleBarOverlay(theme, useMica));
   }
   return theme;
 }
@@ -326,7 +329,8 @@ guardIpcMain(
 function createWindow(initialTheme = 'dark', micaTitleBar = true) {
   useMica = micaSupported && micaTitleBar;
   const theme = applyNativeTheme(initialTheme);
-  const appIconPath = app.isPackaged
+  // macOS and Linux take the icon from the app bundle and the desktop entry.
+  const appIconPath = process.platform !== 'win32' ? undefined : app.isPackaged
     ? path.join(process.resourcesPath, 'videocull.ico')
     : path.join(__dirname, '..', 'build', 'videocull.ico');
   mainWindow = new BrowserWindow({
@@ -338,10 +342,12 @@ function createWindow(initialTheme = 'dark', micaTitleBar = true) {
     // Mica only shows through a transparent window background; the page paints everything else.
     backgroundColor: useMica ? '#00000000' : getThemeBackgroundColor(theme),
     ...(useMica ? { backgroundMaterial: 'mica' } : {}),
-    // The renderer draws the title bar with the menu (TitleBar.tsx); Windows still draws the
+    // The renderer draws the title bar with the menu (TitleBar.tsx); the system still draws the
     // window buttons. The application menu stays set for its keyboard shortcuts.
     titleBarStyle: 'hidden',
-    titleBarOverlay: getTitleBarOverlay(theme, useMica),
+    ...(isMac
+      ? { trafficLightPosition: { x: 12, y: 10 } } // centred in the 32px title bar
+      : { titleBarOverlay: getTitleBarOverlay(theme, useMica) }),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -393,7 +399,7 @@ function createWindow(initialTheme = 'dark', micaTitleBar = true) {
   // Closing the last window quits the app, but only after the window is gone, and by then the
   // renderer can no longer flush its pending saves. Quit first and let the window close at the end.
   mainWindow.on('close', (event) => {
-    if (process.platform === 'darwin' || gracefulShutdown.phase() === 'complete') return;
+    if (gracefulShutdown.phase() === 'complete') return;
     event.preventDefault();
     app.quit();
   });
@@ -431,7 +437,18 @@ app.whenReady().then(async () => {
     });
   }
   defaultCentralCacheRoot = profileBootstrap?.defaultCentralCacheRoot ?? path.join(app.getPath('userData'), 'video-cache');
-  void checkMediaTools(log);
+  void checkMediaTools(log).then((ok) => {
+    if (ok || process.platform === 'win32') return;
+    const notice = {
+      title: 'FFmpeg not found',
+      detail: process.platform === 'darwin'
+        ? 'Install it with "brew install ffmpeg" and restart VideoCull to get thumbnails and previews.'
+        : 'Install the ffmpeg package and restart VideoCull to get thumbnails and previews.',
+      kind: 'warning',
+    };
+    if (mainWindow?.isVisible()) sendToRenderer('app-notification', notice);
+    else pendingProfileWarning ??= notice;
+  });
 
   protocol.handle('thumb', async (request) => {
     let filePath = getFilePathFromProtocolRequest(request, 'thumb');
@@ -584,6 +601,7 @@ function setApplicationMenu() {
     processing: power.processing,
     paused: processingPause.getState().status !== 'running',
     finishAction: power.finishAction,
+    platform: process.platform,
   }, {
     send: (action) => {
       if (!sendToRenderer('menu-action', action)) log.warn(`[menu] Action "${action}" was not delivered to the window.`);
@@ -631,9 +649,8 @@ ipcMain.on('set-menu-state', (_event, state) => {
   }
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+// VideoCull has one window, so closing it quits on macOS too: the close handler routes through app.quit().
+app.on('window-all-closed', () => app.quit());
 
 const gracefulShutdown = createGracefulShutdown({
   prepare: () => {

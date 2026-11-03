@@ -98,10 +98,11 @@ export function kb(
 }
 
 // ── Match a KeyboardEvent against a stored Keybind ─────────────────
+// Cmd on macOS stands in for Ctrl, so stored "Ctrl" binds work on every platform.
 export function matchesKeybind(event: KeyboardEvent, bind: Keybind): boolean {
   return (
     event.key.toLowerCase() === bind.key &&
-    event.ctrlKey  === bind.ctrl  &&
+    (event.ctrlKey || event.metaKey) === bind.ctrl &&
     event.shiftKey === bind.shift &&
     event.altKey   === bind.alt
   );
@@ -118,7 +119,7 @@ export function keybindFromEvent(event: KeyboardEvent): Keybind | null {
   if (['control', 'shift', 'alt', 'meta'].includes(event.key.toLowerCase())) return null;
   return {
     key:   event.key.toLowerCase(),
-    ctrl:  event.ctrlKey,
+    ctrl:  event.ctrlKey || event.metaKey,
     shift: event.shiftKey,
     alt:   event.altKey,
   };

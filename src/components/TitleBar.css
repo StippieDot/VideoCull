@@ -35,6 +35,17 @@
   padding-left: 10px;
 }
 
+/* macOS draws its window buttons at the left (trafficLightPosition in electron/main.js) and shows
+   the menus in the system menu bar. */
+:root.macos .title-bar-start {
+  padding-left: 78px;
+}
+
+:root.macos .title-bar-icon,
+:root.macos .title-bar-menus {
+  display: none;
+}
+
 .title-bar-icon {
   width: 16px;
   height: 16px;

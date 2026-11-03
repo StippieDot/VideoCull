@@ -84,7 +84,7 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
       onPlay(video, e);
       return;
     }
-    if (canPlayInReview && !e.ctrlKey) {
+    if (canPlayInReview && !e.ctrlKey && !e.metaKey) {
       enterReviewAndPlay(video.id);
     } else if (window.electronAPI) {
       openVideoExternally(video.path);

@@ -13,10 +13,22 @@ const system32 = () => path.join(process.env.SystemRoot || 'C:\\Windows', 'Syste
  * so it must. Sleep must not be detached: PowerShell started without a console (what detached
  * means on Windows) exits with code 0 without running its command.
  *
+ * macOS asks apps to quit through System Events, so unsaved work can still cancel the shutdown;
+ * Linux goes through systemd-logind, which lets the signed-in user suspend or power off.
+ *
  * @param {'sleep' | 'shutdown'} action
+ * @param {string} [platform]
  * @returns {{ file: string, args: string[], detached: boolean }}
  */
-function powerCommand(action) {
+function powerCommand(action, platform = process.platform) {
+  if (platform === 'darwin') {
+    return action === 'sleep'
+      ? { file: '/usr/bin/pmset', args: ['sleepnow'], detached: false }
+      : { file: '/usr/bin/osascript', args: ['-e', 'tell application "System Events" to shut down'], detached: true };
+  }
+  if (platform !== 'win32') {
+    return { file: 'systemctl', args: [action === 'sleep' ? 'suspend' : 'poweroff'], detached: action === 'shutdown' };
+  }
   if (action === 'sleep') {
     return {
       file: path.join(system32(), 'WindowsPowerShell', 'v1.0', 'powershell.exe'),

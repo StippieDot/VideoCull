@@ -96,6 +96,16 @@ test('delete confirmation describes recycle bin, fallback, and empty-folder clea
   })).toBe('Move 2 marked videos (2 KB) to the Recycle Bin? If the Recycle Bin is unavailable, VideoCull will ask before permanently deleting. Empty source folders will be cleaned up when they are truly empty.');
 });
 
+test('macOS and Linux call it the Trash', () => {
+  vi.stubGlobal('window', { electronAPI: { platform: 'linux' } });
+  try {
+    expect(formatDeleteConfirmation({ count: 1, sizeBytes: 1024, removeEmptyFoldersAfterDelete: false }))
+      .toBe('Move 1 marked video (1 KB) to the Trash? If the Trash is unavailable, VideoCull will ask before permanently deleting. Empty source folders will not be removed.');
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 test('a folder filter shows a folder only when its own videos pass the filter', () => {
   const filter = { path: 'D:\\Media\\Trips', includeSubfolders: true };
   expect(isFolderShownByFilter('D:\\Media\\Trips\\Day1', filter)).toBe(true);

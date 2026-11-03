@@ -19,7 +19,7 @@ import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
 import type { DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, MenuAction, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
-import { describeThumbnailWork, detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside } from './utils';
+import { describeThumbnailWork, detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside, trashName } from './utils';
 import { deleteWithPermanentReview } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
@@ -993,13 +993,13 @@ export default function App() {
             if (permanentSuccessCount > 0 && failedCount > 0) {
               pushToast({
                 title: 'Delete partly failed',
-                detail: `${deletedPaths.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped Recycle Bin.${folderDetail}`,
+                detail: `${deletedPaths.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped ${trashName()}.${folderDetail}`,
                 kind: 'error',
               });
             } else if (permanentSuccessCount > 0) {
               pushToast({
                 title: 'Permanently deleted',
-                detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped Recycle Bin.${folderDetail}`,
+                detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped ${trashName()}.${folderDetail}`,
                 kind: 'warning',
               });
             } else if (permanentFailureCount > 0 || failedCount > 0) {
@@ -1010,7 +1010,7 @@ export default function App() {
               });
             } else {
               pushToast({
-                title: 'Moved to Recycle Bin',
+                title: `Moved to ${trashName()}`,
                 detail: `${deletedPaths.length} ${deletedPaths.length === 1 ? 'video' : 'videos'} removed from the session.${folderDetail}`,
                 kind: 'success',
               });
@@ -1492,9 +1492,9 @@ export default function App() {
               if (event.key === 'Escape') settlePermanentDeleteReview(false);
             }}
           >
-            <p className="drop-modal-title" id="permanent-delete-title">Recycle Bin unavailable</p>
+            <p className="drop-modal-title" id="permanent-delete-title">{trashName()} unavailable</p>
             <p className="permanent-delete-warning" id="permanent-delete-warning">
-              {permanentDeletePaths.length} {permanentDeletePaths.length === 1 ? 'file could' : 'files could'} not be moved to the Recycle Bin. Review every path before permanently deleting. This cannot be undone.
+              {permanentDeletePaths.length} {permanentDeletePaths.length === 1 ? 'file could' : 'files could'} not be moved to the {trashName()}. Review every path before permanently deleting. This cannot be undone.
             </p>
             <ul className="permanent-delete-paths" aria-label="Files to permanently delete">
               {permanentDeletePaths.map((filePath) => (

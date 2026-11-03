@@ -11,6 +11,12 @@ export function formatSize(bytes: number): string {
   return `${value.toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
 }
 
+/** What the system calls deleted-file storage: the Recycle Bin on Windows, the Trash elsewhere. */
+export function trashName(): string {
+  const platform = typeof window === 'undefined' ? undefined : window.electronAPI?.platform;
+  return platform && platform !== 'win32' ? 'Trash' : 'Recycle Bin';
+}
+
 export function formatDeleteConfirmation({
   count,
   sizeBytes,
@@ -24,7 +30,7 @@ export function formatDeleteConfirmation({
   const folderDetail = removeEmptyFoldersAfterDelete
     ? ' Empty source folders will be cleaned up when they are truly empty.'
     : ' Empty source folders will not be removed.';
-  return `Move ${count} ${videoLabel} (${formatSize(sizeBytes)}) to the Recycle Bin? If the Recycle Bin is unavailable, VideoCull will ask before permanently deleting.${folderDetail}`;
+  return `Move ${count} ${videoLabel} (${formatSize(sizeBytes)}) to the ${trashName()}? If the ${trashName()} is unavailable, VideoCull will ask before permanently deleting.${folderDetail}`;
 }
 
 /**

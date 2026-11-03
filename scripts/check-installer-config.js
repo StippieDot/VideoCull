@@ -36,7 +36,7 @@ assert.equal(nsis.installerIcon, appIcon, `installer must use the ${identity.dis
 assert.equal(nsis.uninstallerIcon, appIcon, `uninstaller must use the ${identity.displayName} icon`);
 assert.ok(fs.existsSync(path.join(root, appIcon)), `${identity.displayName} icon file must exist`);
 assert.ok(
-  packageJson.build?.extraResources?.some((resource) => resource.from === appIcon && resource.to === `${identity.technicalName}.ico`),
+  packageJson.build?.win?.extraResources?.some((resource) => resource.from === appIcon && resource.to === `${identity.technicalName}.ico`),
   `packaged resources must include the ${identity.displayName} icon for the native window`,
 );
 assert.ok(
@@ -44,7 +44,7 @@ assert.ok(
   'packaged resources must include the application license as LICENSE.txt',
 );
 assert.ok(
-  packageJson.build?.extraResources?.some((resource) => resource.from === 'vendor/ffmpeg' && resource.to === 'ffmpeg'),
+  packageJson.build?.win?.extraResources?.some((resource) => resource.from === 'vendor/ffmpeg' && resource.to === 'ffmpeg'),
   'packaged resources must include the bundled FFmpeg runtime folder',
 );
 assert.equal(nsis.installerHeader, 'build/installerHeader.bmp', 'custom installer header must be configured');

@@ -247,7 +247,7 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
       setActiveIndex((rows.length + safeIndex + step) % Math.max(1, rows.length));
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      run(activeRow, { shift: event.shiftKey, ctrl: event.ctrlKey });
+      run(activeRow, { shift: event.shiftKey, ctrl: event.ctrlKey || event.metaKey });
     } else if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -290,7 +290,7 @@ export default function CommandPalette({ onClose, initialQuery = '' }: { onClose
                 aria-disabled={row.disabled || undefined}
                 className={`command-palette-item${index === safeIndex ? ' active' : ''}${row.disabled || row.muted ? ' disabled' : ''}`}
                 onMouseMove={() => setActiveIndex(index)}
-                onClick={(event) => run(row, { shift: event.shiftKey, ctrl: event.ctrlKey })}
+                onClick={(event) => run(row, { shift: event.shiftKey, ctrl: event.ctrlKey || event.metaKey })}
               >
                 <span className="command-palette-check">{row.checked && <Check size={13} />}</span>
                 <span className="command-palette-label">

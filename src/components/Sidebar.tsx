@@ -11,7 +11,7 @@ import RangeSlider from './RangeSlider';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { runAppCommand } from '../appCommands';
-import { formatDeleteConfirmation, formatSize, formatRecentPath } from '../utils';
+import { formatDeleteConfirmation, formatSize, formatRecentPath, trashName } from '../utils';
 import { deleteWithPermanentReview } from '../deletion';
 import AppMenu, { type AppMenuItem } from './AppMenu';
 import ContextMenu from './ContextMenu';
@@ -745,13 +745,13 @@ export default function Sidebar({
       if (permanentSuccessCount > 0 && failedCount > 0) {
         onNotify({
           title: 'Delete partly failed',
-          detail: `${succeeded.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped Recycle Bin.${folderDetail}`,
+          detail: `${succeeded.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped ${trashName()}.${folderDetail}`,
           kind: 'error',
         });
       } else if (permanentSuccessCount > 0) {
         onNotify({
           title: 'Permanently deleted',
-          detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped Recycle Bin.${folderDetail}`,
+          detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped ${trashName()}.${folderDetail}`,
           kind: 'warning',
         });
       } else if (permanentFailureCount > 0 || failedCount > 0) {
@@ -762,7 +762,7 @@ export default function Sidebar({
         });
       } else {
         onNotify({
-          title: 'Moved to Recycle Bin',
+          title: `Moved to ${trashName()}`,
           detail: `${succeeded.length} ${succeeded.length === 1 ? 'video' : 'videos'} removed, ${formatSize(stats.deleteSize)} freed.${folderDetail}`,
           kind: 'success',
         });

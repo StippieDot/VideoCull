@@ -8,6 +8,8 @@ import {
   seedRecentDirectory,
 } from './electronHarness';
 
+const REVEAL_VIDEO = ({ darwin: 'Reveal in Finder', linux: 'Reveal in File Manager' } as Record<string, string>)[process.platform] ?? 'Reveal in Explorer';
+
 async function recordMenuActions(app: ElectronApplication) {
   await app.evaluate(({ BrowserWindow }) => {
     const contents = BrowserWindow.getAllWindows()[0].webContents;
@@ -103,11 +105,11 @@ test('the menu follows the session and its new items act on it', async () => {
     expect(await menuItem(app, ['File', 'Rescan'])).toMatchObject({ enabled: false });
     const page = await openSeededRecentFolder(app);
     await expect.poll(() => menuItem(app!, ['File', 'Rescan'])).toMatchObject({ enabled: true });
-    expect(await menuItem(app, ['Video', 'Reveal in Explorer'])).toMatchObject({ enabled: false });
+    expect(await menuItem(app, ['Video', REVEAL_VIDEO])).toMatchObject({ enabled: false });
 
     await page.getByText('alpha.mp4').click();
     await expect(page.locator('.review-mode')).toBeVisible();
-    await expect.poll(() => menuItem(app!, ['Video', 'Reveal in Explorer'])).toMatchObject({ enabled: true });
+    await expect.poll(() => menuItem(app!, ['Video', REVEAL_VIDEO])).toMatchObject({ enabled: true });
 
     await clickMenuItem(app, ['View', 'Privacy Screen']);
     await expect(page.locator('.privacy-screen')).toBeVisible();

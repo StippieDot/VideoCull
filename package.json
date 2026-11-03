@@ -5,6 +5,7 @@
   "author": "StippieDot",
   "license": "AGPL-3.0-only",
   "main": "electron/bootstrap.js",
+  "desktopName": "videocull.desktop",
   "scripts": {
     "postinstall": "install-electron && node scripts/fetch-ffmpeg.js",
     "fetch:ffmpeg": "node scripts/fetch-ffmpeg.js",
@@ -32,6 +33,8 @@
     "stress:cache-overcap": "node scripts/cache-overcap-smoke.js",
     "cleanup:cache": "node scripts/cleanup-cache-clutter.js",
     "package": "vite build && electron-builder --win --publish never",
+    "package:mac": "vite build && electron-builder --mac --publish never",
+    "package:linux": "vite build && electron-builder --linux --publish never",
     "package:store": "node scripts/package-store.js"
   },
   "devEngines": {
@@ -84,26 +87,12 @@
       "artifacts/renderer/**/*",
       "electron/**/*",
       "product.json",
-      "node_modules/better-sqlite3/**/*",
-      "!node_modules/better-sqlite3/prebuilds/{darwin,linux,linuxmusl}-*.node",
-      "!node_modules/better-sqlite3/prebuilds/win32-arm64.node"
+      "node_modules/better-sqlite3/**/*"
     ],
     "extraResources": [
       {
-        "from": "build/videocull.ico",
-        "to": "videocull.ico"
-      },
-      {
         "from": "LICENSE",
         "to": "LICENSE.txt"
-      },
-      {
-        "from": "vendor/ffmpeg",
-        "to": "ffmpeg",
-        "filter": [
-          "**/*",
-          "!.toolchain-sha256"
-        ]
       }
     ],
     "asarUnpack": [
@@ -116,7 +105,62 @@
       "target": "nsis",
       "icon": "build/videocull.ico",
       "executableName": "VideoCull",
-      "artifactName": "VideoCull.Setup.${version}.${ext}"
+      "artifactName": "VideoCull.Setup.${version}.${ext}",
+      "files": [
+        "!node_modules/better-sqlite3/prebuilds/{darwin,linux,linuxmusl}-*.node",
+        "!node_modules/better-sqlite3/prebuilds/win32-arm64.node"
+      ],
+      "extraResources": [
+        {
+          "from": "build/videocull.ico",
+          "to": "videocull.ico"
+        },
+        {
+          "from": "vendor/ffmpeg",
+          "to": "ffmpeg",
+          "filter": [
+            "**/*",
+            "!.toolchain-sha256"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "src/assets/videocull-icon.png",
+      "category": "public.app-category.video",
+      "identity": "-",
+      "artifactName": "VideoCull-${version}-${arch}.${ext}",
+      "files": [
+        "!node_modules/better-sqlite3/prebuilds/{win32,linux,linuxmusl}-*.node"
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "src/assets/videocull-icon.png",
+      "category": "AudioVideo",
+      "executableName": "videocull",
+      "syncDesktopName": true,
+      "artifactName": "VideoCull-${version}-${arch}.${ext}",
+      "files": [
+        "!node_modules/better-sqlite3/prebuilds/{win32,darwin,linuxmusl}-*.node",
+        "!node_modules/better-sqlite3/prebuilds/linux-arm64.node"
+      ]
     },
     "appx": {
       "applicationId": "VideoCull",

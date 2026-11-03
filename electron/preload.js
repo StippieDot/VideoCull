@@ -24,6 +24,7 @@ const electronAPI = {
   initialTheme: initialTheme,
   usesMica: usesMica,
   micaSupported: micaSupported,
+  platform: process.platform,
 
   // Directory
   selectDirectory: () => ipcRenderer.invoke('select-directory'),

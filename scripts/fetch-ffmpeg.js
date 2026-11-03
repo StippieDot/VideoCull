@@ -96,7 +96,10 @@ function extractWithTar(zipPath, targetDir) {
   if (result.status !== 0) throw new Error(`tar exited with code ${result.status}`);
 }
 
-if (require.main === module) {
+if (require.main === module && process.platform !== 'win32') {
+  // The pinned build is Windows-only; macOS and Linux use the FFmpeg the user installed.
+  console.log('[fetch-ffmpeg] Skipped: macOS and Linux use the system FFmpeg.');
+} else if (require.main === module) {
   /** @type {ToolchainPin} */
   const pin = JSON.parse(fs.readFileSync(path.join(root, 'config', 'ffmpeg-toolchain.json'), 'utf8'));
   installPinnedFfmpeg(pin, path.join(root, 'vendor', 'ffmpeg'), {

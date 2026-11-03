@@ -247,7 +247,7 @@ function useLocationKeys(navRef: React.RefObject<HTMLElement | null>, browsable:
     const handleKeyDown = (event: KeyboardEvent) => {
       const { target } = event;
       if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
-      if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'l') {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'l') {
         const buttons = navRef.current?.querySelectorAll<HTMLButtonElement>('.location-bar-segment');
         const lastButton = buttons?.[buttons.length - 1];
         if (!lastButton) return;

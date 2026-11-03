@@ -9,7 +9,11 @@ on:
 
 jobs:
   test:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -24,11 +28,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # macOS and Linux builds use the system FFmpeg, which the media tests run against.
+      - name: Install FFmpeg
+        if: runner.os != 'Windows'
+        run: ${{ runner.os == 'macOS' && 'brew install ffmpeg' || 'sudo apt-get update && sudo apt-get install -y ffmpeg' }}
+
       - name: Run CI test suite
         run: npm run test:ci
 
   cache-native:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -46,7 +59,7 @@ jobs:
       - name: Check installed runtimes
         shell: pwsh
         run: |
-          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
+          if (-not (Test-Path -LiteralPath (node -p "require('electron')"))) {
             throw 'npm ci did not install the Electron runtime.'
           }
           if (Test-Path -LiteralPath 'node_modules/better-sqlite3/build') {
