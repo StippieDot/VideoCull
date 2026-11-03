@@ -182,6 +182,11 @@
         "!node_modules/better-sqlite3/prebuilds/linux-arm64.node"
       ]
     },
+    "rpm": {
+      "fpm": [
+        "--directories=/opt/VideoCull"
+      ]
+    },
     "appx": {
       "applicationId": "VideoCull",
       "identityName": "StippieDot.VideoCull",
