@@ -69,7 +69,7 @@ Every video gets a strip of thumbnails pulled from different points in the file.
 - `Shift`-click batch selection with range selection, Keep, Delete, Skip, Reset, Clear, and Regenerate Thumbnails and Metadata actions
 - Right-click quick actions for videos and folders, including reveal/copy-path, status changes, and thumbnail regeneration
 - Per-folder Review button to scope review mode to one folder
-- Drag and drop folder opening, multi-directory sessions
+- Drag and drop folder opening, multi-directory sessions, and removing one folder without a rescan
 - Recent sessions with timestamps: every loaded folder plus the **Include subfolders** choice, and a session whose drive is unplugged stays listed as unavailable
 - Optionally reopen the last session at startup
 - Optionally follow symbolic links (and junctions on Windows) while scanning (experimental)
@@ -80,7 +80,7 @@ Every video gets a strip of thumbnails pulled from different points in the file.
 Fullscreen, one at a time, keyboard first.
 
 - Thumbnail strip with dynamic aspect ratio
-- In-app player with scrubbing, playback speed, bookmarks, and global mute
+- In-app player with scrubbing, pause and resume in place, playback speed, bookmarks, and global mute
 - Ratings and favorites directly on the current video
 - Review summary with pending counts and delete totals
 - Next-undecided navigation for skipping videos you've already handled
@@ -135,6 +135,8 @@ Generate an HTML report from Settings or the app menu, scoped to all loaded vide
 
 ## Keyboard Shortcuts
 
+On macOS, use `Cmd` where these tables say `Ctrl`.
+
 ### Grid and General
 
 | Shortcut | Action |
@@ -143,8 +145,8 @@ Generate an HTML report from Settings or the app menu, scoped to all loaded vide
 | `Ctrl + F` | Search loaded videos (customizable) |
 | `F5` | Rescan |
 | `Ctrl + Z` | Undo |
-| `Ctrl + Backspace` | Send marked videos to Recycle Bin |
-| `Ctrl + E` | Reveal in Explorer |
+| `Ctrl + Backspace` | Send marked videos to the Recycle Bin or Trash |
+| `Ctrl + E` | Reveal in Explorer, Finder, or file manager |
 | `Ctrl + +` / `Ctrl + -` | Larger or smaller cards |
 | `Ctrl + K` | Find a command, folder or video |
 | `F11` | Toggle fullscreen |
