@@ -18,7 +18,7 @@ documentation) shipped as `1.4.0`–`2.1.0` and is archived in git history.
 ## Feature Toggles
 
 **Decision:** New optional features follow the existing `features` pattern in `AppSettings`
-(`FeatureSettings` in `src/types.ts`). On by default, individually toggleable in the **Features** tab.
+(`FeatureSettings` in `src/types.ts`). On by default, individually toggleable under **Optional features** in the **Grid & review** tab.
 
 | Feature | Settings key | Default | Phase |
 |---|---|---|---|
@@ -43,8 +43,8 @@ documentation) shipped as `1.4.0`–`2.1.0` and is archived in git history.
 | Mark short videos scope | **Current filtered view**, with a note that Delete later applies to *all* videos marked Delete. |
 | Rename | Extension **always locked**. |
 | Explorer integration | **Folders only**, **both editions**. |
-| Saved sessions | The last session (its folders and **Include subfolders**) reopens at startup, with a setting to turn it off. **Open Recent** lists whole sessions. **Close Session** means nothing reopens. |
-| Linked folders | Scanning follows symbolic links and junctions to folders and files, also outside the opened folder, with a setting to turn it off. Each real file is listed once. |
+| Saved sessions | The last session (its folders and **Include subfolders**) can reopen at startup, through a setting that is off by default. **Open Recent** lists whole sessions. **Close Session** means nothing reopens. |
+| Linked folders | Scanning can follow symbolic links and junctions to folders and files, also outside the opened folder, through an experimental setting that is off by default. Each real file is listed once. |
 | Network folders | **Supported default: videos on the network, cache local.** Network-hosted cache DBs depend on 3.1. |
 | Clips | Bookmarks define segments; you choose which segments to keep, as separate clips or joined into one; exported fast (lossless) or exact (re-encoded). Bookmarks keep working as seek points. The original can be **marked** Delete; it's never deleted directly. |
 | Clips cut from longer videos | A timeboxed spike (Phase 8). Only **directed review suggestions** showing their coverage; never a keeper or deletion suggestion. |
@@ -452,8 +452,9 @@ folders. **Close Session** clears the session to reopen, so a session closed on 
   set, open its folders through the same path as Open Recent. Folders that can't be reached (unplugged
   drive, offline share) are left out of this run with one notice naming them; they **stay in
   `lastSession`** until the person changes the session, so a drive that comes back is not lost.
-- **Recents pruning at startup:** a recent session is dropped only when **none** of its folders exist
-  (today every missing folder is dropped, `store.ts:2020`). The menu shows the folders that are reachable.
+- **Recents at startup:** nothing is pruned, so a drive that comes back is not lost. A session with a
+  missing folder stays listed and shows only the reachable folders; one with none reachable is marked
+  unavailable.
 - **Labels:** one folder shows its path, as today. Several show the first folder and `+ N more`, with every
   path in the tooltip. Applies to File > Open Recent (`app-menu.js:356`), the title bar roots menu
   (`locationMenus.ts:178`), the sidebar recents button and the empty-state list.
@@ -467,7 +468,7 @@ folders. **Close Session** clears the session to reopen, so a session closed on 
 
 **Tests:** settings migration from `recentDirectories`; matching ignores order and case; Close Session
 clears `lastSession`; startup reopens all reachable folders and reports the rest without removing them;
-a recent session with one missing folder survives pruning; DOM: Open Recent restores several folders and
+a recent session with a missing folder stays listed; DOM: Open Recent restores several folders and
 the subfolder choice; Remove from Session keeps the other folders loaded.
 
 ### S.2 Linked Folders and Files
@@ -526,10 +527,10 @@ target and rejects an unfollowed one; delete through each link kind (after S.2a)
 
 Requested in [issue #29](https://github.com/StippieDot/VideoCull/issues/29) (macOS) and
 [issue #4](https://github.com/StippieDot/VideoCull/issues/4) (Linux). The beta builds ship together with
-Phase S, built on the same FFmpeg as Windows (0.3). Work happens on `feat/macos-linux-support`.
+Phase S, built on the same FFmpeg as Windows (0.3). Merged to main on 2026-11-03.
 
-**Shipped in the beta:** macOS disk images for Apple silicon and Intel, a 64-bit Linux AppImage and a .deb
-package for Debian-based distributions, the shared
+**Shipped in the beta:** macOS disk images for Apple silicon and Intel, a 64-bit Linux AppImage, a .deb
+package for Debian-based distributions and an .rpm package for RPM-based ones, the shared
 FFmpeg build, native window buttons and menus on macOS, Cmd as Ctrl, Trash instead of Recycle Bin, sleep and
 shut down after processing, per-drive cache locations, and a release that is published only when every
 platform has built.
@@ -601,14 +602,14 @@ every key that works. Requested in issue #32.
   and fixed shortcuts, and decide between one key that cycles the rating and one key per star.
 - The keys do nothing while `features.ratings` / `features.favorites` is off. Otherwise a key press would
   create a decision the person cannot see.
-- **Shortcut help:** list the digit keys (0–9 jump to that percentage of the video). They come from the
-  player's own hotkeys, not `ALL_SHORTCUTS` **(unverified: confirm where they are bound)**, so they need a
-  fixed entry like the other fixed shortcuts (`FIXED_SHORTCUTS`). Also in
-  `docs/reference/keyboard-shortcuts.mdx`.
+- **Shortcut help (done):** the digit keys (0–9 jump to that percentage of the video) and the player's other
+  keys come from `PLAYER_HOTKEYS` in `ReviewMode.tsx`, not `ALL_SHORTCUTS`. They are listed through
+  `FIXED_SHORTCUTS` entries marked `playerKey`, which `findConflict` ignores because a configured Review
+  shortcut takes priority over them. `docs/reference/keyboard-shortcuts.mdx` lists them too.
 - The seek length shown in the list ("Rewind 5s") should use the 1.1 setting.
 
 **Tests:** each key sets, clears and toggles its field and is saved like a click; hidden feature → no
-effect; conflict detection against the new defaults; the help lists the digit keys.
+effect; conflict detection against the new defaults.
 
 ### 1.4 Pause and Resume in Place
 
@@ -651,10 +652,15 @@ issue #32, where the missing indicator was the main reason a first-time user sto
 **Tests:** badge text and class for each status; no badge on pending; Reset leaves rating, favourite and
 bookmarks unchanged unless the explicit clear-all action is used.
 
-### 1.6 Codec in Keeper Priority
+### 1.6 Codec in Keeper Priority (done)
 
 **Decision:** Codec becomes one more rule in the reorderable keeper list, with a configurable codec
 preference order. Requested in issue #31 ("planned").
+
+**Shipped** on main in `18c68a6`, ahead of the rest of Phase 1. The default order is AV1 > HEVC > VP9 >
+H.264 > VP8 > MPEG-4 > MPEG-2 > WMV/VC-1. The preference list sits collapsed under the Codec rule, and once
+opened it shows a note with a button to move Codec above Video bitrate and File size when they outrank it.
+The notes below record the plan.
 
 **Implementation notes:**
 - **Verified:** the rules are `resolution`, `videoBitrate`, `duration`, `fps`, `size`, duplicated in
@@ -1459,7 +1465,7 @@ Commit messages use conventional types (`feat:`, `fix:`, `refactor:`, `test:`, `
 |---|---|---|
 | P0 — Media toolchain & licence compliance | `2.4.0` | FFmpeg 9.0.2, fluent-ffmpeg removed, licence notices + About licence section |
 | PS — Saved sessions & linked folders | `2.5.0` | Session restore, recent sessions, links and junctions |
-| PM — macOS & Linux (beta) | `2.5.0` | Ships with PS; includes AppImage and .deb; stable status waits for tester feedback |
+| PM — macOS & Linux (beta) | `2.5.0` | Ships with PS; includes AppImage, .deb and .rpm; stable status waits for tester feedback |
 | P1 — Quick wins | `2.6.0` | Skip length, mark short videos, rating/favourite keys, pause in place, decision indicator, codec keeper rule |
 | P2 — Delete safety & thumbnail seeking | `2.7.0` | Delete reasons, click-to-seek, scrub previews, paint selection |
 | PL — Persistent library | `2.8.0` | Open from the cache, background check, offline folders |
@@ -1528,8 +1534,8 @@ Update the status column as work completes. Merge date recorded when phase lands
 |---|---|---|---|
 | P0 — Media toolchain & licence compliance | ✅ Merged to main | `2.4.0` | 2026-10-16 |
 | PS — Saved sessions & linked folders | ✅ Merged to main | `2.5.0` | 2026-10-31 |
-| PM — macOS & Linux (beta) | 🔄 In progress | `2.5.0` | — |
-| P1 — Quick wins | ⬜ Not started | `2.6.0` | — |
+| PM — macOS & Linux (beta) | ✅ Merged to main | `2.5.0` | 2026-11-03 |
+| P1 — Quick wins | 🔄 In progress (1.6 and the 1.3 shortcut help are done) | `2.6.0` | — |
 | P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.7.0` | — |
 | PL — Persistent library | ⬜ Not started | `2.8.0` | — |
 | P3 — Reliable settings & tags | ⬜ Not started | `2.9.0` | — |
@@ -1647,7 +1653,7 @@ Line numbers are approximate after later commits.
 | Backend runtime | `electron/` is plain CommonJS run directly (`"main": "electron/bootstrap.js"`), **no build step**; `tsconfig.json` excludes `electron`. Some backend tests run via `node --test` or Electron's Node (`test:profile`, `test:store`, `test:cache-native`). |
 | Bookmarks | `bookmarks?: number[]` (seconds), JSON `TEXT` column, saved via the review-state path. Review shows them as a `chapters` track, one cue per bookmark-to-bookmark span (`ReviewMode.tsx:330`). **Points**, not ranges. |
 | Cache upserts | `saveCache` uses `INSERT … ON CONFLICT(id) DO UPDATE SET` with explicit columns (`cache.js:586`). |
-| Bundled FFmpeg | N-92722 (2018) includes `libx264`, `libx265`, `aac`, plus NVENC, QSV and AMF H.264 encoders. |
+| Bundled FFmpeg (until 2.3.2; replaced by 0.3) | N-92722 (2018) includes `libx264`, `libx265`, `aac`, plus NVENC, QSV and AMF H.264 encoders. |
 | `main.js` | 3112 lines, 47 IPC channels registered inline. Biggest handlers: scan (`:1707`), metadata (`:1929`), thumbnails (`:2157`), duplicates (`:2377`), delete (`:2598–2715`). |
 | Known-video maps | `currentScanDirs` + three `knownVideo*` maps used in ~25 places in `main.js`. |
 | Settings reads in main | 9 places (`readJsonFile(CONFIG_FILE…)` + direct `fs.readFile` at `:1980`, `:2203`). Corrupt → `{}` → default cache mode. Renderer is the only writer (7 `saveConfig` calls). |

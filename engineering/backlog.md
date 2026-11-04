@@ -79,18 +79,16 @@ Proposed direction:
 
 ### 8. Suggested keeper rules do not account for source trust or file health
 
-- Keeper selection can prioritize resolution, bitrate, duration, frame rate, and file size.
+- Keeper selection can prioritize resolution, bitrate, duration, frame rate, file size, and codec.
 - It cannot prefer trusted source folders or account for structural file health, silent variants, or likely reframing when candidates are otherwise close.
 - If real libraries need it, add optional reorderable soft rules such as source-path priority and metadata-based container health. Keep them disabled by default and do not let them change duplicate grouping.
-- Codec preference is the one rule from this family that is committed: roadmap 1.6 (issue #31).
 
 ### 9. Duplicate defaults and keeper ranking have manually synchronized copies
 
 - Duplicate defaults exist in both the renderer settings layer and the CommonJS backend.
 - Keeper comparison logic is also mirrored in renderer and backend code.
-- Sync comments and separate tests reduce the immediate risk, but there is no single shared implementation or direct parity test.
-- Prefer a shared side-effect-free module if it fits both build environments. Otherwise add an explicit parity test covering defaults and keeper ordering.
-- The keeper rule list itself is a third copy: `KEEPER_RULES` in both `src/keybind-defaults.ts` and `electron/duplicate-utils.js`. A parity test now covers the defaults, rule names and codec order (`tests/src/keybind-defaults.test.ts`); the ranking functions are still two copies.
+- A parity test covers the defaults, rule names and codec order (`tests/src/keybind-defaults.test.ts`), but nothing checks that the two ranking functions give the same result, and there is no single shared implementation.
+- Prefer a shared side-effect-free module if it fits both build environments. Otherwise extend the parity test to keeper ordering.
 
 ### 10. FFprobe has no cancellable per-file timeout
 
@@ -155,8 +153,8 @@ Proposed direction:
 
 ### 21. Flatpak and Flathub
 
-- Issue #4 asks for a Flatpak. Linux releases ship an AppImage for any distribution and a .deb for Debian-based ones; a Flatpak would add a real installer and system-managed updates on Fedora, Linux Mint, Zorin, Pop!_OS and the Steam Deck, whose app stores are built on Flathub.
-- Not committed. The AppImage and .deb already cover every distribution, so a Flatpak adds reach through the app stores, not new capability. Taken off the roadmap (it was Phase M.1 for `2.5.0`) until the beta builds have real feedback.
+- Issue #4 asks for a Flatpak. Linux releases ship an AppImage for any distribution, a .deb for Debian-based ones and an .rpm for RPM-based ones; a Flatpak would add a real installer and system-managed updates on Fedora, Linux Mint, Zorin, Pop!_OS and the Steam Deck, whose app stores are built on Flathub.
+- Not committed. The AppImage, .deb and .rpm already cover every distribution, so a Flatpak adds reach through the app stores, not new capability. Taken off the roadmap (it was Phase M.1 for `2.5.0`) until the beta builds have real feedback.
 - Packaging: the simplest Flathub route repackages the released .deb (or a tarball) with a pinned checksum on the Electron base app (`org.electronjs.Electron2.BaseApp`), as many Electron apps on Flathub do. Nothing is rebuilt on Flathub's builders, and the bundled FFmpeg arrives inside the package with its corresponding source already published by `VideoCull-FFmpeg`. Confirm Flathub's current policy on repackaged binaries before submitting.
 - App ID must map to a domain or account we control: `app.videocull.VideoCull` (videocull.app) or `io.github.StippieDot.VideoCull`.
 - Every release then needs a version and checksum update in the Flathub repository; their external-data checker can open that pull request automatically.

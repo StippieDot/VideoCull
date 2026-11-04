@@ -70,7 +70,9 @@ Every video gets a strip of thumbnails pulled from different points in the file.
 - Right-click quick actions for videos and folders, including reveal/copy-path, status changes, and thumbnail regeneration
 - Per-folder Review button to scope review mode to one folder
 - Drag and drop folder opening, multi-directory sessions
-- Recent directories with timestamps, stale-entry auto-cleanup
+- Recent sessions with timestamps: every loaded folder plus the **Include subfolders** choice, and a session whose drive is unplugged stays listed as unavailable
+- Optionally reopen the last session at startup
+- Optionally follow symbolic links (and junctions on Windows) while scanning (experimental)
 - Privacy screen toggle (`Shift+Esc`)
 
 ### Review Mode
@@ -180,6 +182,8 @@ Review shortcuts are customizable in Settings.
 | Default sort | Name / Size / Date / Duration / Rating / Resolution / FPS | Name |
 | Group by folder | On / Off | On |
 | Keep Review playback controls visible | On / Off | Off |
+| Reopen the last session at startup | On / Off | Off |
+| Follow symbolic links (experimental) | On / Off | Off |
 | Parallel FFmpeg processes | Auto (RAM + CPU aware) / 1 / 2 / 3 / 4 / 6 / 8 / 12 / 16 / 24 / 32 | Auto |
 | Limit each FFmpeg process to 1 CPU thread | On / Off | On |
 | Intro skip delay | 0 - 60 seconds | 3s |
@@ -189,7 +193,7 @@ Review shortcuts are customizable in Settings.
 | Remove empty folders after deleting videos | On / Off | Off |
 | Auto updates | On / Off | On |
 | Feature toggles | Ratings, favorites | On |
-| Keybindings | Any key or combination | K / D / S / Z / Space |
+| Keyboard shortcuts | Any key or combination | K / D / S / Z / Space |
 
 Duplicate detection also has its own settings tab with options for comparison method, similarity threshold, sample count, scope, keeper priority, ignored matches, sampling windows, and retry behavior.
 
@@ -233,11 +237,11 @@ npm run dev
 | `npm run test:e2e` | Build the renderer and run the Electron Playwright regression flows |
 | `npm run package` | Full build + Windows installer (NSIS) |
 | `npm run package:mac` | Full build + macOS disk images (run on a Mac) |
-| `npm run package:linux` | Full build + Linux AppImage (run on Linux) |
+| `npm run package:linux` | Full build + Linux AppImage, .deb and .rpm (run on Linux) |
 
 Development documentation: [Roadmap](engineering/roadmap.md), [architecture](engineering/architecture/README.md), and [backlog](engineering/backlog.md).
 
-Development sessions use `%APPDATA%\VideoCull-dev`, so local settings and cache do not mix with the packaged app. See [Building from source](https://docs.videocull.app/reference/building-from-source) for Store packaging, native-module rebuilds, and the full command list.
+Development sessions use a separate `VideoCull-dev` profile (`%APPDATA%` on Windows, `~/.config` on Linux, `~/Library/Application Support` on macOS), so local settings and cache do not mix with the packaged app. See [Building from source](https://docs.videocull.app/reference/building-from-source) for Store packaging, native-module rebuilds, and the full command list.
 
 ---
 
