@@ -162,7 +162,7 @@ Generate an HTML report from Settings or the app menu, scoped to all loaded vide
 | `Space` | Play / pause |
 | `Left` / `Right` | Previous / next video, or scrub 5s while playing |
 | `Tab` | Next undecided video |
-| `Enter` | Play in-app |
+| `Enter` | Play in-app, or go back to the thumbnails while playing |
 | `Ctrl + Enter` | Open in external player |
 | `B` | Drop bookmark |
 | `[` / `]` | Playback speed down / up |

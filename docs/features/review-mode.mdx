@@ -56,9 +56,10 @@ When you advance beyond the last item, Review shows a summary of Keep, Delete, S
 - `S` skips it.
 - `R` resets it to Pending.
 - `Z` undoes the last decision.
-- `Space` or `Enter` starts or pauses built-in playback.
+- `Space` starts built-in playback, then pauses and resumes it on the current frame.
+- `Enter` starts built-in playback, and while the video is open goes back to the thumbnails.
 - `Ctrl+Enter` opens the file in the default external player.
-- `Esc` stops playback first; press it again from preview state to leave Review.
+- `Esc` stops playback and returns to the thumbnails; press it again to leave Review. **Thumbnails** next to the bookmark button does the same as the first press.
 
 Configured Review shortcuts remain active when the embedded player has focus. VideoCull handles a configured app shortcut before the player's own binding, so the default `K` marks Keep instead of pausing playback.
 

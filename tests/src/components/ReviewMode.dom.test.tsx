@@ -263,6 +263,59 @@ describe('ReviewMode behavior', () => {
     expect(root?.classList.contains('review-controls-persistent')).toBe(false);
   });
 
+  test('Space pauses and resumes in place, and Enter, Esc or the button returns to the thumbnails', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha'],
+    });
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function (this: HTMLMediaElement) {
+      Object.defineProperty(this, 'paused', { configurable: true, value: true });
+      this.dispatchEvent(new Event('pause'));
+    });
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
+      Object.defineProperty(this, 'paused', { configurable: true, value: false });
+      this.dispatchEvent(new Event('play'));
+      return Promise.resolve();
+    });
+
+    const { container } = render(<ReviewMode />);
+    const root = container.querySelector('.review-mode');
+    await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    const player = container.querySelector('video') as HTMLVideoElement;
+    Object.defineProperty(player, 'paused', { configurable: true, value: false });
+    player.currentTime = 12;
+
+    await act(async () => fireEvent.keyDown(window, { key: ' ' }));
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('video')).toBe(player);
+    expect(player.currentTime).toBe(12);
+    expect(root?.classList.contains('review-playing')).toBe(true);
+    expect(screen.getByRole('button', { name: /^Play/ })).toBeTruthy();
+
+    await act(async () => fireEvent.keyDown(window, { key: ' ' }));
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /^Pause/ })).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: /^Thumbnails/ }));
+    expect(root?.classList.contains('review-preview')).toBe(true);
+    expect(screen.getByRole('button', { name: /^Play/ })).toBeTruthy();
+
+    await act(async () => fireEvent.keyDown(window, { key: 'Enter' }));
+    expect(root?.classList.contains('review-playing')).toBe(true);
+    expect(pause).toHaveBeenCalledTimes(1);
+    await act(async () => fireEvent.keyDown(window, { key: 'Enter' }));
+    expect(root?.classList.contains('review-preview')).toBe(true);
+
+    await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    await act(async () => fireEvent.keyDown(window, { key: 'Escape' }));
+    expect(root?.classList.contains('review-preview')).toBe(true);
+    expect(useStore.getState().reviewMode).toBe(true);
+  });
+
   test('keeps Review playback controls visible when the preference is enabled', async () => {
     const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
     const current = useStore.getState();

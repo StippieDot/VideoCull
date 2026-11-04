@@ -611,7 +611,7 @@ every key that works. Requested in issue #32.
 **Tests:** each key sets, clears and toggles its field and is saved like a click; hidden feature → no
 effect; conflict detection against the new defaults.
 
-### 1.4 Pause and Resume in Place
+### 1.4 Pause and Resume in Place (done)
 
 **Decision:** In Review, Space pauses and resumes at the current frame. Leaving playback for the thumbnail
 view is a separate action. Requested in issue #32.
@@ -625,8 +625,11 @@ view is a separate action. Requested in issue #32.
 - Moving to another video still starts in the thumbnail view.
 - The `VideoPlayer` memo stays untouched: pause state is driven through the existing `videoRef`, the same
   way seek requests are in 2.2.
-- Check how this interacts with `keyPlay` / `keyEnterPlay` and the player's own Space hotkey so one press
-  does not toggle twice.
+- `keyPlay` (Space) pauses and resumes; `keyEnterPlay` (Enter) starts playback and, like Escape, returns to
+  the thumbnails. Both prevent the default, and the player's own hotkeys skip a default-prevented key,
+  so one press toggles once.
+- A **Thumbnails** button next to the bookmark control gives mouse users the way back that the Play button
+  used to be.
 
 **Tests:** play → Space → paused on the same frame and time → Space → continues from there; Escape from
 paused returns to the thumbnails; next video starts unplayed.
@@ -1535,7 +1538,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 | P0 — Media toolchain & licence compliance | ✅ Merged to main | `2.4.0` | 2026-10-16 |
 | PS — Saved sessions & linked folders | ✅ Merged to main | `2.5.0` | 2026-10-31 |
 | PM — macOS & Linux (beta) | ✅ Merged to main | `2.5.0` | 2026-11-03 |
-| P1 — Quick wins | 🔄 In progress (1.6 and the 1.3 shortcut help are done) | `2.6.0` | — |
+| P1 — Quick wins | 🔄 In progress (1.4, 1.6 and the 1.3 shortcut help are done) | `2.6.0` | — |
 | P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.7.0` | — |
 | PL — Persistent library | ⬜ Not started | `2.8.0` | — |
 | P3 — Reliable settings & tags | ⬜ Not started | `2.9.0` | — |

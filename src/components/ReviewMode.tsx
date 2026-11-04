@@ -4,7 +4,9 @@ import ThumbnailStrip from './ThumbnailStrip';
 import { formatSize, formatDuration, formatDate, calcThumbGrid, formatCodecLabel, formatFps, formatResolutionLabel } from '../utils';
 import {
   Check, Trash2, SkipForward, Undo2, X, Play,
-  ChevronLeft, ChevronRight, HardDrive, Clock, Calendar, Bookmark, RotateCcw, Heart, Star
+  ChevronLeft, ChevronRight, HardDrive, Clock, Calendar, Bookmark, RotateCcw, Heart, Star,
+  LayoutGrid,
+  Pause,
 } from 'lucide-react';
 import '@videojs/react/video/neutral-skin.css';
 import { NeutralVideoSkin, Video, VideoPlayer as VideoJsPlayer } from '@videojs/react/video';
@@ -216,6 +218,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
 
   const lastVideoIdRef = useRef<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDecodeError, setAudioDecodeError] = useState(false);
@@ -291,6 +294,8 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
     el.playbackRate = playbackSpeed;
 
     const onRateChange = () => setPlaybackSpeed(el.playbackRate);
+    const onPlayerPlay = () => setIsPaused(false);
+    const onPlayerPause = () => setIsPaused(true);
     const onTimeUpdate = () => {
       recordDevCounter('review.playerTimeUpdate');
       setCurrentTime(el.currentTime);
@@ -298,9 +303,14 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
 
     el.addEventListener('ratechange', onRateChange);
     el.addEventListener('timeupdate', onTimeUpdate);
+    el.addEventListener('play', onPlayerPlay);
+    el.addEventListener('pause', onPlayerPause);
     return () => {
       el.removeEventListener('ratechange', onRateChange);
       el.removeEventListener('timeupdate', onTimeUpdate);
+      el.removeEventListener('play', onPlayerPlay);
+      el.removeEventListener('pause', onPlayerPause);
+      setIsPaused(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying]); // intentionally excludes playbackSpeed — only apply once on start
@@ -410,12 +420,23 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
 
   const handlePlay = useCallback(() => {
     if (!video) return;
-    if (canPlayInReview) {
-      setIsPlaying((prev) => !prev);
-    } else if (window.electronAPI) {
-      openVideoExternally(video.path);
+    if (!canPlayInReview) {
+      if (window.electronAPI) openVideoExternally(video.path);
+      return;
     }
-  }, [video, canPlayInReview]);
+    if (!isPlaying) {
+      setIsPlaying(true);
+      return;
+    }
+    // Pausing keeps the player open on the current frame; Esc returns to the thumbnails.
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.paused) {
+      void el.play().catch((err) => console.warn('[review] Could not resume playback:', err));
+    } else {
+      el.pause();
+    }
+  }, [video, canPlayInReview, isPlaying]);
 
   const close = useCallback(() => {
     beginDevInteraction('review.exit');
@@ -532,7 +553,12 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
         jumpToNextUndecided();
         return;
       }
-      if (matchesKeybind(e, s.keyEnterPlay)) { e.preventDefault(); handlePlay(); return; }
+      if (matchesKeybind(e, s.keyEnterPlay)) {
+        e.preventDefault();
+        if (isPlaying) setIsPlaying(false);
+        else handlePlay();
+        return;
+      }
       if (matchesKeybind(e, s.keyKeep))      { e.preventDefault(); markKeep(); return; }
       if (matchesKeybind(e, s.keyDelete))    { e.preventDefault(); markDelete(); return; }
       if (matchesKeybind(e, s.keySkip))      { e.preventDefault(); skip(); return; }
@@ -584,6 +610,8 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       </div>
     );
   }
+
+  const showPause = isPlaying && !isPaused;
 
   const statusClass =
     video.status === 'keep' ? 'review-keep' :
@@ -683,6 +711,15 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
               >
                 <Bookmark size={13} />
                 <span>{formatDuration(currentTime)}</span>
+              </button>
+
+              <button
+                className="review-bookmark-btn"
+                onClick={() => setIsPlaying(false)}
+                title="Back to thumbnails (Esc)"
+              >
+                <LayoutGrid size={13} />
+                <span>Thumbnails</span>
               </button>
 
               {bookmarks.length > 0 && (
@@ -788,10 +825,10 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
         <button
           className="review-action-btn review-btn-play"
           onClick={handlePlay}
-          title={`${canPlayInReview ? 'Play' : 'Open in external player'} (${formatKeybind(keyPlay)})`}
+          title={`${!canPlayInReview ? 'Open in external player' : showPause ? 'Pause' : 'Play'} (${formatKeybind(keyPlay)})`}
         >
-          <Play size={20} />
-          <span>{canPlayInReview ? 'Play' : 'Open External'}</span>
+          {showPause ? <Pause size={20} /> : <Play size={20} />}
+          <span>{!canPlayInReview ? 'Open External' : showPause ? 'Pause' : 'Play'}</span>
           <kbd>{formatKeybind(keyPlay)}</kbd>
         </button>
 

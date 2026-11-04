@@ -43,7 +43,7 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   { id: 'keyReset',              description: 'Reset to Pending',          group: 'Review mode', section: 'Decisions' },
   { id: 'keyUndo',               description: 'Undo last action',          group: 'Review mode', section: 'Decisions' },
   { id: 'keyPlay',               description: 'Play / Pause',              group: 'Review mode', section: 'Playback' },
-  { id: 'keyEnterPlay',          description: 'Play / Pause (alternate)',  group: 'Review mode', section: 'Playback' },
+  { id: 'keyEnterPlay',          description: 'Play / Back to thumbnails', group: 'Review mode', section: 'Playback' },
   { id: 'keyExternalPlayer',     description: 'Open in external player',   group: 'Review mode', section: 'Playback' },
   { id: 'keySeekBack',           description: 'Rewind 5s',                 group: 'Review mode', section: 'While playing', context: 'playing' },
   { id: 'keySeekForward',        description: 'Forward 5s',                group: 'Review mode', section: 'While playing', context: 'playing' },

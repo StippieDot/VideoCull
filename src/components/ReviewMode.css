@@ -28,13 +28,13 @@
 
 /* Status hue for previously decided videos */
 .review-keep {
-  background: radial-gradient(circle at 50% 0%, var(--color-keep-dim) 0%, var(--bg-app) 65%);
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-keep) 30%, transparent) 0%, var(--bg-app) 75%);
 }
 .review-delete {
-  background: radial-gradient(circle at 50% 0%, var(--color-delete-dim) 0%, var(--bg-app) 65%);
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-delete) 34%, transparent) 0%, var(--bg-app) 75%);
 }
 .review-skip {
-  background: radial-gradient(circle at 50% 0%, var(--color-skip-dim) 0%, var(--bg-app) 65%);
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-skip) 32%, transparent) 0%, var(--bg-app) 75%);
 }
 
 /* ── Close ── */

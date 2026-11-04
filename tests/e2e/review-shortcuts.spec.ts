@@ -61,6 +61,41 @@ test('player shortcuts work before and after focus while app shortcuts and dialo
   }
 });
 
+test('Space pauses the real player on its frame instead of leaving playback', async () => {
+  const userDataDir = await createUserDataDir();
+  const { rootDir, mediaDir } = await createSessionFixture(['alpha.mp4', 'beta.mp4']);
+  await seedRecentDirectory(userDataDir, mediaDir);
+  let app: ElectronApplication | undefined;
+
+  try {
+    app = await launchElectronApp(userDataDir);
+    const page = await openSeededRecentFolder(app);
+    await page.getByText('alpha.mp4').click();
+    await page.locator('.review-actions').getByRole('button', { name: 'Play' }).click();
+    const video = page.locator('.review-video-skin video');
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.duration)).toBe(1);
+
+    await video.evaluate((el: HTMLVideoElement) => { el.loop = true; });
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false);
+    await page.keyboard.press('Space');
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true);
+    await expect(page.locator('.review-mode')).toHaveClass(/review-playing/);
+    const frame = await video.evaluate((el: HTMLVideoElement) => el.currentTime);
+    await page.waitForTimeout(150);
+    expect(await video.evaluate((el: HTMLVideoElement) => el.currentTime)).toBe(frame);
+
+    await page.keyboard.press('Space');
+    await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(false);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.review-mode')).toHaveClass(/review-preview/);
+  } finally {
+    if (app) await app.close();
+    await removeDir(userDataDir);
+    await removeDir(rootDir);
+  }
+});
+
 test('custom app bindings override player bindings and release the unused defaults', async () => {
   const userDataDir = await createUserDataDir();
   const { rootDir, mediaDir } = await createSessionFixture(['alpha.mp4', 'beta.mp4']);
