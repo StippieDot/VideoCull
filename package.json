@@ -138,6 +138,13 @@
       "icon": "src/assets/videocull-icon.png",
       "category": "public.app-category.video",
       "identity": "-",
+      "extendInfo": {
+        "NSDesktopFolderUsageDescription": "VideoCull reads the video folders you open on your Desktop.",
+        "NSDocumentsFolderUsageDescription": "VideoCull reads the video folders you open in Documents.",
+        "NSDownloadsFolderUsageDescription": "VideoCull reads the video folders you open in Downloads.",
+        "NSRemovableVolumesUsageDescription": "VideoCull reads the video folders you open on external drives.",
+        "NSNetworkVolumesUsageDescription": "VideoCull reads the video folders you open on network drives."
+      },
       "artifactName": "VideoCull-${version}-${arch}.${ext}",
       "files": [
         "!node_modules/better-sqlite3/prebuilds/{win32,linux,linuxmusl}-*.node"

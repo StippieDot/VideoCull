@@ -4,6 +4,14 @@ All notable changes to VideoCull will be documented here.
 
 ## [Unreleased]
 
+### Changed
+- On macOS, automatic processing uses up to 4 jobs at once with 16 GB of memory or more and up to 2 with less, limited to half the processor cores.
+- macOS permission prompts now explain why VideoCull asks for access to your Desktop, Documents, Downloads, external drives and network drives.
+
+### Fixed
+- Scans no longer spend time making previews for videos that could not be read. Empty files fail straight away, a warning lists how many videos were affected, and **Regenerate Thumbnails and Metadata** tries again.
+- Scans skip `.git` and `node_modules` folders, and `.app` bundles on macOS, and no longer list TypeScript source files as videos. Real `.ts` and `.mts` video files are still found.
+
 ## [2.5.0] - 2026-11-04
 
 ### Added

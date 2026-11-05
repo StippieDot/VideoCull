@@ -4,8 +4,54 @@ const os = require('node:os');
 const path = require('node:path');
 const mediaProcess = require('../../electron/media-process');
 
-const { processVideos, processMetadata, cancelMetadata, cancelThumbnails, __test } = require('../../electron/processor');
+const { processVideos, processMetadata, cancelMetadata, cancelThumbnails, getConcurrentLimit, __test } = require('../../electron/processor');
 const { processingPause } = require('../../electron/processing-pause');
+
+test('auto concurrency on macOS ignores free memory and scales with installed memory', () => {
+  const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const { cpus, freemem, totalmem } = os;
+  const GiB = 1024 ** 3;
+  const limitOn = ({ platform, cores, free, total }) => {
+    Object.defineProperty(process, 'platform', { ...realPlatform, value: platform });
+    os.cpus = () => new Array(cores).fill({});
+    os.freemem = () => free * GiB;
+    os.totalmem = () => total * GiB;
+    return getConcurrentLimit({ maxConcurrent: 'auto' });
+  };
+
+  try {
+    assert.equal(limitOn({ platform: 'darwin', cores: 10, free: 0.2, total: 16 }), 4);
+    assert.equal(limitOn({ platform: 'darwin', cores: 8, free: 0.2, total: 8 }), 2);
+    assert.equal(limitOn({ platform: 'darwin', cores: 4, free: 12, total: 32 }), 2);
+    assert.equal(limitOn({ platform: 'darwin', cores: 1, free: 12, total: 32 }), 1);
+    // Windows still lets low free memory limit the job count.
+    assert.equal(limitOn({ platform: 'win32', cores: 10, free: 0.2, total: 16 }), 1);
+  } finally {
+    Object.defineProperty(process, 'platform', realPlatform);
+    Object.assign(os, { cpus, freemem, totalmem });
+  }
+});
+
+test('an empty file fails the probe step without starting ffprobe', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-empty-'));
+  const realProbe = mediaProcess.probe;
+  let probed = false;
+  mediaProcess.probe = async () => { probed = true; return { format: {}, streams: [] }; };
+
+  try {
+    const videoPath = path.join(tempDir, 'empty.mp4');
+    await fs.writeFile(videoPath, '');
+    const failures = [];
+
+    await processMetadata([{ id: 'a', path: videoPath, filename: 'empty.mp4' }], {}, null, null, (id, err) => failures.push([id, err.message]));
+
+    assert.deepEqual(failures, [['a', 'Empty video file (0 bytes)']]);
+    assert.equal(probed, false);
+  } finally {
+    mediaProcess.probe = realProbe;
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
 
 test('videos under 10 seconds only expect one thumbnail', () => {
   assert.equal(__test.expectedThumbnailCount(9.99, 6, 3), 1);
@@ -224,17 +270,17 @@ test('a forced regeneration reads the metadata again and keeps the old values wh
     const run = async (options) => {
       const ready = [];
       await processVideos([video], tempDir, { thumbsPerVideo: 1, maxConcurrent: 1 }, null,
-        (id, _thumbs, durationSecs, _created, videoCodec, _a, _vb, _ab, _tb, _container, width) => ready.push({ durationSecs, videoCodec, width }),
+        (id, _thumbs, durationSecs, _created, videoCodec, _a, _vb, _ab, _tb, _container, width, _height, _fps, metadataProbeSucceeded) => ready.push({ durationSecs, videoCodec, width, metadataProbeSucceeded }),
         options);
       return ready;
     };
 
     mediaProcess.probe = async () => ({ format: { duration: 40 }, streams: [{ codec_type: 'video', codec_name: 'h264', width: 640, height: 360 }] });
-    assert.deepEqual(await run({ forceRegenerate: true }), [{ durationSecs: 40, videoCodec: 'h264', width: 640 }]);
-    assert.deepEqual(await run({}), [{ durationSecs: 5, videoCodec: 'old', width: 10 }]);
+    assert.deepEqual(await run({ forceRegenerate: true }), [{ durationSecs: 40, videoCodec: 'h264', width: 640, metadataProbeSucceeded: true }]);
+    assert.deepEqual(await run({}), [{ durationSecs: 5, videoCodec: 'old', width: 10, metadataProbeSucceeded: false }]);
 
     mediaProcess.probe = async () => { throw new Error('ffprobe failed'); };
-    assert.deepEqual(await run({ forceRegenerate: true }), [{ durationSecs: 5, videoCodec: 'old', width: 10 }]);
+    assert.deepEqual(await run({ forceRegenerate: true }), [{ durationSecs: 5, videoCodec: 'old', width: 10, metadataProbeSucceeded: false }]);
   } finally {
     mediaProcess.probe = originalProbe;
     mediaProcess.runFfmpeg = originalRunFfmpeg;

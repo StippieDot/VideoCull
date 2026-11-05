@@ -105,6 +105,22 @@ describe('useStore public behavior', () => {
     expect(state.directories).toEqual(['D:\\Media', 'E:\\Clips']);
   });
 
+  test('a successful probe clears a remembered metadata failure', () => {
+    useStore.getState().setVideos([makeVideo('a', { metadataFailedAt: 1, metadataFailureReason: 'Invalid media data' })]);
+
+    useStore.getState().updateVideoThumbnailsBatch([{ videoId: 'a', metadataFailedAt: null, metadataFailureReason: null }]);
+
+    expect(useStore.getState().videos[0]).toMatchObject({ metadataFailedAt: null, metadataFailureReason: null });
+  });
+
+  test('a media update without failure fields keeps a remembered metadata failure', () => {
+    useStore.getState().setVideos([makeVideo('a', { metadataFailedAt: 1, metadataFailureReason: 'Invalid media data' })]);
+
+    useStore.getState().updateVideoThumbnailsBatch([{ videoId: 'a', durationSecs: 5 }]);
+
+    expect(useStore.getState().videos[0]).toMatchObject({ metadataFailedAt: 1, metadataFailureReason: 'Invalid media data' });
+  });
+
   test('searches video filenames and paths case-insensitively', () => {
     useStore.getState().setVideos([
       makeVideo('trip', { filename: 'Summer Trip.mp4', path: 'D:\\Media\\Spain\\Summer Trip.mp4' }),

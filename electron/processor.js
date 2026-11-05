@@ -33,6 +33,9 @@ function parseBitrate(value) {
  */
 async function getVideoMetadata(filePath, token = createRunToken()) {
   const stat = await fs.stat(filePath);
+  if (stat.size < 1) {
+    throw new Error('Empty video file (0 bytes)');
+  }
   const metadata = await mediaProcess.probe(filePath, token);
   const duration = Number(metadata.format.duration) || 0;
   const formatBitrate = parseBitrate(metadata.format.bit_rate);
@@ -297,6 +300,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
   let width = video.width ?? null;
   let height = video.height ?? null;
   let fps = video.fps ?? null;
+  let metadataProbeSucceeded = false;
 
   try {
     const existing = await fs.readdir(videoThumbDir);
@@ -334,6 +338,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
     // unreadable file keeps what it had and still gets its thumbnails attempted.
     const meta = await mediaProbeOrNull(video.path, token);
     if (meta) {
+      metadataProbeSucceeded = true;
       duration = meta.duration || duration;
       ({ creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps } = meta);
     }
@@ -379,7 +384,7 @@ async function generateThumbnailsForVideo(video, thumbDir, config, token, option
   if (token.cancelled) throw new Error('Cancelled');
 
   await fs.writeFile(path.join(videoThumbDir, THUMB_SOURCE_MARKER), `${video.sizeBytes}:${video.date}`).catch(() => {});
-  return { thumbnails: finalPaths, durationSecs: duration, creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps };
+  return { thumbnails: finalPaths, durationSecs: duration, creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps, metadataProbeSucceeded };
 }
 
 async function readMetadataForVideo(video, token) {
@@ -409,6 +414,11 @@ async function readMetadataForVideo(video, token) {
 function getConcurrentLimit(config = {}) {
   if (config.maxConcurrent === 'auto') {
     const cpuCount = os.cpus().length || 4;
+    if (process.platform === 'darwin') {
+      const halfCoreLimit = Math.max(1, Math.trunc(cpuCount / 2));
+      const memoryLimit = os.totalmem() / (1024 ** 3) >= 16 ? 4 : 2;
+      return Math.min(halfCoreLimit, memoryLimit);
+    }
     const freeMemGb = os.freemem() / (1024 ** 3);
     const cpuBased = config.cpuThreadsLimited === false
       ? Math.max(1, Math.floor(cpuCount / 2))
@@ -471,7 +481,8 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
                   result.containerFormat,
                   result.width,
                   result.height,
-                  result.fps
+                  result.fps,
+                  result.metadataProbeSucceeded
                 );
               }
             } catch (err) {

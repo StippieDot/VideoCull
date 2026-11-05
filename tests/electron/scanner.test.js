@@ -8,6 +8,96 @@ const {
   __test__,
 } = require('../../electron/scanner');
 
+test('skips source and dependency folders but keeps ordinary folders', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
+
+  try {
+    for (const folder of ['.git', 'node_modules', 'Trips']) {
+      await fs.mkdir(path.join(tempRoot, folder));
+      await fs.writeFile(path.join(tempRoot, folder, `${folder}.mp4`), '');
+    }
+
+    const videos = await scanDirectory(tempRoot, true);
+
+    assert.deepEqual(videos.map((video) => video.filename), ['Trips.mp4']);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('skips .app bundles on macOS only, where they are applications rather than folders', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
+  const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+
+  try {
+    await fs.mkdir(path.join(tempRoot, 'Holiday.app'));
+    await fs.writeFile(path.join(tempRoot, 'Holiday.app', 'clip.mp4'), '');
+
+    Object.defineProperty(process, 'platform', { ...realPlatform, value: 'darwin' });
+    assert.deepEqual(await scanDirectory(tempRoot, true), []);
+
+    Object.defineProperty(process, 'platform', { ...realPlatform, value: 'win32' });
+    assert.deepEqual((await scanDirectory(tempRoot, true)).map((video) => video.filename), ['clip.mp4']);
+  } finally {
+    Object.defineProperty(process, 'platform', realPlatform);
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('skips ignored directories reached through followed links', async (t) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
+  const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-target-'));
+
+  try {
+    await fs.writeFile(path.join(targetDir, 'hidden.mp4'), '');
+    const linkPath = path.join(tempRoot, 'node_modules');
+    try {
+      await fs.symlink(targetDir, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+    } catch (error) {
+      t.skip(`directory links are unavailable: ${error.message}`);
+      return;
+    }
+
+    const result = await scanDirectory(tempRoot, true, undefined, { followLinks: true, includeVisitedDirs: true });
+
+    assert.deepEqual(result.videos, []);
+    assert.deepEqual(result.followedLinks, []);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+    await fs.rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test('leaves out TypeScript source files but keeps transport-stream video and empty files', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'videocull-scan-'));
+
+  try {
+    const packet = Buffer.alloc(188, 0xff);
+    packet.set([0x47, 0x40, 0x00, 0x10]);
+    await fs.writeFile(path.join(tempRoot, 'source.ts'), 'export const héllo = "wörld";\n'.repeat(400));
+    await fs.writeFile(path.join(tempRoot, 'module.mts'), 'export {};\n');
+    await fs.writeFile(path.join(tempRoot, 'recording.ts'), Buffer.concat([packet, packet, packet]));
+    await fs.writeFile(path.join(tempRoot, 'camera.MTS'), Buffer.concat([Buffer.alloc(4), packet]));
+    await fs.writeFile(path.join(tempRoot, 'empty.ts'), '');
+    await fs.writeFile(path.join(tempRoot, 'notes.mp4'), 'not checked: only .ts and .mts share a source extension');
+
+    const result = await scanDirectory(tempRoot, true, undefined, { includeVisitedDirs: true });
+
+    assert.deepEqual(
+      result.videos.map((video) => video.filename).sort(),
+      ['camera.MTS', 'empty.ts', 'notes.mp4', 'recording.ts'],
+    );
+    assert.deepEqual(result.summary.skippedFileSamples, [], 'a source file is not reported as a read failure');
+    assert.deepEqual(result.incompleteDirs, [], 'a source file does not stop missing videos being pruned');
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('a transport-stream file that cannot be opened stays in the list for the probe to report', async () => {
+  assert.equal(await __test__.isTypeScriptSource(path.join(os.tmpdir(), 'videocull-missing-file.ts')), false);
+});
+
 test('statVideoEntries preserves input order and skips stat failures', async () => {
   const entries = [
     { entryName: 'a.mp4', fullPath: 'D:\\Media\\a.mp4' },

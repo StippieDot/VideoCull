@@ -912,6 +912,20 @@ describe('App renderer behavior', () => {
     expect(electron.api.generateThumbnails).not.toHaveBeenCalled();
   });
 
+  test('skips frame extraction for a video that could not be read and says so', async () => {
+    const store = getStoreApi();
+    const unreadable = makeVideo('broken', { metadataVersion: 2, metadataFailedAt: 1, metadataFailureReason: 'Invalid media data' });
+    const healthy = makeVideo('healthy', { metadataVersion: 2 });
+    electron.api.scanDirectory.mockResolvedValue([unreadable, healthy]);
+    store.setState({ ...store.getInitialState(), directory: 'D:\\Media', directories: ['D:\\Media'] }, true);
+
+    render(<App />);
+
+    expect(await screen.findByText('Some videos could not be read')).toBeTruthy();
+    await waitFor(() => expect(electron.api.generateThumbnails).toHaveBeenCalledTimes(1));
+    expect(electron.api.generateThumbnails.mock.calls[0][0].map((video: Video) => video.id)).toEqual(['healthy']);
+  });
+
   test('closes the loaded session before Electron cleanup finishes', async () => {
     const store = getStoreApi();
     const initialState = store.getInitialState();

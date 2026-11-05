@@ -10,9 +10,42 @@ const VIDEO_EXTENSIONS = new Set([
 ]);
 const SCAN_PROGRESS_BATCH_SIZE = 25;
 const SCAN_FILE_STAT_BATCH_SIZE = 8;
+// Our own cache folders, plus source and dependency folders that are never a video library.
+const IGNORED_DIRECTORIES = new Set(['.video-cull-thumbs', '.videocull', '.video-cull-cache.json', '.git', 'node_modules']);
+const SOURCE_CODE_EXTENSION = /\.(?:ts|mts)$/i;
+const SOURCE_CODE_SAMPLE_SIZE = 8192;
 
 function isVideoFile(filename) {
   return VIDEO_EXTENSIONS.has(path.extname(filename).toLowerCase());
+}
+
+function shouldIgnoreDirectory(name) {
+  const normalizedName = name.toLowerCase();
+  return IGNORED_DIRECTORIES.has(normalizedName) || (
+    process.platform === 'darwin' && path.extname(normalizedName) === '.app'
+  );
+}
+
+// MPEG transport streams share these extensions with TypeScript, so only omit files that look like source code.
+async function isTypeScriptSource(filePath) {
+  let handle;
+  try {
+    handle = await fs.open(filePath, 'r');
+    const sample = Buffer.alloc(SOURCE_CODE_SAMPLE_SIZE);
+    const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
+    if (bytesRead === 0) return false;
+    let source;
+    try {
+      source = new TextDecoder('utf-8', { fatal: true }).decode(sample.subarray(0, bytesRead));
+    } catch {
+      return false;
+    }
+    return !source.includes('\0') && /\b(?:import|export|interface|type|declare|const|let|function|class)\b/.test(source);
+  } catch {
+    return false;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
 }
 
 function makeVideoId(filePath, sizeBytes) {
@@ -157,8 +190,12 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
     const flushPendingVideoEntries = async () => {
       assertNotCancelled();
       if (pendingVideoEntries.length === 0) return;
-      const batch = pendingVideoEntries;
+      const pending = pendingVideoEntries;
       pendingVideoEntries = [];
+      const isSource = await Promise.all(pending.map(({ entryName, fullPath }) => (
+        SOURCE_CODE_EXTENSION.test(entryName) && isTypeScriptSource(fullPath)
+      )));
+      const batch = pending.filter((_, index) => !isSource[index]);
       const scannedVideos = await statVideoEntries(batch, options.statPath);
       assertNotCancelled();
       for (let i = 0; i < scannedVideos.length; i += 1) {
@@ -181,14 +218,10 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
       let isFile = entry.isFile();
       let realPath = path.join(realDir, entry.name);
 
-      // Skip our own cache/thumb directories
-      if (isDirectory && (entry.name === '.video-cull-thumbs' || entry.name === '.videocull' || entry.name === '.video-cull-cache.json')) {
-        continue;
-      }
-
       // Junctions and symbolic links are only `isSymbolicLink()`; the target decides folder or file.
       // Every link is checked, so one that points at nothing is reported even when it would not be scanned.
-      if (entry.isSymbolicLink?.()) {
+      const isSymbolicLink = entry.isSymbolicLink?.();
+      if (isSymbolicLink) {
         if (!followLinks) continue;
         try {
           const stat = await statPath(fullPath);
@@ -200,7 +233,11 @@ async function scanDirectory(dirPath, includeSubfolders, onProgress, options = {
           skipFile(fullPath, 'broken-link');
           continue;
         }
-        if ((isDirectory && includeSubfolders) || (isFile && isVideoFile(entry.name))) followedLinks.set(fullPath, realPath);
+      }
+
+      if (isDirectory && shouldIgnoreDirectory(entry.name)) continue;
+      if (isSymbolicLink && ((isDirectory && includeSubfolders) || (isFile && isVideoFile(entry.name)))) {
+        followedLinks.set(fullPath, realPath);
       }
 
       if (isDirectory && includeSubfolders) {
@@ -235,6 +272,7 @@ module.exports = {
   scanDirectory,
   __test__: {
     createProgressReporter,
+    isTypeScriptSource,
     statVideoEntries,
     SCAN_FILE_STAT_BATCH_SIZE,
   },
