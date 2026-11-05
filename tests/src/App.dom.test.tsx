@@ -914,7 +914,7 @@ describe('App renderer behavior', () => {
 
   test('skips frame extraction for a video that could not be read and says so', async () => {
     const store = getStoreApi();
-    const unreadable = makeVideo('broken', { metadataVersion: 2, metadataFailedAt: 1, metadataFailureReason: 'Invalid media data' });
+    const unreadable = makeVideo('broken', { metadataVersion: 2, metadataFailedAt: Date.now(), metadataFailureReason: 'Invalid media data' });
     const healthy = makeVideo('healthy', { metadataVersion: 2 });
     electron.api.scanDirectory.mockResolvedValue([unreadable, healthy]);
     store.setState({ ...store.getInitialState(), directory: 'D:\\Media', directories: ['D:\\Media'] }, true);
@@ -924,6 +924,24 @@ describe('App renderer behavior', () => {
     expect(await screen.findByText('Some videos could not be read')).toBeTruthy();
     await waitFor(() => expect(electron.api.generateThumbnails).toHaveBeenCalledTimes(1));
     expect(electron.api.generateThumbnails.mock.calls[0][0].map((video: Video) => video.id)).toEqual(['healthy']);
+  });
+
+  test('tries thumbnails after an expired failure retry emits no metadata update', async () => {
+    const store = getStoreApi();
+    const expiredFailure = makeVideo('retry', {
+      metadataVersion: 1,
+      metadataFailedAt: 1,
+      metadataFailureReason: 'Previous metadata probe failed',
+    });
+    electron.api.scanDirectory.mockResolvedValue([expiredFailure]);
+    store.setState({ ...store.getInitialState(), directory: 'D:\\Media', directories: ['D:\\Media'] }, true);
+
+    render(<App />);
+
+    await waitFor(() => expect(electron.api.processMetadata).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(electron.api.generateThumbnails).toHaveBeenCalledTimes(1));
+    expect(electron.api.generateThumbnails.mock.calls[0][0].map((video: Video) => video.id)).toEqual(['retry']);
+    expect(screen.queryByText('Some videos could not be read')).toBeNull();
   });
 
   test('closes the loaded session before Electron cleanup finishes', async () => {

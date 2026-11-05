@@ -30,6 +30,11 @@ import { sameSessionFolders } from './sessions';
 
 const CURRENT_METADATA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
+const METADATA_FAILURE_RETRY_MS = 24 * 60 * 60 * 1000;
+
+function hasRecentMetadataFailure(video: Video): boolean {
+  return video.metadataFailedAt != null && video.metadataFailedAt >= Date.now() - METADATA_FAILURE_RETRY_MS;
+}
 
 function groupVideosByLoadedRoot(videos: Video[], roots: string[], fallbackRoot: string | null): Map<string, Video[]> {
   const groups = new Map<string, Video[]>();
@@ -560,7 +565,7 @@ export default function App() {
         });
       }
       const needsThumbnails = (v: typeof allVideos[number]) => (
-        !v.metadataFailedAt &&
+        !hasRecentMetadataFailure(v) &&
         (!v.thumbnails || v.thumbnails.length < expectedThumbCount(v))
       );
       const metadataTasks = normalizedVideos.filter(needsMetadataRefresh);
@@ -587,7 +592,7 @@ export default function App() {
       }
       const scannedVideoIds = new Set(normalizedVideos.map((video) => video.id));
       const videosAfterMetadata = useStore.getState().videos;
-      const unreadableCount = videosAfterMetadata.filter((video) => scannedVideoIds.has(video.id) && video.metadataFailedAt).length;
+      const unreadableCount = videosAfterMetadata.filter((video) => scannedVideoIds.has(video.id) && hasRecentMetadataFailure(video)).length;
       if (unreadableCount > 0 && scanId === scanIdRef.current) {
         pushToast({
           title: 'Some videos could not be read',
