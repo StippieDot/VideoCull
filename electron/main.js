@@ -2284,6 +2284,8 @@ ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => tr
         if ((pendingMetadataFailures.get(videoFolder)?.size ?? 0) >= METADATA_DB_BATCH_SIZE) {
           await flushMetadataFolderWrites(videoFolder);
         }
+        // The renderer skips frame extraction for this video; a timed-out one still gets its attempt.
+        readyBatch.push({ videoId, metadataFailedAt: Date.now(), metadataFailureReason: reason });
       }
       if (failureExamples.length < 8) {
         failureExamples.push({
@@ -2471,7 +2473,7 @@ ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) =>
   try {
     await processVideos(needThumbs, (video) => thumbRootByFolder.get(getVideoFolderPath(video)), config, (progress) => {
       lastProgress = progress;
-    }, (videoId, thumbnails, durationSecs, creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps) => {
+    }, (videoId, thumbnails, durationSecs, creationTime, videoCodec, audioCodec, videoBitrate, audioBitrate, totalBitrate, containerFormat, width, height, fps, metadataProbeSucceeded) => {
       const video = videoById.get(videoId);
       if (video) {
         const folderPath = getVideoFolderPath(video);
@@ -2492,6 +2494,7 @@ ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) =>
           height,
           fps,
           compatible: detectCompatibility(containerFormat, videoCodec, video.path),
+          ...(metadataProbeSucceeded ? { metadataFailedAt: null, metadataFailureReason: null } : {}),
         });
         pendingThumbnailWrites.set(folderPath, folderUpdates);
         if (folderUpdates.size >= THUMBNAIL_DB_BATCH_SIZE) void flushThumbnailFolderWrites(folderPath);
@@ -2510,6 +2513,7 @@ ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) =>
         width,
         height,
         fps,
+        ...(metadataProbeSucceeded ? { metadataFailedAt: null, metadataFailureReason: null } : {}),
       });
     }, { forceRegenerate });
   } finally {

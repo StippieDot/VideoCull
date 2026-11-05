@@ -841,6 +841,8 @@ function updateVideoThumbnailMetadataBatch(db, updates) {
       container_format = COALESCE(?, container_format),
       width = COALESCE(?, width),
       height = COALESCE(?, height),
+      metadata_failed_at = CASE WHEN ? THEN NULL ELSE metadata_failed_at END,
+      metadata_failure_reason = CASE WHEN ? THEN NULL ELSE metadata_failure_reason END,
       compatible = COALESCE(?, compatible),
       updated_at = ?
     WHERE id = ?
@@ -864,6 +866,8 @@ function updateVideoThumbnailMetadataBatch(db, updates) {
         item.containerFormat ?? null,
         item.width ?? null,
         item.height ?? null,
+        item.metadataFailedAt === null ? 1 : 0,
+        item.metadataFailedAt === null ? 1 : 0,
         item.compatible == null ? null : (item.compatible ? 1 : 0),
         now,
         item.videoId,

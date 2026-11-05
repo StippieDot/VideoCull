@@ -558,6 +558,8 @@ test('updateVideoThumbnailMetadataBatch changes only generated media fields', as
     cache.saveCache(db, [buildCachedVideo('a', path.join(folderPath, 'a.mp4'), {
       status: 'keep',
       rating: 4,
+      metadataFailedAt: 123,
+      metadataFailureReason: 'Invalid media data',
       thumbnails: ['thumbs/a/old.jpg'],
     })]);
 
@@ -569,13 +571,17 @@ test('updateVideoThumbnailMetadataBatch changes only generated media fields', as
       compatible: true,
     }]);
 
-    const video = db.prepare('SELECT status, rating, duration_secs, video_codec, compatible FROM videos WHERE id = ?').get('a');
+    let video = db.prepare('SELECT status, rating, duration_secs, video_codec, compatible, metadata_failed_at, metadata_failure_reason FROM videos WHERE id = ?').get('a');
     const thumbnails = db.prepare('SELECT file_path FROM thumbnails WHERE video_id = ? ORDER BY idx').all('a');
-    assert.deepEqual(video, { status: 'keep', rating: 4, duration_secs: 15, video_codec: 'h264', compatible: 1 });
+    assert.deepEqual(video, { status: 'keep', rating: 4, duration_secs: 15, video_codec: 'h264', compatible: 1, metadata_failed_at: 123, metadata_failure_reason: 'Invalid media data' });
     assert.deepEqual(thumbnails, [
       { file_path: 'thumbs/a/new-1.jpg' },
       { file_path: 'thumbs/a/new-2.jpg' },
     ]);
+
+    cache.updateVideoThumbnailMetadataBatch(db, [{ videoId: 'a', metadataFailedAt: null, metadataFailureReason: null }]);
+    video = db.prepare('SELECT metadata_failed_at, metadata_failure_reason FROM videos WHERE id = ?').get('a');
+    assert.deepEqual(video, { metadata_failed_at: null, metadata_failure_reason: null });
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });

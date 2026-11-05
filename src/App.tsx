@@ -560,8 +560,8 @@ export default function App() {
         });
       }
       const needsThumbnails = (v: typeof allVideos[number]) => (
-        !v.thumbnails ||
-        v.thumbnails.length < expectedThumbCount(v)
+        !v.metadataFailedAt &&
+        (!v.thumbnails || v.thumbnails.length < expectedThumbCount(v))
       );
       const metadataTasks = normalizedVideos.filter(needsMetadataRefresh);
       if (metadataTasks.length > 0) {
@@ -587,6 +587,16 @@ export default function App() {
       }
       const scannedVideoIds = new Set(normalizedVideos.map((video) => video.id));
       const videosAfterMetadata = useStore.getState().videos;
+      const unreadableCount = videosAfterMetadata.filter((video) => scannedVideoIds.has(video.id) && video.metadataFailedAt).length;
+      if (unreadableCount > 0 && scanId === scanIdRef.current) {
+        pushToast({
+          title: 'Some videos could not be read',
+          detail: `No new previews for ${unreadableCount} ${unreadableCount === 1 ? 'video' : 'videos'}. To try again, use Regenerate Thumbnails and Metadata.`,
+          kind: 'warning',
+          dedupeKey: `scan-unreadable:${dirPaths.join('|')}`,
+          durationMs: 8000,
+        });
+      }
       const thumbnailTasks = videosAfterMetadata.filter((video) => (
         scannedVideoIds.has(video.id) && needsThumbnails(video)
       ));
