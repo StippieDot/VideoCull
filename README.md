@@ -1,13 +1,28 @@
-# VideoCull
-[![Release](https://img.shields.io/github/v/release/StippieDot/VideoCull?style=for-the-badge)](https://github.com/StippieDot/VideoCull/releases)
-[![License](https://img.shields.io/github/license/StippieDot/VideoCull?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D6?style=for-the-badge)](https://github.com/StippieDot/VideoCull/releases)
-[![Docs](https://img.shields.io/badge/docs-videocull.app-1f2937?style=for-the-badge&logo=readthedocs&logoColor=white)](https://docs.videocull.app)
-<a href="https://alternativeto.net/software/videocull/about/?utm_source=badge&amp;utm_medium=referral"><img src="https://alternativeto.net/static/badges/badge-compact-color.svg" alt="VideoCull | AlternativeTo" height="28" /></a>
+<div align="center">
 
-> See what is inside a video folder before deciding what stays.
+<h1 align="center"><sub><img src="src/assets/videocull-icon.png" alt="" width="36" height="36" /></sub> VideoCull</h1>
 
-**[Website](https://videocull.app/) · [Documentation](https://docs.videocull.app/) · [Download](#download)**
+<p align="center">See what is inside a video folder before deciding what stays.</p>
+
+<p align="center">
+  <a href="https://videocull.app/">Website</a> ·
+  <a href="https://docs.videocull.app/">Documentation</a> ·
+  <a href="#download">Download</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#keyboard-shortcuts">Keyboard Shortcuts</a> ·
+  <a href="#building-from-source">Build from Source</a> ·
+  <a href="#support-development">Support</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/StippieDot/VideoCull/actions/workflows/test.yml"><img src="https://github.com/StippieDot/VideoCull/actions/workflows/test.yml/badge.svg" alt="CI passing"></a>
+  <a href="https://github.com/StippieDot/VideoCull/releases"><img src="https://img.shields.io/github/v/release/StippieDot/VideoCull?label=latest" alt="Latest release"></a>
+  <a href="https://github.com/StippieDot/VideoCull/commits/main"><img src="https://img.shields.io/github/last-commit/StippieDot/VideoCull" alt="Latest commit"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/StippieDot/VideoCull" alt="License"></a>
+  <a href="https://github.com/StippieDot/VideoCull/releases"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D6" alt="Platform"></a>
+</p>
+
+</div>
 
 VideoCull is a free, open-source app for Windows, macOS and Linux for local video collections that are too large or messy to review file by file: downloaded videos, old archives and backups, external drives, screen recordings, and camera footage. It samples several frames from every video and lays them out in a grid, so you can identify clips without opening each one.
 
@@ -216,6 +231,20 @@ The built-in player is intended for compatible web-playable media such as `.mp4`
 - macOS and Linux builds are in beta.
 
 Found a bug or something that is not obvious in the workflow? [Open an issue](https://github.com/StippieDot/VideoCull/issues). Reports from large, messy collections are especially useful.
+
+---
+
+## Support development
+
+VideoCull is free and open source, and it is developed and maintained by one person, without a company or investor behind it. There are no subscriptions, ads, tracking, accounts, or features held back to push you to pay.
+
+If it saves you time and you want to help keep development going, these are the options:
+
+- **Microsoft Store:** [buy VideoCull on the Microsoft Store](https://apps.microsoft.com/detail/9NG9Z0CL73PC). This is the most direct way to support the project.
+- **GitHub Sponsors:** [sponsor StippieDot on GitHub](https://github.com/sponsors/StippieDot).
+- **PayPal:** [send a donation on PayPal](https://paypal.me/stippiedot).
+
+Financial support is appreciated but entirely optional. You can also help by starring the repository, [reporting problems](https://github.com/StippieDot/VideoCull/issues), sharing VideoCull with people who manage large video collections, or contributing code. More about the project is on the [website](https://videocull.app/).
 
 ---
 
