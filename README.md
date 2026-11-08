@@ -20,6 +20,7 @@
   <a href="https://github.com/StippieDot/VideoCull/commits/main"><img src="https://img.shields.io/github/last-commit/StippieDot/VideoCull" alt="Latest commit"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/StippieDot/VideoCull" alt="License"></a>
   <a href="https://github.com/StippieDot/VideoCull/releases"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D6" alt="Platform"></a>
+  <a href="#support-development"><img src="https://img.shields.io/badge/Support-30363D?logo=githubsponsors&logoColor=EA4AAA" alt="Support"></a>
 </p>
 
 </div>
