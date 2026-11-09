@@ -69,7 +69,26 @@ Proposed direction:
 - Proposed direction: sign and notarize in `release.yml` once an Apple Developer account exists, then enable the updater for the macOS build. Keep the manual-download note in the README until it does.
 - The macOS beta should not be called stable before this lands or the first-launch step is judged acceptable by testers.
 
+### 22. Photo support (images next to videos)
+
+- Issue #42. A contributor asked for photo culling in the same app, for folders that mix photos and videos, and built a working proof of concept: https://github.com/Daveja-Vu/VideoCull/tree/feat/photo-support-and-enhancements (based on 2.5.0, about 35 files, one branch). Offered credit if parts are adopted.
+- It covers: scanning common image formats, metadata and a single thumbnail with EXIF rotation, a full-size photo viewer in Review, photo duplicate detection (one hash per photo, keeper by pixel area), a media-type selector (videos, photos or both) saved with the session, and megapixel badges.
+- Not committed. The open question is scope: the app's name and focus are about video, and photo culling has many existing alternatives. Decide whether VideoCull should handle both before any code is adopted.
+- Evaluate it separately from the other ideas in that branch (#23, #24). It touches the scanner, probe, thumbnail, duplicate and keeper code, so it overlaps items 9 (keeper copies) and the single-thumbnail cut-off (roadmap 2.4), and its photo-aware cache pruning (skipping prune when only one media type is scanned) needs checking against Phase L.
+- If adopted: extract it from the branch in reviewable pieces rather than merging the branch, and re-run the duplicate and thumbnail tests, since a fixed-size single frame changes the duration assumptions in `electron/duplicates.js`.
+
 ## Low
+
+### 23. Folder-mapped number keys that move a file
+
+- Issue #42 (contributor idea, separate from photo support). Keys 1 to 9 and 0 each map to a destination folder with a tag label; pressing one in Review moves the current file there and advances, and in the grid it moves the whole selection, with undo.
+- Overlaps roadmap 6.3 (Move to folder) and 3.4 (Tags), including its no-overwrite and journal rules, so build it on those instead of the branch's own move handlers. The branch adds `move-videos-to-folder` and `restore-moved-videos`, which would bypass the safety work planned in Phase 6.
+- Revisit when 6.3 ships.
+
+### 24. Remember window size and position
+
+- Issue #42 (contributor idea). A setting, on by default, that restores window size, position and maximized state, checking the saved position is still on a connected display.
+- Small and independent of everything else. Not scheduled; no demand beyond this report yet.
 
 ### 7. Duplicate matching is weak for trimmed or offset copies
 
@@ -140,12 +159,6 @@ Proposed direction:
 - Issue #32. Let the player grow to fill the window while the metadata and decision controls stay visible, without going full screen.
 - Not committed. Review already sizes the media to the viewport (`getReviewMediaWidth`), so this is a layout option, not a new player.
 
-### 19. Adjustable threshold for single-frame thumbnails
-
-- Issue #32. Videos under 10 seconds get one thumbnail instead of the usual set, and the person cannot change that. Someone who works mainly with short clips would want the full set, or a different cut-off.
-- The constant `SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10` is declared three times (`electron/processor.js`, `electron/main.js`, `src/App.tsx`) and must be read from one setting if it becomes configurable. A copy left behind makes the expected thumbnail count disagree with what was generated.
-- Changing it leaves existing thumbnails with the old count. Treat that like a thumbnail count change: regenerate only on request, never silently (roadmap 2.2 provenance rule).
-
 ### 20. ARM builds for Windows and Linux
 
 - Not built today. The pinned FFmpeg toolchain covers `win32-x64`, `linux-x64`, `darwin-arm64` and `darwin-x64` (`config/ffmpeg-toolchain.json`), so Windows ARM and Linux ARM have no FFmpeg build, no `better-sqlite3` prebuild check and no release job.
@@ -153,7 +166,7 @@ Proposed direction:
 
 ### 21. Flatpak and Flathub
 
-- Issue #4 asks for a Flatpak. Linux releases ship an AppImage for any distribution, a .deb for Debian-based ones and an .rpm for RPM-based ones; a Flatpak would add a real installer and system-managed updates on Fedora, Linux Mint, Zorin, Pop!_OS and the Steam Deck, whose app stores are built on Flathub.
+- Issue #4 asks for a Flatpak; #34 tracks it. Linux releases ship an AppImage for any distribution, a .deb for Debian-based ones and an .rpm for RPM-based ones; a Flatpak would add a real installer and system-managed updates on Fedora, Linux Mint, Zorin, Pop!_OS and the Steam Deck, whose app stores are built on Flathub.
 - Not committed. The AppImage, .deb and .rpm already cover every distribution, so a Flatpak adds reach through the app stores, not new capability. Taken off the roadmap (it was Phase M.1 for `2.5.0`) until the beta builds have real feedback.
 - Packaging: the simplest Flathub route repackages the released .deb (or a tarball) with a pinned checksum on the Electron base app (`org.electronjs.Electron2.BaseApp`), as many Electron apps on Flathub do. Nothing is rebuilt on Flathub's builders, and the bundled FFmpeg arrives inside the package with its corresponding source already published by `VideoCull-FFmpeg`. Confirm Flathub's current policy on repackaged binaries before submitting.
 - App ID must map to a domain or account we control: `app.videocull.VideoCull` (videocull.app) or `io.github.StippieDot.VideoCull`.
@@ -185,6 +198,7 @@ Proposed direction:
 3. Reduce renderer and visual-duplicate peak memory for very large sessions.
 4. Narrow high-volume IPC and cache payloads where measurements justify the contract work.
 5. Persist duplicate results if repeated runs remain a significant workflow cost.
+5a. Decide the photo-support scope question (item 22) before anyone adopts code from the contributor's branch.
 6. Address lower-priority resource bounds, duplicate matching, keeper, and maintenance improvements as demand justifies them.
 
 ## Resolved issues

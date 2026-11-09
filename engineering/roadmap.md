@@ -547,9 +547,11 @@ builds for Windows and Linux, a Flatpak.
 ## Phase 1 — Quick Wins
 
 Small, ready-to-build changes. No architectural dependencies, and none touches FFmpeg. 1.1–1.2 were
-planned from the start; 1.3–1.6 are user requests (issues
+planned from the start; 1.3–1.7 are user requests (issues
 [#32](https://github.com/StippieDot/VideoCull/issues/32) and
-[#31](https://github.com/StippieDot/VideoCull/issues/31)).
+[#31](https://github.com/StippieDot/VideoCull/issues/31), the former now split into
+[#35](https://github.com/StippieDot/VideoCull/issues/35), [#36](https://github.com/StippieDot/VideoCull/issues/36),
+[#37](https://github.com/StippieDot/VideoCull/issues/37) and [#38](https://github.com/StippieDot/VideoCull/issues/38)).
 
 ### 1.1 Configurable Skip Length in Review
 
@@ -592,7 +594,7 @@ diagnostics instead of a machine-dependent timing assertion.
 ### 1.3 Rating and Favourite Keys, Complete Shortcut Help
 
 **Decision:** Star rating and favourite get configurable keybinds in Review, and the shortcut help lists
-every key that works. Requested in issue #32.
+every key that works. Requested in issue #32, tracked in #35.
 
 **Implementation notes:**
 - **Verified:** `ALL_SHORTCUTS` (`src/keybinds.ts`) has Keep, Delete, Skip, Reset, Undo, Play, bookmark and
@@ -637,7 +639,8 @@ paused returns to the thumbnails; next video starts unplayed.
 ### 1.5 Clear Decision Indicator and Reset Scope in Review
 
 **Decision:** Review shows the video's decision as a visible label, not only a colour tint. Requested in
-issue #32, where the missing indicator was the main reason a first-time user stopped.
+issue #32, where the missing indicator was the main reason a first-time user stopped. Tracked in #36
+(decision label) and #37 (Reset scope).
 
 **Implementation notes:**
 - **Verified:** returning to a decided video tints Review (green, red or amber); the grid cards have a
@@ -684,9 +687,32 @@ last; renderer and backend defaults and ranking agree.
 
 ---
 
+### 1.7 Undo in Review Acts on the Video Shown
+
+**Decision:** In Review, Undo reverts the newest change to what Review is showing. One shared history with
+scoping, not a separate stack per screen. Requested in issue #32, tracked in
+[#38](https://github.com/StippieDot/VideoCull/issues/38) (a data-safety bug). Pulled forward from 3.5
+because it needs neither tags nor the persistence module.
+
+**Implementation notes:**
+- **Verified:** Review's `undo` calls the store's single stack with no scope (`ReviewMode.tsx`), so a press
+  can revert a decision on a video that is not on screen.
+- An undo entry already records the video IDs it changed. In Review, undo takes the newest entry that touched
+  the current Review scope. When that entry affects a video other than the one shown, Review navigates to it
+  first and the toast names the video, so nothing changes out of sight.
+- The grid keeps its current behaviour: it undoes the newest entry.
+- Rating, favourite and bookmark entries arrive with 3.5 and use the same scoping.
+
+**Tests:** decide on A in Review, move to B, undo → navigates to A and reverts A, B untouched; a decision made
+in the grid on a video outside the Review scope is not reverted from Review; the toast names the video;
+grid undo unchanged.
+
+---
+
 ## Phase 2 — Delete Safety & Thumbnail Seeking
 
-Clear delete errors, thumbnails that know their time, and a faster selection gesture.
+Clear delete errors, thumbnails that know their time, a faster selection gesture and an adjustable cut-off
+for single-thumbnail clips.
 
 ### 2.1 Delete Error Reasons
 
@@ -739,7 +765,8 @@ replaced between attempts (same path and size) → `changed`; a retry only touch
 
 **Decision:** Each new thumbnail stores the time it was actually taken. Clicking a grid frame opens
 Review at that moment; hovering Review's seek bar shows the matching thumbnail. Legacy thumbnails without
-a stored time open Review at the start — no guessing from slot numbers.
+a stored time open Review at the start — no guessing from slot numbers. Tracked in
+[#39](https://github.com/StippieDot/VideoCull/issues/39).
 
 **Implementation notes:**
 - **Seek times:** `extractFrame` resolves `{ path, seekSecs }`, including retry offsets. Each image travels
@@ -801,6 +828,24 @@ on an unselected card adds; starting on a selected card removes. Escape restores
 
 **Tests:** add/remove helper; **pointerup → lostpointercapture keeps the commit**; Escape restores;
 control exclusions; a **manual check on a real virtualized grid**.
+
+### 2.4 Adjustable Cut-off for Short Clips
+
+**Decision:** Videos shorter than a cut-off get one thumbnail instead of the full set. The cut-off becomes a
+setting, with a way to turn the single-thumbnail behaviour off. Requested in issue #32, tracked in
+[#40](https://github.com/StippieDot/VideoCull/issues/40). Moved here from the backlog.
+
+**Implementation notes:**
+- Setting `singleThumbnailBelowSecs`, default 10 (today's behaviour), with 0 meaning "always the full set".
+- **One source of truth:** `SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10` is declared three times
+  (`electron/processor.js`, `electron/main.js`, `src/App.tsx`). All three read the setting, so the expected
+  thumbnail count never disagrees with what was generated.
+- Existing thumbnails keep their count. Changing the cut-off marks them as outdated and regenerates **only on
+  request**, never silently (the 2.2 provenance rule). It builds on 2.2's `thumb_generation` and safe
+  rebuild publication, which is why it comes after 2.2.
+
+**Tests:** default unchanged; 0 gives the full set; the three call sites agree for each value; changing the
+setting never regenerates on its own; a video exactly at the cut-off.
 
 ---
 
@@ -932,6 +977,12 @@ loads. Deleted tags are tombstoned; unknown tags found in a folder are offered b
   cases; edits flow through `review-persistence`, the same path as status and rating. A tag is never
   stored only in the renderer. Load-time reconciliation is a pure function in `src/tags.ts`.
 
+- Requested in [#41](https://github.com/StippieDot/VideoCull/issues/41), which also lists what is **not
+  committed**: keys for individual tags, nested tags, and writing tags or ratings into the video files
+  (embedding in MP4 is to be tested before deciding). Folder-mapped number keys that move a file
+  (a contributor idea in [#42](https://github.com/StippieDot/VideoCull/issues/42)) belong with 6.3, not here;
+  see backlog #23.
+
 **Tests:** a settings save returning `false` during create, delete or recovery; recovery alongside a
 manual edit; tombstone persistence; older versions and the other edition don't wipe tags when they save.
 
@@ -951,13 +1002,8 @@ action, and a bulk action is one entry. Undo stays in memory for the session (se
   removal dropped.
 - Hiding the rating or favourite UI (feature toggles) doesn't change what is recorded.
 - The undo toast and shortcut text name the kind of edit ("Undo rating", "Undo bookmark").
-- **Undo in Review acts on what Review shows** (issue #32). Today Review's `undo` is the same single stack
-  as the grid's, so a press can revert a decision on a video that is not on screen (`ReviewMode.tsx` calls
-  the store's `undo`, with no scope). Proposed: an entry records the video IDs it changed; in Review,
-  undo reverts the newest entry that touched the current Review scope and, when it affects a video other
-  than the one shown, navigates to it first (or says which video it reverted). Open decision: a separate
-  stack per surface, or one stack plus this scoping. One stack with scoping keeps a single history and is
-  the proposed choice.
+- **Undo in Review acts on what Review shows** moved to Phase 1 as 1.7. This phase extends the same
+  stack with rating, favourite, bookmark and tag entries, and they get the scoping from 1.7 automatically.
 
 **Tests:** for each field, edit → undo → await persistence → reload → previous value restored; a bulk
 edit is one entry; undo and redo ordering with interleaved status, rating and tag edits; an undo whose
@@ -1469,8 +1515,8 @@ Commit messages use conventional types (`feat:`, `fix:`, `refactor:`, `test:`, `
 | P0 — Media toolchain & licence compliance | `2.4.0` | FFmpeg 9.0.2, fluent-ffmpeg removed, licence notices + About licence section |
 | PS — Saved sessions & linked folders | `2.5.0` | Session restore, recent sessions, links and junctions |
 | PM — macOS & Linux (beta) | `2.5.0` | Ships with PS; includes AppImage, .deb and .rpm; stable status waits for tester feedback |
-| P1 — Quick wins | `2.6.0` | Skip length, mark short videos, rating/favourite keys, pause in place, decision indicator, codec keeper rule |
-| P2 — Delete safety & thumbnail seeking | `2.7.0` | Delete reasons, click-to-seek, scrub previews, paint selection |
+| P1 — Quick wins | `2.6.0` | Skip length, mark short videos, rating/favourite keys, pause in place, decision indicator, codec keeper rule, undo scoped to the video shown |
+| P2 — Delete safety & thumbnail seeking | `2.7.0` | Delete reasons, click-to-seek, scrub previews, paint selection, short-clip thumbnail cut-off |
 | PL — Persistent library | `2.8.0` | Open from the cache, background check, offline folders |
 | P3 — Reliable settings & tags | `2.9.0` | Additive schema; downgrade safety not promised (see Defaults) |
 | P4 — Processing performance | `2.10.0` | Storage-aware scheduling, smarter frames |
@@ -1574,11 +1620,13 @@ P1  Rating and favourite keys, complete shortcut help (Phase 1.3)
 P1  Pause and resume in place (Phase 1.4)
 P1  Clear decision indicator + Reset scope in Review (Phase 1.5)
 P1  Codec in keeper priority (Phase 1.6) ← adds the duplicate-defaults parity test from backlog #9
+P1  Undo in Review acts on the video shown (Phase 1.7) ← data-safety bug; 3.5 later reuses its scoping
 
 P2  Delete error investigation (Phase 2.1a)
 P2  library-registry + processing-runs + file-ops-delete + delete reasons (Phase 2.1) ← enables 5.4, 6.1, 7.1
 P2  Thumbnail seek times + safe publication + click-to-seek + scrub previews (Phase 2.2)
 P2  Drag-to-paint selection (Phase 2.3)
+P2  Adjustable short-clip thumbnail cut-off (Phase 2.4) ← after 2.2, needs its thumbnail provenance
 
 PL  Open-time measurements + library ADR (Phase L.0) ← after 2.1; moves after 3.3 if L.2 needs it
 PL  Open from the cache (Phase L.1)
