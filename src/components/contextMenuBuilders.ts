@@ -4,6 +4,9 @@ import { fileManagerName } from '../utils';
 
 type Action = () => void;
 
+/** What "Reset everything" does, for its tooltip wherever it is offered. */
+export const RESET_EVERYTHING_HINT = 'Sets the status to Pending and clears the rating, favourite and bookmarks';
+
 function separator(key: string): ContextMenuItem {
   return { type: 'separator', key };
 }
@@ -88,11 +91,13 @@ export function buildReviewVideoMenu(actions: {
   onOpenExternal: Action;
   onReveal: Action;
   onCopyPath: Action;
+  onResetEverything: Action;
 }): ContextMenuItem[] {
   return [
     { key: 'external', label: 'Open in external player', onSelect: actions.onOpenExternal },
     { key: 'reveal', label: `Reveal in ${fileManagerName()}`, onSelect: actions.onReveal },
     separator('sep-main'),
+    { key: 'reset-everything', label: 'Reset everything', title: RESET_EVERYTHING_HINT, onSelect: actions.onResetEverything, tone: 'danger' },
     { key: 'copy', label: 'Copy full path', onSelect: actions.onCopyPath, tone: 'secondary' },
   ];
 }

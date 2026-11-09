@@ -69,7 +69,7 @@ Batch selection is useful when a filter, folder, or visible range already identi
     Hold `Shift` and click another card to add the full visible range between the selection anchor and that card. The range follows the current filtered and sorted order, including across folder groups.
   </Step>
   <Step title="Apply one action">
-    Choose Keep, Delete, Skip, Reset, or Thumbs from the batch bar. Status and thumbnail actions clear the selection after they finish.
+    Choose Keep, Delete, Skip, Reset status, Reset everything, or Thumbs from the batch bar. Status and thumbnail actions clear the selection after they finish.
   </Step>
 </Steps>
 
@@ -82,11 +82,12 @@ Changing filters removes selected videos that are no longer visible. Press `Esc`
 | Keep | Marks every selected video Keep. No files move. |
 | Delete | Marks every selected video for the later delete batch. No files move yet. |
 | Skip | Marks every selected video Skipped for a later decision. |
-| Reset | Returns every selected video to Pending. Ratings, favorites, and bookmarks remain unchanged. |
+| Reset status | Returns every selected video to Pending. Ratings, favorites, and bookmarks remain unchanged. |
+| Reset everything | Returns every selected video to Pending and clears its bookmarks, and its rating and favorite while those features are shown. |
 | Thumbs | Clears and regenerates thumbnails and reads the file metadata again for the selected videos. It is unavailable during scanning or other thumbnail generation. |
 | Clear | Clears selection only. It does not alter videos. |
 
-Batch status changes are undoable as one operation. The final sidebar Delete action is different: it acts on every loaded video marked Delete, including videos hidden by current filters. See [Delete and safety](/features/delete-and-safety) before committing a large batch.
+Each batch change is undoable as one step, from the **Undo** button in the notice that follows it or with `Ctrl + Z`. The final sidebar Delete action is different: it acts on every loaded video marked Delete, including videos hidden by current filters. See [Delete and safety](/features/delete-and-safety) before committing a large batch.
 
 ## Use context menus
 

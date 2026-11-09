@@ -149,11 +149,13 @@ test('review mode menu contains only approved items in order', () => {
     onOpenExternal: noop,
     onReveal: noop,
     onCopyPath: noop,
+    onResetEverything: noop,
   });
 
   expect(labels(items)).toEqual([
     { label: 'Open in external player', disabled: false },
     { label: 'Reveal in Explorer', disabled: false },
+    { label: 'Reset everything', disabled: false },
     { label: 'Copy full path', disabled: false },
   ]);
 });

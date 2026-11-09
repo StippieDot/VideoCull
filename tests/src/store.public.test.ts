@@ -285,6 +285,17 @@ describe('useStore public behavior', () => {
     expect(useStore.getState().redo()).toBeNull();
   });
 
+  test('Reset everything leaves the rating and favourite alone while those features are hidden', () => {
+    useStore.getState().setDirectory('D:\\Media');
+    useStore.getState().setVideos([makeVideo('a', { status: 'keep', rating: 5, favorite: true, bookmarks: [2] })]);
+    useStore.setState({ settings: { ...useStore.getState().settings, features: { ...useStore.getState().settings.features, ratings: false, favorites: false } } });
+
+    useStore.getState().resetVideoDecisions(['a']);
+
+    expect(useStore.getState().videos[0]).toMatchObject({ status: 'pending', rating: 5, favorite: true, bookmarks: [] });
+    expect(useStore.getState().undoStack.map((entry) => entry.label)).toEqual(['Reset everything · a.mp4']);
+  });
+
   test('a batch edit is one entry, and undo says what it reverted in one replaceable toast', () => {
     useStore.getState().setDirectory('D:\\Media');
     useStore.getState().setVideos([

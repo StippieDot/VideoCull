@@ -499,6 +499,8 @@ export interface VideoStore {
   setVideos: (videos: Video[]) => void;
   updateVideoThumbnailsBatch: (batch: ThumbReadyEvent[]) => void;
   setVideoStatus: (videoId: string, status: VideoStatus) => void;
+  /** Sets the videos to Pending and clears their bookmarks, and their rating and favourite when shown. */
+  resetVideoDecisions: (videoIds: string[]) => void;
   /** Reverts the newest edit and says so in a toast; null when there is nothing to undo. */
   undo: () => UndoEntry | null;
   /** Applies the newest undone edit again; null when there is nothing to redo. */

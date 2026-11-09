@@ -1021,6 +1021,19 @@ function moveThroughHistory(get: StoreGet, set: StoreSet, direction: 'undo' | 'r
   return entry;
 }
 
+/**
+ * The Undo button for a notice about the edit just made. It does nothing once a newer edit exists,
+ * so it never reverts something other than what the notice describes.
+ */
+export function undoLastEditAction(): () => void {
+  const { undoStack } = useStore.getState();
+  const entry = undoStack[undoStack.length - 1];
+  return () => {
+    const state = useStore.getState();
+    if (entry && state.undoStack[state.undoStack.length - 1] === entry) state.undo();
+  };
+}
+
 const useStore = create<VideoStore>((set, get) => ({
   // ── Directory ──
   directory: null,
@@ -1448,6 +1461,18 @@ const useStore = create<VideoStore>((set, get) => ({
     recordReviewEdit(get, set, video.favorite ? 'Remove favourite' : 'Favourite', [
       { videoId, values: { favorite: !video.favorite } },
     ]);
+  },
+
+  resetVideoDecisions: (videoIds) => {
+    const { features } = get().settings;
+    // A hidden feature keeps its data, so only what the person can see is cleared.
+    const values = {
+      status: 'pending' as const,
+      bookmarks: [],
+      ...(features.ratings ? { rating: 0 as const } : {}),
+      ...(features.favorites ? { favorite: false } : {}),
+    };
+    recordReviewEdit(get, set, 'Reset everything', videoIds.map((videoId) => ({ videoId, values })));
   },
 
   undo: () => moveThroughHistory(get, set, 'undo'),

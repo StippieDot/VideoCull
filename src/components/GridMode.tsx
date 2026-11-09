@@ -11,17 +11,18 @@ import {
 import { List } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
 import type { Video } from '../types';
-import useStore from '../store';
+import useStore, { undoLastEditAction } from '../store';
 import useActiveValue from '../hooks/useActiveValue';
 import VideoCard from './VideoCard';
 import { formatSize, getFolderLabel, getFolderPath, isFolderInside, isWebSupported } from '../utils';
 import { matchesKeybind } from '../keybinds';
-import { Check, ChevronDown, RefreshCw, Search, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
+import { Check, ChevronDown, Eraser, RefreshCw, Search, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import {
   buildCopyPathSuccessDetail,
   buildFolderHeaderMenu,
   buildLibraryGridVideoMenu,
+  RESET_EVERYTHING_HINT,
 } from './contextMenuBuilders';
 import './GridMode.css';
 import { openVideoExternally, revealInExplorer } from '../appCommands';
@@ -732,26 +733,32 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     if (leaving.length > 0) captureBatchScrollAnchorRef.current(new Set(leaving.map((video) => video.id)));
   }), []);
 
-  const handleBatchStatus = useCallback((status: 'keep' | 'delete' | 'skipped' | 'pending') => {
+  // 'everything' resets the status and clears the rating, favourite and bookmarks.
+  const handleBatchStatus = useCallback((status: 'keep' | 'delete' | 'skipped' | 'pending' | 'everything') => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    if (statusFilter !== 'all' && statusFilter !== status) {
+    const nextStatus = status === 'everything' ? 'pending' : status;
+    if (statusFilter !== 'all' && statusFilter !== nextStatus) {
       captureBatchScrollAnchor(new Set(ids));
     } else {
       pendingScrollAnchorRef.current = null;
     }
-    setVideoStatusesBatch(ids, status);
+    if (status === 'everything') useStore.getState().resetVideoDecisions(ids);
+    else setVideoStatusesBatch(ids, status);
     clearGridSelection();
+    const videos = `${ids.length} ${ids.length === 1 ? 'video' : 'videos'}`;
     const statusLabel = status === 'skipped'
       ? 'Skipped'
-      : status === 'pending'
+      : status === 'pending' || status === 'everything'
         ? 'Pending'
         : status.charAt(0).toUpperCase() + status.slice(1);
     pushToast({
-      title: status === 'pending' ? 'Selection reset' : 'Batch updated',
-      detail: `${ids.length} ${ids.length === 1 ? 'video' : 'videos'} marked ${statusLabel}.`,
+      title: status === 'everything' ? 'Reset everything' : status === 'pending' ? 'Status reset' : 'Batch updated',
+      detail: status === 'everything' ? `${videos} set to Pending, with rating, favourite and bookmarks cleared.` : `${videos} marked ${statusLabel}.`,
       kind: 'success',
       dedupeKey: `batch-status:${status}:${ids.join('|')}`,
+      actionLabel: 'Undo',
+      action: undoLastEditAction(),
     });
   }, [captureBatchScrollAnchor, clearGridSelection, pushToast, selectedIds, setVideoStatusesBatch, statusFilter]);
 
@@ -1027,9 +1034,13 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
               <SkipForward size={14} />
               Skip
             </button>
-            <button className="btn btn-ghost grid-batch-btn grid-batch-reset" onClick={() => handleBatchStatus('pending')}>
+            <button className="btn btn-ghost grid-batch-btn grid-batch-reset" onClick={() => handleBatchStatus('pending')} title="Sets the status to Pending">
               <RotateCcw size={14} />
-              Reset
+              Reset status
+            </button>
+            <button className="btn btn-ghost grid-batch-btn grid-batch-reset" onClick={() => handleBatchStatus('everything')} title={RESET_EVERYTHING_HINT}>
+              <Eraser size={14} />
+              Reset everything
             </button>
             <button
               className="btn btn-ghost grid-batch-btn grid-batch-regenerate"
