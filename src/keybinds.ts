@@ -81,6 +81,7 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
   { keys: ['F5'],              description: 'Rescan',                group: 'Global', section: 'Folders & search' },
   { keys: [`${MOD}+Shift+E`],    description: 'Export report',         group: 'Global', section: 'Videos' },
   { keys: [`${MOD}+Z`],          description: 'Undo last action',      group: 'Global', section: 'Videos' },
+  { keys: [`${MOD}+Shift+Z`],    description: 'Redo',                  group: 'Global', section: 'Videos' },
   { keys: [`${MOD}+Backspace`],  description: 'Delete marked videos',  group: 'Global', section: 'Videos' },
   { keys: [`${MOD}++`, `${MOD}+=`], description: 'Larger cards',         group: 'Global', section: 'Videos' },
   { keys: [`${MOD}+-`],          description: 'Smaller cards',         group: 'Global', section: 'Videos' },

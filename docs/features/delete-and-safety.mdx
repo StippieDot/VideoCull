@@ -24,7 +24,7 @@ VideoCull separates review decisions from file deletion. Keep, Delete, Skip, and
 | Delete | Included in the next delete batch | Unchanged until confirmation |
 | Skipped | Deliberately deferred | Unchanged |
 
-Use Reset to return any decided video to Pending. Undo reverses recent status changes while the current session remains open.
+Use Reset to return any decided video to Pending. Undo (`Ctrl + Z`) reverses recent status, rating, favourite and bookmark changes, newest first, and Redo (`Ctrl + Shift + Z`) applies them again. The Actions menu names the change each one acts on, and a notice confirms what was undone. The history lasts while the current set of videos stays loaded.
 
 To reset several videos without adding a separate reset-review action, filter the grid to the intended pool, `Shift`-click a card to start batch selection, select the required range or individual cards, and choose **Reset**. This returns only those selected statuses to Pending and preserves ratings, favorites, and bookmarks.
 

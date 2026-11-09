@@ -416,7 +416,19 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
     setVideoStatus(video.id, 'pending');
   }, [video, setVideoStatus]);
 
-  const handleUndo = useCallback(() => undo(), [undo]);
+  const handleUndo = useCallback(() => { undo(); }, [undo]);
+
+  // After an undo or redo, show the video it changed when it is in this review.
+  const historyJump = useStore((s) => s.historyJump);
+  const handledHistoryJumpRef = useRef(historyJump?.id ?? 0);
+  useEffect(() => {
+    if (!historyJump || handledHistoryJumpRef.current === historyJump.id) return;
+    handledHistoryJumpRef.current = historyJump.id;
+    const index = reviewVideos.findIndex((item) => historyJump.videoIds.includes(item.id));
+    if (index < 0 || index === reviewIndex) return;
+    setIsPlaying(false);
+    setReviewIndex(index);
+  }, [historyJump, reviewVideos, reviewIndex, setReviewIndex]);
 
   const handlePlay = useCallback(() => {
     if (!video) return;

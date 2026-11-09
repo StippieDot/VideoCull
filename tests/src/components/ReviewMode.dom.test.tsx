@@ -98,6 +98,28 @@ describe('ReviewMode behavior', () => {
     });
   });
 
+  test('undo reverts the newest edit and returns Review to the video it changed', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    const beta = makeVideo('beta', { path: 'D:\\Media\\beta.mp4' });
+    useStore.setState({
+      videos: [alpha, beta],
+      filteredVideos: [alpha, beta],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha', 'beta'],
+    });
+
+    render(<ReviewMode />);
+    await userEvent.click(screen.getByRole('button', { name: /^Keep/ }));
+    await waitFor(() => expect(screen.getByText('beta.mp4')).toBeTruthy());
+
+    await userEvent.click(screen.getByRole('button', { name: /^Undo/ }));
+
+    await waitFor(() => expect(screen.getByText('alpha.mp4')).toBeTruthy());
+    expect(useStore.getState().videos[0].status).toBe('pending');
+    expect(useStore.getState().redoStack.map((entry) => entry.label)).toEqual(['Keep · alpha.mp4']);
+  });
+
   test('shows the decision as a labelled badge only on decided videos', () => {
     const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4', status: 'delete' });
     const beta = makeVideo('beta', { path: 'D:\\Media\\beta.mp4' });

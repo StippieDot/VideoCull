@@ -257,6 +257,54 @@ describe('useStore public behavior', () => {
     expect(state.undoStack).toHaveLength(0);
   });
 
+  test('undo and redo walk one linear history covering status, rating, favourite and bookmarks', () => {
+    useStore.getState().setDirectory('D:\\Media');
+    useStore.getState().setVideos([makeVideo('a', { path: 'D:\\Media\\a.mp4', filename: 'a.mp4' })]);
+    const store = useStore.getState();
+    store.setVideoStatus('a', 'keep');
+    store.setVideoRating('a', 4);
+    store.toggleFavorite('a');
+    store.addBookmark('a', 12);
+    store.setVideoRating('a', 4); // no change, so no history entry
+
+    expect(useStore.getState().undoStack.map((entry) => entry.label)).toEqual([
+      'Keep · a.mp4', 'Rate 4 ★ · a.mp4', 'Favourite · a.mp4', 'Add bookmark · a.mp4',
+    ]);
+
+    for (let step = 0; step < 4; step += 1) useStore.getState().undo();
+    expect(useStore.getState().videos[0]).toMatchObject({ status: 'pending', rating: 0, favorite: false, bookmarks: [] });
+    expect(useStore.getState().undo()).toBeNull();
+
+    useStore.getState().redo();
+    useStore.getState().redo();
+    expect(useStore.getState().videos[0]).toMatchObject({ status: 'keep', rating: 4, favorite: false });
+
+    // A new edit drops what was left to redo.
+    useStore.getState().setVideoStatus('a', 'delete');
+    expect(useStore.getState().redoStack).toEqual([]);
+    expect(useStore.getState().redo()).toBeNull();
+  });
+
+  test('a batch edit is one entry, and undo says what it reverted in one replaceable toast', () => {
+    useStore.getState().setDirectory('D:\\Media');
+    useStore.getState().setVideos([
+      makeVideo('a', { path: 'D:\\Media\\a.mp4' }),
+      makeVideo('b', { path: 'D:\\Media\\b.mp4', status: 'delete' }),
+    ]);
+    useStore.getState().setVideoStatusesBatch(['a', 'b'], 'delete');
+
+    expect(useStore.getState().undoStack.map((entry) => entry.label)).toEqual(['Delete · a.mp4']);
+    useStore.getState().setVideoStatusesBatch(['a', 'b'], 'keep');
+    useStore.getState().undo();
+    useStore.getState().undo();
+
+    const state = useStore.getState();
+    expect(state.videos.map((video) => video.status)).toEqual(['pending', 'delete']);
+    expect(state.toasts.filter((toast) => toast.replaceKey === 'undo-history')).toEqual([
+      expect.objectContaining({ title: 'Undone', detail: 'Delete · a.mp4', actionLabel: 'Redo' }),
+    ]);
+  });
+
   test('retries review-state persistence after a worker request rejects', async () => {
     vi.useFakeTimers();
     vi.spyOn(console, 'error').mockImplementation(() => {});

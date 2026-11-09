@@ -94,6 +94,10 @@ export interface AppMenuState {
   videoCount: number;
   markedCount: number;
   canUndo: boolean;
+  canRedo: boolean;
+  /** The edit Undo and Redo would act on, such as "Keep · beach.mp4"; empty when there is none. */
+  undoLabel: string;
+  redoLabel: string;
   canExport: boolean;
   /** Marked videos exist and no scan is running, which is when the delete handler acts. */
   canDeleteMarked: boolean;
@@ -187,6 +191,8 @@ export interface ToastNotification {
   detail?: string;
   kind: ToastKind;
   createdAt: number;
+  durationMs: number;
+  replaceKey?: string;
   actionLabel?: string;
   action?: () => void;
 }
@@ -196,6 +202,8 @@ export interface ToastInput {
   detail?: string;
   kind?: ToastKind;
   dedupeKey?: string;
+  /** A new toast with the same key takes the place of the shown one instead of stacking. */
+  replaceKey?: string;
   durationMs?: number;
   actionLabel?: string;
   action?: () => void;
@@ -208,7 +216,7 @@ export type MenuAction =
   | 'delete-all' | 'export-report' | 'find-duplicates' | 'go-to-folder' | 'open-about'
   | 'open-command-palette' | 'open-directory' | 'open-documentation' | 'open-settings' | 'play-external'
   | 'regenerate-thumbnails' | 'rescan-directory' | 'reveal-video' | 'show-shortcuts'
-  | 'toggle-group-by-folder' | 'toggle-mute' | 'toggle-privacy' | 'toggle-theme' | 'undo' | 'zoom-in' | 'zoom-out'
+  | 'toggle-group-by-folder' | 'toggle-mute' | 'toggle-privacy' | 'toggle-theme' | 'undo' | 'redo' | 'zoom-in' | 'zoom-out'
   | `sort:${SortField}` | `sort-order:${SortOrder}` | `open-recent:${string}` | `reveal-folder:${string}` | `remove-folder:${string}`;
 
 export type SortField = 'name' | 'size' | 'duration' | 'date' | 'rating' | 'resolution' | 'fps';
@@ -304,12 +312,11 @@ export interface FolderFilter {
   includeSubfolders: boolean;
 }
 
+/** One edit in the undo history: undo applies each `before`, redo each `after`. */
 export interface UndoEntry {
-  videoId: string;
-  previousStatus: VideoStatus;
-  previousIndex: number;
-  videoIds?: string[];
-  previousStatuses?: Record<string, VideoStatus>;
+  /** What the edit did, for the menu and the toast, such as "Keep · beach.mp4". */
+  label: string;
+  changes: Array<{ videoId: string; before: VideoReviewChanges; after: VideoReviewChanges }>;
 }
 
 // ── Settings ───────────────────────────────────────────────────────
@@ -462,6 +469,9 @@ export interface VideoStore {
 
   // Undo
   undoStack: UndoEntry[];
+  redoStack: UndoEntry[];
+  /** The videos the last undo or redo changed, for Review to show; the id makes each one count. */
+  historyJump: { videoIds: string[]; id: number } | null;
 
   // Statistics
   stats: VideoStats;
@@ -489,7 +499,10 @@ export interface VideoStore {
   setVideos: (videos: Video[]) => void;
   updateVideoThumbnailsBatch: (batch: ThumbReadyEvent[]) => void;
   setVideoStatus: (videoId: string, status: VideoStatus) => void;
-  undo: () => void;
+  /** Reverts the newest edit and says so in a toast; null when there is nothing to undo. */
+  undo: () => UndoEntry | null;
+  /** Applies the newest undone edit again; null when there is nothing to redo. */
+  redo: () => UndoEntry | null;
   setSearchQuery: (query: string) => void;
   setStatusFilter: (filter: StatusFilter) => void;
   setSortBy: (sortBy: SortField) => void;

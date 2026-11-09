@@ -964,6 +964,7 @@ export default function App() {
           break;
         }
         case 'undo': { state.undo(); break; }
+        case 'redo': { state.redo(); break; }
         case 'delete-all': {
           if (state.isScanning || state.isDeleting) break;
           const toDelete = state.videos.filter((v) => v.status === 'delete');
