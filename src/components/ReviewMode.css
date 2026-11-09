@@ -37,6 +37,18 @@
   background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-skip) 32%, transparent) 0%, var(--bg-app) 75%);
 }
 
+/* Decision label in the meta row; the icon and word carry the meaning, not only the colour. */
+.review-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
 /* ── Close ── */
 .review-close {
   position: absolute;

@@ -758,6 +758,15 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
           </div>
 
           <div className="review-meta-row">
+            {/* In the meta row, not beside the title, so a long filename can't push it around. */}
+            {video.status !== 'pending' && (
+              <span className={`review-status-badge badge-${video.status}`}>
+                {video.status === 'keep' && <Check size={13} />}
+                {video.status === 'delete' && <Trash2 size={13} />}
+                {video.status === 'skipped' && <SkipForward size={13} />}
+                {video.status === 'keep' ? 'Keep' : video.status === 'delete' ? 'Delete' : 'Skipped'}
+              </span>
+            )}
             <span className="review-meta-item"><HardDrive size={13} />{formatSize(video.sizeBytes)}</span>
             <span className="review-meta-item"><Clock size={13} />{formatDuration(video.durationSecs)}</span>
             <span className="review-meta-item"><Calendar size={13} />{formatDate(video.metadataDate || video.date)}</span>
@@ -799,7 +808,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       </div>
 
       <div className="review-actions">
-        <button className="review-action-btn review-btn-reset" onClick={resetStatus} title={`Reset (${formatKeybind(keyReset)})`}>
+        <button className="review-action-btn review-btn-reset" onClick={resetStatus} title={`Reset status (${formatKeybind(keyReset)})`}>
           <RotateCcw size={18} />
           <span>Reset</span>
           <kbd>{formatKeybind(keyReset)}</kbd>
