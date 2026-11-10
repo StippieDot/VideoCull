@@ -256,6 +256,8 @@ function actionsMenu(state, actions) {
         enabled: state.canRedo,
         click: () => send('redo'),
       },
+      // Ctrl+Y is how Windows apps redo; a menu item takes one accelerator, so this hidden twin adds it.
+      { label: 'Redo', accelerator: 'CmdOrCtrl+Y', visible: false, enabled: state.canRedo, click: () => send('redo') },
       { type: 'separator' },
       { label: 'Find Duplicates', enabled: state.canFindDuplicates, click: () => send('find-duplicates') },
       {

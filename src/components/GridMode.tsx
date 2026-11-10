@@ -762,6 +762,19 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     });
   }, [captureBatchScrollAnchor, clearGridSelection, pushToast, selectedIds, setVideoStatusesBatch, statusFilter]);
 
+  // For the right-click menus; the batch bar has its own notice and selection handling.
+  const resetEverything = useCallback((videoIds: string[]) => {
+    if (videoIds.length === 0) return;
+    useStore.getState().resetVideoDecisions(videoIds);
+    pushToast({
+      title: 'Reset everything',
+      detail: `${videoIds.length} ${videoIds.length === 1 ? 'video' : 'videos'} set to Pending, with rating, favourite and bookmarks cleared.`,
+      kind: 'success',
+      actionLabel: 'Undo',
+      action: undoLastEditAction(),
+    });
+  }, [pushToast]);
+
   const handleBatchRegenerateThumbnails = useCallback(async () => {
     const ids = new Set(selectedIds);
     if (ids.size === 0 || isScanning || isGenerating) return;
@@ -936,11 +949,12 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       onMarkKeep: () => setVideoStatusesBatch(folderVideoIds, 'keep'),
       onMarkDelete: () => setVideoStatusesBatch(folderVideoIds, 'delete'),
       onResetPending: () => setVideoStatusesBatch(folderVideoIds, 'pending'),
+      onResetEverything: () => resetEverything(folderVideoIds),
       onRegenerateThumbnails: () => {
         void onRegenerateThumbnails(folderVideos);
       },
     });
-  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, setFolderFilter, setVideoStatusesBatch, videosById]);
+  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, resetEverything, setFolderFilter, setVideoStatusesBatch, videosById]);
 
   const videoContextMenuItems = useMemo(() => {
     if (!contextMenuVideo) return [];
@@ -956,6 +970,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         revealInExplorer(contextMenuVideo.path);
       },
       onResetPending: () => setVideoStatusesBatch([contextMenuVideo.id], 'pending'),
+      onResetEverything: () => resetEverything([contextMenuVideo.id]),
       onRegenerateThumbnails: () => {
         void onRegenerateThumbnails([contextMenuVideo]);
       },
@@ -963,7 +978,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         void handleCopyPath(contextMenuVideo.path);
       },
     });
-  }, [contextMenuVideo, handleCardPlay, handleCopyPath, onRegenerateThumbnails, setVideoStatusesBatch]);
+  }, [contextMenuVideo, handleCardPlay, handleCopyPath, onRegenerateThumbnails, resetEverything, setVideoStatusesBatch]);
 
   return (
     <div className="grid-mode" ref={containerRef} tabIndex={-1}>
