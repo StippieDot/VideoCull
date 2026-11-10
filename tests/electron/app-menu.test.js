@@ -157,6 +157,9 @@ test('Undo and Redo name the edit they act on, and are disabled without one', ()
   const redo = template.find((entry) => entry.label === 'Actions').submenu.find((entry) => entry.label?.startsWith('Redo'));
   assert.equal(redo.accelerator, 'CmdOrCtrl+Shift+Z');
   assert.ok(redo.label.length <= 'Redo '.length + 60);
+  const redoAlias = template.find((entry) => entry.label === 'Actions').submenu.find((entry) => entry.accelerator === 'CmdOrCtrl+Y');
+  assert.equal(redoAlias.visible, false);
+  assert.equal(redoAlias.enabled, true);
   undo.click();
   redo.click();
   assert.deepEqual(sent, ['undo', 'redo']);
