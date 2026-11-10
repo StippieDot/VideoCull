@@ -578,8 +578,18 @@ const IMPORTANT_TOAST_DURATION_MS = 7000;
 const TOAST_DEDUPE_WINDOW_MS = 2500;
 const MAX_VISIBLE_TOASTS = 5;
 let toastIdCounter = 0;
-const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const toastTimers = new Map<number, { timer: ReturnType<typeof setTimeout>; endsAt: number }>();
+/** Time left on toasts held open while the pointer or focus is on them. */
+const pausedToastRemaining = new Map<number, number>();
 const recentToastByKey = new Map<string, number>();
+
+function scheduleToastDismiss(id: number, delayMs: number, dismiss: (id: number) => void) {
+  const timer = setTimeout(() => {
+    toastTimers.delete(id);
+    dismiss(id);
+  }, delayMs);
+  toastTimers.set(id, { timer, endsAt: Date.now() + delayMs });
+}
 
 function pruneRecentToastKeys(now: number) {
   for (const [key, lastShownAt] of recentToastByKey) {
@@ -1964,25 +1974,38 @@ const useStore = create<VideoStore>((set, get) => ({
       ],
     }));
 
-    const timer = setTimeout(() => {
-      toastTimers.delete(id);
-      get().dismissToast(id);
-    }, duration);
-    toastTimers.set(id, timer);
+    scheduleToastDismiss(id, duration, get().dismissToast);
   },
 
   dismissToast: (id) => {
-    const timer = toastTimers.get(id);
-    if (timer) {
-      clearTimeout(timer);
+    const scheduled = toastTimers.get(id);
+    if (scheduled) {
+      clearTimeout(scheduled.timer);
       toastTimers.delete(id);
     }
+    pausedToastRemaining.delete(id);
     set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) }));
   },
 
+  pauseToast: (id) => {
+    const scheduled = toastTimers.get(id);
+    if (!scheduled) return;
+    clearTimeout(scheduled.timer);
+    toastTimers.delete(id);
+    pausedToastRemaining.set(id, Math.max(0, scheduled.endsAt - Date.now()));
+  },
+
+  resumeToast: (id) => {
+    const remaining = pausedToastRemaining.get(id);
+    if (remaining === undefined) return;
+    pausedToastRemaining.delete(id);
+    scheduleToastDismiss(id, remaining, get().dismissToast);
+  },
+
   clearToasts: () => {
-    for (const timer of toastTimers.values()) clearTimeout(timer);
+    for (const scheduled of toastTimers.values()) clearTimeout(scheduled.timer);
     toastTimers.clear();
+    pausedToastRemaining.clear();
     recentToastByKey.clear();
     set({ toasts: [] });
   },

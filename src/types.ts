@@ -573,6 +573,9 @@ export interface VideoStore {
   toggleFavorite: (videoId: string) => void;
   pushToast: (toast: ToastInput | string, kind?: ToastKind) => void;
   dismissToast: (id: number) => void;
+  /** Holds a toast open while the pointer or keyboard focus is on it; resume continues the countdown. */
+  pauseToast: (id: number) => void;
+  resumeToast: (id: number) => void;
   clearToasts: () => void;
 
   // Settings Actions

@@ -296,6 +296,26 @@ describe('useStore public behavior', () => {
     expect(useStore.getState().undoStack.map((entry) => entry.label)).toEqual(['Reset everything · a.mp4']);
   });
 
+  test('a toast held by the pointer keeps its remaining time until it is let go', () => {
+    vi.useFakeTimers();
+    try {
+      useStore.getState().pushToast({ title: 'Saved', durationMs: 1000 });
+      const id = useStore.getState().toasts[0].id;
+      vi.advanceTimersByTime(600);
+      useStore.getState().pauseToast(id);
+      vi.advanceTimersByTime(5000);
+      expect(useStore.getState().toasts).toHaveLength(1);
+
+      useStore.getState().resumeToast(id);
+      vi.advanceTimersByTime(399);
+      expect(useStore.getState().toasts).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(useStore.getState().toasts).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('a batch edit is one entry, and undo says what it reverted in one replaceable toast', () => {
     useStore.getState().setDirectory('D:\\Media');
     useStore.getState().setVideos([
