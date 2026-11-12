@@ -636,7 +636,13 @@ view is a separate action. Requested in issue #32.
 **Tests:** play → Space → paused on the same frame and time → Space → continues from there; Escape from
 paused returns to the thumbnails; next video starts unplayed.
 
-### 1.5 Clear Decision Indicator and Reset Scope in Review
+### 1.5 Clear Decision Indicator and Reset Scope in Review (done)
+
+**Shipped:** Review shows a labelled badge (Keep, Delete, Skipped) with an icon in the details row. Keep, Delete
+and Skip still advance immediately, with no flash, so culling speed is unchanged. The old Reset is now **Reset
+status**, and a separate **Reset everything** clears status, rating, favourite and bookmarks as one undoable
+edit. Reset everything is in Review's right-click menu, the grid batch bar and the grid card and folder menus.
+The notes below record the plan.
 
 **Decision:** Review shows the video's decision as a visible label, not only a colour tint. Requested in
 issue #32, where the missing indicator was the main reason a first-time user stopped. Tracked in #36
@@ -687,7 +693,13 @@ last; renderer and backend defaults and ranking agree.
 
 ---
 
-### 1.7 Undo in Review Acts on the Video Shown
+### 1.7 Undo in Review Acts on the Video Shown (done)
+
+**Shipped differently from the plan below:** instead of scoping one shared stack, undo is one linear history
+with a visible label per edit, plus redo (Ctrl+Shift+Z or Ctrl+Y). It covers every review edit including
+rating, favourite and bookmarks, so Undo can no longer change a video out of sight. Notices gained an icon, a
+countdown and hover pause, and offer an Undo button. Item 3.5 should be re-checked: rating, favourite and
+bookmark undo may already be covered. The notes below record the original plan.
 
 **Decision:** In Review, Undo reverts the newest change to what Review is showing. One shared history with
 scoping, not a separate stack per screen. Requested in issue #32, tracked in
