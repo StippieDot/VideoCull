@@ -142,6 +142,29 @@ test('a recent session shows the label the renderer made and opens all of its fo
   assert.deepEqual(sent, ['open-recent:D:\\Clips|E:\\Trips|F:\\More']);
 });
 
+test('Undo and Redo name the edit they act on, and are disabled without one', () => {
+  const empty = menu();
+  assert.equal(item(empty, 'Actions', 'Undo').enabled, false);
+  assert.equal(item(empty, 'Actions', 'Redo').enabled, false);
+
+  const sent = [];
+  const template = buildMenuTemplate({
+    ...EMPTY_RENDERER_MENU_STATE, isDev: false, updatesEnabled: true, processing: false, paused: false, finishAction: 'none',
+    ...normalizeRendererMenuState({ canUndo: true, canRedo: true, undoLabel: 'Keep · R&B.mp4', redoLabel: `Delete · ${'x'.repeat(80)}` }),
+  }, { ...actions, send: (action) => sent.push(action) });
+  const undo = item(template, 'Actions', 'Undo Keep · R&&B.mp4');
+  assert.equal(undo.accelerator, 'CmdOrCtrl+Z');
+  const redo = template.find((entry) => entry.label === 'Actions').submenu.find((entry) => entry.label?.startsWith('Redo'));
+  assert.equal(redo.accelerator, 'CmdOrCtrl+Shift+Z');
+  assert.ok(redo.label.length <= 'Redo '.length + 60);
+  const redoAlias = template.find((entry) => entry.label === 'Actions').submenu.find((entry) => entry.accelerator === 'CmdOrCtrl+Y');
+  assert.equal(redoAlias.visible, false);
+  assert.equal(redoAlias.enabled, true);
+  undo.click();
+  redo.click();
+  assert.deepEqual(sent, ['undo', 'redo']);
+});
+
 test('menu state from the renderer is normalised', () => {
   assert.deepEqual(normalizeRendererMenuState({
     hasSession: 'yes',

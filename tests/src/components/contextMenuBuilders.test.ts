@@ -23,6 +23,7 @@ test('library grid video menu contains only approved items in order', () => {
     onOpenExternal: noop,
     onReveal: noop,
     onResetPending: noop,
+    onResetEverything: noop,
     onRegenerateThumbnails: noop,
     onCopyPath: noop,
   });
@@ -31,7 +32,8 @@ test('library grid video menu contains only approved items in order', () => {
     { label: 'Play', disabled: false },
     { label: 'Open in external player', disabled: false },
     { label: 'Reveal in Explorer', disabled: false },
-    { label: 'Reset to pending', disabled: false },
+    { label: 'Reset status', disabled: false },
+    { label: 'Reset everything', disabled: false },
     { label: 'Regenerate thumbnails and metadata', disabled: false },
     { label: 'Copy full path', disabled: false },
   ]);
@@ -149,11 +151,13 @@ test('review mode menu contains only approved items in order', () => {
     onOpenExternal: noop,
     onReveal: noop,
     onCopyPath: noop,
+    onResetEverything: noop,
   });
 
   expect(labels(items)).toEqual([
     { label: 'Open in external player', disabled: false },
     { label: 'Reveal in Explorer', disabled: false },
+    { label: 'Reset everything', disabled: false },
     { label: 'Copy full path', disabled: false },
   ]);
 });
@@ -167,6 +171,7 @@ test('folder header menu contains only approved items in order', () => {
     onMarkKeep: noop,
     onMarkDelete: noop,
     onResetPending: noop,
+    onResetEverything: noop,
     onRegenerateThumbnails: noop,
   });
 
@@ -177,7 +182,8 @@ test('folder header menu contains only approved items in order', () => {
     { label: 'Copy folder path', disabled: false },
     { label: 'Mark all in folder as Keep', disabled: false },
     { label: 'Mark all in folder as Delete', disabled: false },
-    { label: 'Reset all videos in folder to pending', disabled: false },
+    { label: 'Reset status of all videos in folder', disabled: false },
+    { label: 'Reset everything for all videos in folder', disabled: false },
     { label: 'Regenerate thumbnails and metadata for folder', disabled: false },
   ]);
 });

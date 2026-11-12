@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useCallback, useState, useRef, useMemo, memo, type CSSProperties } from 'react';
-import useStore from '../store';
+import useStore, { runWithUndoAction } from '../store';
 import ThumbnailStrip from './ThumbnailStrip';
 import { formatSize, formatDuration, formatDate, calcThumbGrid, formatCodecLabel, formatFps, formatResolutionLabel } from '../utils';
 import {
@@ -416,7 +416,19 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
     setVideoStatus(video.id, 'pending');
   }, [video, setVideoStatus]);
 
-  const handleUndo = useCallback(() => undo(), [undo]);
+  const handleUndo = useCallback(() => { undo(); }, [undo]);
+
+  // After an undo or redo, show the video it changed when it is in this review.
+  const historyJump = useStore((s) => s.historyJump);
+  const handledHistoryJumpRef = useRef(historyJump?.id ?? 0);
+  useEffect(() => {
+    if (!historyJump || handledHistoryJumpRef.current === historyJump.id) return;
+    handledHistoryJumpRef.current = historyJump.id;
+    const index = reviewVideos.findIndex((item) => historyJump.videoIds.includes(item.id));
+    if (index < 0 || index === reviewIndex) return;
+    setIsPlaying(false);
+    setReviewIndex(index);
+  }, [historyJump, reviewVideos, reviewIndex, setReviewIndex]);
 
   const handlePlay = useCallback(() => {
     if (!video) return;
@@ -628,6 +640,10 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
     onCopyPath: () => {
       void handleCopyPath();
     },
+    onResetEverything: () => {
+      const undo = runWithUndoAction(() => useStore.getState().resetVideoDecisions([video.id]));
+      pushToast({ title: 'Reset everything', detail: video.filename, kind: 'success', ...undo });
+    },
   });
 
   return (
@@ -758,6 +774,15 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
           </div>
 
           <div className="review-meta-row">
+            {/* In the meta row, not beside the title, so a long filename can't push it around. */}
+            {video.status !== 'pending' && (
+              <span className={`review-status-badge badge-${video.status}`}>
+                {video.status === 'keep' && <Check size={13} />}
+                {video.status === 'delete' && <Trash2 size={13} />}
+                {video.status === 'skipped' && <SkipForward size={13} />}
+                {video.status === 'keep' ? 'Keep' : video.status === 'delete' ? 'Delete' : 'Skipped'}
+              </span>
+            )}
             <span className="review-meta-item"><HardDrive size={13} />{formatSize(video.sizeBytes)}</span>
             <span className="review-meta-item"><Clock size={13} />{formatDuration(video.durationSecs)}</span>
             <span className="review-meta-item"><Calendar size={13} />{formatDate(video.metadataDate || video.date)}</span>
@@ -799,9 +824,9 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       </div>
 
       <div className="review-actions">
-        <button className="review-action-btn review-btn-reset" onClick={resetStatus} title={`Reset (${formatKeybind(keyReset)})`}>
+        <button className="review-action-btn review-btn-reset" onClick={resetStatus} title={`Reset status (${formatKeybind(keyReset)})`}>
           <RotateCcw size={18} />
-          <span>Reset</span>
+          <span>Reset status</span>
           <kbd>{formatKeybind(keyReset)}</kbd>
         </button>
 

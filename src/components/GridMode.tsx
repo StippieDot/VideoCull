@@ -11,17 +11,18 @@ import {
 import { List } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
 import type { Video } from '../types';
-import useStore from '../store';
+import useStore, { runWithUndoAction } from '../store';
 import useActiveValue from '../hooks/useActiveValue';
 import VideoCard from './VideoCard';
 import { formatSize, getFolderLabel, getFolderPath, isFolderInside, isWebSupported } from '../utils';
 import { matchesKeybind } from '../keybinds';
-import { Check, ChevronDown, RefreshCw, Search, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
+import { Check, ChevronDown, Eraser, RefreshCw, Search, SkipForward, RotateCcw, Trash2, X, Play } from 'lucide-react';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import {
   buildCopyPathSuccessDetail,
   buildFolderHeaderMenu,
   buildLibraryGridVideoMenu,
+  RESET_EVERYTHING_HINT,
 } from './contextMenuBuilders';
 import './GridMode.css';
 import { openVideoExternally, revealInExplorer } from '../appCommands';
@@ -732,28 +733,47 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     if (leaving.length > 0) captureBatchScrollAnchorRef.current(new Set(leaving.map((video) => video.id)));
   }), []);
 
-  const handleBatchStatus = useCallback((status: 'keep' | 'delete' | 'skipped' | 'pending') => {
+  // 'everything' resets the status and clears the rating, favourite and bookmarks.
+  const handleBatchStatus = useCallback((status: 'keep' | 'delete' | 'skipped' | 'pending' | 'everything') => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    if (statusFilter !== 'all' && statusFilter !== status) {
+    const nextStatus = status === 'everything' ? 'pending' : status;
+    if (statusFilter !== 'all' && statusFilter !== nextStatus) {
       captureBatchScrollAnchor(new Set(ids));
     } else {
       pendingScrollAnchorRef.current = null;
     }
-    setVideoStatusesBatch(ids, status);
+    const undo = runWithUndoAction(() => {
+      if (status === 'everything') useStore.getState().resetVideoDecisions(ids);
+      else setVideoStatusesBatch(ids, status);
+    });
     clearGridSelection();
+    const videos = `${ids.length} ${ids.length === 1 ? 'video' : 'videos'}`;
     const statusLabel = status === 'skipped'
       ? 'Skipped'
-      : status === 'pending'
+      : status === 'pending' || status === 'everything'
         ? 'Pending'
         : status.charAt(0).toUpperCase() + status.slice(1);
     pushToast({
-      title: status === 'pending' ? 'Selection reset' : 'Batch updated',
-      detail: `${ids.length} ${ids.length === 1 ? 'video' : 'videos'} marked ${statusLabel}.`,
+      title: status === 'everything' ? 'Reset everything' : status === 'pending' ? 'Status reset' : 'Batch updated',
+      detail: status === 'everything' ? `${videos} set to Pending, with their review decisions cleared.` : `${videos} marked ${statusLabel}.`,
       kind: 'success',
       dedupeKey: `batch-status:${status}:${ids.join('|')}`,
+      ...undo,
     });
   }, [captureBatchScrollAnchor, clearGridSelection, pushToast, selectedIds, setVideoStatusesBatch, statusFilter]);
+
+  // For the right-click menus; the batch bar has its own notice and selection handling.
+  const resetEverything = useCallback((videoIds: string[]) => {
+    if (videoIds.length === 0) return;
+    const undo = runWithUndoAction(() => useStore.getState().resetVideoDecisions(videoIds));
+    pushToast({
+      title: 'Reset everything',
+      detail: `${videoIds.length} ${videoIds.length === 1 ? 'video' : 'videos'} set to Pending, with their review decisions cleared.`,
+      kind: 'success',
+      ...undo,
+    });
+  }, [pushToast]);
 
   const handleBatchRegenerateThumbnails = useCallback(async () => {
     const ids = new Set(selectedIds);
@@ -929,11 +949,12 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       onMarkKeep: () => setVideoStatusesBatch(folderVideoIds, 'keep'),
       onMarkDelete: () => setVideoStatusesBatch(folderVideoIds, 'delete'),
       onResetPending: () => setVideoStatusesBatch(folderVideoIds, 'pending'),
+      onResetEverything: () => resetEverything(folderVideoIds),
       onRegenerateThumbnails: () => {
         void onRegenerateThumbnails(folderVideos);
       },
     });
-  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, setFolderFilter, setVideoStatusesBatch, videosById]);
+  }, [contextMenuFolder, handleCopyPath, onRegenerateThumbnails, onReviewFolder, persistCurrentScroll, resetEverything, setFolderFilter, setVideoStatusesBatch, videosById]);
 
   const videoContextMenuItems = useMemo(() => {
     if (!contextMenuVideo) return [];
@@ -949,6 +970,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         revealInExplorer(contextMenuVideo.path);
       },
       onResetPending: () => setVideoStatusesBatch([contextMenuVideo.id], 'pending'),
+      onResetEverything: () => resetEverything([contextMenuVideo.id]),
       onRegenerateThumbnails: () => {
         void onRegenerateThumbnails([contextMenuVideo]);
       },
@@ -956,7 +978,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         void handleCopyPath(contextMenuVideo.path);
       },
     });
-  }, [contextMenuVideo, handleCardPlay, handleCopyPath, onRegenerateThumbnails, setVideoStatusesBatch]);
+  }, [contextMenuVideo, handleCardPlay, handleCopyPath, onRegenerateThumbnails, resetEverything, setVideoStatusesBatch]);
 
   return (
     <div className="grid-mode" ref={containerRef} tabIndex={-1}>
@@ -1027,9 +1049,13 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
               <SkipForward size={14} />
               Skip
             </button>
-            <button className="btn btn-ghost grid-batch-btn grid-batch-reset" onClick={() => handleBatchStatus('pending')}>
+            <button className="btn btn-ghost grid-batch-btn grid-batch-reset" onClick={() => handleBatchStatus('pending')} title="Sets the status to Pending">
               <RotateCcw size={14} />
-              Reset
+              Reset status
+            </button>
+            <button className="btn btn-ghost grid-batch-btn grid-batch-reset" onClick={() => handleBatchStatus('everything')} title={RESET_EVERYTHING_HINT}>
+              <Eraser size={14} />
+              Reset everything
             </button>
             <button
               className="btn btn-ghost grid-batch-btn grid-batch-regenerate"

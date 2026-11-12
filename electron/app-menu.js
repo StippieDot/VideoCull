@@ -9,6 +9,9 @@
  *   markedCount: number,
  *   canDeleteMarked: boolean,
  *   canUndo: boolean,
+ *   canRedo: boolean,
+ *   undoLabel: string,
+ *   redoLabel: string,
  *   canExport: boolean,
  *   canFindDuplicates: boolean,
  *   canPauseProcessing: boolean,
@@ -59,6 +62,9 @@ const EMPTY_RENDERER_MENU_STATE = {
   markedCount: 0,
   canDeleteMarked: false,
   canUndo: false,
+  canRedo: false,
+  undoLabel: '',
+  redoLabel: '',
   canExport: false,
   canFindDuplicates: false,
   canPauseProcessing: false,
@@ -90,6 +96,14 @@ const SORT_LABELS = {
 const isSortField = (value) => typeof value === 'string' && Object.prototype.hasOwnProperty.call(SORT_LABELS, value);
 
 const MAX_RECENT_SESSIONS = 8;
+const MAX_HISTORY_LABEL_LENGTH = 60;
+
+/** The edit Undo or Redo names, such as "Keep · beach.mp4"; a long filename is cut short. */
+function historyLabel(/** @type {unknown} */ value) {
+  if (typeof value !== 'string') return '';
+  const label = value.trim();
+  return label.length > MAX_HISTORY_LABEL_LENGTH ? `${label.slice(0, MAX_HISTORY_LABEL_LENGTH - 1)}…` : label;
+}
 
 /** @param {unknown} value @returns {string[]} */
 function folderList(value) {
@@ -109,6 +123,9 @@ function normalizeRendererMenuState(input) {
     markedCount: count(raw.markedCount),
     canDeleteMarked: raw.canDeleteMarked === true,
     canUndo: raw.canUndo === true,
+    canRedo: raw.canRedo === true,
+    undoLabel: historyLabel(raw.undoLabel),
+    redoLabel: historyLabel(raw.redoLabel),
     canExport: raw.canExport === true,
     canFindDuplicates: raw.canFindDuplicates === true,
     canPauseProcessing: raw.canPauseProcessing === true,
@@ -227,7 +244,20 @@ function actionsMenu(state, actions) {
   return {
     label: 'Actions',
     submenu: [
-      { label: 'Undo', accelerator: 'CmdOrCtrl+Z', enabled: state.canUndo, click: () => send('undo') },
+      {
+        label: state.undoLabel ? `Undo ${escapeMenuLabel(state.undoLabel)}` : 'Undo',
+        accelerator: 'CmdOrCtrl+Z',
+        enabled: state.canUndo,
+        click: () => send('undo'),
+      },
+      {
+        label: state.redoLabel ? `Redo ${escapeMenuLabel(state.redoLabel)}` : 'Redo',
+        accelerator: 'CmdOrCtrl+Shift+Z',
+        enabled: state.canRedo,
+        click: () => send('redo'),
+      },
+      // Ctrl+Y is how Windows apps redo; a menu item takes one accelerator, so this hidden twin adds it.
+      { label: 'Redo', accelerator: 'CmdOrCtrl+Y', visible: false, enabled: state.canRedo, click: () => send('redo') },
       { type: 'separator' },
       { label: 'Find Duplicates', enabled: state.canFindDuplicates, click: () => send('find-duplicates') },
       {

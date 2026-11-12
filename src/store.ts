@@ -12,6 +12,7 @@ import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
 import { detectVideoCompatibility, folderInsideTest, formatRecentPath, isFolderInside, normalizeFolder } from './utils';
 import { getPreloadedColorTheme } from './theme';
+import { buildUndoEntry, editsFor, reviewFieldsOf, STATUS_LABELS, type ReviewEdit } from './undo-history';
 
 export const DUPLICATE_METHOD_NAMES: Record<DuplicateComparisonMode, string> = { phash: 'pHash', visual: 'Visual Similarity' };
 
@@ -577,8 +578,18 @@ const IMPORTANT_TOAST_DURATION_MS = 7000;
 const TOAST_DEDUPE_WINDOW_MS = 2500;
 const MAX_VISIBLE_TOASTS = 5;
 let toastIdCounter = 0;
-const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const toastTimers = new Map<number, { timer: ReturnType<typeof setTimeout>; endsAt: number }>();
+/** Time left on toasts held open while the pointer or focus is on them. */
+const pausedToastRemaining = new Map<number, number>();
 const recentToastByKey = new Map<string, number>();
+
+function scheduleToastDismiss(id: number, delayMs: number, dismiss: (id: number) => void) {
+  const timer = setTimeout(() => {
+    toastTimers.delete(id);
+    dismiss(id);
+  }, delayMs);
+  toastTimers.set(id, { timer, endsAt: Date.now() + delayMs });
+}
 
 function pruneRecentToastKeys(now: number) {
   for (const [key, lastShownAt] of recentToastByKey) {
@@ -955,6 +966,91 @@ function persistReviewState(
   }
 }
 
+type StoreGet = () => VideoStore;
+type StoreSet = (partial: Partial<VideoStore>) => void;
+
+/** Writes review values to the videos and saves them; `extra` lands in the same store update. */
+function applyReviewEdits(get: StoreGet, set: StoreSet, edits: ReviewEdit[], extra: Partial<VideoStore>) {
+  const stateBefore = get();
+  const valuesById = new Map(edits.map((edit) => [edit.videoId, edit.values]));
+  const changedVideos: Video[] = [];
+  const videos = stateBefore.videos.map((video) => {
+    const values = valuesById.get(video.id);
+    if (!values) return video;
+    const next = { ...video, ...values };
+    changedVideos.push(next);
+    return next;
+  });
+  const fields = [...new Set(edits.flatMap((edit) => reviewFieldsOf(edit.values)))];
+  // Bookmarks affect no filter, sort or count, so they never invalidate the view.
+  const viewFields = fields.filter((field): field is 'status' | 'rating' | 'favorite' => field !== 'bookmarks');
+  set({
+    ...buildVideoStateUpdate(stateBefore, videos, viewFields, { recomputeStats: fields.includes('status') }),
+    ...extra,
+  });
+  const stateNow = get();
+  persistReviewState(stateNow.directory, stateNow.directories, changedVideos, fields);
+}
+
+/** Every review edit goes through here, so each one can be undone and redone. */
+function recordReviewEdit(get: StoreGet, set: StoreSet, action: string, edits: ReviewEdit[]) {
+  const entry = buildUndoEntry(get().videos, action, edits);
+  if (!entry) return;
+  applyReviewEdits(get, set, editsFor(entry, 'after'), { undoStack: [...get().undoStack, entry], redoStack: [] });
+}
+
+function moveThroughHistory(get: StoreGet, set: StoreSet, direction: 'undo' | 'redo'): UndoEntry | null {
+  const { undoStack, redoStack, historyJump } = get();
+  const source = direction === 'undo' ? undoStack : redoStack;
+  const entry = source[source.length - 1];
+  if (!entry) return null;
+  const rest = source.slice(0, -1);
+  const videoIds = entry.changes.map((change) => change.videoId);
+  applyReviewEdits(get, set, editsFor(entry, direction === 'undo' ? 'before' : 'after'), {
+    undoStack: direction === 'undo' ? rest : [...undoStack, entry],
+    redoStack: direction === 'undo' ? [...redoStack, entry] : rest,
+    historyJump: { videoIds, id: (historyJump?.id ?? 0) + 1 },
+  });
+
+  // The grid scrolls to the changed video when it is shown; Review follows historyJump itself.
+  const state = get();
+  if (!state.reviewMode && !state.duplicateGroupsMode) {
+    const shownId = state.filteredVideos.find((video) => videoIds.includes(video.id))?.id;
+    if (shownId) set({ gridVideoJump: { videoId: shownId, id: (state.gridVideoJump?.id ?? 0) + 1 } });
+  }
+
+  const opposite = direction === 'undo' ? 'redo' : 'undo';
+  state.pushToast({
+    title: direction === 'undo' ? 'Undone' : 'Redone',
+    detail: entry.label,
+    kind: 'info',
+    replaceKey: 'undo-history',
+    actionLabel: direction === 'undo' ? 'Redo' : 'Undo',
+    action: () => { get()[opposite](); },
+  });
+  return entry;
+}
+
+/**
+ * Runs `edit` and returns the Undo button fields for its notice. There is no button when the edit
+ * recorded nothing (it changed nothing), so Undo never reverts an unrelated earlier edit, and the
+ * button does nothing once a newer edit exists.
+ */
+export function runWithUndoAction(edit: () => void): { actionLabel?: string; action?: () => void } {
+  const top = () => { const stack = useStore.getState().undoStack; return stack[stack.length - 1]; };
+  const previous = top();
+  edit();
+  const entry = top();
+  if (!entry || entry === previous) return {};
+  return {
+    actionLabel: 'Undo',
+    action: () => {
+      const state = useStore.getState();
+      if (top() === entry) state.undo();
+    },
+  };
+}
+
 const useStore = create<VideoStore>((set, get) => ({
   // ── Directory ──
   directory: null,
@@ -1022,6 +1118,8 @@ const useStore = create<VideoStore>((set, get) => ({
 
   // ── Undo stack ──
   undoStack: [],
+  redoStack: [],
+  historyJump: null,
 
   // ── Settings ──
   isSettingsModalOpen: false,
@@ -1099,6 +1197,7 @@ const useStore = create<VideoStore>((set, get) => ({
       duplicateSortBy: 'similarity',
       duplicateSortOrder: 'desc',
       undoStack: [],
+      redoStack: [],
       gridSelectionIds: new Set(),
       gridSelectionAnchorId: null,
     });
@@ -1136,6 +1235,7 @@ const useStore = create<VideoStore>((set, get) => ({
       duplicateSortBy: 'similarity',
       duplicateSortOrder: 'desc',
       undoStack: [],
+      redoStack: [],
       gridSelectionIds: new Set(),
       gridSelectionAnchorId: null,
     });
@@ -1361,120 +1461,39 @@ const useStore = create<VideoStore>((set, get) => ({
   },
 
   setVideoStatus: (videoId: string, status: VideoStatus) => {
-    const stateBefore = get();
-    const prev = stateBefore.videos.find((v) => v.id === videoId);
-    if (!prev) return;
-    if (prev.status === status) return;
-
-    const undoEntry: UndoEntry = {
-      videoId,
-      previousStatus: prev.status,
-      previousIndex: stateBefore.reviewIndex,
-    };
-    const undoStack = [...stateBefore.undoStack, undoEntry];
-
-    const videos = stateBefore.videos.map((v) =>
-      v.id === videoId ? { ...v, status } : v
-    );
-    const updatedVideo = videos.find((v) => v.id === videoId);
-    set(buildVideoStateUpdate(stateBefore, videos, ['status'], {
-      recomputeStats: true,
-      undoStack,
-    }));
-
-    const stateNow = get();
-    persistReviewState(stateNow.directory, stateNow.directories, updatedVideo ? [updatedVideo] : [], ['status']);
+    recordReviewEdit(get, set, STATUS_LABELS[status], [{ videoId, values: { status } }]);
   },
 
   setVideoStatusesBatch: (videoIds: string[], status: VideoStatus) => {
-    if (videoIds.length === 0) return;
-    const stateBefore = get();
-    const targetIds = new Set(videoIds);
-    const previousStatuses: Record<string, VideoStatus> = {};
-    let changed = false;
-
-    const videos = stateBefore.videos.map((video) => {
-      if (!targetIds.has(video.id) || video.status === status) return video;
-      previousStatuses[video.id] = video.status;
-      changed = true;
-      return { ...video, status };
-    });
-
-    if (!changed) return;
-
-    const changedIds = new Set(Object.keys(previousStatuses));
-    const changedVideos = videos.filter((video) => changedIds.has(video.id));
-    const undoEntry: UndoEntry = {
-      videoId: videoIds[0],
-      previousStatus: previousStatuses[videoIds[0]] ?? status,
-      previousIndex: stateBefore.reviewIndex,
-      videoIds: Object.keys(previousStatuses),
-      previousStatuses,
-    };
-
-    const undoStack = [...stateBefore.undoStack, undoEntry];
-    set(buildVideoStateUpdate(stateBefore, videos, ['status'], {
-      recomputeStats: true,
-      undoStack,
-    }));
-
-    const stateNow = get();
-    persistReviewState(stateNow.directory, stateNow.directories, changedVideos, ['status']);
+    recordReviewEdit(get, set, STATUS_LABELS[status], videoIds.map((videoId) => ({ videoId, values: { status } })));
   },
 
   setVideoRating: (videoId, rating) => {
-    const stateBefore = get();
-    let updatedVideo: Video | null = null;
-    const videos = stateBefore.videos.map((video) => {
-      if (video.id !== videoId || video.rating === rating) return video;
-      updatedVideo = { ...video, rating };
-      return updatedVideo;
-    });
-    if (!updatedVideo) return;
-    set(buildVideoStateUpdate(stateBefore, videos, ['rating']));
-    const stateNow = get();
-    persistReviewState(stateNow.directory, stateNow.directories, [updatedVideo], ['rating']);
+    recordReviewEdit(get, set, rating === 0 ? 'Clear rating' : `Rate ${rating} ★`, [{ videoId, values: { rating } }]);
   },
 
   toggleFavorite: (videoId) => {
-    const stateBefore = get();
-    let updatedVideo: Video | null = null;
-    const videos = stateBefore.videos.map((video) => {
-      if (video.id !== videoId) return video;
-      updatedVideo = { ...video, favorite: !video.favorite };
-      return updatedVideo;
-    });
-    if (!updatedVideo) return;
-    set(buildVideoStateUpdate(stateBefore, videos, ['favorite']));
-    const stateNow = get();
-    persistReviewState(stateNow.directory, stateNow.directories, [updatedVideo], ['favorite']);
+    const video = get().videos.find((item) => item.id === videoId);
+    if (!video) return;
+    recordReviewEdit(get, set, video.favorite ? 'Remove favourite' : 'Favourite', [
+      { videoId, values: { favorite: !video.favorite } },
+    ]);
   },
 
-  undo: () => {
-    const stateBefore = get();
-    const stack = [...stateBefore.undoStack];
-    if (stack.length === 0) return;
-    const action = stack.pop()!;
-
-    const videos = stateBefore.videos.map((v) => {
-      if (action.videoIds && action.previousStatuses && action.videoIds.includes(v.id)) {
-        return { ...v, status: action.previousStatuses[v.id] ?? v.status };
-      }
-      if (v.id === action.videoId) {
-        return { ...v, status: action.previousStatus };
-      }
-      return v;
-    });
-    const restoredVideos = action.videoIds ? videos.filter((v) => action.videoIds?.includes(v.id)) : videos.filter((v) => v.id === action.videoId);
-    set(buildVideoStateUpdate(stateBefore, videos, ['status'], {
-      recomputeStats: true,
-      reviewIndex: action.previousIndex,
-      undoStack: stack,
-    }));
-
-    const stateNow = get();
-    persistReviewState(stateNow.directory, stateNow.directories, restoredVideos, ['status']);
+  resetVideoDecisions: (videoIds) => {
+    const { features } = get().settings;
+    // A hidden feature keeps its data, so only what the person can see is cleared.
+    const values = {
+      status: 'pending' as const,
+      bookmarks: [],
+      ...(features.ratings ? { rating: 0 as const } : {}),
+      ...(features.favorites ? { favorite: false } : {}),
+    };
+    recordReviewEdit(get, set, 'Reset everything', videoIds.map((videoId) => ({ videoId, values })));
   },
+
+  undo: () => moveThroughHistory(get, set, 'undo'),
+  redo: () => moveThroughHistory(get, set, 'redo'),
 
   // ── Filter/Sort ──
   setSearchQuery: (searchQuery: string) => {
@@ -1874,6 +1893,7 @@ const useStore = create<VideoStore>((set, get) => ({
       stats: computeStats(videos),
       sidebarAggregates: computeSidebarAggregates(videos),
       undoStack: [],
+      redoStack: [],
       reviewMode: shouldCloseReview ? false : stateBefore.reviewMode,
       reviewIndex: nextReviewIndex,
       reviewScopeIds: shouldCloseReview ? null : nextReviewScopeIds,
@@ -1889,41 +1909,19 @@ const useStore = create<VideoStore>((set, get) => ({
 
   addBookmark: (videoId, time) => {
     const rounded = Math.round(time * 10) / 10;
-    let updatedVideo: Video | null = null;
-    const videos = get().videos.map((v) =>
-      {
-        if (v.id !== videoId) return v;
-        const existing = v.bookmarks ?? [];
-        if (existing.includes(rounded)) return v;
-        updatedVideo = {
-          ...v,
-          bookmarks: [...existing, rounded].sort((a, b) => a - b),
-        };
-        return updatedVideo;
-      }
-    );
-    if (!updatedVideo) return;
-    set({ videos, filteredVideos: computeFiltered({ ...get(), videos }) });
-    const stateNow = get();
-    persistReviewState(stateNow.directory, stateNow.directories, [updatedVideo], ['bookmarks']);
+    const existing = get().videos.find((v) => v.id === videoId)?.bookmarks ?? [];
+    if (existing.includes(rounded)) return;
+    recordReviewEdit(get, set, 'Add bookmark', [
+      { videoId, values: { bookmarks: [...existing, rounded].sort((a, b) => a - b) } },
+    ]);
   },
 
   removeBookmark: (videoId, time) => {
-    let updatedVideo: Video | null = null;
-    const videos = get().videos.map((v) =>
-      {
-        if (v.id !== videoId) return v;
-        const existing = v.bookmarks ?? [];
-        const nextBookmarks = existing.filter((t) => t !== time);
-        if (nextBookmarks.length === existing.length) return v;
-        updatedVideo = { ...v, bookmarks: nextBookmarks };
-        return updatedVideo;
-      }
-    );
-    if (!updatedVideo) return;
-    set({ videos, filteredVideos: computeFiltered({ ...get(), videos }) });
-    const stateNow = get();
-    persistReviewState(stateNow.directory, stateNow.directories, [updatedVideo], ['bookmarks']);
+    const existing = get().videos.find((v) => v.id === videoId)?.bookmarks ?? [];
+    if (!existing.includes(time)) return;
+    recordReviewEdit(get, set, 'Remove bookmark', [
+      { videoId, values: { bookmarks: existing.filter((t) => t !== time) } },
+    ]);
   },
 
   clearRecentSessions: () => {
@@ -1960,6 +1958,12 @@ const useStore = create<VideoStore>((set, get) => ({
     const duration = input.durationMs
       ?? (toastKind === 'error' || toastKind === 'warning' ? IMPORTANT_TOAST_DURATION_MS : DEFAULT_TOAST_DURATION_MS);
 
+    if (input.replaceKey) {
+      for (const shown of get().toasts) {
+        if (shown.replaceKey === input.replaceKey) get().dismissToast(shown.id);
+      }
+    }
+
     set((state) => ({
       toasts: [
         ...state.toasts.slice(-(MAX_VISIBLE_TOASTS - 1)),
@@ -1969,31 +1973,46 @@ const useStore = create<VideoStore>((set, get) => ({
           detail: input.detail,
           kind: toastKind,
           createdAt: now,
+          durationMs: duration,
+          replaceKey: input.replaceKey,
           actionLabel: input.actionLabel,
           action: input.action,
         },
       ],
     }));
 
-    const timer = setTimeout(() => {
-      toastTimers.delete(id);
-      get().dismissToast(id);
-    }, duration);
-    toastTimers.set(id, timer);
+    scheduleToastDismiss(id, duration, get().dismissToast);
   },
 
   dismissToast: (id) => {
-    const timer = toastTimers.get(id);
-    if (timer) {
-      clearTimeout(timer);
+    const scheduled = toastTimers.get(id);
+    if (scheduled) {
+      clearTimeout(scheduled.timer);
       toastTimers.delete(id);
     }
+    pausedToastRemaining.delete(id);
     set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) }));
   },
 
+  pauseToast: (id) => {
+    const scheduled = toastTimers.get(id);
+    if (!scheduled) return;
+    clearTimeout(scheduled.timer);
+    toastTimers.delete(id);
+    pausedToastRemaining.set(id, Math.max(0, scheduled.endsAt - Date.now()));
+  },
+
+  resumeToast: (id) => {
+    const remaining = pausedToastRemaining.get(id);
+    if (remaining === undefined) return;
+    pausedToastRemaining.delete(id);
+    scheduleToastDismiss(id, remaining, get().dismissToast);
+  },
+
   clearToasts: () => {
-    for (const timer of toastTimers.values()) clearTimeout(timer);
+    for (const scheduled of toastTimers.values()) clearTimeout(scheduled.timer);
     toastTimers.clear();
+    pausedToastRemaining.clear();
     recentToastByKey.clear();
     set({ toasts: [] });
   },

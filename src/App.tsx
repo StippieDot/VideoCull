@@ -15,6 +15,7 @@ import StoreTransition from './components/StoreTransition';
 import FinishActionCountdown from './components/FinishActionCountdown';
 import TitleBar from './components/TitleBar';
 import CommandPalette from './components/CommandPalette';
+import ToastStack from './components/ToastStack';
 import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
@@ -126,9 +127,7 @@ export default function App() {
   const includeSubfolders = useStore((s) => s.includeSubfolders);
   const thumbsPerVideo = useStore((s) => s.settings.thumbsPerVideo);
   const skipIntroDelaySecs = useStore((s) => s.settings.skipIntroDelaySecs);
-  const toasts = useStore((s) => s.toasts);
   const pushToast = useStore((s) => s.pushToast);
-  const dismissToast = useStore((s) => s.dismissToast);
   const scanIdRef = useRef(0);
   const duplicateRunIdRef = useRef(0);
   const genProgressBaseRef = useRef(0);
@@ -957,6 +956,8 @@ export default function App() {
                 kind: failedCount > 0 ? 'warning' : 'success',
                 dedupeKey: `cache-cleared:${state.directories.join('|')}`,
               });
+              // A rescan recreates the same video IDs, so old undo entries would restore cleared decisions.
+              useStore.setState({ undoStack: [], redoStack: [] });
               state.setVideos([]);
               void handleScan(state.directories);
             }
@@ -964,6 +965,7 @@ export default function App() {
           break;
         }
         case 'undo': { state.undo(); break; }
+        case 'redo': { state.redo(); break; }
         case 'delete-all': {
           if (state.isScanning || state.isDeleting) break;
           const toDelete = state.videos.filter((v) => v.status === 'delete');
@@ -1545,34 +1547,7 @@ export default function App() {
       {/* Privacy screen overlay image, full-bleed without stretching */}
       {isPrivate && <div className="privacy-screen" style={{ backgroundImage: `url(${privacyScreenDashboardCover})` }} />}
 
-      {!isPrivate && (
-        <div className="toast-stack" aria-live="polite" aria-atomic="true">
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`toast toast-${toast.kind}`}
-              role={toast.kind === 'error' || toast.kind === 'warning' ? 'alert' : 'status'}
-            >
-              <span className="toast-copy">
-                <span className="toast-title">{toast.title}</span>
-                {toast.detail && <span className="toast-detail">{toast.detail}</span>}
-              </span>
-              {toast.action && (
-                <button
-                  className="toast-action"
-                  onClick={() => {
-                    toast.action?.();
-                    dismissToast(toast.id);
-                  }}
-                >
-                  {toast.actionLabel ?? 'Undo'}
-                </button>
-              )}
-              <button className="toast-close" onClick={() => dismissToast(toast.id)} aria-label="Dismiss notification">x</button>
-            </div>
-          ))}
-        </div>
-      )}
+      {!isPrivate && <ToastStack />}
     </div>
   );
 }

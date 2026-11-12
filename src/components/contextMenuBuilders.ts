@@ -4,6 +4,9 @@ import { fileManagerName } from '../utils';
 
 type Action = () => void;
 
+/** What "Reset everything" does, for its tooltip wherever it is offered. */
+export const RESET_EVERYTHING_HINT = 'Sets the status to Pending and clears the bookmarks, plus the rating and favourite while those are shown';
+
 function separator(key: string): ContextMenuItem {
   return { type: 'separator', key };
 }
@@ -13,6 +16,7 @@ export function buildLibraryGridVideoMenu(actions: {
   onOpenExternal: Action;
   onReveal: Action;
   onResetPending: Action;
+  onResetEverything: Action;
   onRegenerateThumbnails: Action;
   onCopyPath: Action;
 }): ContextMenuItem[] {
@@ -21,7 +25,8 @@ export function buildLibraryGridVideoMenu(actions: {
     { key: 'external', label: 'Open in external player', onSelect: actions.onOpenExternal },
     { key: 'reveal', label: `Reveal in ${fileManagerName()}`, onSelect: actions.onReveal },
     separator('sep-top'),
-    { key: 'reset', label: 'Reset to pending', onSelect: actions.onResetPending, tone: 'secondary' },
+    { key: 'reset', label: 'Reset status', title: 'Sets the status to Pending', onSelect: actions.onResetPending, tone: 'secondary' },
+    { key: 'reset-everything', label: 'Reset everything', title: RESET_EVERYTHING_HINT, onSelect: actions.onResetEverything, tone: 'danger' },
     { key: 'thumbs', label: 'Regenerate thumbnails and metadata', onSelect: actions.onRegenerateThumbnails },
     separator('sep-bottom'),
     { key: 'copy', label: 'Copy full path', onSelect: actions.onCopyPath, tone: 'secondary' },
@@ -88,11 +93,13 @@ export function buildReviewVideoMenu(actions: {
   onOpenExternal: Action;
   onReveal: Action;
   onCopyPath: Action;
+  onResetEverything: Action;
 }): ContextMenuItem[] {
   return [
     { key: 'external', label: 'Open in external player', onSelect: actions.onOpenExternal },
     { key: 'reveal', label: `Reveal in ${fileManagerName()}`, onSelect: actions.onReveal },
     separator('sep-main'),
+    { key: 'reset-everything', label: 'Reset everything', title: RESET_EVERYTHING_HINT, onSelect: actions.onResetEverything, tone: 'danger' },
     { key: 'copy', label: 'Copy full path', onSelect: actions.onCopyPath, tone: 'secondary' },
   ];
 }
@@ -105,6 +112,7 @@ export function buildFolderHeaderMenu(actions: {
   onMarkKeep: Action;
   onMarkDelete: Action;
   onResetPending: Action;
+  onResetEverything: Action;
   onRegenerateThumbnails: Action;
 }): ContextMenuItem[] {
   return [
@@ -115,7 +123,8 @@ export function buildFolderHeaderMenu(actions: {
     separator('sep-main'),
     { key: 'keep', label: 'Mark all in folder as Keep', onSelect: actions.onMarkKeep },
     { key: 'delete', label: 'Mark all in folder as Delete', onSelect: actions.onMarkDelete, tone: 'danger' },
-    { key: 'reset', label: 'Reset all videos in folder to pending', onSelect: actions.onResetPending, tone: 'secondary' },
+    { key: 'reset', label: 'Reset status of all videos in folder', title: 'Sets the status to Pending', onSelect: actions.onResetPending, tone: 'secondary' },
+    { key: 'reset-everything', label: 'Reset everything for all videos in folder', title: RESET_EVERYTHING_HINT, onSelect: actions.onResetEverything, tone: 'danger' },
     { key: 'thumbs', label: 'Regenerate thumbnails and metadata for folder', onSelect: actions.onRegenerateThumbnails },
   ];
 }

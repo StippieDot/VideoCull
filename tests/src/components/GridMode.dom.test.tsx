@@ -334,6 +334,28 @@ describe('GridMode search', () => {
     expect(virtualListState.element.scrollTop).toBe(40);
   });
 
+  test('Reset everything on a selection is one undoable edit, offered from its notice', async () => {
+    useStore.getState().setVideos([
+      makeVideo('trip', { filename: 'Trip.mp4', status: 'keep', rating: 3, favorite: true, bookmarks: [4] }),
+      makeVideo('meeting', { filename: 'Meeting.mp4', status: 'delete' }),
+    ]);
+    useStore.getState().setGridSelectionIds(new Set(['trip', 'meeting']));
+    renderGrid();
+
+    await userEvent.click(screen.getByRole('button', { name: /^Reset everything$/ }));
+
+    expect(useStore.getState().videos.map(({ status, rating, favorite, bookmarks }) => ({ status, rating, favorite, bookmarks: bookmarks ?? [] }))).toEqual([
+      { status: 'pending', rating: 0, favorite: false, bookmarks: [] },
+      { status: 'pending', rating: 0, favorite: false, bookmarks: [] },
+    ]);
+    const notice = useStore.getState().toasts.find((toast) => toast.title === 'Reset everything');
+    expect(notice?.actionLabel).toBe('Undo');
+
+    act(() => notice?.action?.());
+    expect(useStore.getState().videos.map((video) => video.status)).toEqual(['keep', 'delete']);
+    expect(useStore.getState().videos[0]).toMatchObject({ rating: 3, favorite: true, bookmarks: [4] });
+  });
+
   test('preserves the next surviving video offset when the visible pending batch disappears', async () => {
     useStore.getState().setVideos([
       makeVideo('a', { filename: 'a.mp4' }),
