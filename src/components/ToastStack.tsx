@@ -32,7 +32,10 @@ export default function ToastStack() {
             role={toast.kind === 'error' || toast.kind === 'warning' ? 'alert' : 'status'}
             style={{ '--toast-duration': `${toast.durationMs}ms` } as CSSProperties}
             onMouseEnter={() => pauseToast(toast.id)}
-            onMouseLeave={() => resumeToast(toast.id)}
+            onMouseLeave={(event) => {
+              // Keyboard focus inside the toast keeps it paused, matching the CSS.
+              if (!event.currentTarget.contains(document.activeElement)) resumeToast(toast.id);
+            }}
             onFocus={() => pauseToast(toast.id)}
             onBlur={(event) => {
               if (!event.currentTarget.contains(event.relatedTarget as Node | null)) resumeToast(toast.id);

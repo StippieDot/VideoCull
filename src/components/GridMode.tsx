@@ -756,7 +756,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
         : status.charAt(0).toUpperCase() + status.slice(1);
     pushToast({
       title: status === 'everything' ? 'Reset everything' : status === 'pending' ? 'Status reset' : 'Batch updated',
-      detail: status === 'everything' ? `${videos} set to Pending, with rating, favourite and bookmarks cleared.` : `${videos} marked ${statusLabel}.`,
+      detail: status === 'everything' ? `${videos} set to Pending, with their review decisions cleared.` : `${videos} marked ${statusLabel}.`,
       kind: 'success',
       dedupeKey: `batch-status:${status}:${ids.join('|')}`,
       ...undo,
@@ -769,7 +769,7 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     const undo = runWithUndoAction(() => useStore.getState().resetVideoDecisions(videoIds));
     pushToast({
       title: 'Reset everything',
-      detail: `${videoIds.length} ${videoIds.length === 1 ? 'video' : 'videos'} set to Pending, with rating, favourite and bookmarks cleared.`,
+      detail: `${videoIds.length} ${videoIds.length === 1 ? 'video' : 'videos'} set to Pending, with their review decisions cleared.`,
       kind: 'success',
       ...undo,
     });

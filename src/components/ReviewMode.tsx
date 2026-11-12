@@ -826,7 +826,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       <div className="review-actions">
         <button className="review-action-btn review-btn-reset" onClick={resetStatus} title={`Reset status (${formatKeybind(keyReset)})`}>
           <RotateCcw size={18} />
-          <span>Reset</span>
+          <span>Reset status</span>
           <kbd>{formatKeybind(keyReset)}</kbd>
         </button>
 

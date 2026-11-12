@@ -5,7 +5,7 @@ import { fileManagerName } from '../utils';
 type Action = () => void;
 
 /** What "Reset everything" does, for its tooltip wherever it is offered. */
-export const RESET_EVERYTHING_HINT = 'Sets the status to Pending and clears the rating, favourite and bookmarks';
+export const RESET_EVERYTHING_HINT = 'Sets the status to Pending and clears the bookmarks, plus the rating and favourite while those are shown';
 
 function separator(key: string): ContextMenuItem {
   return { type: 'separator', key };
