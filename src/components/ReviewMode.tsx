@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useCallback, useState, useRef, useMemo, memo, type CSSProperties } from 'react';
-import useStore, { undoLastEditAction } from '../store';
+import useStore, { runWithUndoAction } from '../store';
 import ThumbnailStrip from './ThumbnailStrip';
 import { formatSize, formatDuration, formatDate, calcThumbGrid, formatCodecLabel, formatFps, formatResolutionLabel } from '../utils';
 import {
@@ -641,8 +641,8 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       void handleCopyPath();
     },
     onResetEverything: () => {
-      useStore.getState().resetVideoDecisions([video.id]);
-      pushToast({ title: 'Reset everything', detail: video.filename, kind: 'success', actionLabel: 'Undo', action: undoLastEditAction() });
+      const undo = runWithUndoAction(() => useStore.getState().resetVideoDecisions([video.id]));
+      pushToast({ title: 'Reset everything', detail: video.filename, kind: 'success', ...undo });
     },
   });
 

@@ -956,6 +956,8 @@ export default function App() {
                 kind: failedCount > 0 ? 'warning' : 'success',
                 dedupeKey: `cache-cleared:${state.directories.join('|')}`,
               });
+              // A rescan recreates the same video IDs, so old undo entries would restore cleared decisions.
+              useStore.setState({ undoStack: [], redoStack: [] });
               state.setVideos([]);
               void handleScan(state.directories);
             }

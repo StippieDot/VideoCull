@@ -1,4 +1,4 @@
-import useStore, { flushPendingReviewSaves } from '../../src/store';
+import useStore, { flushPendingReviewSaves, runWithUndoAction } from '../../src/store';
 import { folderKey } from '../../src/sessions';
 import type { VideoStore } from '../../src/types';
 import { makeDuplicateGroup as makeGroup, makeVideo } from '../helpers/videoFactory';
@@ -294,6 +294,19 @@ describe('useStore public behavior', () => {
 
     expect(useStore.getState().videos[0]).toMatchObject({ status: 'pending', rating: 5, favorite: true, bookmarks: [] });
     expect(useStore.getState().undoStack.map((entry) => entry.label)).toEqual(['Reset everything · a.mp4']);
+  });
+
+  test('the Undo button is only offered for an edit that was recorded', () => {
+    useStore.getState().setDirectory('D:\Media');
+    useStore.getState().setVideos([makeVideo('a', { status: 'pending' }), makeVideo('b', { status: 'pending' })]);
+    useStore.getState().setVideoStatus('a', 'keep');
+
+    const noop = runWithUndoAction(() => useStore.getState().resetVideoDecisions(['b']));
+    expect(noop.action).toBeUndefined();
+
+    const real = runWithUndoAction(() => useStore.getState().setVideoStatus('b', 'delete'));
+    real.action?.();
+    expect(useStore.getState().videos.map((video) => video.status)).toEqual(['keep', 'pending']);
   });
 
   test('a toast held by the pointer keeps its remaining time until it is let go', () => {

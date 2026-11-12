@@ -11,7 +11,7 @@ import {
 import { List } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
 import type { Video } from '../types';
-import useStore, { undoLastEditAction } from '../store';
+import useStore, { runWithUndoAction } from '../store';
 import useActiveValue from '../hooks/useActiveValue';
 import VideoCard from './VideoCard';
 import { formatSize, getFolderLabel, getFolderPath, isFolderInside, isWebSupported } from '../utils';
@@ -743,8 +743,10 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
     } else {
       pendingScrollAnchorRef.current = null;
     }
-    if (status === 'everything') useStore.getState().resetVideoDecisions(ids);
-    else setVideoStatusesBatch(ids, status);
+    const undo = runWithUndoAction(() => {
+      if (status === 'everything') useStore.getState().resetVideoDecisions(ids);
+      else setVideoStatusesBatch(ids, status);
+    });
     clearGridSelection();
     const videos = `${ids.length} ${ids.length === 1 ? 'video' : 'videos'}`;
     const statusLabel = status === 'skipped'
@@ -757,21 +759,19 @@ export default function GridMode({ onReviewFolder, onRegenerateThumbnails }: Gri
       detail: status === 'everything' ? `${videos} set to Pending, with rating, favourite and bookmarks cleared.` : `${videos} marked ${statusLabel}.`,
       kind: 'success',
       dedupeKey: `batch-status:${status}:${ids.join('|')}`,
-      actionLabel: 'Undo',
-      action: undoLastEditAction(),
+      ...undo,
     });
   }, [captureBatchScrollAnchor, clearGridSelection, pushToast, selectedIds, setVideoStatusesBatch, statusFilter]);
 
   // For the right-click menus; the batch bar has its own notice and selection handling.
   const resetEverything = useCallback((videoIds: string[]) => {
     if (videoIds.length === 0) return;
-    useStore.getState().resetVideoDecisions(videoIds);
+    const undo = runWithUndoAction(() => useStore.getState().resetVideoDecisions(videoIds));
     pushToast({
       title: 'Reset everything',
       detail: `${videoIds.length} ${videoIds.length === 1 ? 'video' : 'videos'} set to Pending, with rating, favourite and bookmarks cleared.`,
       kind: 'success',
-      actionLabel: 'Undo',
-      action: undoLastEditAction(),
+      ...undo,
     });
   }, [pushToast]);
 

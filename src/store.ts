@@ -1032,15 +1032,22 @@ function moveThroughHistory(get: StoreGet, set: StoreSet, direction: 'undo' | 'r
 }
 
 /**
- * The Undo button for a notice about the edit just made. It does nothing once a newer edit exists,
- * so it never reverts something other than what the notice describes.
+ * Runs `edit` and returns the Undo button fields for its notice. There is no button when the edit
+ * recorded nothing (it changed nothing), so Undo never reverts an unrelated earlier edit, and the
+ * button does nothing once a newer edit exists.
  */
-export function undoLastEditAction(): () => void {
-  const { undoStack } = useStore.getState();
-  const entry = undoStack[undoStack.length - 1];
-  return () => {
-    const state = useStore.getState();
-    if (entry && state.undoStack[state.undoStack.length - 1] === entry) state.undo();
+export function runWithUndoAction(edit: () => void): { actionLabel?: string; action?: () => void } {
+  const top = () => { const stack = useStore.getState().undoStack; return stack[stack.length - 1]; };
+  const previous = top();
+  edit();
+  const entry = top();
+  if (!entry || entry === previous) return {};
+  return {
+    actionLabel: 'Undo',
+    action: () => {
+      const state = useStore.getState();
+      if (top() === entry) state.undo();
+    },
   };
 }
 
