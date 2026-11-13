@@ -150,6 +150,9 @@ function buildGrayFramesExtractionArgs(videoPath, timestamps, executionOptions =
   args.push(
     '-filter_complex', filters.join(';'),
     '-map', '[out]',
+    // Each input contributes one frame with timestamp 0. Without passthrough FFmpeg's frame-rate
+    // sync drops the "duplicates", so more than 3 samples returned only 3 frames.
+    '-fps_mode', 'passthrough',
     '-frames:v', String(safeTimestamps.length),
     '-f', 'rawvideo',
     '-pix_fmt', 'gray',

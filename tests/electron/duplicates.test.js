@@ -182,6 +182,8 @@ test('multi-frame extraction args reuse one ffmpeg command for all timestamps', 
   assert.ok(args.includes('pipe:1'));
   assert.ok(args.some((value) => typeof value === 'string' && value.includes('setsar=1')));
   assert.ok(args.some((value) => typeof value === 'string' && value.includes('concat=n=3:v=1:a=0[out]')));
+  // Without passthrough FFmpeg drops frames that share a timestamp and returns at most 3.
+  assert.equal(args[args.indexOf('-fps_mode') + 1], 'passthrough');
 });
 
 test('multi-frame extraction args can disable ffmpeg thread limiting', () => {
