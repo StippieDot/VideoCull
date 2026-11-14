@@ -23,6 +23,17 @@ test('center sampling avoids edges', () => {
   assert.deepEqual(getSamplingTimestamps(100, 3, { samplingWindow: '25-75' }), [37.5, 50, 62.5]);
 });
 
+test('sample times sit a quarter frame before a frame boundary when the frame rate is known', () => {
+  // 5.22 s at 24 fps is between frames 125 and 126; the nearest is 125.
+  assert.deepEqual(getSamplingTimestamps(52.2, 9, { samplingWindow: 'even' }, 24).slice(0, 1), [(125 - 0.25) / 24].map((t) => Math.round(t * 1e6) / 1e6));
+  // 23.98 stands for 24000/1001; at 1000 s the rounded rate would be four frames off.
+  const [ntsc] = getSamplingTimestamps(2000, 1, { samplingWindow: 'even' }, 23.98);
+  const frames = ntsc * 24000 / 1001;
+  assert.ok(Math.abs(frames - Math.round(frames) + 0.25) < 1e-3, `frame offset ${frames}`);
+  // No frame rate: unchanged.
+  assert.deepEqual(getSamplingTimestamps(60, 5, { samplingWindow: 'even' }, null), [10, 20, 30, 40, 50]);
+});
+
 test('pHash is deterministic for the same grayscale bytes', () => {
   const bytes = Buffer.alloc(1024);
   for (let i = 0; i < bytes.length; i++) bytes[i] = i % 255;
@@ -238,7 +249,7 @@ test('codec preference order is configurable and normalized', () => {
   assert.equal(chooseSuggestedKeeper([mpeg4, hevcAlias], codecOnly)?.id, 'h265');
 });
 
-test('fingerprints made with the 2018 FFmpeg build are not reused', () => {
+test('fingerprints made before frame-aligned sampling are not reused', () => {
   // Stored rows carry the key they were made with; only matching rows are loaded.
-  assert.match(getDuplicateFingerprintKey({}), /^gray32-v2\|/);
+  assert.match(getDuplicateFingerprintKey({}), /^gray32-v3\|/);
 });

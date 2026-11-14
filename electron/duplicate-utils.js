@@ -121,7 +121,20 @@ function getSamplingBounds(settings = {}) {
   return { start: 0, end: 1 };
 }
 
-function getSamplingTimestamps(durationSecs, sampleCount, settings = {}) {
+// A seek between two frames returns the earlier or the later one depending on the container's time
+// base (FFmpeg rounds the seek target to it), so a file and its remux were fingerprinted one frame
+// apart. A quarter frame before a frame boundary every time base agrees on that frame.
+function snapToFrame(timestamp, fps) {
+  let rate = Number(fps);
+  if (!Number.isFinite(rate) || rate <= 0) return timestamp;
+  // Stored frame rates are rounded to 0.01; 23.98, 29.97 and 59.94 stand for N * 1000 / 1001.
+  const ntscRate = Math.round(rate) * 1000 / 1001;
+  if (Math.abs(ntscRate - rate) < 0.006) rate = ntscRate;
+  const snapped = (Math.round(timestamp * rate) - 0.25) / rate;
+  return Math.max(0, Math.round(snapped * 1e6) / 1e6);
+}
+
+function getSamplingTimestamps(durationSecs, sampleCount, settings = {}, fps = null) {
   const duration = Number(durationSecs);
   if (!Number.isFinite(duration) || duration <= 0) return [0];
   const count = Math.max(1, Number(sampleCount) || DEFAULT_DUPLICATE_SETTINGS.sampleCount);
@@ -135,7 +148,7 @@ function getSamplingTimestamps(durationSecs, sampleCount, settings = {}) {
   const timestamps = [];
   for (let i = 1; i <= count; i++) {
     const ratio = i / (count + 1);
-    timestamps.push(Math.round((windowStart + span * ratio) * 100) / 100);
+    timestamps.push(snapToFrame(Math.round((windowStart + span * ratio) * 100) / 100, fps));
   }
   return timestamps;
 }
@@ -148,7 +161,8 @@ function getDuplicateFingerprintKey(input = {}) {
     // Bump when stored fingerprints stop being comparable with new ones. v2: the bundled FFmpeg
     // moved from 2018 to 9.0.2, which decodes some frames differently (mixed old/new pHash fell to
     // 62–94% similarity for identical files, checked with scripts/compare-ffmpeg-builds.js).
-    'gray32-v2',
+    // v3: samples are taken at frame-aligned times (see snapToFrame).
+    'gray32-v3',
     settings.sampleCount,
     bounds.start,
     bounds.end,

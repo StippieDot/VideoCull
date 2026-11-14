@@ -412,7 +412,7 @@ function buildFingerprintsFromGrayFrames(grayFrames, timestamps, settings) {
 }
 
 async function buildFingerprintsForVideo(video, settings, run, executionOptions) {
-  const timestamps = getSamplingTimestamps(video.durationSecs, settings.sampleCount, settings);
+  const timestamps = getSamplingTimestamps(video.durationSecs, settings.sampleCount, settings, video.fps);
   let grayFrames;
   try {
     grayFrames = await extractGrayFrames(video.path, timestamps, run, executionOptions);

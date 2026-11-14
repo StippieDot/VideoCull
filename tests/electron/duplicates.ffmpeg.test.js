@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { ffmpegPath } = require('../../electron/media-tools');
 const { __test__ } = require('../../electron/duplicates');
+const { getSamplingTimestamps } = require('../../electron/duplicate-utils');
 
 const FRAME_BYTES = 32 * 32;
 // Runs only where the bundled FFmpeg has been fetched (npm run fetch:ffmpeg or a dev checkout).
@@ -31,6 +32,25 @@ test.skipIf(!hasFfmpeg)('one FFmpeg call returns every requested sample, identic
         );
       });
     }
+  } finally {
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+}, 60_000);
+
+test.skipIf(!hasFfmpeg)('a file and its remux with another time base are sampled at the same frames', () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'videocull-frames-'));
+  const clip = path.join(folder, 'clip.mp4');
+  const remux = path.join(folder, 'remux.mp4');
+  try {
+    // testsrc2 draws a frame counter, so neighbouring frames differ.
+    run(['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=24', '-t', '10', '-pix_fmt', 'yuv420p', clip]);
+    run(['-v', 'error', '-i', clip, '-c', 'copy', '-video_track_timescale', '24', remux]);
+    const frames = (file, timestamps) => run(__test__.buildGrayFramesExtractionArgs(file, timestamps));
+    const aligned = getSamplingTimestamps(10, 9, {}, 24);
+    assert.ok(frames(clip, aligned).equals(frames(remux, aligned)));
+    // Just after a frame boundary the same seek lands one frame apart; this is what the alignment prevents.
+    const unaligned = [1.01, 5.22];
+    assert.ok(!frames(clip, unaligned).equals(frames(remux, unaligned)));
   } finally {
     fs.rmSync(folder, { recursive: true, force: true });
   }

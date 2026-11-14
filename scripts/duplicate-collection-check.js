@@ -92,6 +92,7 @@ function probeVideo(ffprobePath, folder, filename) {
   }
   const videoStream = (info.streams ?? []).find((stream) => stream.codec_type === 'video');
   const audioStream = (info.streams ?? []).find((stream) => stream.codec_type === 'audio');
+  const frameRate = String(videoStream?.avg_frame_rate ?? '').split('/');
   return {
     // Same identity rule as the scanner: path and size.
     id: crypto.createHash('md5').update(`${filePath}:${stat.size}`).digest('hex').slice(0, 16),
@@ -102,6 +103,8 @@ function probeVideo(ffprobePath, folder, filename) {
     durationSecs: Number(info.format?.duration) || 0,
     width: videoStream?.width ?? null,
     height: videoStream?.height ?? null,
+    // Rounded to 0.01 as the app stores it.
+    fps: Math.round((Number(frameRate[0]) / Number(frameRate[1])) * 100) / 100 || null,
     videoCodec: videoStream?.codec_name ?? null,
     audioCodec: audioStream?.codec_name ?? null,
     bitrate: Number(info.format?.bit_rate) || null,
