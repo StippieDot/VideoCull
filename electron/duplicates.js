@@ -240,7 +240,7 @@ function splitExactCandidatesByDuration(videos, settings) {
 async function loadDuplicateCacheState(videos, settings, run, cacheAccess, cacheOptions) {
   const fingerprintKey = getDuplicateFingerprintKey(settings);
   const mode = settings.comparisonMode;
-  duplicateSessionCache.beginFingerprintSettings(fingerprintKey, settings.compareFlipped);
+  duplicateSessionCache.beginFingerprintSettings(fingerprintKey);
 
   const signatureById = new Map();
   const completeById = new Map();
@@ -255,7 +255,6 @@ async function loadDuplicateCacheState(videos, settings, run, cacheAccess, cache
       const workerState = await cacheAccess.loadDuplicateFolderState(folderPath, cacheOptions, videoIds, {
         fingerprintKey,
         sampleCount: settings.sampleCount,
-        compareFlipped: settings.compareFlipped,
         comparisonMode: mode,
       });
       const loaded = {
@@ -387,16 +386,16 @@ function extractGrayFrames(videoPath, timestamps, run, executionOptions) {
   return extractGrayFramesWithArgs(args, expectedFrameCount, run);
 }
 
-function buildFingerprintsFromGrayFrames(grayFrames, timestamps, settings) {
+function buildFingerprintsFromGrayFrames(grayFrames, timestamps) {
   const fingerprints = [];
   for (let i = 0; i < timestamps.length; i++) {
     const grayBytes = grayFrames[i];
-    const flippedGrayBytes = settings.compareFlipped ? flipGrayBytes(grayBytes) : null;
     fingerprints.push({
       sampleIndex: i,
       timestampSecs: timestamps[i],
       phashHex: calculateDctPHash(grayBytes),
-      flippedPHashHex: flippedGrayBytes ? calculateDctPHash(flippedGrayBytes) : null,
+      // Always stored, so turning on mirrored comparison needs no new fingerprints.
+      flippedPHashHex: calculateDctPHash(flipGrayBytes(grayBytes)),
       grayBytes,
       frameDarkRatio: frameDarkRatio(grayBytes),
     });
@@ -426,7 +425,7 @@ async function buildFingerprintsForVideo(video, settings, run, executionOptions)
   assertNotCancelled(run);
   return runDuplicateActivity(
     run,
-    () => buildFingerprintsFromGrayFrames(grayFrames, timestamps, settings),
+    () => buildFingerprintsFromGrayFrames(grayFrames, timestamps),
   );
 }
 

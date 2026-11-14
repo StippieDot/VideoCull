@@ -13,14 +13,11 @@ function createDuplicateSessionCache({ grayByteLimit = grayCacheLimitForMemory()
   const pHashRowsByVideo = new Map();
   const grayRowsByVideo = new Map();
   let activeFingerprintKey = null;
-  let activeCompareFlipped = false;
   let grayBytes = 0;
 
-  function beginFingerprintSettings(fingerprintKey, compareFlipped = false) {
-    const nextCompareFlipped = Boolean(compareFlipped);
-    if (activeFingerprintKey === fingerprintKey && activeCompareFlipped === nextCompareFlipped) return;
+  function beginFingerprintSettings(fingerprintKey) {
+    if (activeFingerprintKey === fingerprintKey) return;
     activeFingerprintKey = fingerprintKey;
-    activeCompareFlipped = nextCompareFlipped;
     fingerprintState.clear();
     pHashRowsByVideo.clear();
     grayRowsByVideo.clear();

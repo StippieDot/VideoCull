@@ -6,6 +6,7 @@ All notable changes to VideoCull will be documented here.
 
 ### Changed
 - Comparing videos with the pHash method is much faster in large libraries: comparing 6,000 videos of similar length took 45 seconds and now takes under 2. The matches found are the same.
+- Turning **Compare flipped videos** on or off no longer makes the next duplicate run read every video again: the mirrored fingerprint is always stored.
 - On macOS, automatic processing uses up to 4 jobs at once with 16 GB of memory or more and up to 2 with less, limited to half the processor cores.
 - macOS permission prompts now explain why VideoCull asks for access to your Desktop, Documents, Downloads, external drives and network drives.
 

@@ -955,9 +955,7 @@ function getFingerprintCounts(db, videoIds, sampleCount, options = {}) {
     const placeholders = chunk.map(() => '?').join(',');
     const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const batch = db.prepare(`
-      SELECT video_id,
-             COUNT(*) AS sample_count,
-             SUM(CASE WHEN flipped_phash_hex IS NOT NULL AND flipped_phash_hex <> '' THEN 1 ELSE 0 END) AS flipped_count
+      SELECT video_id, COUNT(*) AS sample_count
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
         ${fingerprintFilter}
@@ -967,9 +965,7 @@ function getFingerprintCounts(db, videoIds, sampleCount, options = {}) {
   }
   const result = new Map();
   for (const row of rows) {
-    const enoughSamples = Number(row.sample_count) >= sampleCount;
-    const enoughFlipped = !options.requireFlipped || Number(row.flipped_count) >= sampleCount;
-    result.set(row.video_id, enoughSamples && enoughFlipped);
+    result.set(row.video_id, Number(row.sample_count) >= sampleCount);
   }
   return result;
 }

@@ -47,7 +47,7 @@ test('duplicate cache state is reused within the library session', async () => {
   }
 });
 
-test('enabling flipped comparison reloads duplicate session data', async () => {
+test('enabling flipped comparison reuses duplicate session data', async () => {
   const videos = [video('a')];
   const baseSettings = normalizeDuplicateSettings({
     comparisonMode: 'phash',
@@ -56,7 +56,7 @@ test('enabling flipped comparison reloads duplicate session data', async () => {
   });
   let opens = 0;
   const cacheAccess = {
-    loadDuplicateFolderState: async (_folderPath, _cacheOptions, _videoIds, settings) => {
+    loadDuplicateFolderState: async () => {
       opens++;
       return {
         videoIds: ['a'],
@@ -68,7 +68,7 @@ test('enabling flipped comparison reloads duplicate session data', async () => {
           video_id: 'a',
           sample_index: 0,
           phash_hex: 'abc',
-          flipped_phash_hex: settings.compareFlipped ? 'def' : null,
+          flipped_phash_hex: 'def',
         }],
       };
     },
@@ -80,7 +80,8 @@ test('enabling flipped comparison reloads duplicate session data', async () => {
     const flippedSettings = { ...baseSettings, compareFlipped: true };
     await __test__.loadDuplicateCacheState(videos, flippedSettings, { cancelled: false }, cacheAccess, {});
     await __test__.loadDuplicateCacheState(videos, flippedSettings, { cancelled: false }, cacheAccess, {});
-    assert.equal(opens, 2);
+    // The mirrored hash is always stored, so the setting is not part of the cached data's identity.
+    assert.equal(opens, 1);
   } finally {
     clearDuplicateSessionCache();
   }
@@ -214,20 +215,12 @@ test('multi-frame extraction args can disable ffmpeg thread limiting', () => {
   assert.equal(args.includes('-threads'), false);
 });
 
-test('fingerprint building skips flipped hashes unless compareFlipped is enabled', () => {
-  const grayFrame = Buffer.alloc(32 * 32, 128);
-  const timestamps = [12.5];
+test('fingerprint building always stores the mirrored hash', () => {
+  const grayFrame = Buffer.from(Array.from({ length: 32 * 32 }, (_, index) => (index % 32) * 8));
+  const [fingerprint] = __test__.buildFingerprintsFromGrayFrames([grayFrame], [12.5]);
 
-  const withoutFlipped = __test__.buildFingerprintsFromGrayFrames([grayFrame], timestamps, {
-    compareFlipped: false,
-  });
-  assert.equal(withoutFlipped[0].flippedPHashHex, null);
-
-  const withFlipped = __test__.buildFingerprintsFromGrayFrames([grayFrame], timestamps, {
-    compareFlipped: true,
-  });
-  assert.equal(typeof withFlipped[0].flippedPHashHex, 'string');
-  assert.ok(withFlipped[0].flippedPHashHex.length > 0);
+  assert.match(fingerprint.flippedPHashHex, /^[0-9a-f]{16}$/);
+  assert.notEqual(fingerprint.flippedPHashHex, fingerprint.phashHex);
 });
 
 test('single-frame fallback is enabled for incomplete-output and concat failures', () => {

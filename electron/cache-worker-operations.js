@@ -128,10 +128,7 @@ async function executeCacheOperation(operation, args) {
         return {
           videoIds,
           signatureRows: cache.loadSignatureRows(db, videoIds),
-          completeEntries: Array.from(cache.getFingerprintCounts(db, videoIds, settings.sampleCount, {
-            requireFlipped: settings.compareFlipped,
-            fingerprintKey,
-          })),
+          completeEntries: Array.from(cache.getFingerprintCounts(db, videoIds, settings.sampleCount, { fingerprintKey })),
           failedIds: cache.loadFingerprintFailureIds(db, videoIds, { fingerprintKey }),
           mode: settings.comparisonMode,
           comparisonRows: settings.comparisonMode === 'phash'
