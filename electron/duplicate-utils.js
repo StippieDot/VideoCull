@@ -218,26 +218,25 @@ function flipGrayBytes(grayBytes, width = 32, height = 32) {
   return flipped;
 }
 
-function parsePHashHex(value) {
-  if (typeof value !== 'string' || !/^[0-9a-f]+$/i.test(value)) return 0n;
-  return BigInt(`0x${value}`);
+// A hash is kept as its high and low 32-bit halves: comparing BigInts dominated the pair loop.
+function parsePHashWords(value) {
+  if (typeof value !== 'string' || !/^[0-9a-f]{1,16}$/i.test(value)) return new Uint32Array(2);
+  const hex = value.padStart(16, '0');
+  return Uint32Array.of(parseInt(hex.slice(0, 8), 16), parseInt(hex.slice(8), 16));
 }
 
-function popcountBigInt(value) {
-  let n = value < 0n ? -value : value;
-  let count = 0;
-  while (n > 0n) {
-    n &= n - 1n;
-    count++;
-  }
-  return count;
+function popcount32(value) {
+  let n = value - ((value >>> 1) & 0x55555555);
+  n = (n & 0x33333333) + ((n >>> 2) & 0x33333333);
+  return Math.imul((n + (n >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24;
 }
 
-function pHashSimilarity(hashA, hashB, bitCount = 64) {
-  const a = typeof hashA === 'bigint' ? hashA : parsePHashHex(hashA);
-  const b = typeof hashB === 'bigint' ? hashB : parsePHashHex(hashB);
-  const distance = popcountBigInt(a ^ b);
-  return ((bitCount - distance) / bitCount) * 100;
+/** Accepts hex strings or the word pairs from parsePHashWords. */
+function pHashSimilarity(hashA, hashB) {
+  const a = typeof hashA === 'string' ? parsePHashWords(hashA) : hashA;
+  const b = typeof hashB === 'string' ? parsePHashWords(hashB) : hashB;
+  const distance = popcount32(a[0] ^ b[0]) + popcount32(a[1] ^ b[1]);
+  return ((64 - distance) / 64) * 100;
 }
 
 function rawGraySimilarity(bytesA, bytesB, options = {}) {
@@ -278,6 +277,98 @@ function average(values) {
 // weakest sample; otherwise it is the average.
 function combineSampleScores(scores, settings) {
   return settings.requireEverySample ? Math.min(...scores) : average(scores);
+}
+
+const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
+
+function isDarkSample(sample) {
+  return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
+}
+
+function minimumUsableSamples(sampleCount) {
+  return sampleCount > 1 ? 2 : 1;
+}
+
+/**
+ * Groups fingerprint rows per video in sample order. A video with fewer rows than `sampleCount` is
+ * left out. `toSample(row)` builds what the matching sample-score function reads.
+ */
+function groupSamplesByVideo(rows, sampleCount, toSample) {
+  const byVideo = new Map();
+  for (const row of rows) {
+    const list = byVideo.get(row.video_id) ?? [];
+    list.push({
+      index: Number(row.sample_index),
+      darkRatio: Number(row.frame_dark_ratio ?? 0),
+      ...toSample(row),
+    });
+    byVideo.set(row.video_id, list);
+  }
+
+  const result = new Map();
+  for (const [videoId, samples] of byVideo) {
+    const ordered = samples.sort((a, b) => a.index - b.index).slice(0, sampleCount);
+    if (ordered.length >= sampleCount) result.set(videoId, ordered);
+  }
+  return result;
+}
+
+function pHashSamplesByVideo(rows, sampleCount) {
+  return groupSamplesByVideo(rows, sampleCount, (row) => ({
+    hash: parsePHashWords(row.phash_hex),
+    flippedHash: parsePHashWords(row.flipped_phash_hex ?? row.phash_hex),
+  }));
+}
+
+function graySamplesByVideo(rows, sampleCount) {
+  return groupSamplesByVideo(rows, sampleCount, (row) => ({ bytes: row.gray_bytes, flippedBytes: null }));
+}
+
+function pHashSampleScore(sampleA, sampleB, flipped) {
+  return pHashSimilarity(flipped ? sampleA.flippedHash : sampleA.hash, sampleB.hash);
+}
+
+function graySampleScore(settings) {
+  return (sampleA, sampleB, flipped) => {
+    if (!sampleA.bytes || !sampleB.bytes) return null;
+    if (!flipped) return rawGraySimilarity(sampleA.bytes, sampleB.bytes, settings);
+    // The mirrored frame is kept on the sample: one video is compared against many others.
+    sampleA.flippedBytes ??= flipGrayBytes(sampleA.bytes);
+    return rawGraySimilarity(sampleA.flippedBytes, sampleB.bytes, settings);
+  };
+}
+
+/**
+ * The one scoring rule for two videos, used by both comparison workers and by the recomputation
+ * during grouping. `sampleScore(sampleA, sampleB, flipped)` returns 0-100, or null when the two
+ * samples cannot be compared. Returns null when the pair is not comparable or, with
+ * requireEverySample, when a sample is below the threshold. The caller applies the final threshold.
+ */
+function scoreSamples(samplesA, samplesB, settings, sampleScore, { firstSampleOnly = false, stopBelowThreshold = false } = {}) {
+  const threshold = settings.finalSimilarityThreshold;
+  // An average at the threshold allows this much shortfall in total; past it the pair cannot match,
+  // which ends most comparisons of unrelated videos after the first sample.
+  const maxShortfall = stopBelowThreshold ? (100 - threshold) * settings.sampleCount : Infinity;
+  const scores = [];
+  let shortfall = 0;
+  for (let i = 0; i < settings.sampleCount; i++) {
+    const sampleA = samplesA[i];
+    const sampleB = samplesB[i];
+    if (!sampleA || !sampleB) return null;
+    if (isDarkSample(sampleA) || isDarkSample(sampleB)) continue;
+    let score = sampleScore(sampleA, sampleB, false);
+    if (score === null) continue;
+    if (settings.compareFlipped) score = Math.max(score, sampleScore(sampleA, sampleB, true));
+    if (settings.requireEverySample && score < threshold) return null;
+    scores.push(score);
+    shortfall += 100 - score;
+    if (shortfall > maxShortfall) return null;
+    // Only the first sample where neither frame is dark counts.
+    if (firstSampleOnly) break;
+  }
+
+  if (scores.length < minimumUsableSamples(firstSampleOnly ? 1 : settings.sampleCount)) return null;
+  return { similarity: combineSampleScores(scores, settings), scores, compared: scores.length };
 }
 
 function durationsWithinTolerance(a, b, settings) {
@@ -345,9 +436,14 @@ module.exports = {
   getDuplicateFingerprintKey,
   calculateDctPHash,
   flipGrayBytes,
-  parsePHashHex,
-  popcountBigInt,
+  parsePHashWords,
+  popcount32,
   pHashSimilarity,
+  pHashSamplesByVideo,
+  graySamplesByVideo,
+  pHashSampleScore,
+  graySampleScore,
+  scoreSamples,
   rawGraySimilarity,
   frameDarkRatio,
   average,

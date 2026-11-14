@@ -13,18 +13,19 @@ const {
   flipGrayBytes,
   frameDarkRatio,
   average,
-  combineSampleScores,
   chooseSuggestedKeeper,
   durationsWithinTolerance,
-  pHashSimilarity,
-  rawGraySimilarity,
+  pHashSamplesByVideo,
+  graySamplesByVideo,
+  pHashSampleScore,
+  graySampleScore,
+  scoreSamples,
 } = require('./duplicate-utils');
 
 const ONE_MIB = 1024 * 1024;
 const FRAME_BYTE_COUNT = 32 * 32;
 // Match thumbnails: allow slow seeks, but keep a hung decoder from holding a worker indefinitely.
 const FRAME_EXTRACTION_TIMEOUT_MS = 120_000;
-const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 const FRAME_FILTER = 'scale=32:32:flags=bicubic,setsar=1,format=gray';
 // SYNC NOTE: same literal as CACHE_UNAVAILABLE_CODE in cache-service.js, which is not required here
 // because the cache is injected.
@@ -94,14 +95,6 @@ function groupVideosByFolder(videos) {
 
 function progress(sendProgress, stage, payload = {}) {
   sendProgress?.({ stage, ...payload });
-}
-
-function minimumUsableSamples(sampleCount) {
-  return sampleCount > 1 ? 2 : 1;
-}
-
-function isDarkSample(sample) {
-  return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
 }
 
 function createQueueCursor(items) {
@@ -552,122 +545,27 @@ async function backfillFingerprints(videos, duplicateState, settings, run, sendP
   });
 }
 
-function compactPHashSamples(rows, sampleCount) {
-  const byVideo = new Map();
-  for (const row of rows) {
-    const list = byVideo.get(row.video_id) ?? [];
-    list.push({
-      index: Number(row.sample_index),
-      hash: row.phash_hex,
-      flippedHash: row.flipped_phash_hex ?? row.phash_hex,
-      darkRatio: Number(row.frame_dark_ratio ?? 0),
-    });
-    byVideo.set(row.video_id, list);
-  }
-
-  const result = new Map();
-  for (const [videoId, samples] of byVideo) {
-    const ordered = samples.sort((a, b) => a.index - b.index).slice(0, sampleCount);
-    if (ordered.length >= sampleCount) result.set(videoId, ordered);
-  }
-  return result;
-}
-
-function compactGraySamples(rows, sampleCount) {
-  const byVideo = new Map();
-  for (const row of rows) {
-    const list = byVideo.get(row.video_id) ?? [];
-    list.push({
-      index: Number(row.sample_index),
-      bytes: row.gray_bytes,
-      darkRatio: Number(row.frame_dark_ratio ?? 0),
-    });
-    byVideo.set(row.video_id, list);
-  }
-
-  const result = new Map();
-  for (const [videoId, samples] of byVideo) {
-    const ordered = samples.sort((a, b) => a.index - b.index).slice(0, sampleCount);
-    if (ordered.length >= sampleCount) result.set(videoId, ordered);
-  }
-  return result;
-}
-
-function recomputePHashSimilarity(samplesA, samplesB, settings, options = {}) {
-  const sampleScores = [];
-  for (let i = 0; i < settings.sampleCount; i++) {
-    const sampleA = samplesA[i];
-    const sampleB = samplesB[i];
-    if (!sampleA || !sampleB) return null;
-    if (isDarkSample(sampleA) || isDarkSample(sampleB)) continue;
-    const normalScore = pHashSimilarity(sampleA.hash, sampleB.hash);
-    const flippedScore = settings.compareFlipped
-      ? pHashSimilarity(sampleA.flippedHash, sampleB.hash)
-      : normalScore;
-    sampleScores.push(Math.max(normalScore, flippedScore));
-    // Only the first sample where neither frame is dark counts.
-    if (settings.phashFirstSampleOnly) break;
-  }
-
-  if (sampleScores.length < minimumUsableSamples(settings.phashFirstSampleOnly ? 1 : settings.sampleCount)) return null;
-  if (settings.requireEverySample && sampleScores.some((score) => score < settings.finalSimilarityThreshold)) return null;
-  const similarity = combineSampleScores(sampleScores, settings);
-  if (options.enforceThreshold === false) return similarity;
-  return similarity >= settings.finalSimilarityThreshold ? similarity : null;
-}
-
-function recomputeVisualSimilarity(samplesA, samplesB, settings, options = {}) {
-  const scores = [];
-  for (let i = 0; i < settings.sampleCount; i++) {
-    const sampleA = samplesA[i];
-    const sampleB = samplesB[i];
-    if (!sampleA?.bytes || !sampleB?.bytes) return null;
-    if (isDarkSample(sampleA) || isDarkSample(sampleB)) continue;
-    const normalScore = rawGraySimilarity(sampleA.bytes, sampleB.bytes, settings);
-    const flippedScore = settings.compareFlipped
-      ? rawGraySimilarity(flipGrayBytes(sampleA.bytes), sampleB.bytes, settings)
-      : normalScore;
-    const bestScore = Math.max(normalScore, flippedScore);
-    if (settings.requireEverySample && bestScore < settings.finalSimilarityThreshold) return null;
-    scores.push(bestScore);
-  }
-
-  if (scores.length < minimumUsableSamples(settings.sampleCount)) return null;
-  const similarity = combineSampleScores(scores, settings);
-  if (options.enforceThreshold === false) return similarity;
-  return similarity >= settings.finalSimilarityThreshold ? similarity : null;
-}
-
 function createSimilarityRevalidator(settings, comparisonData = null) {
   if (!comparisonData?.mode || !Array.isArray(comparisonData.rows)) return null;
+  const phash = comparisonData.mode === 'phash';
+  if (!phash && comparisonData.mode !== 'visual') return null;
 
-  if (comparisonData.mode === 'phash') {
-    const samplesByVideo = compactPHashSamples(comparisonData.rows, settings.sampleCount);
-    const computeSimilarity = (aId, bId, options = {}) => {
-      const samplesA = samplesByVideo.get(aId);
-      const samplesB = samplesByVideo.get(bId);
-      if (!samplesA || !samplesB) return undefined;
-      return recomputePHashSimilarity(samplesA, samplesB, settings, options);
-    };
-    const revalidateSimilarity = (aId, bId) => computeSimilarity(aId, bId);
-    revalidateSimilarity.score = (aId, bId) => computeSimilarity(aId, bId, { enforceThreshold: false });
-    return revalidateSimilarity;
-  }
-
-  if (comparisonData.mode === 'visual') {
-    const samplesByVideo = compactGraySamples(comparisonData.rows, settings.sampleCount);
-    const computeSimilarity = (aId, bId, options = {}) => {
-      const samplesA = samplesByVideo.get(aId);
-      const samplesB = samplesByVideo.get(bId);
-      if (!samplesA || !samplesB) return undefined;
-      return recomputeVisualSimilarity(samplesA, samplesB, settings, options);
-    };
-    const revalidateSimilarity = (aId, bId) => computeSimilarity(aId, bId);
-    revalidateSimilarity.score = (aId, bId) => computeSimilarity(aId, bId, { enforceThreshold: false });
-    return revalidateSimilarity;
-  }
-
-  return null;
+  const samplesByVideo = phash
+    ? pHashSamplesByVideo(comparisonData.rows, settings.sampleCount)
+    : graySamplesByVideo(comparisonData.rows, settings.sampleCount);
+  const sampleScore = phash ? pHashSampleScore : graySampleScore(settings);
+  const scoreOptions = { firstSampleOnly: phash && settings.phashFirstSampleOnly };
+  const computeSimilarity = (aId, bId, enforceThreshold) => {
+    const samplesA = samplesByVideo.get(aId);
+    const samplesB = samplesByVideo.get(bId);
+    if (!samplesA || !samplesB) return undefined;
+    const result = scoreSamples(samplesA, samplesB, settings, sampleScore, scoreOptions);
+    if (!result) return null;
+    return !enforceThreshold || result.similarity >= settings.finalSimilarityThreshold ? result.similarity : null;
+  };
+  const revalidateSimilarity = (aId, bId) => computeSimilarity(aId, bId, true);
+  revalidateSimilarity.score = (aId, bId) => computeSimilarity(aId, bId, false);
+  return revalidateSimilarity;
 }
 
 function runPHashWorker(videos, phashRows, settings, run, sendProgress) {

@@ -3,9 +3,14 @@ const {
   getSamplingTimestamps,
   calculateDctPHash,
   flipGrayBytes,
-  parsePHashHex,
-  popcountBigInt,
+  parsePHashWords,
+  popcount32,
   pHashSimilarity,
+  pHashSamplesByVideo,
+  graySamplesByVideo,
+  pHashSampleScore,
+  graySampleScore,
+  scoreSamples,
   rawGraySimilarity,
   average,
   combineSampleScores,
@@ -40,9 +45,13 @@ test('pHash is deterministic for the same grayscale bytes', () => {
   assert.equal(calculateDctPHash(bytes), calculateDctPHash(bytes));
 });
 
-test('BigInt pHash parsing and popcount work', () => {
-  assert.equal(parsePHashHex('0f'), 15n);
-  assert.equal(popcountBigInt(15n), 4);
+test('pHash parsing and bit count work', () => {
+  assert.deepEqual([...parsePHashWords('0f')], [0, 15]);
+  assert.deepEqual([...parsePHashWords('ffff000000000001')], [0xffff0000, 1]);
+  assert.deepEqual([...parsePHashWords('not hex')], [0, 0]);
+  assert.equal(popcount32(15), 4);
+  assert.equal(popcount32(-1), 32);
+  assert.equal(pHashSimilarity('ffff000000000000', '7fff000000000001'), (62 / 64) * 100);
   assert.equal(pHashSimilarity('ffff000000000000', 'ffff000000000000'), 100);
 });
 
@@ -252,4 +261,205 @@ test('codec preference order is configurable and normalized', () => {
 test('fingerprints made before frame-aligned sampling are not reused', () => {
   // Stored rows carry the key they were made with; only matching rows are loaded.
   assert.match(getDuplicateFingerprintKey({}), /^gray32-v3\|/);
+});
+
+// --- scoreSamples against the four implementations it replaced -------------------------------
+// The functions below are the scoring rules as they were written before, kept as the reference.
+
+function seededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 2 ** 32;
+  };
+}
+
+function previousPHashSimilarity(hexA, hexB) {
+  let difference = BigInt(`0x${hexA}`) ^ BigInt(`0x${hexB}`);
+  let distance = 0;
+  while (difference > 0n) {
+    difference &= difference - 1n;
+    distance++;
+  }
+  return ((64 - distance) / 64) * 100;
+}
+
+const previousIsDark = (sample) => Number(sample?.darkRatio ?? 0) >= 0.8;
+const previousMinimum = (sampleCount) => (sampleCount > 1 ? 2 : 1);
+
+function previousPHashScore(samplesA, samplesB, settings, enforceThreshold) {
+  const sampleScores = [];
+  for (let i = 0; i < settings.sampleCount; i++) {
+    const sampleA = samplesA[i];
+    const sampleB = samplesB[i];
+    if (!sampleA || !sampleB) return null;
+    if (previousIsDark(sampleA) || previousIsDark(sampleB)) continue;
+    const normalScore = previousPHashSimilarity(sampleA.hash, sampleB.hash);
+    const flippedScore = settings.compareFlipped
+      ? previousPHashSimilarity(sampleA.flippedHash, sampleB.hash)
+      : normalScore;
+    sampleScores.push(Math.max(normalScore, flippedScore));
+    if (settings.phashFirstSampleOnly) break;
+  }
+  if (sampleScores.length < previousMinimum(settings.phashFirstSampleOnly ? 1 : settings.sampleCount)) return null;
+  if (settings.requireEverySample && sampleScores.some((score) => score < settings.finalSimilarityThreshold)) return null;
+  const similarity = combineSampleScores(sampleScores, settings);
+  if (!enforceThreshold) return similarity;
+  return similarity >= settings.finalSimilarityThreshold ? similarity : null;
+}
+
+function previousVisualScore(samplesA, samplesB, settings, enforceThreshold) {
+  const scores = [];
+  for (let i = 0; i < settings.sampleCount; i++) {
+    const sampleA = samplesA[i];
+    const sampleB = samplesB[i];
+    if (previousIsDark(sampleA) || previousIsDark(sampleB)) continue;
+    const normalScore = rawGraySimilarity(sampleA.bytes, sampleB.bytes, settings);
+    const flippedScore = settings.compareFlipped
+      ? rawGraySimilarity(flipGrayBytes(sampleA.bytes, 4, 4), sampleB.bytes, settings)
+      : normalScore;
+    const bestScore = Math.max(normalScore, flippedScore);
+    if (settings.requireEverySample && bestScore < settings.finalSimilarityThreshold) return null;
+    scores.push(bestScore);
+  }
+  if (scores.length < previousMinimum(settings.sampleCount)) return null;
+  const similarity = combineSampleScores(scores, settings);
+  if (!enforceThreshold) return similarity;
+  return similarity >= settings.finalSimilarityThreshold ? similarity : null;
+}
+
+function settingCombinations() {
+  const combinations = [];
+  for (const sampleCount of [1, 2, 3, 5, 9]) {
+    for (const finalSimilarityThreshold of [90, 95, 96.875]) {
+      for (let flags = 0; flags < 8; flags++) {
+        combinations.push(normalizeDuplicateSettings({
+          sampleCount,
+          finalSimilarityThreshold,
+          compareFlipped: Boolean(flags & 1),
+          requireEverySample: Boolean(flags & 2),
+          phashFirstSampleOnly: Boolean(flags & 4),
+          ignoreBlackPixels: Boolean(flags & 4),
+          ignoreWhitePixels: Boolean(flags & 1),
+        }));
+      }
+    }
+  }
+  return combinations;
+}
+
+test('32-bit bit count equals the BigInt count it replaced', () => {
+  const random = seededRandom(7);
+  for (let i = 0; i < 2000; i++) {
+    const value = Math.floor(random() * 2 ** 32);
+    let expected = 0;
+    for (let n = BigInt(value); n > 0n; n &= n - 1n) expected++;
+    assert.equal(popcount32(value | 0), expected);
+  }
+});
+
+test('scoreSamples gives the pHash decisions and scores of the code it replaced', () => {
+  const random = seededRandom(11);
+  const randomHex = () => Array.from({ length: 16 }, () => Math.floor(random() * 16).toString(16)).join('');
+  const withFlippedBits = (hex, count) => {
+    let value = BigInt(`0x${hex}`);
+    for (let i = 0; i < count; i++) value ^= 1n << BigInt(Math.floor(random() * 64));
+    return value.toString(16).padStart(16, '0');
+  };
+  const rowsFor = (videoId, hashes) => hashes.map((sample, index) => ({
+    video_id: videoId,
+    sample_index: index,
+    phash_hex: sample.hash,
+    flipped_phash_hex: sample.flippedHash,
+    frame_dark_ratio: sample.darkRatio,
+  }));
+  let matches = 0;
+  for (const settings of settingCombinations()) {
+    for (let pair = 0; pair < 60; pair++) {
+      const samplesA = Array.from({ length: settings.sampleCount }, () => ({
+        hash: randomHex(),
+        flippedHash: randomHex(),
+        darkRatio: random() < 0.2 ? 0.9 : 0.1,
+      }));
+      const samplesB = samplesA.map((sample) => ({
+        // Close to the normal or to the mirrored hash, by a few bits either way of the threshold.
+        hash: withFlippedBits(random() < 0.3 ? sample.flippedHash : sample.hash, Math.floor(random() * 7)),
+        flippedHash: randomHex(),
+        darkRatio: random() < 0.2 ? 0.9 : 0.1,
+      }));
+      const grouped = pHashSamplesByVideo([...rowsFor('a', samplesA), ...rowsFor('b', samplesB)], settings.sampleCount);
+      const result = scoreSamples(grouped.get('a'), grouped.get('b'), settings, pHashSampleScore, {
+        firstSampleOnly: settings.phashFirstSampleOnly,
+      });
+      const unenforced = result ? result.similarity : null;
+      const enforced = result && result.similarity >= settings.finalSimilarityThreshold ? result.similarity : null;
+      assert.equal(unenforced, previousPHashScore(samplesA, samplesB, settings, false));
+      assert.equal(enforced, previousPHashScore(samplesA, samplesB, settings, true));
+      // Stopping early, as the comparison worker does, may only skip pairs that would not have matched.
+      const early = scoreSamples(grouped.get('a'), grouped.get('b'), settings, pHashSampleScore, {
+        firstSampleOnly: settings.phashFirstSampleOnly,
+        stopBelowThreshold: true,
+      });
+      assert.equal(early && early.similarity >= settings.finalSimilarityThreshold ? early.similarity : null, enforced);
+      if (enforced !== null) matches++;
+    }
+  }
+  assert.ok(matches > 500, `the inputs must include matches, got ${matches}`);
+});
+
+test('scoreSamples gives the Visual decisions and scores of the code it replaced', () => {
+  const random = seededRandom(13);
+  const rowsFor = (videoId, samples) => samples.map((sample, index) => ({
+    video_id: videoId,
+    sample_index: index,
+    gray_bytes: sample.bytes,
+    frame_dark_ratio: sample.darkRatio,
+  }));
+  let matches = 0;
+  for (const settings of settingCombinations()) {
+    const visualSettings = { ...settings, phashFirstSampleOnly: false };
+    // The test frames are 4x4, so they are mirrored here; the app mirrors 32x32 frames.
+    const sampleScore = (sampleA, sampleB, flipped) => graySampleScore(visualSettings)(
+      flipped ? { bytes: flipGrayBytes(sampleA.bytes, 4, 4) } : sampleA,
+      sampleB,
+      false,
+    );
+    for (let pair = 0; pair < 60; pair++) {
+      const samplesA = Array.from({ length: settings.sampleCount }, () => ({
+        bytes: Buffer.from(Array.from({ length: 16 }, () => Math.floor(random() * 256))),
+        darkRatio: random() < 0.2 ? 0.9 : 0.1,
+      }));
+      const noise = random() * 40;
+      const samplesB = samplesA.map((sample) => ({
+        bytes: Buffer.from(Array.from(
+          random() < 0.3 ? flipGrayBytes(sample.bytes, 4, 4) : sample.bytes,
+          (value) => Math.max(0, Math.min(255, Math.round(value + (random() - 0.5) * noise))),
+        )),
+        darkRatio: random() < 0.2 ? 0.9 : 0.1,
+      }));
+      const grouped = graySamplesByVideo([...rowsFor('a', samplesA), ...rowsFor('b', samplesB)], settings.sampleCount);
+      const full = scoreSamples(grouped.get('a'), grouped.get('b'), visualSettings, sampleScore);
+      const early = scoreSamples(grouped.get('a'), grouped.get('b'), visualSettings, sampleScore, { stopBelowThreshold: true });
+      const enforced = (result) => (result && result.similarity >= visualSettings.finalSimilarityThreshold ? result.similarity : null);
+      assert.equal(full ? full.similarity : null, previousVisualScore(samplesA, samplesB, visualSettings, false));
+      assert.equal(enforced(full), previousVisualScore(samplesA, samplesB, visualSettings, true));
+      // Stopping early may only skip pairs that would not have matched.
+      assert.equal(enforced(early), enforced(full));
+      if (enforced(full) !== null) matches++;
+    }
+  }
+  assert.ok(matches > 100, `the inputs must include matches, got ${matches}`);
+});
+
+test('scoreSamples reports the per-sample scores and how many were compared', () => {
+  const settings = normalizeDuplicateSettings({ sampleCount: 3, finalSimilarityThreshold: 90 });
+  const sample = (hash, darkRatio = 0) => ({ hash: parsePHashWords(hash), flippedHash: parsePHashWords(hash), darkRatio });
+  const result = scoreSamples(
+    [sample('ffffffffffffffff'), sample('ffffffffffffffff', 0.9), sample('00000000000000ff')],
+    [sample('ffffffffffffffff'), sample('ffffffffffffffff'), sample('00000000000000fe')],
+    settings,
+    pHashSampleScore,
+  );
+  assert.deepEqual(result, { similarity: (100 + (63 / 64) * 100) / 2, scores: [100, (63 / 64) * 100], compared: 2 });
+  assert.equal(scoreSamples([sample('ff')], [sample('ff')], settings, pHashSampleScore), null, 'a missing sample is not comparable');
 });

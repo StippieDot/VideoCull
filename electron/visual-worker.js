@@ -1,14 +1,13 @@
 const { parentPort, workerData } = require('worker_threads');
 const {
   normalizeDuplicateSettings,
-  rawGraySimilarity,
-  flipGrayBytes,
-  combineSampleScores,
+  graySamplesByVideo,
+  graySampleScore,
+  scoreSamples,
   durationsWithinTolerance,
 } = require('./duplicate-utils');
 
 const BUCKET_SIZE_SECS = 1;
-const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 const pauseView = workerData.pauseSignal ? new Int32Array(workerData.pauseSignal) : null;
 
 function pauseCheckpoint() {
@@ -17,27 +16,6 @@ function pauseCheckpoint() {
   parentPort.postMessage({ type: 'paused' });
   while (Atomics.load(pauseView, 0) === 1) Atomics.wait(pauseView, 0, 1);
   Atomics.store(pauseView, 1, 0);
-}
-
-function compactGraySamples(rows, sampleCount) {
-  const byVideo = new Map();
-  for (const row of rows) {
-    const list = byVideo.get(row.video_id) ?? [];
-    list.push({
-      index: Number(row.sample_index),
-      bytes: row.gray_bytes,
-      flippedBytes: null,
-      darkRatio: Number(row.frame_dark_ratio ?? 0),
-    });
-    byVideo.set(row.video_id, list);
-  }
-
-  const result = new Map();
-  for (const [videoId, samples] of byVideo) {
-    const ordered = samples.sort((a, b) => a.index - b.index).slice(0, sampleCount);
-    if (ordered.length >= sampleCount) result.set(videoId, ordered);
-  }
-  return result;
 }
 
 function getCandidateBuckets(video, settings) {
@@ -50,10 +28,6 @@ function getCandidateBuckets(video, settings) {
   const keys = [];
   for (let key = minKey; key <= maxKey; key++) keys.push(key);
   return keys;
-}
-
-function isDarkSample(sample) {
-  return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
 }
 
 function forEachBucketedPair(buckets, unknownDurationCandidates, settings, callback) {
@@ -80,41 +54,9 @@ function forEachBucketedPair(buckets, unknownDurationCandidates, settings, callb
   }
 }
 
-function compareSamples(a, b, settings) {
-  const scores = [];
-  let diffSum = 0;
-  const maxDiffSum = (100 - settings.finalSimilarityThreshold) * settings.sampleCount;
-  for (let i = 0; i < settings.sampleCount; i++) {
-    const sampleA = a.samples[i];
-    const sampleB = b.samples[i];
-    if (!sampleA?.bytes || !sampleB?.bytes) continue;
-    if (isDarkSample(sampleA) || isDarkSample(sampleB)) continue;
-    const normalScore = rawGraySimilarity(sampleA.bytes, sampleB.bytes, settings);
-    let bestScore = normalScore;
-    if (settings.compareFlipped) {
-      sampleA.flippedBytes ??= flipGrayBytes(sampleA.bytes);
-      const flippedScore = rawGraySimilarity(sampleA.flippedBytes, sampleB.bytes, settings);
-      bestScore = Math.max(normalScore, flippedScore);
-    }
-    scores.push(bestScore);
-    diffSum += 100 - bestScore;
-    if (settings.requireEverySample && bestScore < settings.finalSimilarityThreshold) return null;
-    if (diffSum > maxDiffSum) return null;
-  }
-
-  if (scores.length === 0) return null;
-  if (settings.sampleCount > 1 && scores.length < 2) return null;
-  const similarity = combineSampleScores(scores, settings);
-  if (similarity < settings.finalSimilarityThreshold) return null;
-  return {
-    similarity,
-    bestSampleIndex: scores.indexOf(Math.max(...scores)),
-  };
-}
-
 function compareVisuals() {
   const settings = normalizeDuplicateSettings(workerData.settings);
-  const sampleMap = compactGraySamples(workerData.grayRows ?? [], settings.sampleCount);
+  const sampleMap = graySamplesByVideo(workerData.grayRows ?? [], settings.sampleCount);
   const candidates = (workerData.videos ?? [])
     .filter((video) => sampleMap.has(video.id))
     .map((video, index) => ({ ...video, index, samples: sampleMap.get(video.id) }));
@@ -133,6 +75,7 @@ function compareVisuals() {
     buckets.set(key, list);
   }
 
+  const sampleScore = graySampleScore(settings);
   const pairs = [];
   let compared = 0;
   let lastProgressAt = 0;
@@ -144,13 +87,13 @@ function compareVisuals() {
 
   const comparePair = (a, b) => {
     if (!durationsWithinTolerance(a, b, settings)) return;
-    const result = compareSamples(a, b, settings);
-    if (!result) return;
+    const result = scoreSamples(a.samples, b.samples, settings, sampleScore, { stopBelowThreshold: true });
+    if (!result || result.similarity < settings.finalSimilarityThreshold) return;
     pairs.push({
       aId: a.id,
       bId: b.id,
       pHashSimilarity: null,
-      bestSampleIndex: result.bestSampleIndex,
+      bestSampleIndex: result.scores.indexOf(Math.max(...result.scores)),
       similarity: result.similarity,
       matchType: 'visual',
     });
