@@ -1100,6 +1100,35 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     duplicateLog('Daisy-chain validation complete', daisyChainStats);
   }
 
+  // The representative gate above rejects a video that misses the one representative even when it
+  // matches nearly every other member. Admit it when it matches more than half of a finished group.
+  const groupedIds = new Set(validatedGroups.flatMap((group) => [...group.ids]));
+  const leftoverIds = [...new Set(allPairs.flatMap((pair) => [pair.aId, pair.bId]))]
+    .filter((id) => !groupedIds.has(id))
+    .sort();
+  for (const videoId of leftoverIds) {
+    let best = null;
+    for (const group of validatedGroups) {
+      if (group.ids.size < 2 || !groupCanAcceptVideo(group, videoId)) continue;
+      // The grown group has three or more members, so recomputed scores apply as in the validation.
+      const revalidate = options.revalidateSimilarity;
+      const similarity = revalidate
+        ? (aId, bId) => {
+            const recomputed = revalidate(aId, bId);
+            return recomputed === undefined ? directSimilarity(aId, bId) : recomputed;
+          }
+        : directSimilarity;
+      let connections = 0;
+      for (const memberId of group.ids) {
+        if (connectionScore(videoId, memberId, similarity, settings.finalSimilarityThreshold) !== null) connections++;
+      }
+      if (connections * 2 > group.ids.size && connections > (best?.connections ?? 0)) best = { group, connections };
+    }
+    if (!best) continue;
+    best.group.ids.add(videoId);
+    best.group.usedRevalidation = Boolean(options.revalidateSimilarity);
+  }
+
   const groups = [];
   for (const candidate of validatedGroups) {
     const ids = Array.from(candidate.ids);

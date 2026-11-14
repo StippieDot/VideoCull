@@ -153,6 +153,26 @@ test('daisy-chain cleanup uses recomputed similarity for retained group scores',
   assert.equal(groups[0].averageSimilarity, 95.3);
 });
 
+test('a video that matches most of a group joins it even when it misses the group representative', () => {
+  const videos = ['r', 'a', 'b', 'c', 'x', 'y'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const pair = (aId, bId, similarity) => ({ aId, bId, similarity, matchType: 'phash' });
+  const matchedPairs = [
+    // 'r' is in the strongest pair and becomes the representative.
+    pair('r', 'a', 99), pair('r', 'b', 98), pair('r', 'c', 98),
+    pair('a', 'b', 97), pair('a', 'c', 97), pair('b', 'c', 97),
+    // 'x' matches three of the four members, 'y' only one.
+    pair('x', 'a', 96), pair('x', 'b', 96), pair('x', 'c', 96),
+    pair('y', 'a', 96),
+  ];
+
+  const groups = __test__.buildGroups([], matchedPairs, videosById, settings);
+
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].videoIds.toSorted(), ['a', 'b', 'c', 'r', 'x']);
+});
+
 test('group score is the weakest matched pair so it never exceeds any member pair', () => {
   const videos = ['a', 'b', 'c'].map(video);
   const videosById = new Map(videos.map((item) => [item.id, item]));

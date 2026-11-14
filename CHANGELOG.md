@@ -9,6 +9,9 @@ All notable changes to VideoCull will be documented here.
 - macOS permission prompts now explain why VideoCull asks for access to your Desktop, Documents, Downloads, external drives and network drives.
 
 ### Fixed
+- Duplicate detection compares a video and a copy of it in another container, such as an MKV remux of an MP4, on the same frames. Before, the two could be sampled one frame apart, which lowered their score and at 9 samples could split a set of copies over several groups. Sample times now follow the video's frame rate, so duplicate fingerprints are recalculated and the first duplicate run after updating takes longer.
+- A video that matches more than half of a duplicate group is added to it even when it does not match the one video the group was built around.
+- Duplicate detection with 4, 5, 7 or 9 samples per video reads all samples in one pass instead of one pass per sample, which roughly halves fingerprinting time at those settings.
 - Scans no longer spend time making previews for videos that could not be read. Empty files fail straight away, a warning lists how many videos were affected, and **Regenerate Thumbnails and Metadata** tries again.
 - Scans skip `.git` and `node_modules` folders, and `.app` bundles on macOS, and no longer list TypeScript source files as videos. Real `.ts` and `.mts` video files are still found.
 
