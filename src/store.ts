@@ -433,8 +433,7 @@ function resolutionSortValue(video: Video) {
   };
 }
 
-// SYNC NOTE: This function mirrors compareKeeperCandidates in electron/duplicate-utils.js.
-// The renderer copy exists for instant keeper re-computation when settings change.
+// The renderer copy of the keeper ranking exists for instant re-computation when settings change.
 // ffprobe names other than the family keys in codecOrder. SYNC NOTE: mirrors electron/duplicate-utils.js.
 const CODEC_ALIASES: Record<string, string> = { h265: 'hevc', wmv1: 'vc1', wmv2: 'vc1', wmv3: 'vc1' };
 
@@ -444,22 +443,71 @@ function codecPreferenceScore(video: Video, codecOrder: string[]): number {
   return index === -1 ? 0 : codecOrder.length - index;
 }
 
-function compareKeeperCandidates(a: Video, b: Video, order: string[], codecOrder: string[]): number {
-  for (const rule of order) {
-    let diff = 0;
-    if (rule === 'resolution') diff = resolutionDisplayTier(a) - resolutionDisplayTier(b);
-    else if (rule === 'videoBitrate') diff = finiteNumber(a.videoBitrate ?? a.totalBitrate) - finiteNumber(b.videoBitrate ?? b.totalBitrate);
-    else if (rule === 'duration') diff = finiteNumber(a.durationSecs) - finiteNumber(b.durationSecs);
-    else if (rule === 'fps') diff = finiteNumber(a.fps) - finiteNumber(b.fps);
-    else if (rule === 'size') diff = finiteNumber(a.sizeBytes) - finiteNumber(b.sizeBytes);
-    else if (rule === 'codec') diff = codecPreferenceScore(a, codecOrder) - codecPreferenceScore(b, codecOrder);
-    if (Number.isFinite(diff) && diff !== 0) return diff;
+type KeeperRanking = { keeper: Video; rule: string; tieBreak: boolean; reasons: Record<string, string> };
+
+// Higher is better for every rule.
+function keeperRuleScore(video: Video, rule: string, codecOrder: string[]): number {
+  if (rule === 'resolution') return resolutionDisplayTier(video);
+  if (rule === 'videoBitrate') return finiteNumber(video.videoBitrate ?? video.totalBitrate);
+  if (rule === 'duration') return finiteNumber(video.durationSecs);
+  if (rule === 'fps') return finiteNumber(video.fps);
+  if (rule === 'size') return finiteNumber(video.sizeBytes);
+  if (rule === 'codec') return codecPreferenceScore(video, codecOrder);
+  return 0;
+}
+
+const KEEPER_DURATION_MARGIN_SECS = 2;
+const KEEPER_DURATION_MARGIN_SHARE = 0.01;
+
+function keeperRuleMargin(rule: string, videos: Video[]): number {
+  if (rule !== 'duration') return 0;
+  const longest = Math.max(0, ...videos.map((video) => finiteNumber(video.durationSecs)));
+  return Math.max(KEEPER_DURATION_MARGIN_SECS, longest * KEEPER_DURATION_MARGIN_SHARE);
+}
+
+const KEEPER_TIE_BREAK_RULES = new Set(['size', 'codec', 'path']);
+
+function formatSeconds(seconds: number): string {
+  return seconds >= 10 ? String(Math.round(seconds)) : String(Math.round(seconds * 10) / 10);
+}
+
+function keeperReason(rule: string, video: Video, best: number, codecOrder: string[]): string {
+  const score = keeperRuleScore(video, rule, codecOrder);
+  if (rule === 'resolution') return 'lower resolution';
+  if (rule === 'videoBitrate') return 'lower bitrate';
+  if (rule === 'duration') return `shorter by ${formatSeconds(best - score)} s`;
+  if (rule === 'fps') return score > 0 ? `${score} fps instead of ${best}` : 'unknown frame rate';
+  if (rule === 'size') return 'smaller file';
+  if (rule === 'codec') return 'less preferred codec';
+  return 'no difference found; chosen by file name';
+}
+
+// SYNC NOTE: This function mirrors rankKeeperCandidates in electron/duplicate-utils.js; the parity
+// test in tests/src/store.test.ts runs both on the same groups.
+function rankKeeperCandidates(videos: Video[], order: string[], codecOrder: string[]): KeeperRanking | null {
+  if (videos.length === 0) return null;
+  let candidates = [...videos];
+  const reasons: Record<string, string> = {};
+  let rule = 'path';
+  for (const current of order) {
+    if (candidates.length < 2) break;
+    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder)]));
+    const best = Math.max(...scores.values());
+    const margin = keeperRuleMargin(current, videos);
+    const kept = candidates.filter((video) => (scores.get(video.id) ?? 0) >= best - margin);
+    for (const video of candidates) {
+      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder);
+    }
+    if (kept.length === 1) rule = current;
+    candidates = kept;
   }
-  return String(b.path ?? '').localeCompare(String(a.path ?? ''));
+  candidates.sort((a, b) => String(a.path ?? '').localeCompare(String(b.path ?? '')));
+  for (const video of candidates.slice(1)) reasons[video.id] = keeperReason('path', video, 0, codecOrder);
+  return { keeper: candidates[0]!, rule, tieBreak: KEEPER_TIE_BREAK_RULES.has(rule), reasons };
 }
 
 function chooseSuggestedKeeperId(videos: Video[], order: string[], codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder): string | null {
-  return [...videos].sort((a, b) => -compareKeeperCandidates(a, b, order, codecOrder))[0]?.id ?? null;
+  return rankKeeperCandidates(videos, order, codecOrder)?.keeper.id ?? null;
 }
 
 function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], order: string[], codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder): DuplicateGroup[] {
@@ -472,10 +520,14 @@ function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], ord
     const manualSuggestedKeeperId = group.manualSuggestedKeeperId && group.videoIds.includes(group.manualSuggestedKeeperId)
       ? group.manualSuggestedKeeperId
       : null;
+    const ranking = rankKeeperCandidates(groupVideos, order, codecOrder);
     return {
       ...group,
       manualSuggestedKeeperId,
-      suggestedKeeperId: manualSuggestedKeeperId ?? chooseSuggestedKeeperId(groupVideos, order, codecOrder),
+      suggestedKeeperId: manualSuggestedKeeperId ?? ranking?.keeper.id ?? null,
+      keeperRule: ranking?.rule,
+      keeperTieBreak: ranking?.tieBreak,
+      keeperReasons: ranking?.reasons,
     };
   });
 }
@@ -2177,6 +2229,7 @@ export const __test__ = {
   normalizeDuplicatePairKey,
   applyDuplicateGroupsToVideos,
   chooseSuggestedKeeperId,
+  rankKeeperCandidates,
   applyKeeperOrderToGroups,
   getReviewScopeIdsForVideo,
   getVideoByReviewIndex,

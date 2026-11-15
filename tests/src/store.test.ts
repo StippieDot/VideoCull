@@ -335,3 +335,25 @@ test('the title bar path filter keeps a folder and everything below it, not fold
   expect(__test__.computeFiltered(makeFilterState({ videos: onRoot, folderFilter: { path: 'P:\\', includeSubfolders: false } }))
     .map((video) => video.id)).toEqual(['root']);
 });
+
+describe('keeper ranking matches the backend copy', () => {
+  test('keeper, deciding rule and reasons agree on shared groups', async () => {
+    const backend = (await import('../../electron/duplicate-utils.js')).default;
+    const order = ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec'];
+    const codecOrder = ['av1', 'hevc', 'vp9', 'h264', 'vp8', 'mpeg4', 'mpeg2video', 'vc1'];
+    const base = { width: 1920, height: 1080, videoBitrate: 3000, durationSecs: 600, fps: 30, sizeBytes: 50, videoCodec: 'hevc' };
+    const groups = [
+      [{ id: 'a', path: 'a.mp4', ...base }, { id: 'b', path: 'b.mp4', ...base, width: 1280, height: 720 }],
+      [{ id: 'a', path: 'a.mp4', ...base, durationSecs: 595 }, { id: 'b', path: 'b.mp4', ...base, videoBitrate: 4000 }],
+      [{ id: 'a', path: 'a.mp4', ...base, durationSecs: 580 }, { id: 'b', path: 'b.mp4', ...base, videoBitrate: 4000 }],
+      [{ id: 'a', path: 'b.mp4', ...base }, { id: 'b', path: 'a.mp4', ...base }, { id: 'c', path: 'c.mp4', ...base, videoCodec: 'mpeg4' }],
+    ];
+    for (const members of groups) {
+      const videos = members.map((member) => ({ ...makeVideo(member.id), ...member }));
+      const expected = backend.rankKeeperCandidates(videos, order, codecOrder);
+      const actual = __test__.rankKeeperCandidates(videos, order, codecOrder);
+      expect({ keeper: actual?.keeper.id, rule: actual?.rule, tieBreak: actual?.tieBreak, reasons: actual?.reasons })
+        .toEqual({ keeper: expected.keeper.id, rule: expected.rule, tieBreak: expected.tieBreak, reasons: expected.reasons });
+    }
+  });
+});

@@ -12,6 +12,7 @@ All notable changes to VideoCull will be documented here.
 
 ### Changed
 - Duplicate groups say how they matched: **Identical files**, or **Same content at 3 of 3 sampled moments** with the fewest samples any match in the group was compared on, plus notes such as **Black bars ignored**, **Mirrored**, **Partly unreadable** or **Lengths differ by 2.0 s**. A group that rests on a single sample or on two videos that barely move is labelled **Single-frame match — check before deleting** or **Little movement — check before deleting** and listed after the other groups.
+- The **Duration** rule of the suggested keeper ignores differences of up to 2 seconds or 1 percent of the longest copy, whichever is larger, so the next rule decides between copies that only end a few frames apart. Before, a re-encode that was a millisecond longer could be suggested over the original.
 - Comparing videos with the pHash method is much faster in large libraries: comparing 6,000 videos of similar length took 45 seconds and now takes under 2. The matches found are the same.
 - Turning **Compare flipped videos** on or off no longer makes the next duplicate run read every video again: the mirrored fingerprint is always stored.
 - On macOS, automatic processing uses up to 4 jobs at once with 16 GB of memory or more and up to 2 with less, limited to half the processor cores.

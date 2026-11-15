@@ -55,7 +55,7 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
 
 // SYNC NOTE: These defaults are duplicated in electron/duplicate-utils.js (DEFAULT_DUPLICATE_SETTINGS).
 // The backend copy is used during duplicate detection. Keep both in sync when changing defaults.
-// The compareKeeperCandidates / chooseSuggestedKeeperId functions in src/store.ts mirror the backend versions.
+// The rankKeeperCandidates / chooseSuggestedKeeperId functions in src/store.ts mirror the backend versions.
 export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   enabled: true,
   runAfterScan: false,

@@ -22,6 +22,8 @@ const {
   getDuplicateFingerprintKey,
   durationsWithinTolerance,
   chooseSuggestedKeeper,
+  rankKeeperCandidates,
+  DEFAULT_DUPLICATE_SETTINGS,
 } = require('../../electron/duplicate-utils');
 
 test('even sampling uses N+1 spacing', () => {
@@ -693,4 +695,112 @@ test('scoreSamples reports when a mirrored sample or the picture inside black ba
     (({ similarity, borderAdjusted }) => ({ similarity, borderAdjusted }))(scoreSamples(barred, plain, settings, pHashSampleScore)),
     { similarity: 100, borderAdjusted: true },
   );
+});
+
+// The strict comparison the cascade replaced, kept verbatim as the reference.
+function previousResolutionTier(video) {
+  const width = Number(video.width) || 0;
+  const height = Number(video.height) || 0;
+  if (width <= 0 || height <= 0) return 0;
+  const longestEdge = Math.max(width, height);
+  if (longestEdge >= 7680) return 8000;
+  if (longestEdge >= 5120) return 5000;
+  if (longestEdge >= 3840) return 4000;
+  if (longestEdge >= 2560) return 1440;
+  if (longestEdge >= 1920) return 1080;
+  if (longestEdge >= 1280) return 720;
+  return Math.min(width, height);
+}
+
+function previousCompareKeeper(a, b, order, codecOrder) {
+  const codec = (video) => {
+    const index = codecOrder.indexOf(String(video.videoCodec ?? '').toLowerCase());
+    return index === -1 ? 0 : codecOrder.length - index;
+  };
+  const value = (video, rule) => ({
+    resolution: () => previousResolutionTier(video),
+    videoBitrate: () => Number(video.videoBitrate ?? video.totalBitrate) || 0,
+    duration: () => Number(video.durationSecs) || 0,
+    fps: () => Number(video.fps) || 0,
+    size: () => Number(video.sizeBytes) || 0,
+    codec: () => codec(video),
+  }[rule]());
+  for (const rule of order) {
+    const diff = value(a, rule) - value(b, rule);
+    if (diff !== 0) return diff;
+  }
+  return String(b.path ?? '').localeCompare(String(a.path ?? ''));
+}
+
+test('the keeper cascade gives the strict ranking when only the duration margin is new', () => {
+  const random = seededRandom(23);
+  const pick = (values) => values[Math.floor(random() * values.length)];
+  const orders = [
+    DEFAULT_DUPLICATE_SETTINGS.keeperOrder,
+    ['size', 'codec', 'resolution', 'videoBitrate', 'fps', 'duration'],
+    ['codec', 'fps', 'videoBitrate'],
+  ];
+  for (let groupIndex = 0; groupIndex < 300; groupIndex++) {
+    const videos = Array.from({ length: 2 + Math.floor(random() * 4) }, (_, index) => ({
+      id: `v${index}`,
+      path: `${pick(['a', 'b', 'c'])}${index}.mp4`,
+      width: pick([1280, 1920, 3840]),
+      height: pick([720, 1080, 2160]),
+      videoBitrate: pick([1000, 2000, 3000]),
+      // Equal durations, so the new margin never applies here.
+      durationSecs: 120,
+      fps: pick([24, 30]),
+      sizeBytes: pick([10, 20]),
+      videoCodec: pick(['h264', 'hevc', 'vp9', 'mpeg4']),
+    }));
+    for (const order of orders) {
+      const settings = normalizeDuplicateSettings({ keeperOrder: order });
+      const expected = [...videos].sort((a, b) => -previousCompareKeeper(a, b, settings.keeperOrder, settings.codecOrder))[0];
+      assert.equal(chooseSuggestedKeeper(videos, settings).id, expected.id);
+    }
+  }
+});
+
+test('a copy shorter by less than the duration margin is not demoted for its length', () => {
+  const settings = normalizeDuplicateSettings({ keeperOrder: ['duration', 'videoBitrate'] });
+  const base = { width: 1920, height: 1080, path: 'a.mp4' };
+  const long = { ...base, id: 'long', durationSecs: 600, videoBitrate: 1000, path: 'b.mp4' };
+  // 1 % of 600 s is 6 s: 5.9 s shorter is inside the margin, so bitrate decides.
+  const inside = { ...base, id: 'inside', durationSecs: 594.1, videoBitrate: 2000 };
+  const outside = { ...base, id: 'outside', durationSecs: 593.9, videoBitrate: 2000 };
+  assert.equal(chooseSuggestedKeeper([long, inside], settings).id, 'inside');
+  const ranked = rankKeeperCandidates([long, outside], settings.keeperOrder, settings.codecOrder);
+  assert.deepEqual(ranked, { keeper: long, rule: 'duration', tieBreak: false, reasons: { outside: 'shorter by 6.1 s' } });
+  // Short videos use the 2-second floor.
+  const shortLong = { ...long, durationSecs: 30 };
+  const shortCopy = { ...inside, durationSecs: 28.1 };
+  assert.equal(chooseSuggestedKeeper([shortLong, shortCopy], settings).id, 'inside');
+});
+
+test('each member that is not the keeper gets the phrase for the rule it lost at', () => {
+  const order = ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec'];
+  const best = { id: 'best', path: 'a.mp4', width: 1920, height: 1080, videoBitrate: 3000, durationSecs: 100, fps: 30, sizeBytes: 50, videoCodec: 'hevc' };
+  const ranked = rankKeeperCandidates([
+    best,
+    { ...best, id: 'small', width: 1280, height: 720 },
+    { ...best, id: 'bitrate', videoBitrate: 1000 },
+    { ...best, id: 'short', durationSecs: 80 },
+    { ...best, id: 'fps', fps: 24 },
+    { ...best, id: 'size', sizeBytes: 40 },
+    { ...best, id: 'codec', videoCodec: 'h264' },
+    { ...best, id: 'twin', path: 'b.mp4' },
+  ], order);
+  assert.equal(ranked.keeper.id, 'best');
+  assert.deepEqual([ranked.rule, ranked.tieBreak], ['path', true]);
+  assert.deepEqual(ranked.reasons, {
+    small: 'lower resolution',
+    bitrate: 'lower bitrate',
+    short: 'shorter by 20 s',
+    fps: '24 fps instead of 30',
+    size: 'smaller file',
+    codec: 'less preferred codec',
+    twin: 'no difference found; chosen by file name',
+  });
+  const byResolution = rankKeeperCandidates([best, { ...best, id: 'small', width: 1280, height: 720 }], order);
+  assert.deepEqual([byResolution.rule, byResolution.tieBreak], ['resolution', false]);
 });

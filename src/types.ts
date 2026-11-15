@@ -306,6 +306,12 @@ export interface DuplicateGroup {
   partialFingerprint?: boolean;
   /** How far the members' lengths differ, when it is more than 1 second and 1 percent. */
   durationDifferenceSecs?: number | null;
+  /** The keeper rule that decided, or 'path' when nothing else did. */
+  keeperRule?: string | null;
+  /** The deciding rule only separates copies whose picture does not differ (size, codec, path). */
+  keeperTieBreak?: boolean;
+  /** Per member other than the suggested keeper: why it was not suggested. */
+  keeperReasons?: Record<string, string>;
 }
 
 export interface DuplicateProgress {

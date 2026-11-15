@@ -110,7 +110,9 @@ function probeVideo(ffprobePath, folder, filename) {
     fps: Math.round((Number(frameRate[0]) / Number(frameRate[1])) * 100) / 100 || null,
     videoCodec: videoStream?.codec_name ?? null,
     audioCodec: audioStream?.codec_name ?? null,
-    bitrate: Number(info.format?.bit_rate) || null,
+    // Same fields the keeper rules read in the app.
+    videoBitrate: Number(videoStream?.bit_rate) || null,
+    totalBitrate: Number(info.format?.bit_rate) || null,
   };
 }
 
@@ -171,6 +173,7 @@ function toSnapshot(groups, videosById, folder) {
       ...(group.static ? { static: true } : {}),
       ...(group.confidence === 'low' ? { confidence: 'low', comparedSamples: group.comparedSamples } : {}),
       files: group.videoIds.map((videoId) => path.relative(folder, videosById.get(videoId).path)).sort(),
+      keeper: group.suggestedKeeperId ? path.relative(folder, videosById.get(group.suggestedKeeperId).path) : null,
     }))
     .sort((a, b) => a.files.join('|').localeCompare(b.files.join('|')));
 }

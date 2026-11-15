@@ -1,6 +1,6 @@
 // SYNC NOTE: These defaults are duplicated in src/keybind-defaults.ts (DEFAULT_DUPLICATE_SETTINGS).
 // The renderer copy is needed for instant settings UI feedback. Keep both in sync when changing defaults.
-// The compareKeeperCandidates / chooseSuggestedKeeper functions below are also mirrored in src/store.ts.
+// The rankKeeperCandidates / chooseSuggestedKeeper functions below are also mirrored in src/store.ts.
 const DEFAULT_DUPLICATE_SETTINGS = {
   enabled: true,
   runAfterScan: false,
@@ -535,22 +535,78 @@ function codecPreferenceScore(video, codecOrder) {
   return index === -1 ? 0 : codecOrder.length - index;
 }
 
-function compareKeeperCandidates(a, b, order, codecOrder = DEFAULT_DUPLICATE_SETTINGS.codecOrder) {
-  for (const rule of order) {
-    let diff = 0;
-    if (rule === 'resolution') diff = resolutionDisplayTier(a) - resolutionDisplayTier(b);
-    else if (rule === 'videoBitrate') diff = finiteNumber(a.videoBitrate ?? a.totalBitrate) - finiteNumber(b.videoBitrate ?? b.totalBitrate);
-    else if (rule === 'duration') diff = finiteNumber(a.durationSecs) - finiteNumber(b.durationSecs);
-    else if (rule === 'fps') diff = finiteNumber(a.fps) - finiteNumber(b.fps);
-    else if (rule === 'size') diff = finiteNumber(a.sizeBytes) - finiteNumber(b.sizeBytes);
-    else if (rule === 'codec') diff = codecPreferenceScore(a, codecOrder) - codecPreferenceScore(b, codecOrder);
-    if (Number.isFinite(diff) && diff !== 0) return diff;
+// Higher is better for every rule.
+function keeperRuleScore(video, rule, codecOrder) {
+  if (rule === 'resolution') return resolutionDisplayTier(video);
+  if (rule === 'videoBitrate') return finiteNumber(video.videoBitrate ?? video.totalBitrate);
+  if (rule === 'duration') return finiteNumber(video.durationSecs);
+  if (rule === 'fps') return finiteNumber(video.fps);
+  if (rule === 'size') return finiteNumber(video.sizeBytes);
+  if (rule === 'codec') return codecPreferenceScore(video, codecOrder);
+  return 0;
+}
+
+// Copies of one video rarely end on exactly the same frame; a shorter one by less than this is not
+// "missing" anything, so the next rule decides.
+const KEEPER_DURATION_MARGIN_SECS = 2;
+const KEEPER_DURATION_MARGIN_SHARE = 0.01;
+
+function keeperRuleMargin(rule, videos) {
+  if (rule !== 'duration') return 0;
+  const longest = Math.max(0, ...videos.map((video) => finiteNumber(video.durationSecs)));
+  return Math.max(KEEPER_DURATION_MARGIN_SECS, longest * KEEPER_DURATION_MARGIN_SHARE);
+}
+
+// Rules that only separate copies when nothing about the picture differs.
+const KEEPER_TIE_BREAK_RULES = new Set(['size', 'codec', 'path']);
+
+function formatSeconds(seconds) {
+  return seconds >= 10 ? String(Math.round(seconds)) : String(Math.round(seconds * 10) / 10);
+}
+
+/** One fixed phrase for why `video` lost at `rule` against the best score `best`. */
+function keeperReason(rule, video, best, codecOrder) {
+  const score = keeperRuleScore(video, rule, codecOrder);
+  if (rule === 'resolution') return 'lower resolution';
+  if (rule === 'videoBitrate') return 'lower bitrate';
+  if (rule === 'duration') return `shorter by ${formatSeconds(best - score)} s`;
+  if (rule === 'fps') return score > 0 ? `${score} fps instead of ${best}` : 'unknown frame rate';
+  if (rule === 'size') return 'smaller file';
+  if (rule === 'codec') return 'less preferred codec';
+  return 'no difference found; chosen by file name';
+}
+
+/**
+ * The suggested keeper of a group. Each rule in order keeps the candidates within its margin of the
+ * best score; with every margin 0 this is the earlier strict comparison. Remaining ties go to the
+ * alphabetically first path. Returns the keeper, the rule that decided, whether that rule is only a
+ * tie-break, and per other member the phrase for the rule it lost at.
+ * SYNC NOTE: mirrored by rankKeeperCandidates in src/store.ts.
+ */
+function rankKeeperCandidates(videos, order, codecOrder = DEFAULT_DUPLICATE_SETTINGS.codecOrder) {
+  if (videos.length === 0) return null;
+  let candidates = [...videos];
+  const reasons = {};
+  let rule = 'path';
+  for (const current of order) {
+    if (candidates.length < 2) break;
+    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder)]));
+    const best = Math.max(...scores.values());
+    const margin = keeperRuleMargin(current, videos);
+    const kept = candidates.filter((video) => scores.get(video.id) >= best - margin);
+    for (const video of candidates) {
+      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder);
+    }
+    if (kept.length === 1) rule = current;
+    candidates = kept;
   }
-  return String(b.path ?? '').localeCompare(String(a.path ?? ''));
+  candidates.sort((a, b) => String(a.path ?? '').localeCompare(String(b.path ?? '')));
+  for (const video of candidates.slice(1)) reasons[video.id] = keeperReason('path', video, 0, codecOrder);
+  return { keeper: candidates[0], rule, tieBreak: KEEPER_TIE_BREAK_RULES.has(rule), reasons };
 }
 
 function chooseSuggestedKeeper(videos, settings) {
-  return [...videos].sort((a, b) => -compareKeeperCandidates(a, b, settings.keeperOrder, settings.codecOrder))[0] ?? null;
+  return rankKeeperCandidates(videos, settings.keeperOrder, settings.codecOrder)?.keeper ?? null;
 }
 
 module.exports = {
@@ -580,5 +636,5 @@ module.exports = {
   combineSampleScores,
   durationsWithinTolerance,
   chooseSuggestedKeeper,
-  compareKeeperCandidates,
+  rankKeeperCandidates,
 };

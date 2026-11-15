@@ -13,7 +13,7 @@ const {
   flipGrayBytes,
   frameDarkRatio,
   average,
-  chooseSuggestedKeeper,
+  rankKeeperCandidates,
   durationsWithinTolerance,
   pHashSamplesByVideo,
   graySamplesByVideo,
@@ -1137,7 +1137,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     const ids = Array.from(candidate.ids);
     if (ids.length < 2) continue;
     const videos = ids.map((id) => videosById.get(id)).filter(Boolean);
-    const keeper = chooseSuggestedKeeper(videos, settings);
+    const ranking = rankKeeperCandidates(videos, settings.keeperOrder, settings.codecOrder);
     const similarities = [];
     const exactVideoIds = new Set();
     let hasExact = false;
@@ -1186,7 +1186,11 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
         : 0,
       averageSimilarity: Math.round(average(similarities) * 10) / 10,
       matchType,
-      suggestedKeeperId: keeper?.id ?? null,
+      suggestedKeeperId: ranking?.keeper.id ?? null,
+      // Why the keeper won, and per other member the rule it lost at.
+      keeperRule: ranking?.rule ?? null,
+      keeperTieBreak: ranking?.tieBreak ?? false,
+      keeperReasons: ranking?.reasons ?? {},
       exactVideoIds: Array.from(exactVideoIds),
       // Both videos of a matched pair barely move, so a still picture may be all they share.
       static: hasStaticPair,
