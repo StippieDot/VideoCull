@@ -337,6 +337,11 @@
   font-size: 11px;
 }
 
+.duplicate-row-copy .duplicate-row-reason {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
 .duplicate-inline-flag {
   display: inline-flex;
   align-items: center;

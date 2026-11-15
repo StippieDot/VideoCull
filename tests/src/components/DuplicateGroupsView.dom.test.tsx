@@ -298,6 +298,28 @@ describe('DuplicateGroupsView behavior', () => {
     expect(normalReason.compareDocumentPosition(warning) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  test('says why each other copy is not the suggested keeper until a keeper is chosen by hand', async () => {
+    const group = makeDuplicateGroup({
+      id: 'g', videoIds: ['a', 'b'], suggestedKeeperId: 'a',
+      keeperRule: 'videoBitrate', keeperTieBreak: false, keeperReasons: { b: 'lower bitrate' },
+    });
+    useStore.setState({
+      videos: ['a', 'b'].map((id) => makeVideo(id, { duplicateGroupId: 'g', videoBitrate: id === 'a' ? 4000 : 1000 })),
+      duplicateGroups: [group],
+    });
+
+    const { unmount } = render(<DuplicateGroupsView />);
+
+    expect(await screen.findByText('Not suggested: lower bitrate')).toBeTruthy();
+    expect(screen.getByText('Suggested keeper').closest('span')?.getAttribute('title')).toBe('Decided by Video bitrate');
+    unmount();
+
+    useStore.setState({ duplicateGroups: [{ ...group, manualSuggestedKeeperId: 'b', suggestedKeeperId: 'b' }] });
+    render(<DuplicateGroupsView />);
+    expect(await screen.findByText('Selected keeper')).toBeTruthy();
+    expect(screen.queryByText(/Not suggested/)).toBeNull();
+  });
+
   test('dismisses a duplicate group from the current duplicate review', async () => {
     const groupId = 'group-1';
     const keeper = makeVideo('a', { duplicateGroupId: groupId });

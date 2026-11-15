@@ -45,6 +45,7 @@ import {
 import { Ban, Check, CheckCircle2, Play, SkipForward, Trash2 } from 'lucide-react';
 import './DuplicateGroupsView.css';
 import { openVideoExternally, revealInExplorer } from '../appCommands';
+import { KEEPER_RULE_LABELS } from '../keybind-defaults';
 
 type MetricState = 'best' | 'equal' | 'worse';
 type MetricFlags = Record<string, MetricState>;
@@ -86,6 +87,10 @@ type DuplicateRowItemProps = {
   suggestedKeeperId: string | null;
   manualSuggestedKeeperId: string | null | undefined;
   flags: MetricFlags;
+  /** Why this video is not the suggested keeper; shown only while the keeper is not chosen by hand. */
+  keeperReason: string | null;
+  /** For the suggested keeper: which rule chose it. */
+  keeperDecision: string | null;
   isSelected: boolean;
   isLastInGroup: boolean;
   onToggleSelection: (video: Video) => void;
@@ -260,6 +265,8 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
   suggestedKeeperId,
   manualSuggestedKeeperId,
   flags,
+  keeperReason,
+  keeperDecision,
   isSelected,
   isLastInGroup,
   onToggleSelection,
@@ -310,9 +317,10 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
           {chip('duration', formatDuration(video.durationSecs))}
           {chip('size', formatSize(video.sizeBytes))}
         </span>
+        {keeperReason && <span className="duplicate-row-reason">Not suggested: {keeperReason}</span>}
       </div>
       {suggestedKeeperId === video.id && (
-        <span className="duplicate-keeper-badge">
+        <span className="duplicate-keeper-badge" title={keeperDecision ?? undefined}>
           <CheckCircle2 size={13} />
           {manualSuggestedKeeperId === video.id ? 'Selected keeper' : 'Suggested keeper'}
         </span>
@@ -368,6 +376,13 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
     </div>
   );
 });
+
+function keeperDecisionLabel(group: DuplicateGroup): string | null {
+  if (!group.keeperRule) return null;
+  if (group.keeperRule === 'path') return 'No difference found; chosen by file name';
+  const rule = KEEPER_RULE_LABELS[group.keeperRule]?.title ?? group.keeperRule;
+  return group.keeperTieBreak ? `Decided by ${rule} (tie-break)` : `Decided by ${rule}`;
+}
 
 /** Warnings that ask for a look before deleting, and plain facts about how the group matched. */
 function groupEvidenceNotes(group: DuplicateGroup): { warnings: string[]; notes: string[] } {
@@ -492,6 +507,8 @@ function DuplicateVirtualRowRenderer({
             suggestedKeeperId={groupView.group.suggestedKeeperId}
             manualSuggestedKeeperId={groupView.group.manualSuggestedKeeperId}
             flags={groupView.bestFlags.get(video.id) ?? {}}
+            keeperReason={groupView.group.manualSuggestedKeeperId ? null : groupView.group.keeperReasons?.[video.id] ?? null}
+            keeperDecision={groupView.group.manualSuggestedKeeperId ? null : keeperDecisionLabel(groupView.group)}
             isSelected={runtime.selectedIds.has(video.id)}
             isLastInGroup={row.isLastInGroup}
             onToggleSelection={runtime.handleToggleSelection}

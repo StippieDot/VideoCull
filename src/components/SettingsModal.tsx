@@ -3,7 +3,7 @@ import useStore from '../store';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake, FolderOpen, Copy, Trash2, FileText } from 'lucide-react';
 import type { AppSettings, CacheLocationInfo, DistributionInfo, LegacyInstallStatus, LegalFileName, ToastInput, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
-import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
+import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, KEEPER_RULE_LABELS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
 import { isWindows as isWindowsPlatform, modKeyName } from '../utils';
 import KeybindInput from './KeybindInput';
@@ -45,16 +45,6 @@ const FEATURE_TOGGLES = [
   description: string;
 }>;
 
-const KEEPER_RULE_LABELS: Record<string, { title: string; description: string }> = {
-  health: { title: 'Readable everywhere', description: 'Prefer a copy that could be read wherever another copy could.' },
-  audio: { title: 'Has sound', description: 'Prefer a copy with an audio track.' },
-  resolution: { title: 'Resolution', description: 'Prefer the highest displayed resolution.' },
-  videoBitrate: { title: 'Video bitrate', description: 'Prefer the cleaner encode.' },
-  duration: { title: 'Duration', description: 'Prefer the longest version.' },
-  fps: { title: 'FPS', description: 'Prefer smoother playback.' },
-  size: { title: 'File size', description: 'Prefer the largest file.' },
-  codec: { title: 'Codec', description: 'Prefer the codec ranked higher in the codec preference.' },
-};
 
 const CODEC_FAMILY_INFO: Record<string, { title: string; description: string }> = {
   av1: { title: 'AV1', description: 'Newest and most efficient' },
