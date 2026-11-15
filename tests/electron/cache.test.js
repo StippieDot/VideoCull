@@ -205,6 +205,8 @@ test('an unreadable sample is stored with its marker and completes the fingerpri
     assert.equal(cache.getFingerprintCounts(db, ['a'], 2, { fingerprintKey: 'key' }).get('a'), true);
     assert.deepEqual(cache.loadPHashRows(db, ['a'], 2, { fingerprintKey: 'key' }).map((row) => row.sample_state), [null, 'unreadable']);
     assert.deepEqual(cache.loadGraySampleRows(db, ['a'], 2, { fingerprintKey: 'key' }).map((row) => row.sample_state), [null, 'unreadable']);
+    assert.equal(cache.loadPHashRows(db, ['a'], 2, { fingerprintKey: 'key' })[0].crop_phash_hex, 'aaaa000000000000');
+    assert.deepEqual(cache.loadGraySampleRows(db, ['a'], 2, { fingerprintKey: 'key' })[0].crop_gray_bytes, Buffer.from([2, 3]));
     const stored = db.prepare('SELECT luma_range, border_ltrb, crop_phash_hex, crop_flipped_phash_hex, crop_gray_bytes FROM video_fingerprints ORDER BY sample_index').all();
     assert.deepEqual(stored[0], {
       luma_range: 200, border_ltrb: '0,8,0,8', crop_phash_hex: 'aaaa000000000000', crop_flipped_phash_hex: 'bbbb000000000000', crop_gray_bytes: Buffer.from([2, 3]),

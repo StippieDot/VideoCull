@@ -21,6 +21,7 @@ const {
   graySampleScore,
   scoreSamples,
   isDarkSample,
+  fingerprintToRow,
 } = require('./duplicate-utils');
 const {
   STACKED_FRAME_BYTES,
@@ -544,15 +545,7 @@ async function backfillFingerprints(videos, duplicateState, settings, run, sendP
         duplicateState.completeById.set(video.id, true);
         duplicateState.failedIds.delete(video.id);
         duplicateState.comparisonRows = duplicateState.comparisonRows.filter((row) => row.video_id !== video.id);
-        duplicateState.comparisonRows.push(...fingerprints.map((fingerprint) => ({
-          video_id: video.id,
-          sample_index: fingerprint.sampleIndex,
-          phash_hex: fingerprint.phashHex,
-          flipped_phash_hex: fingerprint.flippedPHashHex ?? null,
-          gray_bytes: fingerprint.grayBytes,
-          frame_dark_ratio: fingerprint.frameDarkRatio ?? null,
-          sample_state: fingerprint.sampleState ?? null,
-        })));
+        duplicateState.comparisonRows.push(...fingerprints.map((fingerprint) => fingerprintToRow(video.id, fingerprint)));
         saved++;
       } catch (err) {
         if (err instanceof DuplicateCancelledError) throw err;

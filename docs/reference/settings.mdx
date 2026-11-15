@@ -104,6 +104,7 @@ Duplicate detection is best treated as a suggestion engine, not an auto-delete s
 | Comparison method | Switches between `pHash` and `Visual similarity`. | Start with `pHash`, the default, which produces few false positives. Try visual similarity when known alternate encodes are missed. |
 | Similarity | Sets the minimum score needed to group videos as duplicates. A group's displayed score is its weakest match, so every result meets this value. | Start around `90-95%`. Raise it when results are noisy. Lower it when real duplicates are being missed. Any value from `0%` to `100%` works, but unrelated videos start to match below `80%` with pHash and at `90%` or lower with visual similarity. Turn on **Separate value per method** to keep one value for pHash and another for visual similarity. |
 | Samples | Controls how many sampled frames are compared and how they are scored: by their average, by the weakest sample so every sample must match, or with pHash by the first sample where neither frame is dark. | Keep 3 samples scored by average. Choose **Weakest sample** when results are noisy, or **First sample (pHash)** to find more duplicates at the cost of more false positives. |
+| Ignore black bars | Also matches copies that only differ by black bars above, below or beside the picture, such as a letterboxed copy of a full-frame video. It can add matches but never removes one. | Leave it on. Turn it off only when it groups videos you consider different. |
 | Default scope | Chooses between all loaded videos or the current filtered view. | Use the filtered view when you want tighter, more deliberate duplicate passes. |
 | Protect marked keep videos | Stops already-kept videos from becoming delete suggestions. | Leave it on. |
 | Protect skipped videos | Leaves skipped videos out of automatic delete suggestions. | Leave it off when Skip means undecided and should still compete. Turn it on when skipped clips must never be suggested for deletion. |
@@ -136,7 +137,7 @@ Pairs marked **Not a match** stay hidden in future duplicate runs.
 | Duration tolerance | Limits how much two durations may differ and still be compared. | Raise it only when alternate encodes differ slightly in runtime. |
 | Max sampling duration | Caps how much of a long video is sampled. `0` means full length. | Leave it at the default unless very long videos make runs too expensive. |
 | Checkpoint interval | Controls how often long runs save progress. | Change it only for very large duplicate passes. |
-| Ignore black pixels | Helps with fades, black frames, and letterboxing. | Use it when dark frames create false mismatches. |
+| Ignore black pixels | Helps with fades and black frames. | Use it when dark frames create false mismatches. |
 | Ignore white pixels | Helps with bright flashes and white frames. | Use it only when bright frames are obviously skewing results. |
 | Compare flipped videos | Also checks horizontally mirrored copies. | Turn it on only when mirrored duplicates are a real possibility. |
 | Retry failed fingerprints | Retries videos that failed before. | Turn it on when a previous run hit processing failures. |

@@ -37,12 +37,14 @@ The score shown for a group is its weakest match, which is the same value the Si
 
 Sample count controls how many points in each video contribute evidence. More samples take longer but reduce the chance that one common frame, intro, or title card creates a false match.
 
+**Ignore black bars** also matches a copy that only differs by black bars above, below or beside the picture. Each video is then compared both as it is and without its bars, and the better score counts.
+
 Advanced controls handle harder libraries:
 
 - Sampling windows can avoid repeated intros and outros, including a custom percentage range.
 - Duration tolerance limits how different runtimes may be before comparison.
 - Requiring every sample scores each match by its weakest sample; turning it off scores and tests the average of all samples.
-- Black- or white-pixel ignoring can reduce the effect of fades, letterboxing, and flashes.
+- Black- or white-pixel ignoring can reduce the effect of fades and flashes.
 - Flipped comparison checks horizontally mirrored copies.
 - Maximum sampling duration limits work on long files; `0` uses the full duration.
 - Checkpoint intervals save progress during long runs, and retry can revisit failed fingerprints.

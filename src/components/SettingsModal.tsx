@@ -763,6 +763,12 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           )}
                         </SettingRow>
                         <SwitchRow
+                          label="Ignore black bars"
+                          help="Also matches copies that only differ by black bars above, below or beside the picture."
+                          checked={localSettings.duplicates.matchBlackBars}
+                          onChange={(checked) => handleDuplicateChange('matchBlackBars', checked)}
+                        />
+                        <SwitchRow
                           label="Protect marked keep videos"
                           help="Videos marked Keep are never suggested for deletion."
                           checked={localSettings.duplicates.protectKeep}
@@ -936,7 +942,7 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                         )}
                         <SwitchRow
                           label="Ignore black pixels"
-                          help="Helps with fades, black frames and letterboxing."
+                          help="Helps with fades and black frames."
                           checked={localSettings.duplicates.ignoreBlackPixels}
                           onChange={(checked) => handleDuplicateChange('ignoreBlackPixels', checked)}
                         />

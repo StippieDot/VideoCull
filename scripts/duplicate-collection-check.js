@@ -12,6 +12,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { fingerprintToRow } = require('../electron/duplicate-utils');
+
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v', '.wmv', '.mpg', '.ts']);
 
 /**
@@ -55,15 +57,7 @@ function createMemoryCache() {
       failures.delete(videoId);
       fingerprints.set(videoId, {
         key,
-        rows: rows.map((row) => ({
-          video_id: videoId,
-          sample_index: row.sampleIndex,
-          phash_hex: row.phashHex,
-          flipped_phash_hex: row.flippedPHashHex ?? null,
-          gray_bytes: row.grayBytes,
-          frame_dark_ratio: row.frameDarkRatio ?? null,
-          sample_state: row.sampleState ?? null,
-        })),
+        rows: rows.map((row) => fingerprintToRow(videoId, row)),
       });
     },
     async markFingerprintFailure(_folder, _options, videoId, key) {

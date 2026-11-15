@@ -265,6 +265,7 @@ export interface DuplicateSettings {
   ignoreBlackPixels: boolean;
   ignoreWhitePixels: boolean;
   compareFlipped: boolean;
+  matchBlackBars: boolean;
   maxSamplingDuration: number;
   retryFailedFingerprintExtraction: boolean;
   checkpointIntervalMinutes: number;

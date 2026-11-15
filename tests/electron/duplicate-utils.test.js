@@ -453,7 +453,7 @@ test('scoreSamples gives the Visual decisions and scores of the code it replaced
 
 test('scoreSamples reports the per-sample scores and how many were compared', () => {
   const settings = normalizeDuplicateSettings({ sampleCount: 3, finalSimilarityThreshold: 90 });
-  const sample = (hash, darkRatio = 0) => ({ hash: parsePHashWords(hash), flippedHash: parsePHashWords(hash), darkRatio });
+  const sample = (hash, darkRatio = 0) => ({ full: { hash: parsePHashWords(hash), flippedHash: parsePHashWords(hash) }, crop: null, darkRatio });
   const result = scoreSamples(
     [sample('ffffffffffffffff'), sample('ffffffffffffffff', 0.9), sample('00000000000000ff')],
     [sample('ffffffffffffffff'), sample('ffffffffffffffff'), sample('00000000000000fe')],
@@ -473,4 +473,74 @@ test('a video with an unreadable sample is left out of the comparison', () => {
   ];
   assert.deepEqual([...pHashSamplesByVideo(rows, 2).keys()], ['a']);
   assert.deepEqual([...graySamplesByVideo(rows, 2).keys()], ['a']);
+});
+
+function barRows(videoId, samples) {
+  return samples.map(([full, crop], index) => ({
+    video_id: videoId,
+    sample_index: index,
+    phash_hex: full,
+    flipped_phash_hex: full,
+    crop_phash_hex: crop ?? null,
+    crop_flipped_phash_hex: crop ?? null,
+    frame_dark_ratio: 0,
+  }));
+}
+
+function barScore(samplesA, samplesB, settingsInput = {}) {
+  const settings = normalizeDuplicateSettings({ sampleCount: samplesA.length, ...settingsInput });
+  const grouped = pHashSamplesByVideo([...barRows('a', samplesA), ...barRows('b', samplesB)], settings.sampleCount);
+  return scoreSamples(grouped.get('a'), grouped.get('b'), settings, pHashSampleScore)?.similarity ?? null;
+}
+
+test('a video is also compared without its black bars, on either side or both', () => {
+  const PICTURE = ['00000000000000ff', '000000000000ff00'];
+  const BARRED = ['ffffffff00000000', 'ffff0000ffff0000'];
+  const OTHER_BARS = ['0f0f0f0f0f0f0f0f', 'f0f0f0f0f0f0f0f0'];
+  const plain = PICTURE.map((hash) => [hash]);
+  const letterboxed = PICTURE.map((hash, index) => [BARRED[index], hash]);
+  const pillarboxed = PICTURE.map((hash, index) => [OTHER_BARS[index], hash]);
+
+  assert.equal(barScore(letterboxed, plain), 100, 'cropped against full');
+  assert.equal(barScore(plain, letterboxed), 100, 'full against cropped');
+  assert.equal(barScore(letterboxed, pillarboxed), 100, 'cropped against cropped');
+  assert.equal(barScore(plain, plain), 100);
+  assert.equal(barScore(letterboxed, plain, { matchBlackBars: false }), barScore(BARRED.map((hash) => [hash]), plain));
+  assert.ok(barScore(letterboxed, plain, { matchBlackBars: false }) < 80);
+});
+
+test('one choice of variants holds for every sample of a pair', () => {
+  // The first sample matches without the bars and the second with them: no single choice matches both.
+  const a = [['ffffffff00000000', '00000000000000ff'], ['000000000000ff00', 'ffff0000ffff0000']];
+  const b = [['00000000000000ff'], ['000000000000ff00']];
+  assert.equal(barScore(a, b), 68.75);
+});
+
+test('comparing without black bars never lowers a score', () => {
+  const random = seededRandom(17);
+  const randomHex = () => Array.from({ length: 16 }, () => Math.floor(random() * 16).toString(16)).join('');
+  for (let pair = 0; pair < 200; pair++) {
+    const a = [[randomHex(), random() < 0.7 ? randomHex() : undefined], [randomHex(), undefined]];
+    a[1][1] = a[0][1] ? randomHex() : undefined;
+    const b = a.map(([full, crop]) => [random() < 0.5 ? full : randomHex(), crop && random() < 0.5 ? crop : undefined]);
+    b[1][1] = b[0][1] ? (b[1][1] ?? randomHex()) : undefined;
+    for (const flags of [{}, { requireEverySample: true }, { compareFlipped: true }, { phashFirstSampleOnly: true }]) {
+      const without = barScore(a, b, { ...flags, matchBlackBars: false, finalSimilarityThreshold: 0 });
+      const withBars = barScore(a, b, { ...flags, finalSimilarityThreshold: 0 });
+      assert.ok(withBars >= without, `${withBars} >= ${without}`);
+    }
+  }
+});
+
+test('Visual comparison uses the frame inside the black bars the same way', () => {
+  const settings = normalizeDuplicateSettings({ sampleCount: 1, comparisonMode: 'visual' });
+  const picture = Buffer.from([10, 200, 30, 180]);
+  const rows = [
+    { video_id: 'a', sample_index: 0, gray_bytes: Buffer.from([0, 0, 90, 90]), crop_gray_bytes: picture, frame_dark_ratio: 0 },
+    { video_id: 'b', sample_index: 0, gray_bytes: picture, frame_dark_ratio: 0 },
+  ];
+  const grouped = graySamplesByVideo(rows, 1);
+  const score = (input) => scoreSamples(grouped.get('a'), grouped.get('b'), { ...settings, ...input }, graySampleScore(settings)).similarity;
+  assert.equal(score({}), 100);
+  assert.ok(score({ matchBlackBars: false }) < 80);
 });

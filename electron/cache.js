@@ -1102,7 +1102,8 @@ function loadPHashRows(db, videoIds, sampleCount, options = {}) {
     const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const startedAt = performance.now();
     const batch = db.prepare(`
-      SELECT video_id, sample_index, phash_hex, flipped_phash_hex, frame_dark_ratio, sample_state
+      SELECT video_id, sample_index, phash_hex, flipped_phash_hex, frame_dark_ratio, sample_state,
+             crop_phash_hex, crop_flipped_phash_hex
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
         ${fingerprintFilter}
@@ -1128,7 +1129,7 @@ function loadGraySampleRows(db, videoIds, sampleCount, options = {}) {
     const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const startedAt = performance.now();
     const batch = db.prepare(`
-      SELECT video_id, sample_index, gray_bytes, frame_dark_ratio, sample_state
+      SELECT video_id, sample_index, gray_bytes, frame_dark_ratio, sample_state, crop_gray_bytes
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
         ${fingerprintFilter}

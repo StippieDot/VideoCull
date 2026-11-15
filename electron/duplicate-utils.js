@@ -24,6 +24,7 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   ignoreBlackPixels: false,
   ignoreWhitePixels: false,
   compareFlipped: false,
+  matchBlackBars: true,
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,
@@ -60,6 +61,7 @@ function normalizeDuplicateSettings(input = {}) {
     phashSimilarityThreshold,
     visualSimilarityThreshold,
     phashFirstSampleOnly: input.phashFirstSampleOnly === true,
+    matchBlackBars: input.matchBlackBars !== false,
     durationTolerancePercent: clamp(input.durationTolerancePercent ?? DEFAULT_DUPLICATE_SETTINGS.durationTolerancePercent, 0, 100),
     checkpointIntervalMinutes: clamp(input.checkpointIntervalMinutes ?? DEFAULT_DUPLICATE_SETTINGS.checkpointIntervalMinutes, 0, 60),
     ignoredDuplicatePairs: normalizeIgnoredDuplicatePairs(input.ignoredDuplicatePairs),
@@ -316,38 +318,89 @@ function groupSamplesByVideo(rows, sampleCount, toSample) {
   return result;
 }
 
+// Every sample has a `full` variant and, for a video with black bars, a `crop` variant holding the
+// picture inside them. A sample-score function compares one variant of each side.
 function pHashSamplesByVideo(rows, sampleCount) {
   return groupSamplesByVideo(rows, sampleCount, (row) => ({
-    hash: parsePHashWords(row.phash_hex),
-    flippedHash: parsePHashWords(row.flipped_phash_hex ?? row.phash_hex),
+    full: {
+      hash: parsePHashWords(row.phash_hex),
+      flippedHash: parsePHashWords(row.flipped_phash_hex ?? row.phash_hex),
+    },
+    crop: row.crop_phash_hex
+      ? {
+          hash: parsePHashWords(row.crop_phash_hex),
+          flippedHash: parsePHashWords(row.crop_flipped_phash_hex ?? row.crop_phash_hex),
+        }
+      : null,
   }));
 }
 
 function graySamplesByVideo(rows, sampleCount) {
-  return groupSamplesByVideo(rows, sampleCount, (row) => ({ bytes: row.gray_bytes, flippedBytes: null }));
+  return groupSamplesByVideo(rows, sampleCount, (row) => ({
+    full: { bytes: row.gray_bytes, flippedBytes: null },
+    crop: row.crop_gray_bytes ? { bytes: row.crop_gray_bytes, flippedBytes: null } : null,
+  }));
 }
 
-function pHashSampleScore(sampleA, sampleB, flipped) {
-  return pHashSimilarity(flipped ? sampleA.flippedHash : sampleA.hash, sampleB.hash);
+function pHashSampleScore(variantA, variantB, flipped) {
+  return pHashSimilarity(flipped ? variantA.flippedHash : variantA.hash, variantB.hash);
 }
 
 function graySampleScore(settings) {
-  return (sampleA, sampleB, flipped) => {
-    if (!sampleA.bytes || !sampleB.bytes) return null;
-    if (!flipped) return rawGraySimilarity(sampleA.bytes, sampleB.bytes, settings);
+  return (variantA, variantB, flipped) => {
+    if (!variantA.bytes || !variantB.bytes) return null;
+    if (!flipped) return rawGraySimilarity(variantA.bytes, variantB.bytes, settings);
     // The mirrored frame is kept on the sample: one video is compared against many others.
-    sampleA.flippedBytes ??= flipGrayBytes(sampleA.bytes);
-    return rawGraySimilarity(sampleA.flippedBytes, sampleB.bytes, settings);
+    variantA.flippedBytes ??= flipGrayBytes(variantA.bytes);
+    return rawGraySimilarity(variantA.flippedBytes, variantB.bytes, settings);
   };
 }
 
+/** The row shape the cache loaders return, for a fingerprint that was just built. */
+function fingerprintToRow(videoId, fingerprint) {
+  return {
+    video_id: videoId,
+    sample_index: fingerprint.sampleIndex,
+    phash_hex: fingerprint.phashHex,
+    flipped_phash_hex: fingerprint.flippedPHashHex ?? null,
+    gray_bytes: fingerprint.grayBytes,
+    frame_dark_ratio: fingerprint.frameDarkRatio ?? null,
+    sample_state: fingerprint.sampleState ?? null,
+    crop_phash_hex: fingerprint.cropPHashHex ?? null,
+    crop_flipped_phash_hex: fingerprint.cropFlippedPHashHex ?? null,
+    crop_gray_bytes: fingerprint.cropGrayBytes ?? null,
+  };
+}
+
+// Which side is compared without its black bars. (full, full) is scored first, so it wins a tie.
+const CROPPED_HYPOTHESES = [[true, false], [false, true], [true, true]];
+
 /**
  * The one scoring rule for two videos, used by both comparison workers and by the recomputation
- * during grouping. `sampleScore(sampleA, sampleB, flipped)` returns 0-100, or null when the two
+ * during grouping. `sampleScore(variantA, variantB, flipped)` returns 0-100, or null when the two
  * samples cannot be compared. Returns null when the pair is not comparable or, with
  * requireEverySample, when a sample is below the threshold. The caller applies the final threshold.
+ *
+ * With matchBlackBars the pair is also scored with one or both videos cut to the picture inside
+ * their black bars, and the best score counts. One choice holds for every sample of the pair, and
+ * (full, full) is always among them, so this can add a match but never remove one.
  */
-function scoreSamples(samplesA, samplesB, settings, sampleScore, { firstSampleOnly = false, stopBelowThreshold = false } = {}) {
+function scoreSamples(samplesA, samplesB, settings, sampleScore, options = {}) {
+  let best = scoreSampleVariants(samplesA, samplesB, settings, sampleScore, options, false, false);
+  if (!settings.matchBlackBars) return best;
+  // Bars are found per video, so the first sample tells whether the video has a cropped variant.
+  const hasCropA = Boolean(samplesA[0]?.crop);
+  const hasCropB = Boolean(samplesB[0]?.crop);
+  if (!hasCropA && !hasCropB) return best;
+  for (const [cropA, cropB] of CROPPED_HYPOTHESES) {
+    if ((cropA && !hasCropA) || (cropB && !hasCropB)) continue;
+    const result = scoreSampleVariants(samplesA, samplesB, settings, sampleScore, options, cropA, cropB);
+    if (result && (!best || result.similarity > best.similarity)) best = result;
+  }
+  return best;
+}
+
+function scoreSampleVariants(samplesA, samplesB, settings, sampleScore, { firstSampleOnly = false, stopBelowThreshold = false }, cropA, cropB) {
   const threshold = settings.finalSimilarityThreshold;
   // An average at the threshold allows this much shortfall in total; past it the pair cannot match,
   // which ends most comparisons of unrelated videos after the first sample.
@@ -358,10 +411,14 @@ function scoreSamples(samplesA, samplesB, settings, sampleScore, { firstSampleOn
     const sampleA = samplesA[i];
     const sampleB = samplesB[i];
     if (!sampleA || !sampleB) return null;
+    // Darkness is judged on the full frame, whichever variant is compared.
     if (isDarkSample(sampleA) || isDarkSample(sampleB)) continue;
-    let score = sampleScore(sampleA, sampleB, false);
+    const variantA = cropA ? sampleA.crop : sampleA.full;
+    const variantB = cropB ? sampleB.crop : sampleB.full;
+    if (!variantA || !variantB) return null;
+    let score = sampleScore(variantA, variantB, false);
     if (score === null) continue;
-    if (settings.compareFlipped) score = Math.max(score, sampleScore(sampleA, sampleB, true));
+    if (settings.compareFlipped) score = Math.max(score, sampleScore(variantA, variantB, true));
     if (settings.requireEverySample && score < threshold) return null;
     scores.push(score);
     shortfall += 100 - score;
@@ -447,6 +504,7 @@ module.exports = {
   pHashSampleScore,
   graySampleScore,
   scoreSamples,
+  fingerprintToRow,
   isDarkSample,
   rawGraySimilarity,
   frameDarkRatio,

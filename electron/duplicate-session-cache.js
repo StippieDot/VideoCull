@@ -1,4 +1,5 @@
 const os = require('node:os');
+const { fingerprintToRow } = require('./duplicate-utils');
 
 function grayCacheLimitForMemory(totalBytes = os.totalmem()) {
   const gib = totalBytes / (1024 ** 3);
@@ -68,7 +69,7 @@ function createDuplicateSessionCache({ grayByteLimit = grayCacheLimitForMemory()
   }
 
   function rowBytes(rows) {
-    return rows.reduce((sum, row) => sum + (row.gray_bytes?.byteLength ?? 0), 0);
+    return rows.reduce((sum, row) => sum + (row.gray_bytes?.byteLength ?? 0) + (row.crop_gray_bytes?.byteLength ?? 0), 0);
   }
 
   function storeComparisonRows(videoIds, mode, rows) {
@@ -144,15 +145,7 @@ function createDuplicateSessionCache({ grayByteLimit = grayCacheLimitForMemory()
 
   function rememberFingerprints(videoId, fingerprints, mode) {
     fingerprintState.set(videoId, { complete: true, failed: false });
-    const rows = fingerprints.map((fingerprint) => ({
-      video_id: videoId,
-      sample_index: fingerprint.sampleIndex,
-      phash_hex: fingerprint.phashHex,
-      flipped_phash_hex: fingerprint.flippedPHashHex ?? null,
-      gray_bytes: fingerprint.grayBytes,
-      frame_dark_ratio: fingerprint.frameDarkRatio ?? null,
-      sample_state: fingerprint.sampleState ?? null,
-    }));
+    const rows = fingerprints.map((fingerprint) => fingerprintToRow(videoId, fingerprint));
     storeComparisonRows([videoId], mode, rows);
   }
 
