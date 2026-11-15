@@ -1,4 +1,5 @@
 import { rebuildDuplicateGroups } from './duplicateGroupRebuild';
+import { describeDuplicateRun, restoreStoredResults, toStoredResults } from './duplicateResultsPersistence';
 import { create } from 'zustand';
 import type {
   AppSettings, DuplicateComparisonMode, DuplicateGroup,
@@ -1188,6 +1189,7 @@ const useStore = create<VideoStore>((set, get) => ({
   gridVideoJump: null,
   duplicateGroupsMode: false,
   duplicateGroups: [],
+  duplicateRun: null,
   duplicateProgress: null,
   isFindingDuplicates: false,
   duplicateViewMode: 'rows',
@@ -1279,6 +1281,7 @@ const useStore = create<VideoStore>((set, get) => ({
       activeReviewVideoPath: null,
       duplicateGroupsMode: false,
       duplicateGroups: [],
+      duplicateRun: null,
       duplicateProgress: null,
       duplicateFilter: false,
       duplicatePathFilter: '',
@@ -1317,6 +1320,7 @@ const useStore = create<VideoStore>((set, get) => ({
       activeReviewVideoPath: null,
       duplicateGroupsMode: false,
       duplicateGroups: [],
+      duplicateRun: null,
       duplicateProgress: null,
       duplicateFilter: false,
       duplicatePathFilter: '',
@@ -1465,6 +1469,7 @@ const useStore = create<VideoStore>((set, get) => ({
       sidebarAggregates: computeSidebarAggregates(nextVideos),
       ...(shouldClearDuplicates ? {
         duplicateGroups: [],
+        duplicateRun: null,
         duplicateGroupsMode: false,
         duplicateFilter: false,
         reviewMode: false,
@@ -1794,18 +1799,46 @@ const useStore = create<VideoStore>((set, get) => ({
       : stateBefore.filteredVideos;
     set({ duplicateGroups, videos, filteredVideos });
   },
-  applyDuplicateResult: (result) => {
+  applyDuplicateResult: (result, run) => {
     const stateBefore = get();
+    const duplicateRun = run && result.settingsKey
+      ? describeDuplicateRun(run.videos, result.settingsKey, run.scope)
+      : null;
     const groupsWithKeepers = result.groups
       ? applyKeeperOrderToGroups(result.groups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder, stateBefore.settings.duplicates.codecOrder)
       : [];
     const videos = result.groups
       ? applyDuplicateGroupsToVideos(stateBefore.videos, groupsWithKeepers)
       : applyDuplicateGroupsToVideos(stateBefore.videos, []);
-    set(buildVideoStateUpdate(stateBefore, videos, ['duplicate'], {
-      duplicateGroups: groupsWithKeepers,
-      duplicateGroupsMode: groupsWithKeepers.length > 0,
-    }));
+    set({
+      ...buildVideoStateUpdate(stateBefore, videos, ['duplicate'], {
+        duplicateGroups: groupsWithKeepers,
+        duplicateGroupsMode: groupsWithKeepers.length > 0,
+      }),
+      duplicateRun,
+    });
+  },
+  restoreDuplicateResults: async () => {
+    const before = get();
+    if (!window.electronAPI?.loadDuplicateResults || before.directories.length === 0 || before.duplicateGroups.length > 0) {
+      return 'skipped';
+    }
+    const session = {
+      folders: [...before.directories],
+      includeSubfolders: before.includeSubfolders,
+      scope: before.settings.duplicates.defaultScope === 'filtered' ? 'filtered' as const : 'all' as const,
+    };
+    const loaded = await window.electronAPI.loadDuplicateResults(session);
+    if (loaded.status !== 'ok') return loaded.status;
+    const state = get();
+    // A run, another folder or a new session while the file was read wins over the stored result.
+    if (state.duplicateGroups.length > 0 || state.directories.join('\n') !== session.folders.join('\n')) return 'skipped';
+    const { groups, run } = restoreStoredResults(loaded.results, state.videos, state.settings.duplicates.ignoredDuplicatePairs ?? []);
+    const groupsWithKeepers = applyKeeperOrderToGroups(groups, state.videos, state.settings.duplicates.keeperOrder, state.settings.duplicates.codecOrder);
+    const videos = applyDuplicateGroupsToVideos(state.videos, groupsWithKeepers);
+    // The grid stays in front; the sidebar offers the restored groups with their date.
+    set({ ...buildVideoStateUpdate(state, videos, ['duplicate'], { duplicateGroups: groupsWithKeepers }), duplicateRun: run });
+    return 'ok';
   },
   addIgnoredDuplicatePairs: (pairKeys) => {
     const normalized = pairKeys
@@ -2285,6 +2318,28 @@ export function hasActiveFilters(state: VideoStore): boolean {
     || state.minDurationFilter > 0
     || state.maxDurationFilter !== null;
 }
+
+// Stored duplicate results follow the groups on screen: after a run, a deletion, Not a match or a
+// manual keeper, and after a restore (which writes its pruning back). Debounced, since a review
+// changes groups in quick succession. A session whose last group is gone loses its file.
+const DUPLICATE_RESULTS_SAVE_DELAY_MS = 1500;
+let duplicateResultsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+useStore.subscribe((state, previous) => {
+  if (state.duplicateGroups === previous.duplicateGroups && state.duplicateRun === previous.duplicateRun) return;
+  if (!state.duplicateRun || typeof window === 'undefined' || !window.electronAPI?.saveDuplicateResults) return;
+  if (duplicateResultsSaveTimer) clearTimeout(duplicateResultsSaveTimer);
+  duplicateResultsSaveTimer = setTimeout(() => {
+    duplicateResultsSaveTimer = null;
+    const latest = useStore.getState();
+    const run = latest.duplicateRun;
+    if (!run || latest.directories.length === 0 || !window.electronAPI?.saveDuplicateResults) return;
+    const session = { folders: [...latest.directories], includeSubfolders: latest.includeSubfolders, scope: run.scope };
+    const write = latest.duplicateGroups.length > 0
+      ? window.electronAPI.saveDuplicateResults(session, toStoredResults(run, latest.duplicateGroups))
+      : window.electronAPI.clearDuplicateResults(session);
+    write.catch((error) => console.warn('[duplicates] Could not store results:', error));
+  }, DUPLICATE_RESULTS_SAVE_DELAY_MS);
+});
 
 export default useStore;
 

@@ -1412,3 +1412,9 @@
   align-items: center;
   justify-content: space-between;
 }
+
+.sidebar-duplicate-note {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}

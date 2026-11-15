@@ -1,3 +1,4 @@
+import type { DuplicateRunInfo } from '../duplicateResultsPersistence';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { ColorTheme, DuplicateSortField, RecentSession, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
@@ -114,6 +115,7 @@ function SidebarDuplicateSection({
   const duplicateGroupCount = useStore((s) => s.duplicateGroups.length);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
   const setDuplicateGroupsMode = useStore((s) => s.setDuplicateGroupsMode);
+  const duplicateRun = useStore((s) => s.duplicateRun);
   const duplicateViewMode = useStore((s) => s.duplicateViewMode);
   const setDuplicateViewMode = useStore((s) => s.setDuplicateViewMode);
   const duplicatePathFilter = useStore((s) => s.duplicatePathFilter);
@@ -275,6 +277,9 @@ function SidebarDuplicateSection({
           </label>
         </div>
 
+        {duplicateRun?.restored && (
+          <p className="sidebar-duplicate-note">{describeRestoredRun(duplicateRun, videoCount)}</p>
+        )}
         <button
           className="btn btn-primary sidebar-wide-action"
           onClick={onFindDuplicates}
@@ -326,8 +331,19 @@ function SidebarDuplicateSection({
           {duplicateGroupsMode ? 'Back to Grid' : `Duplicate Groups (${duplicateGroupCount})`}
         </button>
       )}
+      {duplicateGroupCount > 0 && duplicateRun?.restored && (
+        <p className="sidebar-duplicate-note">{describeRestoredRun(duplicateRun, videoCount)}</p>
+      )}
     </section>
   );
+}
+
+/** "From 14 Nov 2026 — 3 videos added since", for groups brought back from an earlier run. */
+function describeRestoredRun(run: DuplicateRunInfo, videoCount: number): string {
+  const date = new Date(run.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  if (run.scope === 'filtered') return `From ${date} — covered ${run.videos.length} of ${videoCount} videos`;
+  if (run.addedSince > 0) return `From ${date} — ${run.addedSince} ${run.addedSince === 1 ? 'video' : 'videos'} added since`;
+  return `From ${date}`;
 }
 
 function SidebarFiltersSection({

@@ -1,4 +1,6 @@
 // ── Video Status ────────────────────────────────────────────────────
+import type { DuplicateRunInfo } from './duplicateResultsPersistence';
+
 export type VideoStatus = 'pending' | 'keep' | 'delete' | 'skipped';
 
 export type VideoReviewChanges = Partial<Pick<Video, 'status' | 'rating' | 'favorite' | 'bookmarks'>>;
@@ -520,6 +522,8 @@ export interface VideoStore {
   gridVideoJump: { videoId: string; id: number } | null;
   duplicateGroupsMode: boolean;
   duplicateGroups: DuplicateGroup[];
+  /** Where the groups on screen came from; null when there is no result to store. */
+  duplicateRun: DuplicateRunInfo | null;
   duplicateProgress: DuplicateProgress | null;
   isFindingDuplicates: boolean;
   duplicateViewMode: DuplicateViewMode;
@@ -612,7 +616,10 @@ export interface VideoStore {
   setDuplicateGroupsMode: (val: boolean) => void;
   setDuplicateGroups: (groups: DuplicateGroup[]) => void;
   setManualDuplicateKeeper: (groupId: string, videoId: string | null) => void;
-  applyDuplicateResult: (result: DuplicateResult) => void;
+  /** `run` names the videos that took part and the scope, so the result can be stored. */
+  applyDuplicateResult: (result: DuplicateResult, run?: { videos: Video[]; scope: DuplicateScope }) => void;
+  /** Brings back the stored groups of the open session after its scan. */
+  restoreDuplicateResults: () => Promise<LoadedDuplicateResults['status'] | 'skipped'>;
   addIgnoredDuplicatePairs: (pairKeys: string[]) => void;
   removeIgnoredDuplicatePairs: (pairKeys: string[]) => void;
   clearIgnoredDuplicatePairs: () => void;

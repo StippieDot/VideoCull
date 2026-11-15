@@ -412,7 +412,7 @@ export default function App() {
         const activeIds = new Set(useStore.getState().videos.map((video) => video.id));
         const resultIds = result.videos?.map((video) => video.id) ?? [];
         if (resultIds.some((id) => !activeIds.has(id))) return;
-        applyDuplicateResult(result);
+        applyDuplicateResult(result, { videos: scopeVideos, scope: duplicateSettings.defaultScope === 'filtered' ? 'filtered' : 'all' });
         useStore.getState().setLastDuplicateMethod(duplicateSettings.comparisonMode);
         const count = result.stats?.duplicateVideoCount ?? 0;
         pushToast({
@@ -563,6 +563,19 @@ export default function App() {
           durationMs: 8000,
         });
       }
+      // Stored duplicate groups come back once the session's videos are known. Not when part of it could
+      // not be read: its videos would look deleted and their groups would be pruned for good.
+      if (skippedDirectoryCount === 0 && skippedFileCount === 0 && scanId === scanIdRef.current) {
+        void useStore.getState().restoreDuplicateResults().then((status) => {
+          if (status !== 'outdated') return;
+          pushToast({
+            title: 'Saved duplicate results cleared',
+            detail: 'Duplicate settings changed since they were found. Run duplicate detection again.',
+            kind: 'info',
+            dedupeKey: 'duplicate-results-outdated',
+          });
+        });
+      }
       const needsThumbnails = (v: typeof allVideos[number]) => (
         !hasRecentMetadataFailure(v) &&
         (!v.thumbnails || v.thumbnails.length < expectedThumbCount(v))
@@ -656,7 +669,7 @@ export default function App() {
             setDuplicateProgress({ stage: 'Preparing', current: 0, total: currentVideos.length });
             const result = await window.electronAPI.findDuplicates(currentVideos, { settings: duplicateConfig });
             if (scanId === scanIdRef.current && duplicateRunId === duplicateRunIdRef.current && result.status === 'ok') {
-              applyDuplicateResult(result);
+              applyDuplicateResult(result, { videos: currentVideos, scope: 'all' });
               useStore.getState().setLastDuplicateMethod(duplicateConfig.comparisonMode);
             }
             if (duplicateRunId === duplicateRunIdRef.current) {

@@ -60,6 +60,8 @@ Advanced controls handle harder libraries:
 
 Change one matching control at a time, then run detection again. Existing groups are results from the previous run; changing a setting does not silently rebuild them.
 
+When you reopen a session, the groups of its last run come back after the scan, together with any keepers you chose yourself. The sidebar shows when they were found and how many videos were added since. Videos deleted or changed in the meantime are taken out, and each group is rebuilt from the matches that are left, so two copies that were only linked through a deleted video no longer appear together. Changing a setting that decides which videos match, such as Similarity or the number of samples, discards the stored groups; run detection again. If part of the session could not be scanned, for example because a drive is not connected, nothing is restored until it can be.
+
 ## Read and filter results
 
 Switch between compact rows and thumbnail gallery cards from the duplicate sidebar. Both show group boundaries, exact or potential-match badges, similarity, status, selected keeper, and useful quality metadata.
