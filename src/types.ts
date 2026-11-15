@@ -277,6 +277,20 @@ export interface DuplicateSettings {
   averageSamplesDefaultApplied?: boolean;
 }
 
+/** An accepted pair inside a duplicate group, with the score and evidence the group used. */
+export interface DuplicateGroupPair {
+  aId: string;
+  bId: string;
+  similarity: number;
+  matchType: 'exact' | 'phash' | 'visual';
+  comparedSamples?: number | null;
+  confidence?: 'normal' | 'low';
+  static?: boolean;
+  borderAdjusted?: boolean;
+  flipped?: boolean;
+  partialFingerprint?: boolean;
+}
+
 export interface DuplicateGroup {
   id: string;
   videoIds: string[];
@@ -314,6 +328,8 @@ export interface DuplicateGroup {
   keeperReasons?: Record<string, string>;
   /** Per member with fingerprint data: sample positions it could not read (empty when all were read). */
   unreadableSamples?: Record<string, Array<{ index: number; percent: number | null }>>;
+  /** The accepted pairs between members; a group is rebuilt from these when members or pairs go away. */
+  pairs?: DuplicateGroupPair[];
 }
 
 export interface DuplicateProgress {

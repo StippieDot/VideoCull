@@ -973,8 +973,71 @@ function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold, rev
   return { groups: splitGroups, stats: { groupsSplit, removedSingletons } };
 }
 
+function fnv1a(text, seed) {
+  let hash = seed >>> 0;
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+// A plain hash, so the renderer computes the same ID when it rebuilds a group.
+// SYNC NOTE: mirrored by stableDuplicateGroupId in src/duplicateGroupRebuild.ts.
 function stableDuplicateGroupId(ids) {
-  return `dup-${crypto.createHash('sha1').update([...ids].sort().join('\0')).digest('hex').slice(0, 16)}`;
+  const key = [...ids].sort().join('\0');
+  return `dup-${fnv1a(key, 0x811c9dc5)}${fnv1a(key, 0x01234567)}`;
+}
+
+/**
+ * The group fields that follow from its accepted pairs: score, kind, wording, evidence and flags.
+ * SYNC NOTE: mirrored by summariseDuplicateGroup in src/duplicateGroupRebuild.ts.
+ */
+function summariseGroupPairs(pairs, videos, settings) {
+  const similarities = pairs.map((pair) => pair.similarity);
+  const exactVideoIds = new Set();
+  let fuzzyMatchType = null;
+  let fewestComparedSamples = null;
+  let lowConfidence = false;
+  const flags = { static: false, borderAdjusted: false, flipped: false, partialFingerprint: false };
+  for (const pair of pairs) {
+    if (pair.matchType === 'exact') {
+      exactVideoIds.add(pair.aId);
+      exactVideoIds.add(pair.bId);
+      continue;
+    }
+    fuzzyMatchType = fuzzyMatchType && fuzzyMatchType !== pair.matchType ? 'mixed' : pair.matchType;
+    if (pair.confidence === 'low') lowConfidence = true;
+    if (Number.isFinite(pair.comparedSamples)) {
+      fewestComparedSamples = Math.min(fewestComparedSamples ?? Infinity, pair.comparedSamples);
+    }
+    for (const flag of Object.keys(flags)) if (pair[flag]) flags[flag] = true;
+  }
+  const hasExact = exactVideoIds.size > 0;
+  const matchType = hasExact && fuzzyMatchType ? 'mixed' : hasExact ? 'exact' : fuzzyMatchType || settings.comparisonMode;
+  const sameContent = `same content at ${fewestComparedSamples ?? settings.sampleCount} of ${settings.sampleCount} sampled moments`;
+  return {
+    // The weakest matched pair, rounded down, so filtering groups by this score
+    // behaves like scanning at that threshold.
+    similarity: similarities.length > 0
+      ? Math.floor(Math.min(...similarities) * 10 + 1e-9) / 10
+      : 0,
+    averageSimilarity: Math.round(average(similarities) * 10) / 10,
+    matchType,
+    exactVideoIds: Array.from(exactVideoIds),
+    // static: both videos of a matched pair barely move, so a still picture may be all they share.
+    ...flags,
+    // The weakest evidence among the similarity matches; exact-only groups have none.
+    comparedSamples: fewestComparedSamples,
+    confidence: lowConfidence ? 'low' : 'normal',
+    relation: matchType === 'exact' ? 'exact' : 'sameSpan',
+    durationDifferenceSecs: durationDifference(videos),
+    reason: matchType === 'exact'
+      ? 'Identical files'
+      : matchType === 'mixed'
+        ? `Identical files and ${sameContent}`
+        : `S${sameContent.slice(1)}`,
+  };
 }
 
 function buildGroups(exactGroups, matchedPairs, videosById, settings, options = {}) {
@@ -1143,54 +1206,41 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       if (samples) unreadableSamples[videoId] = samples;
     }
     const ranking = rankKeeperCandidates(videos, settings.keeperOrder, settings.codecOrder, unreadableSamples);
-    const similarities = [];
-    const exactVideoIds = new Set();
-    let hasExact = false;
-    let fuzzyMatchType = null;
-    let hasStaticPair = false;
-    let lowConfidence = false;
-    let fewestComparedSamples = null;
-    const flags = { borderAdjusted: false, flipped: false, partialFingerprint: false };
     const resolveGroupPairSimilarity = (aId, bId) => {
       if (!candidate.usedRevalidation || !revalidateScore) return directSimilarity(aId, bId);
       const recomputed = revalidateScore(aId, bId);
       return recomputed === undefined ? directSimilarity(aId, bId) : recomputed;
     };
+    // The accepted pairs between members, with the score the group used. Stored with the group, so a
+    // group can be rebuilt from them when a member is deleted or a pair is marked as not a match.
+    const groupPairs = [];
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         const key = internalPairKey(ids[i], ids[j]);
-        if (exactPairKeys.has(key)) {
-          similarities.push(100);
-          hasExact = true;
-          exactVideoIds.add(ids[i]);
-          exactVideoIds.add(ids[j]);
-        }
+        if (exactPairKeys.has(key)) groupPairs.push({ aId: ids[i], bId: ids[j], similarity: 100, matchType: 'exact' });
         const matched = matchedByPair.get(key);
-        if (matched) {
-          const resolvedSimilarity = resolveGroupPairSimilarity(ids[i], ids[j]);
-          if (resolvedSimilarity !== null) similarities.push(resolvedSimilarity);
-          fuzzyMatchType = fuzzyMatchType && fuzzyMatchType !== matched.matchType ? 'mixed' : matched.matchType;
-          if (matched.static) hasStaticPair = true;
-          if (matched.confidence === 'low') lowConfidence = true;
-          for (const flag of Object.keys(flags)) if (matched[flag]) flags[flag] = true;
-          if (Number.isFinite(matched.comparedSamples)) {
-            fewestComparedSamples = Math.min(fewestComparedSamples ?? Infinity, matched.comparedSamples);
-          }
-        }
+        if (!matched) continue;
+        const similarity = resolveGroupPairSimilarity(ids[i], ids[j]);
+        if (similarity === null) continue;
+        groupPairs.push({
+          aId: ids[i],
+          bId: ids[j],
+          similarity,
+          matchType: matched.matchType,
+          comparedSamples: Number.isFinite(matched.comparedSamples) ? matched.comparedSamples : null,
+          confidence: matched.confidence ?? 'normal',
+          static: Boolean(matched.static),
+          borderAdjusted: Boolean(matched.borderAdjusted),
+          flipped: Boolean(matched.flipped),
+          partialFingerprint: Boolean(matched.partialFingerprint),
+        });
       }
     }
-    const matchType = hasExact && fuzzyMatchType ? 'mixed' : hasExact ? 'exact' : fuzzyMatchType || settings.comparisonMode;
-    const sameContent = `same content at ${fewestComparedSamples ?? settings.sampleCount} of ${settings.sampleCount} sampled moments`;
     groups.push({
       id: stableDuplicateGroupId(ids),
       videoIds: ids,
-      // The weakest matched pair, rounded down, so filtering groups by this score
-      // behaves like scanning at that threshold.
-      similarity: similarities.length > 0
-        ? Math.floor(similarities.reduce((min, value) => Math.min(min, value), Infinity) * 10 + 1e-9) / 10
-        : 0,
-      averageSimilarity: Math.round(average(similarities) * 10) / 10,
-      matchType,
+      pairs: groupPairs,
+      ...summariseGroupPairs(groupPairs, videos, settings),
       suggestedKeeperId: ranking?.keeper.id ?? null,
       // Why the keeper won, and per other member the rule it lost at.
       keeperRule: ranking?.rule ?? null,
@@ -1199,21 +1249,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       // Per member with fingerprint data, the sample positions it could not read (empty when all
       // were read). The keeper's health rule compares these between the current members.
       unreadableSamples,
-      exactVideoIds: Array.from(exactVideoIds),
-      // Both videos of a matched pair barely move, so a still picture may be all they share.
-      static: hasStaticPair,
-      // The weakest evidence among the similarity matches; exact-only groups have none.
-      comparedSamples: fewestComparedSamples,
-      confidence: lowConfidence ? 'low' : 'normal',
-      relation: matchType === 'exact' ? 'exact' : 'sameSpan',
       sampleCount: settings.sampleCount,
-      ...flags,
-      durationDifferenceSecs: durationDifference(videos),
-      reason: matchType === 'exact'
-        ? 'Identical files'
-        : matchType === 'mixed'
-          ? `Identical files and ${sameContent}`
-          : `S${sameContent.slice(1)}`,
     });
   }
 
@@ -1403,6 +1439,7 @@ module.exports = {
   __test__: {
     backfillFingerprints,
     buildGroups,
+    stableDuplicateGroupId,
     buildExactRepresentativeIndex,
     buildFingerprintsFromGrayFrames,
     buildGrayFramesExtractionArgs,

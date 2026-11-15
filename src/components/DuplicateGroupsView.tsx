@@ -46,6 +46,7 @@ import { Ban, Check, CheckCircle2, Play, SkipForward, Trash2 } from 'lucide-reac
 import './DuplicateGroupsView.css';
 import { openVideoExternally, revealInExplorer } from '../appCommands';
 import { KEEPER_RULE_LABELS } from '../keybind-defaults';
+import { rebuildDuplicateGroups } from '../duplicateGroupRebuild';
 
 type MetricState = 'best' | 'equal' | 'worse';
 type MetricFlags = Record<string, MetricState>;
@@ -807,17 +808,26 @@ function DuplicateGroupsView() {
     groupsToHide: DuplicateGroup[],
     selectionIdsToRemove: string[],
     title: string,
-    detail: string
+    detail: string,
+    // Groups rebuilt without the ignored pairs; they take the place of the hidden groups.
+    replacementGroups: DuplicateGroup[] = []
   ) => {
     if (nextIgnoredPairKeys.length === 0) return;
     const hiddenGroupIds = new Set(groupsToHide.map((group) => group.id));
+    const replacementIds = new Set(replacementGroups.map((group) => group.id));
     const removedGroups =
       hiddenGroupIds.size > 0
         ? groups.filter((group) => hiddenGroupIds.has(group.id))
         : [];
     addIgnoredDuplicatePairs(nextIgnoredPairKeys);
     if (hiddenGroupIds.size > 0) {
-      setDuplicateGroups(groups.filter((group) => !hiddenGroupIds.has(group.id)));
+      let replaced = false;
+      setDuplicateGroups(groups.flatMap((group) => {
+        if (!hiddenGroupIds.has(group.id)) return [group];
+        if (replaced) return [];
+        replaced = true;
+        return replacementGroups;
+      }));
     }
     if (selectionIdsToRemove.length > 0) {
       const idsToRemove = new Set(selectionIdsToRemove);
@@ -835,10 +845,10 @@ function DuplicateGroupsView() {
       action: () => {
         removeIgnoredDuplicatePairs(nextIgnoredPairKeys);
         if (removedGroups.length > 0) {
-          const currentGroups = useStore.getState().duplicateGroups;
+          const currentGroups = useStore.getState().duplicateGroups.filter((group) => !replacementIds.has(group.id));
           const currentIds = new Set(currentGroups.map((group) => group.id));
           const toRestore = removedGroups.filter((group) => !currentIds.has(group.id));
-          if (toRestore.length > 0) {
+          if (toRestore.length > 0 || replacementIds.size > 0) {
             setDuplicateGroups([...currentGroups, ...toRestore]);
           }
         }
@@ -864,15 +874,32 @@ function DuplicateGroupsView() {
 
   const dismissSelectedPair = () => {
     if (!selectedPair) return;
-    const hideCurrentGroup = selectedPair.group.videoIds.length === 2 ? [selectedPair.group] : [];
+    const { group } = selectedPair;
+    const pairKey = duplicatePairKey(selectedPair.ids[0], selectedPair.ids[1]);
+    if (group.videoIds.length === 2 || !group.pairs) {
+      const hideCurrentGroup = group.videoIds.length === 2 ? [group] : [];
+      ignorePairsWithUndo(
+        [pairKey],
+        hideCurrentGroup,
+        selectedPair.ids,
+        'Pair marked as not a match',
+        hideCurrentGroup.length > 0
+          ? 'This pair will be ignored in future duplicate runs.'
+          : 'This pair is saved as ignored. Run duplicate detection again to rebuild this group.'
+      );
+      return;
+    }
+    // The group keeps its other matches: rebuilt without this pair it may stay whole or split.
+    const rebuilt = rebuildDuplicateGroups([group], { ignoredPairKeys: new Set([pairKey]) }, videosById);
     ignorePairsWithUndo(
-      [duplicatePairKey(selectedPair.ids[0], selectedPair.ids[1])],
-      hideCurrentGroup,
+      [pairKey],
+      [group],
       selectedPair.ids,
       'Pair marked as not a match',
-      hideCurrentGroup.length > 0
-        ? 'This pair will be ignored in future duplicate runs.'
-        : 'This pair is saved as ignored. Run duplicate detection again to rebuild this group.'
+      rebuilt.length === 1
+        ? 'This pair will be ignored in future duplicate runs. The rest of the group still matches.'
+        : 'This pair will be ignored in future duplicate runs. The group was rebuilt from its remaining matches.',
+      rebuilt
     );
   };
 
@@ -884,18 +911,11 @@ function DuplicateGroupsView() {
       .map((id) => duplicatePairKey(videoId, id));
     if (pairKeys.length === 0) return;
 
-    const updatedVideoIds = group.videoIds.filter((id) => id !== videoId);
     const originalGroupIndex = groups.findIndex((entry) => entry.id === group.id);
-    const nextGroups = groups.flatMap((entry) => {
-      if (entry.id !== group.id) return [entry];
-      if (updatedVideoIds.length < 2) return [];
-      return [{
-        ...entry,
-        videoIds: updatedVideoIds,
-        exactVideoIds: entry.exactVideoIds?.filter((id) => id !== videoId),
-        manualSuggestedKeeperId: entry.manualSuggestedKeeperId === videoId ? null : entry.manualSuggestedKeeperId,
-      }];
-    });
+    // Without the video, the rest is rebuilt from the matches that remain between them.
+    const rebuilt = rebuildDuplicateGroups([group], { removedVideoIds: new Set([videoId]) }, videosById);
+    const rebuiltIds = new Set(rebuilt.map((entry) => entry.id));
+    const nextGroups = groups.flatMap((entry) => (entry.id === group.id ? rebuilt : [entry]));
 
     addIgnoredDuplicatePairs(pairKeys);
     setDuplicateGroups(nextGroups);
@@ -918,7 +938,7 @@ function DuplicateGroupsView() {
       action: () => {
         removeIgnoredDuplicatePairs(pairKeys);
         const currentGroups = useStore.getState().duplicateGroups;
-        const withoutGroup = currentGroups.filter((entry) => entry.id !== group.id);
+        const withoutGroup = currentGroups.filter((entry) => entry.id !== group.id && !rebuiltIds.has(entry.id));
         const restoredGroups = [...withoutGroup];
         const insertIndex = originalGroupIndex >= 0
           ? Math.min(originalGroupIndex, restoredGroups.length)

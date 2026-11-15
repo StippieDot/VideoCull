@@ -1,3 +1,4 @@
+import { rebuildDuplicateGroups } from './duplicateGroupRebuild';
 import { create } from 'zustand';
 import type {
   AppSettings, DuplicateComparisonMode, DuplicateGroup,
@@ -1949,25 +1950,19 @@ const useStore = create<VideoStore>((set, get) => ({
         ? nextReviewScopeIds.indexOf(activeReviewVideoId)
         : Math.min(stateBefore.reviewIndex, Math.max(0, videos.length - 1)));
 
-    // Prune deleted video IDs from duplicate groups and drop groups with < 2 members.
+    // Rebuild duplicate groups from their remaining pairs: a deleted member also takes away the
+    // matches that only it linked, and groups left with fewer than two members disappear.
     const deletedVideoIds = new Set(
       stateBefore.videos.filter((v) => pathSet.has(v.path)).map((v) => v.id)
     );
     const prevGroups = stateBefore.duplicateGroups;
     const prunedGroups = deletedVideoIds.size > 0
       ? applyKeeperOrderToGroups(
-        prevGroups
-          .map((group) => ({
-            ...group,
-            videoIds: group.videoIds.filter((id) => !deletedVideoIds.has(id)),
-            suggestedKeeperId: group.suggestedKeeperId && deletedVideoIds.has(group.suggestedKeeperId)
-              ? null
-              : group.suggestedKeeperId,
-            manualSuggestedKeeperId: group.manualSuggestedKeeperId && deletedVideoIds.has(group.manualSuggestedKeeperId)
-              ? null
-              : group.manualSuggestedKeeperId,
-          }))
-          .filter((group) => group.videoIds.length >= 2),
+        rebuildDuplicateGroups(
+          prevGroups,
+          { removedVideoIds: deletedVideoIds },
+          new Map(videos.map((video) => [video.id, video])),
+        ),
         videos,
         stateBefore.settings.duplicates.keeperOrder,
         stateBefore.settings.duplicates.codecOrder
