@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { compareWithManifest, diffSnapshots } = require('../../scripts/duplicate-collection-check');
+const { compareWithManifest, diffSnapshots, settingOverrides } = require('../../scripts/duplicate-collection-check');
 
 const manifest = {
   files: [
@@ -46,4 +46,12 @@ test('a snapshot comparison lists added and removed groups', () => {
 
   assert.deepEqual(added.map((group) => group.files), [['a.mp4', 'b.mp4', 'e.mp4']]);
   assert.deepEqual(removed.map((group) => group.files), [['a.mp4', 'b.mp4']]);
+});
+
+test('--set passes duplicate settings with JSON values where they parse', () => {
+  assert.deepEqual(
+    settingOverrides(['folder', '--set', 'minComparedSamples=1', '--set', 'skipBlankFrames=false', '--set', 'samplingWindow=25-75']),
+    { minComparedSamples: 1, skipBlankFrames: false, samplingWindow: '25-75' },
+  );
+  assert.throws(() => settingOverrides(['--set', 'noValue']), /key=value/);
 });

@@ -5,6 +5,7 @@ const {
   graySampleScore,
   scoreSamples,
   movementClass,
+  matchConfidence,
   durationsWithinTolerance,
 } = require('./duplicate-utils');
 
@@ -57,7 +58,7 @@ function forEachBucketedPair(buckets, unknownDurationCandidates, settings, callb
 
 function compareVisuals() {
   const settings = normalizeDuplicateSettings(workerData.settings);
-  const sampleMap = graySamplesByVideo(workerData.grayRows ?? [], settings.sampleCount);
+  const sampleMap = graySamplesByVideo(workerData.grayRows ?? [], settings.sampleCount, settings.matchPartlyUnreadable);
   const candidates = (workerData.videos ?? [])
     .filter((video) => sampleMap.has(video.id))
     .map((video, index) => {
@@ -99,6 +100,8 @@ function compareVisuals() {
       pHashSimilarity: null,
       bestSampleIndex: result.scores.indexOf(Math.max(...result.scores)),
       static: a.static && b.static,
+      comparedSamples: result.compared,
+      confidence: matchConfidence(result.compared, a.static && b.static),
       similarity: result.similarity,
       matchType: 'visual',
     });

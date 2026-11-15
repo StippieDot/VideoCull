@@ -224,6 +224,36 @@ test('a group with a pair of static videos is marked static', () => {
   assert.deepEqual(groups.map((group) => [group.videoIds.toSorted().join(''), group.static]), [['ab', true], ['cd', false]]);
 });
 
+test('a single-sample match alone does not join a video to a group of three or more', () => {
+  const videos = ['a', 'b', 'c', 'x'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const pair = (aId, bId, similarity, comparedSamples = 3) => ({
+    aId, bId, similarity, matchType: 'phash', comparedSamples, confidence: comparedSamples === 1 ? 'low' : 'normal',
+  });
+  const core = [pair('a', 'b', 99), pair('a', 'c', 99), pair('b', 'c', 99)];
+
+  // 'x' reaches two members, each on one sample only: nothing else links 'x', so it stays out.
+  const weak = __test__.buildGroups([], [...core, pair('x', 'a', 100, 1), pair('x', 'b', 100, 1)], videosById, settings);
+  assert.deepEqual(weak.map((group) => group.videoIds.toSorted()), [['a', 'b', 'c']]);
+  assert.deepEqual([weak[0].comparedSamples, weak[0].confidence], [3, 'normal']);
+
+  // With normal links as well, the single-sample link is supported and 'x' joins.
+  const supported = __test__.buildGroups([], [...core, pair('x', 'a', 100, 1), pair('x', 'b', 97), pair('x', 'c', 97)], videosById, settings);
+  assert.deepEqual(supported.map((group) => group.videoIds.toSorted()), [['a', 'b', 'c', 'x']]);
+  assert.deepEqual([supported[0].comparedSamples, supported[0].confidence], [1, 'low']);
+});
+
+test('a two-video group may rest on one sample and is marked low confidence', () => {
+  const videos = ['a', 'b'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const [group] = __test__.buildGroups([], [{ aId: 'a', bId: 'b', similarity: 100, matchType: 'phash', comparedSamples: 1, confidence: 'low' }], videosById, settings);
+  assert.deepEqual([group.videoIds.toSorted(), group.comparedSamples, group.confidence], [['a', 'b'], 1, 'low']);
+  const [exactOnly] = __test__.buildGroups([['a', 'b']], [], videosById, settings);
+  assert.deepEqual([exactOnly.comparedSamples, exactOnly.confidence], [null, 'normal']);
+});
+
 test('group score is the weakest matched pair so it never exceeds any member pair', () => {
   const videos = ['a', 'b', 'c'].map(video);
   const videosById = new Map(videos.map((item) => [item.id, item]));

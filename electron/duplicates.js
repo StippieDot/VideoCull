@@ -608,8 +608,8 @@ function createSimilarityRevalidator(settings, comparisonData = null) {
   if (!phash && comparisonData.mode !== 'visual') return null;
 
   const samplesByVideo = phash
-    ? pHashSamplesByVideo(comparisonData.rows, settings.sampleCount)
-    : graySamplesByVideo(comparisonData.rows, settings.sampleCount);
+    ? pHashSamplesByVideo(comparisonData.rows, settings.sampleCount, settings.matchPartlyUnreadable)
+    : graySamplesByVideo(comparisonData.rows, settings.sampleCount, settings.matchPartlyUnreadable);
   const sampleScore = phash ? pHashSampleScore : graySampleScore(settings);
   const scoreOptions = { firstSampleOnly: phash && settings.phashFirstSampleOnly };
   const computeSimilarity = (aId, bId, enforceThreshold) => {
@@ -914,7 +914,26 @@ function splitDaisyChainIds(ids, directSimilarity, threshold) {
   return groups.length > 0 ? groups : [];
 }
 
-function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold, revalidateSimilarity = null) {
+/**
+ * In a group of three or more, a match decided by one sample counts only where another member is
+ * linked to both videos by a stronger match, so one frame never on its own pulls a video into a group.
+ */
+function withSingleSampleSupport(similarity, isSingleSampleLink, memberIds, threshold) {
+  if (!isSingleSampleLink) return similarity;
+  return (aId, bId) => {
+    const score = similarity(aId, bId);
+    if (score === null || !isSingleSampleLink(aId, bId)) return score;
+    for (const otherId of memberIds) {
+      if (otherId === aId || otherId === bId) continue;
+      if (isSingleSampleLink(aId, otherId) || isSingleSampleLink(bId, otherId)) continue;
+      if (connectionScore(aId, otherId, similarity, threshold) !== null
+        && connectionScore(bId, otherId, similarity, threshold) !== null) return score;
+    }
+    return null;
+  };
+}
+
+function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold, revalidateSimilarity = null, isSingleSampleLink = null) {
   const splitGroups = [];
   let groupsSplit = 0;
   let removedSingletons = 0;
@@ -928,7 +947,10 @@ function splitDaisyChainGroups(candidateGroups, directSimilarity, threshold, rev
           return recomputed === undefined ? directSimilarity(aId, bId) : recomputed;
         }
       : directSimilarity;
-    const splitIds = splitDaisyChainIds(ids, similarityForValidation, threshold);
+    const supportedSimilarity = ids.length >= 3
+      ? withSingleSampleSupport(similarityForValidation, isSingleSampleLink, ids, threshold)
+      : similarityForValidation;
+    const splitIds = splitDaisyChainIds(ids, supportedSimilarity, threshold);
     if (splitIds.length === 1 && splitIds[0].length === ids.length) {
       splitGroups.push({ ...candidate, usedRevalidation });
       continue;
@@ -987,6 +1009,10 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     const key = internalPairKey(aId, bId);
     if (exactPairKeys.has(key)) return 100;
     return matchedByPair.get(key)?.similarity ?? null;
+  };
+  const isSingleSampleLink = (aId, bId) => {
+    const key = internalPairKey(aId, bId);
+    return !exactPairKeys.has(key) && matchedByPair.get(key)?.comparedSamples === 1;
   };
 
   const candidateGroups = [];
@@ -1050,6 +1076,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     directSimilarity,
     settings.finalSimilarityThreshold,
     options.revalidateSimilarity ?? null,
+    isSingleSampleLink,
   );
   if (daisyChainStats.groupsSplit > 0 || daisyChainStats.removedSingletons > 0) {
     duplicateLog('Daisy-chain validation complete', daisyChainStats);
@@ -1079,11 +1106,17 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       if (group === joiner || group.ids.size < 2 || group.ids.size < joiner.ids.size) continue;
       if (!groupsCanMerge(group, joiner)) continue;
       const required = Math.max(2, Math.ceil(group.ids.size / 2));
+      const supportedSimilarity = withSingleSampleSupport(
+        admissionSimilarity,
+        isSingleSampleLink,
+        [...group.ids],
+        settings.finalSimilarityThreshold,
+      );
       let fewestConnections = Infinity;
       for (const videoId of joiner.ids) {
         let connections = 0;
         for (const memberId of group.ids) {
-          if (connectionScore(videoId, memberId, admissionSimilarity, settings.finalSimilarityThreshold) !== null) connections++;
+          if (connectionScore(videoId, memberId, supportedSimilarity, settings.finalSimilarityThreshold) !== null) connections++;
         }
         fewestConnections = Math.min(fewestConnections, connections);
         if (connections < required) break;
@@ -1110,6 +1143,8 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     let hasExact = false;
     let fuzzyMatchType = null;
     let hasStaticPair = false;
+    let lowConfidence = false;
+    let fewestComparedSamples = null;
     const resolveGroupPairSimilarity = (aId, bId) => {
       if (!candidate.usedRevalidation || !revalidateScore) return directSimilarity(aId, bId);
       const recomputed = revalidateScore(aId, bId);
@@ -1130,6 +1165,10 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
           if (resolvedSimilarity !== null) similarities.push(resolvedSimilarity);
           fuzzyMatchType = fuzzyMatchType && fuzzyMatchType !== matched.matchType ? 'mixed' : matched.matchType;
           if (matched.static) hasStaticPair = true;
+          if (matched.confidence === 'low') lowConfidence = true;
+          if (Number.isFinite(matched.comparedSamples)) {
+            fewestComparedSamples = Math.min(fewestComparedSamples ?? Infinity, matched.comparedSamples);
+          }
         }
       }
     }
@@ -1149,6 +1188,9 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       exactVideoIds: Array.from(exactVideoIds),
       // Both videos of a matched pair barely move, so a still picture may be all they share.
       static: hasStaticPair,
+      // The weakest evidence among the similarity matches; exact-only groups have none.
+      comparedSamples: fewestComparedSamples,
+      confidence: lowConfidence ? 'low' : 'normal',
       reason: matchType === 'exact'
         ? 'Exact file match'
         : matchType === 'mixed'

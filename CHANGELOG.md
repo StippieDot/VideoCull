@@ -7,6 +7,8 @@ All notable changes to VideoCull will be documented here.
 ### Added
 - **Ignore black bars** in Settings > Duplicates, on by default: duplicate detection also matches copies that only differ by black bars above, below or beside the picture, such as a letterboxed copy of a full-frame video. Each video is compared both as it is and without its bars, and the better score counts, so the setting can add matches but never removes one. It works with both comparison methods.
 - **Skip blank frames** in Settings > Duplicates (Advanced), on by default: sampled frames that are a single flat colour, such as a grey card or a fade, no longer count as evidence, so two videos that only share blank passages are no longer reported as duplicates.
+- **Match partly unreadable videos** in Settings > Duplicates (Advanced), on by default: a video whose file is damaged or cut off at some sampled positions is compared on the samples that could be read, so it can still be found as a copy of the intact file.
+- **Samples needed for a match** in Settings > Duplicates (Advanced): how many samples must be compared before two videos can match. **Automatic**, the default, keeps the previous rule (2, or 1 with one sample or first-sample scoring). A match decided by a single sample can only join a group of three or more when another member supports it.
 
 ### Changed
 - Comparing videos with the pHash method is much faster in large libraries: comparing 6,000 videos of similar length took 45 seconds and now takes under 2. The matches found are the same.
@@ -16,7 +18,7 @@ All notable changes to VideoCull will be documented here.
 
 ### Fixed
 - Duplicate detection compares a video and a copy of it in another container, such as an MKV remux of an MP4, on the same frames. Before, the two could be sampled one frame apart, which lowered their score and at 9 samples could split a set of copies over several groups. Sample times now follow the video's frame rate, so duplicate fingerprints are recalculated and the first duplicate run after updating takes longer.
-- A damaged or cut-off video no longer fails duplicate fingerprinting because one sample position cannot be read. A frame up to 0.75 seconds away is used instead; when there is none, the fingerprint is kept with that position marked unreadable, so the video is not read again on every run. Such a video is left out of the comparison for now; with **Retry failed fingerprints** on it is read again.
+- A damaged or cut-off video no longer fails duplicate fingerprinting because one sample position cannot be read. A frame up to 0.75 seconds away is used instead; when there is none, the fingerprint is kept with that position marked unreadable, so the video is not read again on every run. With **Retry failed fingerprints** on, such a video is read again.
 - A video, or a smaller group of videos, that matches at least half of a duplicate group is added to it even when it does not match the one video the group was built around. Before, such videos were left out or shown as a separate group.
 - Duplicate detection with 4, 5, 7 or 9 samples per video reads all samples in one pass instead of one pass per sample, which roughly halves fingerprinting time at those settings.
 - Scans no longer spend time making previews for videos that could not be read. Empty files fail straight away, a warning lists how many videos were affected, and **Regenerate Thumbnails and Metadata** tries again.

@@ -45,6 +45,7 @@ Advanced controls handle harder libraries:
 - Duration tolerance limits how different runtimes may be before comparison.
 - Requiring every sample scores each match by its weakest sample; turning it off scores and tests the average of all samples.
 - Blank frames, a single flat colour such as a grey card, are skipped by default, because they would match any other blank frame.
+- A video whose file is damaged at some sampled positions is compared on the samples that could be read. **Samples needed for a match** sets how many that must be; a match decided by one sample is marked for checking.
 - Black- or white-pixel ignoring can reduce the effect of fades and flashes.
 - Flipped comparison checks horizontally mirrored copies.
 - Maximum sampling duration limits work on long files; `0` uses the full duration.

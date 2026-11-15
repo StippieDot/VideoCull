@@ -947,6 +947,32 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           onChange={(checked) => handleDuplicateChange('skipBlankFrames', checked)}
                         />
                         <SwitchRow
+                          label="Match partly unreadable videos"
+                          help="Compares a video on the samples that could be read when some could not. Finds damaged copies of good files."
+                          checked={localSettings.duplicates.matchPartlyUnreadable}
+                          onChange={(checked) => handleDuplicateChange('matchPartlyUnreadable', checked)}
+                        />
+                        <SettingRow
+                          label="Samples needed for a match"
+                          help={localSettings.duplicates.phashFirstSampleOnly && localSettings.duplicates.comparisonMode === 'phash'
+                            ? 'First sample scoring always decides on one sample.'
+                            : 'How many samples must be compared before two videos can match. Fewer finds more and is less certain.'}
+                        >
+                          {(id) => (
+                            <select
+                              id={id}
+                              value={String(localSettings.duplicates.minComparedSamples)}
+                              disabled={localSettings.duplicates.phashFirstSampleOnly && localSettings.duplicates.comparisonMode === 'phash'}
+                              onChange={(e) => handleDuplicateChange('minComparedSamples', e.target.value === 'auto' ? 'auto' : Number(e.target.value))}
+                            >
+                              <option value="auto">Automatic</option>
+                              {[1, 2, 3].filter((count) => count <= localSettings.duplicates.sampleCount).map((count) => (
+                                <option key={count} value={count}>{count === 1 ? '1 sample' : `${count} samples`}</option>
+                              ))}
+                            </select>
+                          )}
+                        </SettingRow>
+                        <SwitchRow
                           label="Ignore black pixels"
                           help="Helps with fades and black frames."
                           checked={localSettings.duplicates.ignoreBlackPixels}

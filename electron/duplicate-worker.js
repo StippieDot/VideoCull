@@ -5,6 +5,7 @@ const {
   pHashSampleScore,
   scoreSamples,
   movementClass,
+  matchConfidence,
   durationsWithinTolerance,
 } = require('./duplicate-utils');
 
@@ -60,7 +61,7 @@ function forEachCandidatePair(candidates, buckets, unknownDurationCandidates, se
 function comparePHashes() {
   const settings = normalizeDuplicateSettings(workerData.settings);
   const videos = workerData.videos ?? [];
-  const samplesByVideo = pHashSamplesByVideo(workerData.phashRows ?? [], settings.sampleCount);
+  const samplesByVideo = pHashSamplesByVideo(workerData.phashRows ?? [], settings.sampleCount, settings.matchPartlyUnreadable);
   const candidates = videos
     .filter((video) => samplesByVideo.has(video.id))
     .map((video, index) => {
@@ -104,6 +105,8 @@ function comparePHashes() {
       pHashSimilarity: result.similarity,
       bestSampleIndex: result.scores.indexOf(Math.max(...result.scores)),
       static: a.static && b.static,
+      comparedSamples: result.compared,
+      confidence: matchConfidence(result.compared, a.static && b.static),
     });
   };
   const reportProgress = () => {

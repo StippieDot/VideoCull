@@ -13,6 +13,8 @@ const {
   scoreSamples,
   isUsableSample,
   movementClass,
+  matchConfidence,
+  minimumComparedSamples,
   rawGraySimilarity,
   average,
   combineSampleScores,
@@ -602,4 +604,71 @@ test('a video is static when its own usable samples barely differ', () => {
   // Dark and blank samples do not count, so only one usable sample is left.
   assert.equal(movementClass([sample('ff00ff00ff00ff00'), sample('0000000000000000', 200, 0.9), sample('8000000000000000', 1)], settings), 'unknown');
   assert.equal(movementClass([sample('ff00ff00ff00ff00'), sample('ff00ff00ff00ff00'), sample('00ff00ff00ff00ff')], settings), 'moving');
+});
+
+test('the minimum of compared samples follows the setting, and auto keeps the earlier rule', () => {
+  const minimum = (input, firstSampleOnly = false) => minimumComparedSamples(normalizeDuplicateSettings(input), firstSampleOnly);
+  for (const sampleCount of [1, 2, 3, 4, 5, 7, 9]) {
+    assert.equal(minimum({ sampleCount }), sampleCount > 1 ? 2 : 1, `auto at ${sampleCount}`);
+    assert.equal(minimum({ sampleCount }, true), 1, `first sample at ${sampleCount}`);
+  }
+  assert.equal(minimum({ sampleCount: 9, minComparedSamples: 1 }), 1);
+  assert.equal(minimum({ sampleCount: 5, minComparedSamples: 3 }), 3);
+  assert.equal(minimum({ sampleCount: 2, minComparedSamples: 3 }), 2, 'capped at the sample count');
+  assert.equal(minimum({ sampleCount: 5, minComparedSamples: 3 }, true), 1, 'first-sample scoring decides on one');
+  assert.equal(normalizeDuplicateSettings({ minComparedSamples: '2' }).minComparedSamples, 2);
+  assert.equal(normalizeDuplicateSettings({ minComparedSamples: 7 }).minComparedSamples, 'auto');
+});
+
+test('confidence is low for a single-sample match or a static pair', () => {
+  assert.equal(matchConfidence(2, false), 'normal');
+  assert.equal(matchConfidence(1, false), 'low');
+  assert.equal(matchConfidence(3, true), 'low');
+});
+
+function unreadableRows(videoId, samples) {
+  return samples.map((hash, index) => ({
+    video_id: videoId,
+    sample_index: index,
+    phash_hex: hash ?? '',
+    flipped_phash_hex: hash,
+    frame_dark_ratio: hash ? 0 : null,
+    luma_range: hash ? 100 : null,
+    sample_state: hash ? null : 'unreadable',
+  }));
+}
+
+function unreadableScore(samplesA, samplesB, input = {}) {
+  const settings = normalizeDuplicateSettings({ sampleCount: samplesA.length, finalSimilarityThreshold: 90, ...input });
+  const grouped = pHashSamplesByVideo(
+    [...unreadableRows('a', samplesA), ...unreadableRows('b', samplesB)],
+    settings.sampleCount,
+    settings.matchPartlyUnreadable,
+  );
+  if (!grouped.has('a') || !grouped.has('b')) return 'left out';
+  const result = scoreSamples(grouped.get('a'), grouped.get('b'), settings, pHashSampleScore, {
+    firstSampleOnly: settings.phashFirstSampleOnly,
+  });
+  return result ? result.compared : null;
+}
+
+test('a partly unreadable video is compared on the samples that could be read', () => {
+  const h = ['00000000000000ff', '000000000000ff00', '0000000000ff0000', '00000000ff000000', '000000ff00000000'];
+  const r = (count, readable) => h.slice(0, count).map((hash, index) => (index < readable ? hash : null));
+  // Configured 1, decoded 1: compared on 1, as before.
+  assert.equal(unreadableScore(r(1, 1), r(1, 1)), 1);
+  // Configured 3 or 5, decoded 2: compared on 2 by default.
+  assert.equal(unreadableScore(r(3, 2), r(3, 3)), 2);
+  assert.equal(unreadableScore(r(5, 2), r(5, 5)), 2);
+  // Configured 3, decoded 1: only with the minimum at 1.
+  assert.equal(unreadableScore(r(3, 1), r(3, 3)), null);
+  assert.equal(unreadableScore(r(3, 1), r(3, 3), { minComparedSamples: 1 }), 1);
+  // With the minimum at 3, two readable samples are not enough.
+  assert.equal(unreadableScore(r(3, 2), r(3, 3), { minComparedSamples: 3 }), null);
+  // Setting off: the video is not compared at all, as before.
+  assert.equal(unreadableScore(r(3, 2), r(3, 3), { matchPartlyUnreadable: false }), 'left out');
+  // Every compared sample must still reach the threshold with weakest-sample scoring.
+  assert.equal(unreadableScore(r(3, 2), r(3, 3), { requireEverySample: true }), 2);
+  // First-sample scoring takes the first sample readable in both.
+  assert.equal(unreadableScore([null, h[1], h[2]], [h[0], h[1], h[2]], { phashFirstSampleOnly: true }), 1);
 });

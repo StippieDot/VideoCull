@@ -267,6 +267,8 @@ export interface DuplicateSettings {
   compareFlipped: boolean;
   matchBlackBars: boolean;
   skipBlankFrames: boolean;
+  matchPartlyUnreadable: boolean;
+  minComparedSamples: 'auto' | 1 | 2 | 3;
   maxSamplingDuration: number;
   retryFailedFingerprintExtraction: boolean;
   checkpointIntervalMinutes: number;
@@ -288,6 +290,10 @@ export interface DuplicateGroup {
   exactVideoIds?: string[];
   /** A matched pair in the group shows (nearly) the same picture at every sample in both videos. */
   static?: boolean;
+  /** Fewest samples compared in any similarity match of the group; null for exact-only groups. */
+  comparedSamples?: number | null;
+  /** 'low' when a match was decided by one sample or a static pair. */
+  confidence?: 'normal' | 'low';
 }
 
 export interface DuplicateProgress {

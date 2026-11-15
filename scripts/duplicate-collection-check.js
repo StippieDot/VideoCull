@@ -1,12 +1,13 @@
 // Runs duplicate detection without the app window on a folder of videos, using the real FFmpeg and an
 // in-memory cache, so results can be compared before and after a change to the duplicate engine.
 //
-//   node scripts/duplicate-collection-check.js <folder> [--mode phash|visual] [--samples <n>] [--snapshot <file>]
+//   node scripts/duplicate-collection-check.js <folder> [--mode phash|visual] [--samples <n>] [--set <key>=<value>]... [--snapshot <file>]
 //   node scripts/duplicate-collection-check.js --diff <before.json> <after.json>
 //
 // When <folder> holds a manifest.json written by scripts/duplicate-test-media/build.js, every file is
 // compared with its expected relation. --snapshot writes the found groups; --diff lists the groups
-// that were added or removed between two snapshots.
+// that were added or removed between two snapshots. --set passes any duplicate setting, such as
+// --set minComparedSamples=1 or --set skipBlankFrames=false.
 const { execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -161,6 +162,7 @@ function toSnapshot(groups, videosById, folder) {
       similarity: group.similarity,
       matchType: group.matchType,
       ...(group.static ? { static: true } : {}),
+      ...(group.confidence === 'low' ? { confidence: 'low', comparedSamples: group.comparedSamples } : {}),
       files: group.videoIds.map((videoId) => path.relative(folder, videosById.get(videoId).path)).sort(),
     }))
     .sort((a, b) => a.files.join('|').localeCompare(b.files.join('|')));
@@ -181,7 +183,24 @@ function option(args, name) {
   return index === -1 ? undefined : args[index + 1];
 }
 
-async function runCheck(folder, mode, snapshotFile, sampleCount) {
+/** Every `--set key=value`; values are read as JSON where they parse, otherwise kept as text. */
+function settingOverrides(args) {
+  const overrides = {};
+  args.forEach((arg, index) => {
+    if (arg !== '--set') return;
+    const [key, ...rest] = String(args[index + 1] ?? '').split('=');
+    if (!key || rest.length === 0) throw new Error(`--set needs key=value, got "${args[index + 1]}"`);
+    const value = rest.join('=');
+    try {
+      overrides[key] = JSON.parse(value);
+    } catch {
+      overrides[key] = value;
+    }
+  });
+  return overrides;
+}
+
+async function runCheck(folder, mode, snapshotFile, sampleCount, overrides = {}) {
   const { ffprobePath } = require('../electron/media-tools');
   const duplicates = require('../electron/duplicates');
   const filenames = listVideos(folder);
@@ -197,7 +216,7 @@ async function runCheck(folder, mode, snapshotFile, sampleCount) {
   try {
     result = await duplicates.findDuplicates({
       videos,
-      settings: { comparisonMode: mode, ...(sampleCount ? { sampleCount } : {}) },
+      settings: { comparisonMode: mode, ...(sampleCount ? { sampleCount } : {}), ...overrides },
       cacheAccess: createMemoryCache(),
       cacheOptions: {},
       maxConcurrency: 4,
@@ -251,13 +270,13 @@ async function main() {
     console.log(`${added.length} added, ${removed.length} removed`);
     return;
   }
-  const folder = args.find((arg, index) => !arg.startsWith('--') && !['--mode', '--snapshot', '--samples'].includes(args[index - 1]));
+  const folder = args.find((arg, index) => !arg.startsWith('--') && !['--mode', '--snapshot', '--samples', '--set'].includes(args[index - 1]));
   if (!folder) {
-    console.error('Usage: node scripts/duplicate-collection-check.js <folder> [--mode phash|visual] [--samples <n>] [--snapshot <file>]');
+    console.error('Usage: node scripts/duplicate-collection-check.js <folder> [--mode phash|visual] [--samples <n>] [--set <key>=<value>]... [--snapshot <file>]');
     process.exitCode = 1;
     return;
   }
-  await runCheck(path.resolve(folder), option(args, '--mode') === 'visual' ? 'visual' : 'phash', option(args, '--snapshot'), Number(option(args, '--samples')) || undefined);
+  await runCheck(path.resolve(folder), option(args, '--mode') === 'visual' ? 'visual' : 'phash', option(args, '--snapshot'), Number(option(args, '--samples')) || undefined, settingOverrides(args));
 }
 
 if (require.main === module) {
@@ -267,4 +286,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { compareWithManifest, createMemoryCache, diffSnapshots };
+module.exports = { compareWithManifest, createMemoryCache, diffSnapshots, settingOverrides };

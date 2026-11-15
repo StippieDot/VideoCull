@@ -138,6 +138,8 @@ Pairs marked **Not a match** stay hidden in future duplicate runs.
 | Max sampling duration | Caps how much of a long video is sampled. `0` means full length. | Leave it at the default unless very long videos make runs too expensive. |
 | Checkpoint interval | Controls how often long runs save progress. | Change it only for very large duplicate passes. |
 | Skip blank frames | Ignores sampled frames that are a single flat colour, such as a grey card or a fade, which would match any other blank frame. A pair whose remaining frames are too few is not matched. | Leave it on. |
+| Match partly unreadable videos | Compares a video on the samples that could be read when some sampled positions could not be decoded, so a damaged or cut-off copy can still match a good file. | Leave it on. |
+| Samples needed for a match | How many samples must be compared before two videos can match. **Automatic** needs 2, or 1 with one sample or first-sample scoring. A match decided by one sample is marked for checking. | Leave it on Automatic. Choose 1 only to find damaged copies when you use many samples, and check those matches before deleting. |
 | Ignore black pixels | Helps with fades and black frames. | Use it when dark frames create false mismatches. |
 | Ignore white pixels | Helps with bright flashes and white frames. | Use it only when bright frames are obviously skewing results. |
 | Compare flipped videos | Also checks horizontally mirrored copies. | Turn it on only when mirrored duplicates are a real possibility. |

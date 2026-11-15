@@ -26,6 +26,8 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   compareFlipped: false,
   matchBlackBars: true,
   skipBlankFrames: true,
+  matchPartlyUnreadable: true,
+  minComparedSamples: 'auto',
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,
@@ -64,6 +66,8 @@ function normalizeDuplicateSettings(input = {}) {
     phashFirstSampleOnly: input.phashFirstSampleOnly === true,
     matchBlackBars: input.matchBlackBars !== false,
     skipBlankFrames: input.skipBlankFrames !== false,
+    matchPartlyUnreadable: input.matchPartlyUnreadable !== false,
+    minComparedSamples: [1, 2, 3].includes(Number(input.minComparedSamples)) ? Number(input.minComparedSamples) : 'auto',
     durationTolerancePercent: clamp(input.durationTolerancePercent ?? DEFAULT_DUPLICATE_SETTINGS.durationTolerancePercent, 0, 100),
     checkpointIntervalMinutes: clamp(input.checkpointIntervalMinutes ?? DEFAULT_DUPLICATE_SETTINGS.checkpointIntervalMinutes, 0, 60),
     ignoredDuplicatePairs: normalizeIgnoredDuplicatePairs(input.ignoredDuplicatePairs),
@@ -296,7 +300,7 @@ const BLANK_FRAME_MAX_LUMA_RANGE = 12;
 // A sample counts as evidence when it was decoded, is not mostly dark and, with skipBlankFrames, is
 // not blank. A fingerprint without a stored luma range is treated as not blank.
 function isUsableSample(sample, settings) {
-  if (isDarkSample(sample)) return false;
+  if (sample.unreadable || isDarkSample(sample)) return false;
   return !(settings.skipBlankFrames && sample.lumaRange !== null && sample.lumaRange <= BLANK_FRAME_MAX_LUMA_RANGE);
 }
 
@@ -322,15 +326,27 @@ function movementClass(samples, settings) {
   return 'static';
 }
 
-function minimumUsableSamples(sampleCount) {
-  return sampleCount > 1 ? 2 : 1;
+/**
+ * How many samples must be compared for a pair to be eligible. 'auto' is the rule from before the
+ * setting existed: 2, or 1 with one sample or first-sample scoring.
+ */
+function minimumComparedSamples(settings, firstSampleOnly) {
+  if (firstSampleOnly) return 1;
+  if (settings.minComparedSamples === 'auto') return settings.sampleCount > 1 ? 2 : 1;
+  return Math.min(Number(settings.minComparedSamples), settings.sampleCount);
+}
+
+/** 'low' when one frame decided the match or when neither video moves; a later check is advised. */
+function matchConfidence(comparedSamples, isStatic) {
+  return comparedSamples === 1 || isStatic ? 'low' : 'normal';
 }
 
 /**
- * Groups fingerprint rows per video in sample order. A video with fewer rows than `sampleCount`, or
- * with a sample that could not be read, is left out. `toSample(row)` builds what the matching sample-score function reads.
+ * Groups fingerprint rows per video in sample order. A video with fewer rows than `sampleCount` is
+ * left out, and so is one with a sample that could not be read unless `keepPartlyUnreadable`.
+ * `toSample(row)` builds what the matching sample-score function reads.
  */
-function groupSamplesByVideo(rows, sampleCount, toSample) {
+function groupSamplesByVideo(rows, sampleCount, toSample, keepPartlyUnreadable) {
   const byVideo = new Map();
   for (const row of rows) {
     const list = byVideo.get(row.video_id) ?? [];
@@ -349,16 +365,16 @@ function groupSamplesByVideo(rows, sampleCount, toSample) {
   const result = new Map();
   for (const [videoId, samples] of byVideo) {
     const ordered = samples.sort((a, b) => a.index - b.index).slice(0, sampleCount);
-    // shortcut: a video with an unreadable sample is not compared at all, until matching on the
-    // remaining samples (minimum evidence) is built.
-    if (ordered.length >= sampleCount && !ordered.some((sample) => sample.unreadable)) result.set(videoId, ordered);
+    if (ordered.length < sampleCount) continue;
+    if (!keepPartlyUnreadable && ordered.some((sample) => sample.unreadable)) continue;
+    result.set(videoId, ordered);
   }
   return result;
 }
 
 // Every sample has a `full` variant and, for a video with black bars, a `crop` variant holding the
 // picture inside them. A sample-score function compares one variant of each side.
-function pHashSamplesByVideo(rows, sampleCount) {
+function pHashSamplesByVideo(rows, sampleCount, keepPartlyUnreadable = false) {
   return groupSamplesByVideo(rows, sampleCount, (row) => ({
     full: {
       hash: parsePHashWords(row.phash_hex),
@@ -370,14 +386,14 @@ function pHashSamplesByVideo(rows, sampleCount) {
           flippedHash: parsePHashWords(row.crop_flipped_phash_hex ?? row.crop_phash_hex),
         }
       : null,
-  }));
+  }), keepPartlyUnreadable);
 }
 
-function graySamplesByVideo(rows, sampleCount) {
+function graySamplesByVideo(rows, sampleCount, keepPartlyUnreadable = false) {
   return groupSamplesByVideo(rows, sampleCount, (row) => ({
     full: { bytes: row.gray_bytes, flippedBytes: null },
     crop: row.crop_gray_bytes ? { bytes: row.crop_gray_bytes, flippedBytes: null } : null,
-  }));
+  }), keepPartlyUnreadable);
 }
 
 function pHashSampleScore(variantA, variantB, flipped) {
@@ -466,7 +482,7 @@ function scoreSampleVariants(samplesA, samplesB, settings, sampleScore, { firstS
     if (firstSampleOnly) break;
   }
 
-  if (scores.length < minimumUsableSamples(firstSampleOnly ? 1 : settings.sampleCount)) return null;
+  if (scores.length < minimumComparedSamples(settings, firstSampleOnly)) return null;
   return { similarity: combineSampleScores(scores, settings), scores, compared: scores.length };
 }
 
@@ -547,6 +563,8 @@ module.exports = {
   isDarkSample,
   isUsableSample,
   movementClass,
+  matchConfidence,
+  minimumComparedSamples,
   rawGraySimilarity,
   frameDarkRatio,
   average,
