@@ -443,10 +443,38 @@ function codecPreferenceScore(video: Video, codecOrder: string[]): number {
   return index === -1 ? 0 : codecOrder.length - index;
 }
 
+type UnreadableSamples = Record<string, Array<{ index: number; percent: number | null }>>;
+
+function hasProbedMetadata(video: Video): boolean {
+  return video.metadataVersion != null && !video.metadataFailedAt;
+}
+
+function confirmedUnreadablePositions(videos: Video[], unreadableSamples: UnreadableSamples = {}) {
+  const result = new Map<string, Array<{ index: number; percent: number | null }>>();
+  for (const video of videos) {
+    const own = unreadableSamples[video.id];
+    if (!own) continue;
+    const confirmed = own.filter((sample) => videos.some((other) => {
+      const otherUnreadable = unreadableSamples[other.id];
+      return other.id !== video.id && otherUnreadable && !otherUnreadable.some((item) => item.index === sample.index);
+    }));
+    if (confirmed.length > 0) result.set(video.id, confirmed);
+  }
+  return result;
+}
+
+function formatPositions(samples: Array<{ index: number; percent: number | null }>): string {
+  const labels = samples.map((sample) => (sample.percent == null ? `sample ${sample.index + 1}` : `${sample.percent} %`));
+  return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0] ?? '';
+}
+
 type KeeperRanking = { keeper: Video; rule: string; tieBreak: boolean; reasons: Record<string, string> };
 
 // Higher is better for every rule.
-function keeperRuleScore(video: Video, rule: string, codecOrder: string[]): number {
+function keeperRuleScore(video: Video, rule: string, codecOrder: string[], health: Map<string, unknown[]>): number {
+  if (rule === 'health') return -(health.get(video.id)?.length ?? 0);
+  // Unknown metadata ties with the best, so an unprobed video is never demoted for missing sound.
+  if (rule === 'audio') return !hasProbedMetadata(video) || video.audioCodec ? 1 : 0;
   if (rule === 'resolution') return resolutionDisplayTier(video);
   if (rule === 'videoBitrate') return finiteNumber(video.videoBitrate ?? video.totalBitrate);
   if (rule === 'duration') return finiteNumber(video.durationSecs);
@@ -471,8 +499,10 @@ function formatSeconds(seconds: number): string {
   return seconds >= 10 ? String(Math.round(seconds)) : String(Math.round(seconds * 10) / 10);
 }
 
-function keeperReason(rule: string, video: Video, best: number, codecOrder: string[]): string {
-  const score = keeperRuleScore(video, rule, codecOrder);
+function keeperReason(rule: string, video: Video, best: number, codecOrder: string[], health: Map<string, Array<{ index: number; percent: number | null }>>): string {
+  const score = keeperRuleScore(video, rule, codecOrder, health);
+  if (rule === 'health') return `could not be read at ${formatPositions(health.get(video.id) ?? [])}`;
+  if (rule === 'audio') return 'has no audio track';
   if (rule === 'resolution') return 'lower resolution';
   if (rule === 'videoBitrate') return 'lower bitrate';
   if (rule === 'duration') return `shorter by ${formatSeconds(best - score)} s`;
@@ -484,30 +514,36 @@ function keeperReason(rule: string, video: Video, best: number, codecOrder: stri
 
 // SYNC NOTE: This function mirrors rankKeeperCandidates in electron/duplicate-utils.js; the parity
 // test in tests/src/store.test.ts runs both on the same groups.
-function rankKeeperCandidates(videos: Video[], order: string[], codecOrder: string[]): KeeperRanking | null {
+function rankKeeperCandidates(videos: Video[], order: string[], codecOrder: string[], unreadableSamples: UnreadableSamples = {}): KeeperRanking | null {
   if (videos.length === 0) return null;
+  const health = confirmedUnreadablePositions(videos, unreadableSamples);
   let candidates = [...videos];
   const reasons: Record<string, string> = {};
   let rule = 'path';
   for (const current of order) {
     if (candidates.length < 2) break;
-    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder)]));
+    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder, health)]));
     const best = Math.max(...scores.values());
     const margin = keeperRuleMargin(current, videos);
     const kept = candidates.filter((video) => (scores.get(video.id) ?? 0) >= best - margin);
     for (const video of candidates) {
-      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder);
+      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder, health);
     }
     if (kept.length === 1) rule = current;
     candidates = kept;
   }
   candidates.sort((a, b) => String(a.path ?? '').localeCompare(String(b.path ?? '')));
-  for (const video of candidates.slice(1)) reasons[video.id] = keeperReason('path', video, 0, codecOrder);
+  for (const video of candidates.slice(1)) reasons[video.id] = keeperReason('path', video, 0, codecOrder, health);
   return { keeper: candidates[0]!, rule, tieBreak: KEEPER_TIE_BREAK_RULES.has(rule), reasons };
 }
 
-function chooseSuggestedKeeperId(videos: Video[], order: string[], codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder): string | null {
-  return rankKeeperCandidates(videos, order, codecOrder)?.keeper.id ?? null;
+function chooseSuggestedKeeperId(
+  videos: Video[],
+  order: string[],
+  codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder,
+  unreadableSamples: UnreadableSamples = {},
+): string | null {
+  return rankKeeperCandidates(videos, order, codecOrder, unreadableSamples)?.keeper.id ?? null;
 }
 
 function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], order: string[], codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder): DuplicateGroup[] {
@@ -520,7 +556,7 @@ function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], ord
     const manualSuggestedKeeperId = group.manualSuggestedKeeperId && group.videoIds.includes(group.manualSuggestedKeeperId)
       ? group.manualSuggestedKeeperId
       : null;
-    const ranking = rankKeeperCandidates(groupVideos, order, codecOrder);
+    const ranking = rankKeeperCandidates(groupVideos, order, codecOrder, group.unreadableSamples);
     return {
       ...group,
       manualSuggestedKeeperId,
@@ -1723,7 +1759,8 @@ const useStore = create<VideoStore>((set, get) => ({
     const suggestedKeeperId = manualSuggestedKeeperId ?? chooseSuggestedKeeperId(
       stateBefore.videos.filter((video) => groupVideoIds.has(video.id)),
       stateBefore.settings.duplicates.keeperOrder,
-      stateBefore.settings.duplicates.codecOrder
+      stateBefore.settings.duplicates.codecOrder,
+      group.unreadableSamples,
     );
     if (
       group.manualSuggestedKeeperId === manualSuggestedKeeperId &&

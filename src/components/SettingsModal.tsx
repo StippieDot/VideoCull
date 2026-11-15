@@ -46,6 +46,8 @@ const FEATURE_TOGGLES = [
 }>;
 
 const KEEPER_RULE_LABELS: Record<string, { title: string; description: string }> = {
+  health: { title: 'Readable everywhere', description: 'Prefer a copy that could be read wherever another copy could.' },
+  audio: { title: 'Has sound', description: 'Prefer a copy with an audio track.' },
   resolution: { title: 'Resolution', description: 'Prefer the highest displayed resolution.' },
   videoBitrate: { title: 'Video bitrate', description: 'Prefer the cleaner encode.' },
   duration: { title: 'Duration', description: 'Prefer the longest version.' },

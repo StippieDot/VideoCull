@@ -214,7 +214,7 @@ describe('SettingsModal integration behavior', () => {
     expect(screen.queryByText(/so codec rarely decides/i)).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
     await waitFor(() => {
-      expect(useStore.getState().settings.duplicates.keeperOrder).toEqual(['resolution', 'codec', 'videoBitrate', 'duration', 'fps', 'size']);
+      expect(useStore.getState().settings.duplicates.keeperOrder).toEqual(['health', 'resolution', 'codec', 'videoBitrate', 'duration', 'fps', 'size', 'audio']);
     });
   });
 
@@ -228,7 +228,7 @@ describe('SettingsModal integration behavior', () => {
     await waitFor(() => {
       expect(useStore.getState().settings.duplicates.codecOrder.slice(0, 4)).toEqual(['av1', 'hevc', 'h264', 'vp9']);
     });
-    expect(useStore.getState().settings.duplicates.keeperOrder).toEqual(['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec']);
+    expect(useStore.getState().settings.duplicates.keeperOrder).toEqual(['health', 'resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec', 'audio']);
   });
 
   test('lists the tabs by task and groups each tab into titled sections', async () => {

@@ -64,7 +64,7 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   defaultScope: 'all',
   protectKeep: true,
   protectSkipped: false,
-  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec'],
+  keeperOrder: ['health', 'resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec', 'audio'],
   codecOrder: ['av1', 'hevc', 'vp9', 'h264', 'vp8', 'mpeg4', 'mpeg2video', 'vc1'],
   samplingWindow: 'even',
   customStartPercent: 0,
@@ -98,7 +98,10 @@ function normalizeKeeperOrder(value: unknown): string[] {
   if (!Array.isArray(value)) return DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
   const normalized = value.filter((rule): rule is string => typeof rule === 'string' && KEEPER_RULES.has(rule));
   for (const rule of DEFAULT_DUPLICATE_SETTINGS.keeperOrder) {
-    if (!normalized.includes(rule)) normalized.push(rule);
+    if (normalized.includes(rule)) continue;
+    // Missing rules join where the default has them: health first, the others (audio last) at the end.
+    if (rule === 'health') normalized.unshift(rule);
+    else normalized.push(rule);
   }
   return normalized.length > 0 ? normalized : DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
 }

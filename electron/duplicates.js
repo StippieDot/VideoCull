@@ -1137,7 +1137,12 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     const ids = Array.from(candidate.ids);
     if (ids.length < 2) continue;
     const videos = ids.map((id) => videosById.get(id)).filter(Boolean);
-    const ranking = rankKeeperCandidates(videos, settings.keeperOrder, settings.codecOrder);
+    const unreadableSamples = {};
+    for (const videoId of ids) {
+      const samples = options.unreadableSamplesByVideo?.get(videoId);
+      if (samples) unreadableSamples[videoId] = samples;
+    }
+    const ranking = rankKeeperCandidates(videos, settings.keeperOrder, settings.codecOrder, unreadableSamples);
     const similarities = [];
     const exactVideoIds = new Set();
     let hasExact = false;
@@ -1191,6 +1196,9 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       keeperRule: ranking?.rule ?? null,
       keeperTieBreak: ranking?.tieBreak ?? false,
       keeperReasons: ranking?.reasons ?? {},
+      // Per member with fingerprint data, the sample positions it could not read (empty when all
+      // were read). The keeper's health rule compares these between the current members.
+      unreadableSamples,
       exactVideoIds: Array.from(exactVideoIds),
       // Both videos of a matched pair barely move, so a still picture may be all they share.
       static: hasStaticPair,
@@ -1229,6 +1237,31 @@ function durationDifference(videos) {
   const difference = longest - Math.min(...durations);
   if (difference <= Math.max(DURATION_DIFFERENCE_MIN_SECS, longest * DURATION_DIFFERENCE_MIN_SHARE)) return null;
   return Math.round(difference * 10) / 10;
+}
+
+/**
+ * Per video with fingerprint rows, the unreadable sample positions with their place in the video in
+ * percent. A byte-identical copy that was not fingerprinted itself shares its representative's.
+ */
+function unreadableSamplesByVideo(rows, videos, settings, representativeIndex) {
+  const byVideo = new Map();
+  for (const row of rows) {
+    if (!byVideo.has(row.video_id)) byVideo.set(row.video_id, []);
+    if (row.sample_state === 'unreadable') byVideo.get(row.video_id).push(Number(row.sample_index));
+  }
+  const result = new Map();
+  for (const video of videos) {
+    const representativeId = representativeIndex.representativeByVideoId.get(video.id) ?? video.id;
+    const indices = byVideo.get(video.id) ?? byVideo.get(representativeId);
+    if (!indices) continue;
+    const duration = Number(video.durationSecs);
+    const timestamps = duration > 0 ? getSamplingTimestamps(duration, settings.sampleCount, settings, video.fps) : [];
+    result.set(video.id, [...indices].sort((a, b) => a - b).map((index) => ({
+      index,
+      percent: timestamps[index] == null ? null : Math.round((timestamps[index] / duration) * 100),
+    })));
+  }
+  return result;
 }
 
 function deriveVideos(videos, groups) {
@@ -1330,6 +1363,7 @@ async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cach
   progress(sendProgress, 'Building groups', { current: 0, total: 1 });
   const groups = buildGroups(exactGroups, similarityPairs, videosById, settings, {
     revalidateSimilarity: createSimilarityRevalidator(settings, comparisonData),
+    unreadableSamplesByVideo: unreadableSamplesByVideo(duplicateState.comparisonRows, safeVideos, settings, representativeIndex),
   });
   progress(sendProgress, 'Building groups', { current: 1, total: 1 });
   const result = {

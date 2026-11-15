@@ -110,6 +110,8 @@ function probeVideo(ffprobePath, folder, filename) {
     fps: Math.round((Number(frameRate[0]) / Number(frameRate[1])) * 100) / 100 || null,
     videoCodec: videoStream?.codec_name ?? null,
     audioCodec: audioStream?.codec_name ?? null,
+    // Any version marks a successful probe, which the keeper's sound rule requires.
+    metadataVersion: info.format ? 1 : null,
     // Same fields the keeper rules read in the app.
     videoBitrate: Number(videoStream?.bit_rate) || null,
     totalBitrate: Number(info.format?.bit_rate) || null,

@@ -74,7 +74,7 @@ test('default settings follow the simplified VDF-style model', () => {
   assert.equal(settings.durationTolerancePercent, 20);
   assert.equal(settings.checkpointIntervalMinutes, 5);
   assert.equal(settings.requireEverySample, false);
-  assert.deepEqual(settings.keeperOrder, ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec']);
+  assert.deepEqual(settings.keeperOrder, ['health', 'resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec', 'audio']);
 });
 
 test('similarity threshold accepts any value from 0 to 100 percent', () => {
@@ -233,7 +233,7 @@ test('keeper ordering normalization removes legacy metadata and filename rules',
   const settings = normalizeDuplicateSettings({
     keeperOrder: ['metadataDate', 'size', 'filename', 'fps'],
   });
-  assert.deepEqual(settings.keeperOrder, ['size', 'fps', 'resolution', 'videoBitrate', 'duration', 'codec']);
+  assert.deepEqual(settings.keeperOrder, ['health', 'size', 'fps', 'resolution', 'videoBitrate', 'duration', 'codec', 'audio']);
 });
 
 test('codec ranks above bitrate when the user puts it first, and falls back to the next rule when codecs tie', () => {
@@ -724,6 +724,9 @@ function previousCompareKeeper(a, b, order, codecOrder) {
     fps: () => Number(video.fps) || 0,
     size: () => Number(video.sizeBytes) || 0,
     codec: () => codec(video),
+    // Without unreadable samples or probed metadata these two rules tie for every member.
+    health: () => 0,
+    audio: () => 1,
   }[rule]());
   for (const rule of order) {
     const diff = value(a, rule) - value(b, rule);
@@ -803,4 +806,41 @@ test('each member that is not the keeper gets the phrase for the rule it lost at
   });
   const byResolution = rankKeeperCandidates([best, { ...best, id: 'small', width: 1280, height: 720 }], order);
   assert.deepEqual([byResolution.rule, byResolution.tieBreak], ['resolution', false]);
+});
+
+test('missing keeper rules join with health first and the others at the end', () => {
+  assert.deepEqual(normalizeDuplicateSettings({ keeperOrder: ['size', 'resolution'] }).keeperOrder,
+    ['health', 'size', 'resolution', 'videoBitrate', 'duration', 'fps', 'codec', 'audio']);
+  const moved = ['audio', 'resolution', 'health', 'videoBitrate', 'duration', 'fps', 'size', 'codec'];
+  assert.deepEqual(normalizeDuplicateSettings({ keeperOrder: moved }).keeperOrder, moved, 'a chosen order is kept');
+});
+
+test('the health rule demotes only positions another member could read', () => {
+  const order = ['health', 'resolution'];
+  const member = (id, width) => ({ id, path: `${id}.mp4`, width, height: width * 9 / 16 });
+  const full = member('full', 1280);
+  const damaged = member('damaged', 1920);
+  const unknown = member('unknown', 1920);
+  // 'damaged' could not read position 2, which 'full' read: confirmed, so it loses despite its resolution.
+  const confirmed = rankKeeperCandidates([full, damaged], order, undefined, { full: [], damaged: [{ index: 2, percent: 75 }] });
+  assert.equal(confirmed.keeper.id, 'full');
+  assert.deepEqual([confirmed.rule, confirmed.reasons], ['health', { damaged: 'could not be read at 75 %' }]);
+  // Every member failed there: no finding, resolution decides.
+  assert.equal(rankKeeperCandidates([full, damaged], order, undefined, {
+    full: [{ index: 2, percent: 75 }], damaged: [{ index: 2, percent: 75 }],
+  }).keeper.id, 'damaged');
+  // A member without fingerprint data neither confirms nor counts against itself.
+  assert.equal(rankKeeperCandidates([unknown, damaged], order, undefined, { damaged: [{ index: 2, percent: 75 }] }).rule, 'path');
+  const two = rankKeeperCandidates([full, damaged], order, undefined, { full: [], damaged: [{ index: 1, percent: 50 }, { index: 2, percent: null }] });
+  assert.equal(two.reasons.damaged, 'could not be read at 50 % and sample 3');
+});
+
+test('the audio rule demotes a copy without sound only when its details were read', () => {
+  const order = ['audio', 'resolution'];
+  const withSound = { id: 'sound', path: 'a.mp4', width: 1280, height: 720, audioCodec: 'aac', metadataVersion: 2 };
+  const silent = { id: 'silent', path: 'b.mp4', width: 1920, height: 1080, audioCodec: null, metadataVersion: 2 };
+  const ranked = rankKeeperCandidates([withSound, silent], order);
+  assert.deepEqual([ranked.keeper.id, ranked.rule, ranked.reasons], ['sound', 'audio', { silent: 'has no audio track' }]);
+  assert.equal(rankKeeperCandidates([withSound, { ...silent, metadataVersion: null }], order).keeper.id, 'silent', 'unprobed ties');
+  assert.equal(rankKeeperCandidates([withSound, { ...silent, metadataFailedAt: 1 }], order).keeper.id, 'silent', 'failed probe ties');
 });

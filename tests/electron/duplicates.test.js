@@ -284,6 +284,18 @@ test('groups state their relation, evidence and flags', () => {
   assert.deepEqual([exact.relation, exact.reason, exact.comparedSamples, exact.confidence], ['exact', 'Identical files', null, 'normal']);
 });
 
+test('groups carry each member\'s unreadable positions and the keeper avoids a damaged copy', () => {
+  const videos = ['a', 'b'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const [group] = __test__.buildGroups([], [{ aId: 'a', bId: 'b', similarity: 98, matchType: 'phash', comparedSamples: 2 }], videosById, settings, {
+    unreadableSamplesByVideo: new Map([['a', [{ index: 2, percent: 75 }]], ['b', []]]),
+  });
+  assert.deepEqual(group.unreadableSamples, { a: [{ index: 2, percent: 75 }], b: [] });
+  assert.equal(group.suggestedKeeperId, 'b');
+  assert.equal(group.keeperRule, 'health');
+});
+
 test('group score is the weakest matched pair so it never exceeds any member pair', () => {
   const videos = ['a', 'b', 'c'].map(video);
   const videosById = new Map(videos.map((item) => [item.id, item]));

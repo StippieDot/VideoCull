@@ -9,7 +9,7 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   defaultScope: 'all',
   protectKeep: true,
   protectSkipped: false,
-  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec'],
+  keeperOrder: ['health', 'resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec', 'audio'],
   codecOrder: ['av1', 'hevc', 'vp9', 'h264', 'vp8', 'mpeg4', 'mpeg2video', 'vc1'],
   samplingWindow: 'even',
   customStartPercent: 0,
@@ -80,7 +80,10 @@ function normalizeKeeperOrder(value) {
   if (!Array.isArray(value)) return DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
   const normalized = value.filter((rule) => KEEPER_RULES.has(rule));
   for (const rule of DEFAULT_DUPLICATE_SETTINGS.keeperOrder) {
-    if (!normalized.includes(rule)) normalized.push(rule);
+    if (normalized.includes(rule)) continue;
+    // Missing rules join where the default has them: health first, the others (audio last) at the end.
+    if (rule === 'health') normalized.unshift(rule);
+    else normalized.push(rule);
   }
   return normalized.length > 0 ? normalized : DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
 }
@@ -535,8 +538,41 @@ function codecPreferenceScore(video, codecOrder) {
   return index === -1 ? 0 : codecOrder.length - index;
 }
 
+// A video's metadata is trusted only after its probe succeeded; until then it may lack an audio
+// codec simply because nothing was read yet.
+function hasProbedMetadata(video) {
+  return video.metadataVersion != null && !video.metadataFailedAt;
+}
+
+/**
+ * Per member, the sample positions it could not read while another current member read the same
+ * position. Members without fingerprint data are unknown: they neither count as failing nor as the
+ * member that read a position.
+ */
+function confirmedUnreadablePositions(videos, unreadableSamples = {}) {
+  const result = new Map();
+  for (const video of videos) {
+    const own = unreadableSamples[video.id];
+    if (!own) continue;
+    const confirmed = own.filter((sample) => videos.some((other) => {
+      const otherUnreadable = unreadableSamples[other.id];
+      return other.id !== video.id && otherUnreadable && !otherUnreadable.some((item) => item.index === sample.index);
+    }));
+    if (confirmed.length > 0) result.set(video.id, confirmed);
+  }
+  return result;
+}
+
+function formatPositions(samples) {
+  const labels = samples.map((sample) => (sample.percent == null ? `sample ${sample.index + 1}` : `${sample.percent} %`));
+  return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0];
+}
+
 // Higher is better for every rule.
-function keeperRuleScore(video, rule, codecOrder) {
+function keeperRuleScore(video, rule, codecOrder, health) {
+  if (rule === 'health') return -(health.get(video.id)?.length ?? 0);
+  // Unknown metadata ties with the best, so an unprobed video is never demoted for missing sound.
+  if (rule === 'audio') return !hasProbedMetadata(video) || video.audioCodec ? 1 : 0;
   if (rule === 'resolution') return resolutionDisplayTier(video);
   if (rule === 'videoBitrate') return finiteNumber(video.videoBitrate ?? video.totalBitrate);
   if (rule === 'duration') return finiteNumber(video.durationSecs);
@@ -565,8 +601,10 @@ function formatSeconds(seconds) {
 }
 
 /** One fixed phrase for why `video` lost at `rule` against the best score `best`. */
-function keeperReason(rule, video, best, codecOrder) {
-  const score = keeperRuleScore(video, rule, codecOrder);
+function keeperReason(rule, video, best, codecOrder, health) {
+  const score = keeperRuleScore(video, rule, codecOrder, health);
+  if (rule === 'health') return `could not be read at ${formatPositions(health.get(video.id) ?? [])}`;
+  if (rule === 'audio') return 'has no audio track';
   if (rule === 'resolution') return 'lower resolution';
   if (rule === 'videoBitrate') return 'lower bitrate';
   if (rule === 'duration') return `shorter by ${formatSeconds(best - score)} s`;
@@ -583,25 +621,26 @@ function keeperReason(rule, video, best, codecOrder) {
  * tie-break, and per other member the phrase for the rule it lost at.
  * SYNC NOTE: mirrored by rankKeeperCandidates in src/store.ts.
  */
-function rankKeeperCandidates(videos, order, codecOrder = DEFAULT_DUPLICATE_SETTINGS.codecOrder) {
+function rankKeeperCandidates(videos, order, codecOrder = DEFAULT_DUPLICATE_SETTINGS.codecOrder, unreadableSamples = {}) {
   if (videos.length === 0) return null;
+  const health = confirmedUnreadablePositions(videos, unreadableSamples);
   let candidates = [...videos];
   const reasons = {};
   let rule = 'path';
   for (const current of order) {
     if (candidates.length < 2) break;
-    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder)]));
+    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder, health)]));
     const best = Math.max(...scores.values());
     const margin = keeperRuleMargin(current, videos);
     const kept = candidates.filter((video) => scores.get(video.id) >= best - margin);
     for (const video of candidates) {
-      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder);
+      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder, health);
     }
     if (kept.length === 1) rule = current;
     candidates = kept;
   }
   candidates.sort((a, b) => String(a.path ?? '').localeCompare(String(b.path ?? '')));
-  for (const video of candidates.slice(1)) reasons[video.id] = keeperReason('path', video, 0, codecOrder);
+  for (const video of candidates.slice(1)) reasons[video.id] = keeperReason('path', video, 0, codecOrder, health);
   return { keeper: candidates[0], rule, tieBreak: KEEPER_TIE_BREAK_RULES.has(rule), reasons };
 }
 

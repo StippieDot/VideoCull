@@ -312,6 +312,8 @@ export interface DuplicateGroup {
   keeperTieBreak?: boolean;
   /** Per member other than the suggested keeper: why it was not suggested. */
   keeperReasons?: Record<string, string>;
+  /** Per member with fingerprint data: sample positions it could not read (empty when all were read). */
+  unreadableSamples?: Record<string, Array<{ index: number; percent: number | null }>>;
 }
 
 export interface DuplicateProgress {

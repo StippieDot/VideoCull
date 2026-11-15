@@ -159,7 +159,7 @@ describe('migrateSettings', () => {
       ...DEFAULT_DUPLICATE_SETTINGS,
       comparisonMode: DEFAULT_DUPLICATE_SETTINGS.comparisonMode,
       sampleCount: DEFAULT_DUPLICATE_SETTINGS.sampleCount,
-      keeperOrder: ['fps', 'resolution', 'videoBitrate', 'duration', 'size', 'codec'],
+      keeperOrder: ['health', 'fps', 'resolution', 'videoBitrate', 'duration', 'size', 'codec', 'audio'],
       ignoredDuplicatePairs: ['abcdefabcdefabcd|0011223344556677'],
     });
   });
