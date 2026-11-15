@@ -62,6 +62,7 @@ function createMemoryCache() {
           flipped_phash_hex: row.flippedPHashHex ?? null,
           gray_bytes: row.grayBytes,
           frame_dark_ratio: row.frameDarkRatio ?? null,
+          sample_state: row.sampleState ?? null,
         })),
       });
     },

@@ -187,6 +187,44 @@ test('fingerprint reads ignore rows created for different extraction settings', 
   }
 });
 
+test('an unreadable sample is stored with its marker and completes the fingerprint', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    insertVideo(db, 'a', path.join(folderPath, 'a.mp4'));
+    cache.saveVideoFingerprints(db, 'a', [
+      { sampleIndex: 0, timestampSecs: 10, phashHex: 'ffff000000000000', flippedPHashHex: 'ffff000000000001', grayBytes: Buffer.from([1]), frameDarkRatio: 0.1 },
+      { sampleIndex: 1, timestampSecs: 20, phashHex: '', flippedPHashHex: null, grayBytes: Buffer.alloc(0), frameDarkRatio: null, sampleState: 'unreadable' },
+    ], { fingerprintKey: 'key' });
+
+    assert.equal(cache.getFingerprintCounts(db, ['a'], 2, { fingerprintKey: 'key' }).get('a'), true);
+    assert.deepEqual(cache.loadPHashRows(db, ['a'], 2, { fingerprintKey: 'key' }).map((row) => row.sample_state), [null, 'unreadable']);
+    assert.deepEqual(cache.loadGraySampleRows(db, ['a'], 2, { fingerprintKey: 'key' }).map((row) => row.sample_state), [null, 'unreadable']);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('a fingerprint table from an earlier version gains the sample state column', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    db.exec('ALTER TABLE video_fingerprints DROP COLUMN sample_state');
+    cache.closeDb();
+    const reopened = cache.openDb(folderPath, { mode: 'centralised', centralCachePath: tempRoot });
+    const columns = reopened.prepare('PRAGMA table_info(video_fingerprints)').all().map((row) => row.name);
+    assert.ok(columns.includes('sample_state'));
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('fingerprint failures are scoped to the extraction settings key', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;

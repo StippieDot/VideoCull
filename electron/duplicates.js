@@ -26,6 +26,8 @@ const ONE_MIB = 1024 * 1024;
 const FRAME_BYTE_COUNT = 32 * 32;
 // Match thumbnails: allow slow seeks, but keep a hung decoder from holding a worker indefinitely.
 const FRAME_EXTRACTION_TIMEOUT_MS = 120_000;
+// Tried in this order when a sample position yields no frame; the thumbnail code uses the same offsets.
+const SAMPLE_RETRY_OFFSETS_SECS = [0, 0.25, -0.25, 0.75, -0.75];
 const FRAME_FILTER = 'scale=32:32:flags=bicubic,setsar=1,format=gray';
 // SYNC NOTE: same literal as CACHE_UNAVAILABLE_CODE in cache-service.js, which is not required here
 // because the cache is injected.
@@ -386,10 +388,24 @@ function extractGrayFrames(videoPath, timestamps, run, executionOptions) {
   return extractGrayFramesWithArgs(args, expectedFrameCount, run);
 }
 
+// A position that could not be decoded keeps its row, marked unreadable and with empty values, so the
+// fingerprint is complete and the video is not extracted again on every run.
 function buildFingerprintsFromGrayFrames(grayFrames, timestamps) {
   const fingerprints = [];
   for (let i = 0; i < timestamps.length; i++) {
     const grayBytes = grayFrames[i];
+    if (!grayBytes) {
+      fingerprints.push({
+        sampleIndex: i,
+        timestampSecs: timestamps[i],
+        phashHex: '',
+        flippedPHashHex: null,
+        grayBytes: Buffer.alloc(0),
+        frameDarkRatio: null,
+        sampleState: 'unreadable',
+      });
+      continue;
+    }
     fingerprints.push({
       sampleIndex: i,
       timestampSecs: timestamps[i],
@@ -403,8 +419,26 @@ function buildFingerprintsFromGrayFrames(grayFrames, timestamps) {
   return fingerprints;
 }
 
+// Returns the frame and the time it was read at, or null when no nearby time yields a frame.
+async function extractSampleWithRetries(videoPath, timestamp, run, executionOptions) {
+  for (const offset of SAMPLE_RETRY_OFFSETS_SECS) {
+    const attemptTimestamp = Math.max(0, timestamp + offset);
+    try {
+      return {
+        grayBytes: await extractGrayFrame(videoPath, attemptTimestamp, run, executionOptions),
+        timestamp: attemptTimestamp,
+      };
+    } catch (err) {
+      // Only "no frame came back" is about this position. Cancellation, a timeout or an unopenable
+      // file ends the whole video, as before.
+      if (!shouldFallbackToSingleFrameExtraction(err)) throw err;
+    }
+  }
+  return null;
+}
+
 async function buildFingerprintsForVideo(video, settings, run, executionOptions) {
-  const timestamps = getSamplingTimestamps(video.durationSecs, settings.sampleCount, settings, video.fps);
+  let timestamps = getSamplingTimestamps(video.durationSecs, settings.sampleCount, settings, video.fps);
   let grayFrames;
   try {
     grayFrames = await extractGrayFrames(video.path, timestamps, run, executionOptions);
@@ -416,11 +450,14 @@ async function buildFingerprintsForVideo(video, settings, run, executionOptions)
       sampleCount: timestamps.length,
       reason: err?.message || String(err),
     });
-    grayFrames = [];
+    const samples = [];
     for (const timestamp of timestamps) {
       assertNotCancelled(run);
-      grayFrames.push(await extractGrayFrame(video.path, timestamp, run, executionOptions));
+      samples.push(await extractSampleWithRetries(video.path, timestamp, run, executionOptions));
     }
+    if (samples.every((sample) => !sample)) throw new Error('FFmpeg returned no frame at any sample position');
+    grayFrames = samples.map((sample) => sample?.grayBytes ?? null);
+    timestamps = samples.map((sample, index) => sample?.timestamp ?? timestamps[index]);
   }
   assertNotCancelled(run);
   return runDuplicateActivity(
@@ -433,8 +470,12 @@ async function backfillFingerprints(videos, duplicateState, settings, run, sendP
   const fingerprintKey = duplicateState.fingerprintKey;
   const missing = [];
   let skippedFailed = 0;
+  const unreadableVideoIds = new Set(duplicateState.comparisonRows
+    .filter((row) => row.sample_state === 'unreadable')
+    .map((row) => row.video_id));
   for (const video of videos) {
-    const complete = duplicateState.completeById.get(video.id);
+    const complete = duplicateState.completeById.get(video.id)
+      && !(settings.retryFailedFingerprintExtraction && unreadableVideoIds.has(video.id));
     const failedPreviously = !settings.retryFailedFingerprintExtraction && duplicateState.failedIds.has(video.id);
     if (!complete && !failedPreviously) missing.push(video);
     else if (!complete && failedPreviously) skippedFailed++;
@@ -487,6 +528,7 @@ async function backfillFingerprints(videos, duplicateState, settings, run, sendP
           flipped_phash_hex: fingerprint.flippedPHashHex ?? null,
           gray_bytes: fingerprint.grayBytes,
           frame_dark_ratio: fingerprint.frameDarkRatio ?? null,
+          sample_state: fingerprint.sampleState ?? null,
         })));
         saved++;
       } catch (err) {

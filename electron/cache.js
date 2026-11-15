@@ -314,6 +314,7 @@ const SCHEMA = `
     gray_bytes       BLOB NOT NULL,
     frame_dark_ratio REAL,
     fingerprint_key  TEXT,
+    sample_state     TEXT,
     created_at       INTEGER,
     updated_at       INTEGER,
     PRIMARY KEY (video_id, sample_index)
@@ -361,6 +362,8 @@ const VIDEO_SCHEMA_COLUMNS = {
 const FINGERPRINT_SCHEMA_COLUMNS = {
   flipped_phash_hex: 'TEXT',
   fingerprint_key: 'TEXT',
+  // NULL for a decoded sample, 'unreadable' for a position FFmpeg returned no frame for.
+  sample_state: 'TEXT',
 };
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
@@ -976,8 +979,8 @@ function saveVideoFingerprints(db, videoId, fingerprints, options = {}) {
   const clear = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
   const insert = db.prepare(`
     INSERT INTO video_fingerprints
-      (video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio, fingerprint_key, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio, fingerprint_key, sample_state, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const write = db.transaction(() => {
     clear.run(videoId);
@@ -991,6 +994,7 @@ function saveVideoFingerprints(db, videoId, fingerprints, options = {}) {
         fp.grayBytes,
         fp.frameDarkRatio ?? null,
         options.fingerprintKey ?? null,
+        fp.sampleState ?? null,
         now,
         now
       );
@@ -1079,7 +1083,7 @@ function loadPHashRows(db, videoIds, sampleCount, options = {}) {
     const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const startedAt = performance.now();
     const batch = db.prepare(`
-      SELECT video_id, sample_index, phash_hex, flipped_phash_hex, frame_dark_ratio
+      SELECT video_id, sample_index, phash_hex, flipped_phash_hex, frame_dark_ratio, sample_state
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
         ${fingerprintFilter}
@@ -1105,7 +1109,7 @@ function loadGraySampleRows(db, videoIds, sampleCount, options = {}) {
     const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const startedAt = performance.now();
     const batch = db.prepare(`
-      SELECT video_id, sample_index, gray_bytes, frame_dark_ratio
+      SELECT video_id, sample_index, gray_bytes, frame_dark_ratio, sample_state
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
         ${fingerprintFilter}

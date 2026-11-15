@@ -151,6 +151,7 @@ function createDuplicateSessionCache({ grayByteLimit = grayCacheLimitForMemory()
       flipped_phash_hex: fingerprint.flippedPHashHex ?? null,
       gray_bytes: fingerprint.grayBytes,
       frame_dark_ratio: fingerprint.frameDarkRatio ?? null,
+      sample_state: fingerprint.sampleState ?? null,
     }));
     storeComparisonRows([videoId], mode, rows);
   }

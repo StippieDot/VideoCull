@@ -290,8 +290,8 @@ function minimumUsableSamples(sampleCount) {
 }
 
 /**
- * Groups fingerprint rows per video in sample order. A video with fewer rows than `sampleCount` is
- * left out. `toSample(row)` builds what the matching sample-score function reads.
+ * Groups fingerprint rows per video in sample order. A video with fewer rows than `sampleCount`, or
+ * with a sample that could not be read, is left out. `toSample(row)` builds what the matching sample-score function reads.
  */
 function groupSamplesByVideo(rows, sampleCount, toSample) {
   const byVideo = new Map();
@@ -300,6 +300,7 @@ function groupSamplesByVideo(rows, sampleCount, toSample) {
     list.push({
       index: Number(row.sample_index),
       darkRatio: Number(row.frame_dark_ratio ?? 0),
+      unreadable: row.sample_state === 'unreadable',
       ...toSample(row),
     });
     byVideo.set(row.video_id, list);
@@ -308,7 +309,9 @@ function groupSamplesByVideo(rows, sampleCount, toSample) {
   const result = new Map();
   for (const [videoId, samples] of byVideo) {
     const ordered = samples.sort((a, b) => a.index - b.index).slice(0, sampleCount);
-    if (ordered.length >= sampleCount) result.set(videoId, ordered);
+    // shortcut: a video with an unreadable sample is not compared at all, until matching on the
+    // remaining samples (minimum evidence) is built.
+    if (ordered.length >= sampleCount && !ordered.some((sample) => sample.unreadable)) result.set(videoId, ordered);
   }
   return result;
 }

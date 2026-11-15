@@ -463,3 +463,14 @@ test('scoreSamples reports the per-sample scores and how many were compared', ()
   assert.deepEqual(result, { similarity: (100 + (63 / 64) * 100) / 2, scores: [100, (63 / 64) * 100], compared: 2 });
   assert.equal(scoreSamples([sample('ff')], [sample('ff')], settings, pHashSampleScore), null, 'a missing sample is not comparable');
 });
+
+test('a video with an unreadable sample is left out of the comparison', () => {
+  const rows = [
+    { video_id: 'a', sample_index: 0, phash_hex: 'ff', gray_bytes: Buffer.from([1]), frame_dark_ratio: 0 },
+    { video_id: 'b', sample_index: 0, phash_hex: 'ff', gray_bytes: Buffer.from([1]), frame_dark_ratio: 0 },
+    { video_id: 'b', sample_index: 1, phash_hex: '', gray_bytes: Buffer.alloc(0), sample_state: 'unreadable' },
+    { video_id: 'a', sample_index: 1, phash_hex: 'fe', gray_bytes: Buffer.from([2]), frame_dark_ratio: 0 },
+  ];
+  assert.deepEqual([...pHashSamplesByVideo(rows, 2).keys()], ['a']);
+  assert.deepEqual([...graySamplesByVideo(rows, 2).keys()], ['a']);
+});
