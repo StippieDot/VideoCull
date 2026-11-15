@@ -298,4 +298,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { compareWithManifest, createMemoryCache, diffSnapshots, settingOverrides };
+module.exports = { compareWithManifest, createMemoryCache, diffSnapshots, listVideos, probeVideo, settingOverrides };
