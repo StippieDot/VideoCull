@@ -1,13 +1,13 @@
 // Runs duplicate detection without the app window on a folder of videos, using the real FFmpeg and an
 // in-memory cache, so results can be compared before and after a change to the duplicate engine.
 //
-//   node scripts/duplicate-collection-check.js <folder> [--mode phash|visual] [--samples <n>] [--set <key>=<value>]... [--snapshot <file>]
+//   node scripts/duplicate-collection-check.js <folder> [--mode phash|visual] [--samples <n>] [--set <key>=<value>]... [--recursive] [--snapshot <file>]
 //   node scripts/duplicate-collection-check.js --diff <before.json> <after.json>
 //
 // When <folder> holds a manifest.json written by scripts/duplicate-test-media/build.js, every file is
 // compared with its expected relation. --snapshot writes the found groups; --diff lists the groups
 // that were added or removed between two snapshots. --set passes any duplicate setting, such as
-// --set minComparedSamples=1 or --set skipBlankFrames=false.
+// --set minComparedSamples=1 or --set skipBlankFrames=false. --recursive includes subfolders.
 const { execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -67,11 +67,18 @@ function createMemoryCache() {
   };
 }
 
-function listVideos(folder) {
-  return fs.readdirSync(folder, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && VIDEO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
-    .map((entry) => entry.name)
-    .sort();
+/** Video files in the folder, as paths relative to it; with `recursive` also those in subfolders. */
+function listVideos(folder, recursive = false) {
+  const found = [];
+  const visit = (relative) => {
+    for (const entry of fs.readdirSync(path.join(folder, relative), { withFileTypes: true })) {
+      const entryPath = path.join(relative, entry.name);
+      if (entry.isDirectory() && recursive) visit(entryPath);
+      else if (entry.isFile() && VIDEO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) found.push(entryPath);
+    }
+  };
+  visit('');
+  return found.sort();
 }
 
 function probeVideo(ffprobePath, folder, filename) {
@@ -92,7 +99,7 @@ function probeVideo(ffprobePath, folder, filename) {
   return {
     // Same identity rule as the scanner: path and size.
     id: crypto.createHash('md5').update(`${filePath}:${stat.size}`).digest('hex').slice(0, 16),
-    filename,
+    filename: path.basename(filename),
     path: filePath,
     sizeBytes: stat.size,
     date: stat.mtimeMs,
@@ -200,10 +207,10 @@ function settingOverrides(args) {
   return overrides;
 }
 
-async function runCheck(folder, mode, snapshotFile, sampleCount, overrides = {}) {
+async function runCheck(folder, mode, snapshotFile, sampleCount, overrides = {}, recursive = false) {
   const { ffprobePath } = require('../electron/media-tools');
   const duplicates = require('../electron/duplicates');
-  const filenames = listVideos(folder);
+  const filenames = listVideos(folder, recursive);
   const videos = filenames.map((filename) => probeVideo(ffprobePath, folder, filename));
   const videosById = new Map(videos.map((video) => [video.id, video]));
 
@@ -276,7 +283,7 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  await runCheck(path.resolve(folder), option(args, '--mode') === 'visual' ? 'visual' : 'phash', option(args, '--snapshot'), Number(option(args, '--samples')) || undefined, settingOverrides(args));
+  await runCheck(path.resolve(folder), option(args, '--mode') === 'visual' ? 'visual' : 'phash', option(args, '--snapshot'), Number(option(args, '--samples')) || undefined, settingOverrides(args), args.includes('--recursive'));
 }
 
 if (require.main === module) {
