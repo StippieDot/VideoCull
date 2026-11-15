@@ -177,7 +177,6 @@ function createDuplicateSessionCache({ grayByteLimit = grayCacheLimitForMemory()
     pHashRowsByVideo.clear();
     grayRowsByVideo.clear();
     activeFingerprintKey = null;
-    activeCompareFlipped = false;
     grayBytes = 0;
   }
 
