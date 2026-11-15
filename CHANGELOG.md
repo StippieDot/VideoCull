@@ -5,6 +5,7 @@ All notable changes to VideoCull will be documented here.
 ## [Unreleased]
 
 ### Added
+- Two suggested-keeper rules in Settings > Duplicates. **Readable everywhere**, first by default, passes over a copy that could not be read at a sampled moment another copy of the group could read. **Has sound**, last by default, prefers a copy with an audio track; a video whose details have not been read yet counts as having sound. Existing rule orders get Readable everywhere at the top and Has sound at the bottom; move them like any other rule.
 - **Ignore black bars** in Settings > Duplicates, on by default: duplicate detection also matches copies that only differ by black bars above, below or beside the picture, such as a letterboxed copy of a full-frame video. Each video is compared both as it is and without its bars, and the better score counts, so the setting can add matches but never removes one. It works with both comparison methods.
 - **Skip blank frames** in Settings > Duplicates (Advanced), on by default: sampled frames that are a single flat colour, such as a grey card or a fade, no longer count as evidence, so two videos that only share blank passages are no longer reported as duplicates.
 - **Match partly unreadable videos** in Settings > Duplicates (Advanced), on by default: a video whose file is damaged or cut off at some sampled positions is compared on the samples that could be read, so it can still be found as a copy of the intact file.
