@@ -6,6 +6,7 @@ All notable changes to VideoCull will be documented here.
 
 ### Added
 - **Ignore black bars** in Settings > Duplicates, on by default: duplicate detection also matches copies that only differ by black bars above, below or beside the picture, such as a letterboxed copy of a full-frame video. Each video is compared both as it is and without its bars, and the better score counts, so the setting can add matches but never removes one. It works with both comparison methods.
+- **Skip blank frames** in Settings > Duplicates (Advanced), on by default: sampled frames that are a single flat colour, such as a grey card or a fade, no longer count as evidence, so two videos that only share blank passages are no longer reported as duplicates.
 
 ### Changed
 - Comparing videos with the pHash method is much faster in large libraries: comparing 6,000 videos of similar length took 45 seconds and now takes under 2. The matches found are the same.
