@@ -174,6 +174,44 @@ test('a video that matches most of a group joins it even when it misses the grou
   assert.deepEqual(groups[0].videoIds.toSorted(), ['a', 'b', 'c', 'r', 'x']);
 });
 
+test('a smaller group that matches most of a larger one joins it despite the representative', () => {
+  const videos = ['r', 'a', 'b', 'c', 'x', 'y'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const pair = (aId, bId, similarity) => ({ aId, bId, similarity, matchType: 'phash' });
+  const matchedPairs = [
+    pair('r', 'a', 99), pair('r', 'b', 99), pair('r', 'c', 99),
+    pair('a', 'b', 99), pair('a', 'c', 99), pair('b', 'c', 99),
+    // 'x' and 'y' pair up first (98) and then cannot merge: neither matches the representative 'r'.
+    pair('x', 'y', 98),
+    pair('x', 'a', 96), pair('x', 'b', 96), pair('x', 'c', 96),
+    pair('y', 'a', 96), pair('y', 'b', 96),
+  ];
+
+  const groups = __test__.buildGroups([], matchedPairs, videosById, settings);
+
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].videoIds.toSorted(), ['a', 'b', 'c', 'r', 'x', 'y']);
+});
+
+test('a group does not join a larger one when one of its videos matches too few members', () => {
+  const videos = ['r', 'a', 'b', 'c', 'x', 'y'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const pair = (aId, bId, similarity) => ({ aId, bId, similarity, matchType: 'phash' });
+  const matchedPairs = [
+    pair('r', 'a', 99), pair('r', 'b', 99), pair('r', 'c', 99),
+    pair('a', 'b', 99), pair('a', 'c', 99), pair('b', 'c', 99),
+    pair('x', 'y', 98),
+    pair('x', 'a', 96), pair('x', 'b', 96), pair('x', 'c', 96),
+    pair('y', 'a', 96),
+  ];
+
+  const groups = __test__.buildGroups([], matchedPairs, videosById, settings);
+
+  assert.deepEqual(groups.map((group) => group.videoIds.toSorted()).toSorted(), [['a', 'b', 'c', 'r'], ['x', 'y']]);
+});
+
 test('group score is the weakest matched pair so it never exceeds any member pair', () => {
   const videos = ['a', 'b', 'c'].map(video);
   const videosById = new Map(videos.map((item) => [item.id, item]));

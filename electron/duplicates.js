@@ -1062,33 +1062,48 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     duplicateLog('Daisy-chain validation complete', daisyChainStats);
   }
 
-  // The representative gate above rejects a video that misses the one representative even when it
-  // matches nearly every other member. Admit it when it matches more than half of a finished group.
+  // The representative gate above keeps out a video, or a whole smaller group, that misses the one
+  // representative while matching most members. Each is admitted to the group in which every one of
+  // its videos matches at least half of the members, as the validation above requires, and at least
+  // two of them, so that a single match never joins anything.
+  const revalidate = options.revalidateSimilarity;
+  // A grown group has three or more members, so recomputed scores apply as in the validation.
+  const admissionSimilarity = revalidate
+    ? (aId, bId) => {
+        const recomputed = revalidate(aId, bId);
+        return recomputed === undefined ? directSimilarity(aId, bId) : recomputed;
+      }
+    : directSimilarity;
   const groupedIds = new Set(validatedGroups.flatMap((group) => [...group.ids]));
-  const leftoverIds = [...new Set(allPairs.flatMap((pair) => [pair.aId, pair.bId]))]
+  const ungrouped = [...new Set(allPairs.flatMap((pair) => [pair.aId, pair.bId]))]
     .filter((id) => !groupedIds.has(id))
-    .sort();
-  for (const videoId of leftoverIds) {
+    .sort()
+    .map((id) => ({ ids: new Set([id]) }));
+  const joiners = [...ungrouped, ...validatedGroups].sort((a, b) => a.ids.size - b.ids.size);
+  for (const joiner of joiners) {
     let best = null;
     for (const group of validatedGroups) {
-      if (group.ids.size < 2 || !groupCanAcceptVideo(group, videoId)) continue;
-      // The grown group has three or more members, so recomputed scores apply as in the validation.
-      const revalidate = options.revalidateSimilarity;
-      const similarity = revalidate
-        ? (aId, bId) => {
-            const recomputed = revalidate(aId, bId);
-            return recomputed === undefined ? directSimilarity(aId, bId) : recomputed;
-          }
-        : directSimilarity;
-      let connections = 0;
-      for (const memberId of group.ids) {
-        if (connectionScore(videoId, memberId, similarity, settings.finalSimilarityThreshold) !== null) connections++;
+      if (group === joiner || group.ids.size < 2 || group.ids.size < joiner.ids.size) continue;
+      if (!groupsCanMerge(group, joiner)) continue;
+      const required = Math.max(2, Math.ceil(group.ids.size / 2));
+      let fewestConnections = Infinity;
+      for (const videoId of joiner.ids) {
+        let connections = 0;
+        for (const memberId of group.ids) {
+          if (connectionScore(videoId, memberId, admissionSimilarity, settings.finalSimilarityThreshold) !== null) connections++;
+        }
+        fewestConnections = Math.min(fewestConnections, connections);
+        if (connections < required) break;
       }
-      if (connections * 2 > group.ids.size && connections > (best?.connections ?? 0)) best = { group, connections };
+      if (fewestConnections >= required && fewestConnections > (best?.connections ?? 0)) {
+        best = { group, connections: fewestConnections };
+      }
     }
     if (!best) continue;
-    best.group.ids.add(videoId);
-    best.group.usedRevalidation = Boolean(options.revalidateSimilarity);
+    for (const videoId of joiner.ids) best.group.ids.add(videoId);
+    best.group.usedRevalidation = Boolean(revalidate);
+    // Emptied, so it is neither listed as a group nor joined by a later one.
+    joiner.ids = new Set();
   }
 
   const groups = [];
