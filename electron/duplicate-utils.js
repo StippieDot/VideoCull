@@ -25,6 +25,7 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   ignoreWhitePixels: false,
   compareFlipped: false,
   matchBlackBars: true,
+  skipBlankFrames: true,
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,
@@ -62,6 +63,7 @@ function normalizeDuplicateSettings(input = {}) {
     visualSimilarityThreshold,
     phashFirstSampleOnly: input.phashFirstSampleOnly === true,
     matchBlackBars: input.matchBlackBars !== false,
+    skipBlankFrames: input.skipBlankFrames !== false,
     durationTolerancePercent: clamp(input.durationTolerancePercent ?? DEFAULT_DUPLICATE_SETTINGS.durationTolerancePercent, 0, 100),
     checkpointIntervalMinutes: clamp(input.checkpointIntervalMinutes ?? DEFAULT_DUPLICATE_SETTINGS.checkpointIntervalMinutes, 0, 60),
     ignoredDuplicatePairs: normalizeIgnoredDuplicatePairs(input.ignoredDuplicatePairs),
@@ -287,6 +289,39 @@ function isDarkSample(sample) {
   return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
 }
 
+// A frame of one flat colour (a grey card, a fade) matches any other such frame, so it is no evidence.
+// Measured on the test collection: flat passages 1, the darkest real picture 30.
+const BLANK_FRAME_MAX_LUMA_RANGE = 12;
+
+// A sample counts as evidence when it was decoded, is not mostly dark and, with skipBlankFrames, is
+// not blank. A fingerprint without a stored luma range is treated as not blank.
+function isUsableSample(sample, settings) {
+  if (isDarkSample(sample)) return false;
+  return !(settings.skipBlankFrames && sample.lumaRange !== null && sample.lumaRange <= BLANK_FRAME_MAX_LUMA_RANGE);
+}
+
+// Below this many differing bits between its own samples a video shows (nearly) the same picture
+// throughout, such as a slideshow frame or a recorded screen.
+const STATIC_MAX_HASH_DISTANCE = 6;
+
+/**
+ * 'static', 'moving' or 'unknown', from the video's own usable samples. One sample cannot show
+ * movement, so fewer than two usable samples gives 'unknown'.
+ */
+function movementClass(samples, settings) {
+  const hashes = samples
+    .filter((sample) => sample.motionHash && isUsableSample(sample, settings))
+    .map((sample) => sample.motionHash);
+  if (hashes.length < 2) return 'unknown';
+  for (let i = 0; i < hashes.length; i++) {
+    for (let j = i + 1; j < hashes.length; j++) {
+      const distance = popcount32(hashes[i][0] ^ hashes[j][0]) + popcount32(hashes[i][1] ^ hashes[j][1]);
+      if (distance >= STATIC_MAX_HASH_DISTANCE) return 'moving';
+    }
+  }
+  return 'static';
+}
+
 function minimumUsableSamples(sampleCount) {
   return sampleCount > 1 ? 2 : 1;
 }
@@ -303,6 +338,9 @@ function groupSamplesByVideo(rows, sampleCount, toSample) {
       index: Number(row.sample_index),
       darkRatio: Number(row.frame_dark_ratio ?? 0),
       unreadable: row.sample_state === 'unreadable',
+      lumaRange: row.luma_range ?? null,
+      // The full-frame hash in both modes: the movement class is judged on it.
+      motionHash: row.phash_hex ? parsePHashWords(row.phash_hex) : null,
       ...toSample(row),
     });
     byVideo.set(row.video_id, list);
@@ -366,6 +404,7 @@ function fingerprintToRow(videoId, fingerprint) {
     gray_bytes: fingerprint.grayBytes,
     frame_dark_ratio: fingerprint.frameDarkRatio ?? null,
     sample_state: fingerprint.sampleState ?? null,
+    luma_range: fingerprint.lumaRange ?? null,
     crop_phash_hex: fingerprint.cropPHashHex ?? null,
     crop_flipped_phash_hex: fingerprint.cropFlippedPHashHex ?? null,
     crop_gray_bytes: fingerprint.cropGrayBytes ?? null,
@@ -411,8 +450,8 @@ function scoreSampleVariants(samplesA, samplesB, settings, sampleScore, { firstS
     const sampleA = samplesA[i];
     const sampleB = samplesB[i];
     if (!sampleA || !sampleB) return null;
-    // Darkness is judged on the full frame, whichever variant is compared.
-    if (isDarkSample(sampleA) || isDarkSample(sampleB)) continue;
+    // Usability is judged on the full frame, whichever variant is compared.
+    if (!isUsableSample(sampleA, settings) || !isUsableSample(sampleB, settings)) continue;
     const variantA = cropA ? sampleA.crop : sampleA.full;
     const variantB = cropB ? sampleB.crop : sampleB.full;
     if (!variantA || !variantB) return null;
@@ -423,7 +462,7 @@ function scoreSampleVariants(samplesA, samplesB, settings, sampleScore, { firstS
     scores.push(score);
     shortfall += 100 - score;
     if (shortfall > maxShortfall) return null;
-    // Only the first sample where neither frame is dark counts.
+    // Only the first sample usable in both videos counts.
     if (firstSampleOnly) break;
   }
 
@@ -506,6 +545,8 @@ module.exports = {
   scoreSamples,
   fingerprintToRow,
   isDarkSample,
+  isUsableSample,
+  movementClass,
   rawGraySimilarity,
   frameDarkRatio,
   average,

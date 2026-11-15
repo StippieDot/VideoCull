@@ -941,6 +941,12 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           </SettingRow>
                         )}
                         <SwitchRow
+                          label="Skip blank frames"
+                          help="Ignores frames that are a single flat colour, which would match any other blank frame."
+                          checked={localSettings.duplicates.skipBlankFrames}
+                          onChange={(checked) => handleDuplicateChange('skipBlankFrames', checked)}
+                        />
+                        <SwitchRow
                           label="Ignore black pixels"
                           help="Helps with fades and black frames."
                           checked={localSettings.duplicates.ignoreBlackPixels}

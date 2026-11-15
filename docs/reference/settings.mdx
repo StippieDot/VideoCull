@@ -137,6 +137,7 @@ Pairs marked **Not a match** stay hidden in future duplicate runs.
 | Duration tolerance | Limits how much two durations may differ and still be compared. | Raise it only when alternate encodes differ slightly in runtime. |
 | Max sampling duration | Caps how much of a long video is sampled. `0` means full length. | Leave it at the default unless very long videos make runs too expensive. |
 | Checkpoint interval | Controls how often long runs save progress. | Change it only for very large duplicate passes. |
+| Skip blank frames | Ignores sampled frames that are a single flat colour, such as a grey card or a fade, which would match any other blank frame. A pair whose remaining frames are too few is not matched. | Leave it on. |
 | Ignore black pixels | Helps with fades and black frames. | Use it when dark frames create false mismatches. |
 | Ignore white pixels | Helps with bright flashes and white frames. | Use it only when bright frames are obviously skewing results. |
 | Compare flipped videos | Also checks horizontally mirrored copies. | Turn it on only when mirrored duplicates are a real possibility. |

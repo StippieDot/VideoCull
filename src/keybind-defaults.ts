@@ -80,6 +80,7 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   ignoreWhitePixels: false,
   compareFlipped: false,
   matchBlackBars: true,
+  skipBlankFrames: true,
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,

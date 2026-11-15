@@ -4,6 +4,7 @@ const {
   graySamplesByVideo,
   graySampleScore,
   scoreSamples,
+  movementClass,
   durationsWithinTolerance,
 } = require('./duplicate-utils');
 
@@ -59,7 +60,10 @@ function compareVisuals() {
   const sampleMap = graySamplesByVideo(workerData.grayRows ?? [], settings.sampleCount);
   const candidates = (workerData.videos ?? [])
     .filter((video) => sampleMap.has(video.id))
-    .map((video, index) => ({ ...video, index, samples: sampleMap.get(video.id) }));
+    .map((video, index) => {
+      const samples = sampleMap.get(video.id);
+      return { ...video, index, samples, static: movementClass(samples, settings) === 'static' };
+    });
 
   const buckets = new Map();
   const unknownDurationCandidates = [];
@@ -94,6 +98,7 @@ function compareVisuals() {
       bId: b.id,
       pHashSimilarity: null,
       bestSampleIndex: result.scores.indexOf(Math.max(...result.scores)),
+      static: a.static && b.static,
       similarity: result.similarity,
       matchType: 'visual',
     });

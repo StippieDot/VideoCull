@@ -160,6 +160,7 @@ function toSnapshot(groups, videosById, folder) {
     .map((group) => ({
       similarity: group.similarity,
       matchType: group.matchType,
+      ...(group.static ? { static: true } : {}),
       files: group.videoIds.map((videoId) => path.relative(folder, videosById.get(videoId).path)).sort(),
     }))
     .sort((a, b) => a.files.join('|').localeCompare(b.files.join('|')));

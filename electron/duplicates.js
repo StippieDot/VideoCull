@@ -1109,6 +1109,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     const exactVideoIds = new Set();
     let hasExact = false;
     let fuzzyMatchType = null;
+    let hasStaticPair = false;
     const resolveGroupPairSimilarity = (aId, bId) => {
       if (!candidate.usedRevalidation || !revalidateScore) return directSimilarity(aId, bId);
       const recomputed = revalidateScore(aId, bId);
@@ -1128,6 +1129,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
           const resolvedSimilarity = resolveGroupPairSimilarity(ids[i], ids[j]);
           if (resolvedSimilarity !== null) similarities.push(resolvedSimilarity);
           fuzzyMatchType = fuzzyMatchType && fuzzyMatchType !== matched.matchType ? 'mixed' : matched.matchType;
+          if (matched.static) hasStaticPair = true;
         }
       }
     }
@@ -1145,6 +1147,8 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       matchType,
       suggestedKeeperId: keeper?.id ?? null,
       exactVideoIds: Array.from(exactVideoIds),
+      // Both videos of a matched pair barely move, so a still picture may be all they share.
+      static: hasStaticPair,
       reason: matchType === 'exact'
         ? 'Exact file match'
         : matchType === 'mixed'

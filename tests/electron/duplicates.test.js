@@ -212,6 +212,18 @@ test('a group does not join a larger one when one of its videos matches too few 
   assert.deepEqual(groups.map((group) => group.videoIds.toSorted()).toSorted(), [['a', 'b', 'c', 'r'], ['x', 'y']]);
 });
 
+test('a group with a pair of static videos is marked static', () => {
+  const videos = ['a', 'b', 'c', 'd'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const groups = __test__.buildGroups([], [
+    { aId: 'a', bId: 'b', similarity: 100, matchType: 'phash', static: true },
+    { aId: 'c', bId: 'd', similarity: 99, matchType: 'phash', static: false },
+  ], videosById, settings);
+
+  assert.deepEqual(groups.map((group) => [group.videoIds.toSorted().join(''), group.static]), [['ab', true], ['cd', false]]);
+});
+
 test('group score is the weakest matched pair so it never exceeds any member pair', () => {
   const videos = ['a', 'b', 'c'].map(video);
   const videosById = new Map(videos.map((item) => [item.id, item]));

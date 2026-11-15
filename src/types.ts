@@ -266,6 +266,7 @@ export interface DuplicateSettings {
   ignoreWhitePixels: boolean;
   compareFlipped: boolean;
   matchBlackBars: boolean;
+  skipBlankFrames: boolean;
   maxSamplingDuration: number;
   retryFailedFingerprintExtraction: boolean;
   checkpointIntervalMinutes: number;
@@ -285,6 +286,8 @@ export interface DuplicateGroup {
   manualSuggestedKeeperId?: string | null;
   reason: string;
   exactVideoIds?: string[];
+  /** A matched pair in the group shows (nearly) the same picture at every sample in both videos. */
+  static?: boolean;
 }
 
 export interface DuplicateProgress {

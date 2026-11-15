@@ -11,6 +11,8 @@ const {
   pHashSampleScore,
   graySampleScore,
   scoreSamples,
+  isUsableSample,
+  movementClass,
   rawGraySimilarity,
   average,
   combineSampleScores,
@@ -543,4 +545,61 @@ test('Visual comparison uses the frame inside the black bars the same way', () =
   const score = (input) => scoreSamples(grouped.get('a'), grouped.get('b'), { ...settings, ...input }, graySampleScore(settings)).similarity;
   assert.equal(score({}), 100);
   assert.ok(score({ matchBlackBars: false }) < 80);
+});
+
+test('a sample is usable when it is neither dark nor, with skipBlankFrames, blank', () => {
+  const on = normalizeDuplicateSettings({});
+  const off = normalizeDuplicateSettings({ skipBlankFrames: false });
+  const blank = { darkRatio: 0, lumaRange: 1 };
+  const dim = { darkRatio: 0.1, lumaRange: 30 };
+  const lowContrast = { darkRatio: 0, lumaRange: 13 };
+  const normal = { darkRatio: 0.2, lumaRange: 180 };
+  const dark = { darkRatio: 0.9, lumaRange: 200 };
+  const unmeasured = { darkRatio: 0, lumaRange: null };
+  assert.deepEqual([blank, dim, lowContrast, normal, dark, unmeasured].map((sample) => isUsableSample(sample, on)), [false, true, true, true, false, true]);
+  assert.deepEqual([blank, dark].map((sample) => isUsableSample(sample, off)), [true, false]);
+  assert.equal(isUsableSample({ darkRatio: 0, lumaRange: 12 }, on), false, 'the limit itself counts as blank');
+});
+
+function blankRows(videoId, samples) {
+  return samples.map(([hash, lumaRange], index) => ({
+    video_id: videoId,
+    sample_index: index,
+    phash_hex: hash,
+    flipped_phash_hex: hash,
+    frame_dark_ratio: 0,
+    luma_range: lumaRange,
+  }));
+}
+
+test('blank frames are left out, and a pair with too few frames left does not match', () => {
+  const grey = '8000000000000000';
+  const score = (samplesA, samplesB, input = {}) => {
+    const settings = normalizeDuplicateSettings({ sampleCount: samplesA.length, finalSimilarityThreshold: 90, ...input });
+    const grouped = pHashSamplesByVideo([...blankRows('a', samplesA), ...blankRows('b', samplesB)], settings.sampleCount);
+    return scoreSamples(grouped.get('a'), grouped.get('b'), settings, pHashSampleScore);
+  };
+  // Two flat grey videos: identical hashes, but nothing to compare once blank frames are skipped.
+  const flatA = [[grey, 1], [grey, 1], [grey, 2]];
+  const flatB = [[grey, 1], [grey, 0], [grey, 1]];
+  assert.equal(score(flatA, flatB), null);
+  assert.equal(score(flatA, flatB, { skipBlankFrames: false }).similarity, 100);
+  // One blank sample of three: the other two still decide.
+  const a = [['00000000000000ff', 150], [grey, 1], ['000000000000ff00', 140]];
+  const b = [['00000000000000ff', 150], ['ffffffffffffffff', 160], ['000000000000ff00', 140]];
+  assert.deepEqual(score(a, b), { similarity: 100, scores: [100, 100], compared: 2 });
+  // Two of three blank leaves one compared sample, fewer than the two required.
+  const mostlyBlank = [['00000000000000ff', 150], [grey, 1], [grey, 3]];
+  assert.equal(score(mostlyBlank, b), null);
+});
+
+test('a video is static when its own usable samples barely differ', () => {
+  const settings = normalizeDuplicateSettings({});
+  const sample = (hash, lumaRange = 100, darkRatio = 0) => ({ motionHash: parsePHashWords(hash), lumaRange, darkRatio });
+  assert.equal(movementClass([sample('ff00ff00ff00ff00'), sample('ff00ff00ff00ff1f')], settings), 'static', '5 bits apart');
+  assert.equal(movementClass([sample('ff00ff00ff00ff00'), sample('ff00ff00ff00ff3f')], settings), 'moving', '6 bits apart');
+  assert.equal(movementClass([sample('ff00ff00ff00ff00')], settings), 'unknown', 'one sample cannot show movement');
+  // Dark and blank samples do not count, so only one usable sample is left.
+  assert.equal(movementClass([sample('ff00ff00ff00ff00'), sample('0000000000000000', 200, 0.9), sample('8000000000000000', 1)], settings), 'unknown');
+  assert.equal(movementClass([sample('ff00ff00ff00ff00'), sample('ff00ff00ff00ff00'), sample('00ff00ff00ff00ff')], settings), 'moving');
 });
