@@ -464,7 +464,7 @@ test('scoreSamples reports the per-sample scores and how many were compared', ()
     settings,
     pHashSampleScore,
   );
-  assert.deepEqual(result, { similarity: (100 + (63 / 64) * 100) / 2, scores: [100, (63 / 64) * 100], compared: 2 });
+  assert.deepEqual(result, { similarity: (100 + (63 / 64) * 100) / 2, scores: [100, (63 / 64) * 100], compared: 2, flipped: false, borderAdjusted: false });
   assert.equal(scoreSamples([sample('ff')], [sample('ff')], settings, pHashSampleScore), null, 'a missing sample is not comparable');
 });
 
@@ -589,7 +589,7 @@ test('blank frames are left out, and a pair with too few frames left does not ma
   // One blank sample of three: the other two still decide.
   const a = [['00000000000000ff', 150], [grey, 1], ['000000000000ff00', 140]];
   const b = [['00000000000000ff', 150], ['ffffffffffffffff', 160], ['000000000000ff00', 140]];
-  assert.deepEqual(score(a, b), { similarity: 100, scores: [100, 100], compared: 2 });
+  assert.deepEqual(score(a, b), { similarity: 100, scores: [100, 100], compared: 2, flipped: false, borderAdjusted: false });
   // Two of three blank leaves one compared sample, fewer than the two required.
   const mostlyBlank = [['00000000000000ff', 150], [grey, 1], [grey, 3]];
   assert.equal(score(mostlyBlank, b), null);
@@ -671,4 +671,26 @@ test('a partly unreadable video is compared on the samples that could be read', 
   assert.equal(unreadableScore(r(3, 2), r(3, 3), { requireEverySample: true }), 2);
   // First-sample scoring takes the first sample readable in both.
   assert.equal(unreadableScore([null, h[1], h[2]], [h[0], h[1], h[2]], { phashFirstSampleOnly: true }), 1);
+});
+
+test('scoreSamples reports when a mirrored sample or the picture inside black bars decided the match', () => {
+  const settings = normalizeDuplicateSettings({ sampleCount: 2, finalSimilarityThreshold: 90, compareFlipped: true });
+  const sample = (hash, flippedHash, cropHash) => ({
+    darkRatio: 0,
+    lumaRange: 100,
+    full: { hash: parsePHashWords(hash), flippedHash: parsePHashWords(flippedHash) },
+    crop: cropHash ? { hash: parsePHashWords(cropHash), flippedHash: parsePHashWords(cropHash) } : null,
+  });
+  const plain = [sample('00000000000000ff', 'ff00000000000000'), sample('000000000000ff00', '00ff000000000000')];
+  const mirrored = [sample('ff00000000000000', '00000000000000ff'), sample('00ff000000000000', '000000000000ff00')];
+  assert.deepEqual(
+    (({ flipped, borderAdjusted }) => ({ flipped, borderAdjusted }))(scoreSamples(mirrored, plain, settings, pHashSampleScore)),
+    { flipped: true, borderAdjusted: false },
+  );
+  assert.equal(scoreSamples(plain, plain, settings, pHashSampleScore).flipped, false);
+  const barred = [sample('ffffffff00000000', 'ffffffff00000000', '00000000000000ff'), sample('ffff0000ffff0000', 'ffff0000ffff0000', '000000000000ff00')];
+  assert.deepEqual(
+    (({ similarity, borderAdjusted }) => ({ similarity, borderAdjusted }))(scoreSamples(barred, plain, settings, pHashSampleScore)),
+    { similarity: 100, borderAdjusted: true },
+  );
 });

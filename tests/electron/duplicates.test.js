@@ -254,6 +254,36 @@ test('a two-video group may rest on one sample and is marked low confidence', ()
   assert.deepEqual([exactOnly.comparedSamples, exactOnly.confidence], [null, 'normal']);
 });
 
+test('groups state their relation, evidence and flags', () => {
+  const videos = ['a', 'b', 'c', 'd', 'e'].map(video);
+  videos[4].durationSecs = 130;
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash', sampleCount: 3 });
+  const pair = (aId, bId, extra = {}) => ({
+    aId, bId, similarity: 98, matchType: 'phash', comparedSamples: 3, confidence: 'normal', ...extra,
+  });
+  const groups = __test__.buildGroups([['a', 'b']], [
+    pair('a', 'c', { comparedSamples: 2, borderAdjusted: true }),
+    pair('b', 'c', { flipped: true }),
+    pair('d', 'e', { partialFingerprint: true }),
+  ], videosById, settings);
+  const byMembers = Object.fromEntries(groups.map((group) => [group.videoIds.toSorted().join(''), group]));
+
+  const mixed = byMembers.abc;
+  assert.deepEqual(
+    [mixed.relation, mixed.reason, mixed.comparedSamples, mixed.sampleCount, mixed.borderAdjusted, mixed.flipped, mixed.partialFingerprint, mixed.durationDifferenceSecs],
+    ['sameSpan', 'Identical files and same content at 2 of 3 sampled moments', 2, 3, true, true, false, null],
+  );
+  const direct = byMembers.de;
+  assert.deepEqual(
+    [direct.relation, direct.reason, direct.partialFingerprint, direct.borderAdjusted, direct.durationDifferenceSecs],
+    ['sameSpan', 'Same content at 3 of 3 sampled moments', true, false, 30],
+  );
+
+  const [exact] = __test__.buildGroups([['a', 'b']], [], videosById, settings);
+  assert.deepEqual([exact.relation, exact.reason, exact.comparedSamples, exact.confidence], ['exact', 'Identical files', null, 'normal']);
+});
+
 test('group score is the weakest matched pair so it never exceeds any member pair', () => {
   const videos = ['a', 'b', 'c'].map(video);
   const videosById = new Map(videos.map((item) => [item.id, item]));

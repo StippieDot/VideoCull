@@ -1145,6 +1145,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     let hasStaticPair = false;
     let lowConfidence = false;
     let fewestComparedSamples = null;
+    const flags = { borderAdjusted: false, flipped: false, partialFingerprint: false };
     const resolveGroupPairSimilarity = (aId, bId) => {
       if (!candidate.usedRevalidation || !revalidateScore) return directSimilarity(aId, bId);
       const recomputed = revalidateScore(aId, bId);
@@ -1166,6 +1167,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
           fuzzyMatchType = fuzzyMatchType && fuzzyMatchType !== matched.matchType ? 'mixed' : matched.matchType;
           if (matched.static) hasStaticPair = true;
           if (matched.confidence === 'low') lowConfidence = true;
+          for (const flag of Object.keys(flags)) if (matched[flag]) flags[flag] = true;
           if (Number.isFinite(matched.comparedSamples)) {
             fewestComparedSamples = Math.min(fewestComparedSamples ?? Infinity, matched.comparedSamples);
           }
@@ -1173,7 +1175,7 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       }
     }
     const matchType = hasExact && fuzzyMatchType ? 'mixed' : hasExact ? 'exact' : fuzzyMatchType || settings.comparisonMode;
-    const comparisonLabel = matchType === 'phash' ? 'pHash' : 'Visual';
+    const sameContent = `same content at ${fewestComparedSamples ?? settings.sampleCount} of ${settings.sampleCount} sampled moments`;
     groups.push({
       id: stableDuplicateGroupId(ids),
       videoIds: ids,
@@ -1191,11 +1193,15 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       // The weakest evidence among the similarity matches; exact-only groups have none.
       comparedSamples: fewestComparedSamples,
       confidence: lowConfidence ? 'low' : 'normal',
+      relation: matchType === 'exact' ? 'exact' : 'sameSpan',
+      sampleCount: settings.sampleCount,
+      ...flags,
+      durationDifferenceSecs: durationDifference(videos),
       reason: matchType === 'exact'
-        ? 'Exact file match'
+        ? 'Identical files'
         : matchType === 'mixed'
-          ? 'Exact and similarity matches in one group'
-          : `${comparisonLabel}: every matched pair >= ${settings.finalSimilarityThreshold}%`,
+          ? `Identical files and ${sameContent}`
+          : `S${sameContent.slice(1)}`,
     });
   }
 
@@ -1205,6 +1211,20 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
     if (b.matchType === 'exact') return 1;
     return 0;
   });
+}
+
+// A difference this small is container rounding or a missing last frame, not a different length.
+const DURATION_DIFFERENCE_MIN_SECS = 1;
+const DURATION_DIFFERENCE_MIN_SHARE = 0.01;
+
+/** The spread of the members' lengths in seconds, or null when it is too small to mention. */
+function durationDifference(videos) {
+  const durations = videos.map((video) => Number(video.durationSecs)).filter((duration) => duration > 0);
+  if (durations.length < 2) return null;
+  const longest = Math.max(...durations);
+  const difference = longest - Math.min(...durations);
+  if (difference <= Math.max(DURATION_DIFFERENCE_MIN_SECS, longest * DURATION_DIFFERENCE_MIN_SHARE)) return null;
+  return Math.round(difference * 10) / 10;
 }
 
 function deriveVideos(videos, groups) {

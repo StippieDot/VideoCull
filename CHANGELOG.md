@@ -11,6 +11,7 @@ All notable changes to VideoCull will be documented here.
 - **Samples needed for a match** in Settings > Duplicates (Advanced): how many samples must be compared before two videos can match. **Automatic**, the default, keeps the previous rule (2, or 1 with one sample or first-sample scoring). A match decided by a single sample can only join a group of three or more when another member supports it.
 
 ### Changed
+- Duplicate groups say how they matched: **Identical files**, or **Same content at 3 of 3 sampled moments** with the fewest samples any match in the group was compared on, plus notes such as **Black bars ignored**, **Mirrored**, **Partly unreadable** or **Lengths differ by 2.0 s**. A group that rests on a single sample or on two videos that barely move is labelled **Single-frame match — check before deleting** or **Little movement — check before deleting** and listed after the other groups.
 - Comparing videos with the pHash method is much faster in large libraries: comparing 6,000 videos of similar length took 45 seconds and now takes under 2. The matches found are the same.
 - Turning **Compare flipped videos** on or off no longer makes the next duplicate run read every video again: the mirrored fingerprint is always stored.
 - On macOS, automatic processing uses up to 4 jobs at once with 16 GB of memory or more and up to 2 with less, limited to half the processor cores.

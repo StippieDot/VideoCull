@@ -369,6 +369,21 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   );
 });
 
+/** Warnings that ask for a look before deleting, and plain facts about how the group matched. */
+function groupEvidenceNotes(group: DuplicateGroup): { warnings: string[]; notes: string[] } {
+  const warnings: string[] = [];
+  if (group.confidence === 'low') {
+    if (group.comparedSamples === 1) warnings.push('Single-frame match — check before deleting');
+    if (group.static) warnings.push('Little movement — check before deleting');
+  }
+  const notes: string[] = [];
+  if (group.borderAdjusted) notes.push('Black bars ignored');
+  if (group.flipped) notes.push('Mirrored');
+  if (group.partialFingerprint) notes.push('Partly unreadable');
+  if (group.durationDifferenceSecs) notes.push(`Lengths differ by ${group.durationDifferenceSecs.toFixed(1)} s`);
+  return { warnings, notes };
+}
+
 const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
   groupView,
   onDismissGroup,
@@ -380,6 +395,7 @@ const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
   onSelectSuggestedDeletions: (groupView: DuplicateGroupView) => void;
   onOpenGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }) {
+  const { warnings, notes } = groupEvidenceNotes(groupView.group);
   return (
     <div className="duplicate-group-panel duplicate-group-panel-header">
       <div
@@ -402,6 +418,10 @@ const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
           <em>{groupView.groupSize} videos</em>
           <em>{formatSize(groupView.totalSize)}</em>
           <em>{groupView.group.reason}</em>
+          {notes.map((note) => <em key={note}>{note}</em>)}
+          {warnings.map((warning) => (
+            <span key={warning} className="duplicate-match-badge low-confidence">{warning}</span>
+          ))}
         </div>
         <div className="duplicate-group-actions">
           <button
@@ -580,7 +600,10 @@ function DuplicateGroupsView() {
       return searchText.includes(pathQuery);
     });
 
+    const isLow = (view: DuplicateGroupView) => (view.group.confidence === 'low' ? 1 : 0);
     const sorted = [...filtered].sort((a, b) => {
+      // Matches that need a check stay after the others in either sort order.
+      if (isLow(a) !== isLow(b)) return isLow(a) - isLow(b);
       let diff = 0;
       if (duplicateSortBy === 'similarity') diff = a.group.similarity - b.group.similarity;
       else if (duplicateSortBy === 'groupSize') diff = a.groupSize - b.groupSize;

@@ -450,7 +450,7 @@ function scoreSamples(samplesA, samplesB, settings, sampleScore, options = {}) {
   for (const [cropA, cropB] of CROPPED_HYPOTHESES) {
     if ((cropA && !hasCropA) || (cropB && !hasCropB)) continue;
     const result = scoreSampleVariants(samplesA, samplesB, settings, sampleScore, options, cropA, cropB);
-    if (result && (!best || result.similarity > best.similarity)) best = result;
+    if (result && (!best || result.similarity > best.similarity)) best = { ...result, borderAdjusted: true };
   }
   return best;
 }
@@ -462,6 +462,7 @@ function scoreSampleVariants(samplesA, samplesB, settings, sampleScore, { firstS
   const maxShortfall = stopBelowThreshold ? (100 - threshold) * settings.sampleCount : Infinity;
   const scores = [];
   let shortfall = 0;
+  let flipped = false;
   for (let i = 0; i < settings.sampleCount; i++) {
     const sampleA = samplesA[i];
     const sampleB = samplesB[i];
@@ -473,7 +474,13 @@ function scoreSampleVariants(samplesA, samplesB, settings, sampleScore, { firstS
     if (!variantA || !variantB) return null;
     let score = sampleScore(variantA, variantB, false);
     if (score === null) continue;
-    if (settings.compareFlipped) score = Math.max(score, sampleScore(variantA, variantB, true));
+    if (settings.compareFlipped) {
+      const flippedScore = sampleScore(variantA, variantB, true);
+      if (flippedScore !== null && flippedScore > score) {
+        score = flippedScore;
+        flipped = true;
+      }
+    }
     if (settings.requireEverySample && score < threshold) return null;
     scores.push(score);
     shortfall += 100 - score;
@@ -483,7 +490,9 @@ function scoreSampleVariants(samplesA, samplesB, settings, sampleScore, { firstS
   }
 
   if (scores.length < minimumComparedSamples(settings, firstSampleOnly)) return null;
-  return { similarity: combineSampleScores(scores, settings), scores, compared: scores.length };
+  // `flipped`: a sample matched better mirrored. `borderAdjusted` is set by scoreSamples when a
+  // variant without black bars won.
+  return { similarity: combineSampleScores(scores, settings), scores, compared: scores.length, flipped, borderAdjusted: false };
 }
 
 function durationsWithinTolerance(a, b, settings) {

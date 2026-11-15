@@ -33,6 +33,11 @@ The methods can find different results. Run them separately when coverage matter
 
 Similarity is the minimum score required to create a match. Raise it when unrelated videos appear together; lower it when known alternate encodes are missed. Visual results below roughly 95 percent deserve especially careful review.
 
+Each group says how it matched: **Identical files** for byte-for-byte copies, or **Same content at 3 of 3 sampled moments** for similarity matches, where the first number is the fewest samples any match in the group was compared on. Notes such as **Black bars ignored**, **Mirrored**, **Partly unreadable** or **Lengths differ by 2.0 s** say what was needed to find the match. Two labels ask you to look before deleting, and such groups are listed after the others:
+
+- **Single-frame match — check before deleting**: a match rests on one sample, because the others were dark, blank or unreadable, or because first-sample scoring is on.
+- **Little movement — check before deleting**: both videos show nearly the same picture throughout, such as a slideshow or a recorded screen, so they may share only a still image.
+
 The score shown for a group is its weakest match, which is the same value the Similarity setting tests. A group shown at 91 percent therefore appears in any run at 91 percent or lower, and lowering the setting only adds matches that score below the previous value. Hover a group's score to also see the average of its matches.
 
 Sample count controls how many points in each video contribute evidence. More samples take longer but reduce the chance that one common frame, intro, or title card creates a false match.

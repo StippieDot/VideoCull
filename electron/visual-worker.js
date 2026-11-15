@@ -63,7 +63,7 @@ function compareVisuals() {
     .filter((video) => sampleMap.has(video.id))
     .map((video, index) => {
       const samples = sampleMap.get(video.id);
-      return { ...video, index, samples, static: movementClass(samples, settings) === 'static' };
+      return { ...video, index, samples, static: movementClass(samples, settings) === 'static', partial: samples.some((sample) => sample.unreadable) };
     });
 
   const buckets = new Map();
@@ -102,6 +102,9 @@ function compareVisuals() {
       static: a.static && b.static,
       comparedSamples: result.compared,
       confidence: matchConfidence(result.compared, a.static && b.static),
+      borderAdjusted: result.borderAdjusted,
+      flipped: result.flipped,
+      partialFingerprint: a.partial || b.partial,
       similarity: result.similarity,
       matchType: 'visual',
     });

@@ -272,6 +272,32 @@ describe('DuplicateGroupsView behavior', () => {
     });
   });
 
+  test('labels low-confidence groups and lists them after the others', async () => {
+    useStore.setState({
+      videos: ['a', 'b', 'c', 'd'].map((id) => makeVideo(id, { duplicateGroupId: id < 'c' ? 'low' : 'normal' })),
+      duplicateGroups: [
+        makeDuplicateGroup({
+          id: 'low', videoIds: ['a', 'b'], similarity: 100, reason: 'Same content at 1 of 3 sampled moments',
+          confidence: 'low', comparedSamples: 1, partialFingerprint: true,
+        }),
+        makeDuplicateGroup({
+          id: 'normal', videoIds: ['c', 'd'], similarity: 96, reason: 'Same content at 3 of 3 sampled moments', suggestedKeeperId: 'c',
+          confidence: 'normal', comparedSamples: 3, durationDifferenceSecs: 2.5,
+        }),
+      ],
+    });
+
+    render(<DuplicateGroupsView />);
+
+    const warning = await screen.findByText('Single-frame match — check before deleting');
+    expect(screen.getByText('Partly unreadable')).toBeTruthy();
+    expect(screen.getByText('Lengths differ by 2.5 s')).toBeTruthy();
+    expect(screen.queryByText('Little movement — check before deleting')).toBeNull();
+    // Sorted by similarity, highest first, the 100% group would lead; needing a check puts it last.
+    const normalReason = screen.getByText('Same content at 3 of 3 sampled moments');
+    expect(normalReason.compareDocumentPosition(warning) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   test('dismisses a duplicate group from the current duplicate review', async () => {
     const groupId = 'group-1';
     const keeper = makeVideo('a', { duplicateGroupId: groupId });

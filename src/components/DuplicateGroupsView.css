@@ -182,6 +182,11 @@
   color: var(--color-skip);
 }
 
+.duplicate-match-badge.low-confidence {
+  background: var(--color-delete-dim);
+  color: var(--color-delete);
+}
+
 .duplicate-group-title strong {
   font-size: 15px;
 }

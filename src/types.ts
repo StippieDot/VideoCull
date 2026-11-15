@@ -294,6 +294,18 @@ export interface DuplicateGroup {
   comparedSamples?: number | null;
   /** 'low' when a match was decided by one sample or a static pair. */
   confidence?: 'normal' | 'low';
+  /** 'exact' for byte-identical files only; 'sameSpan' when similarity matches are part of the group. */
+  relation?: 'exact' | 'sameSpan';
+  /** Samples per video in the run that found the group. */
+  sampleCount?: number;
+  /** A match only reached the threshold with a video cut to the picture inside its black bars. */
+  borderAdjusted?: boolean;
+  /** A match used the mirrored picture. */
+  flipped?: boolean;
+  /** A video was compared without the samples that could not be read. */
+  partialFingerprint?: boolean;
+  /** How far the members' lengths differ, when it is more than 1 second and 1 percent. */
+  durationDifferenceSecs?: number | null;
 }
 
 export interface DuplicateProgress {

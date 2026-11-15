@@ -66,7 +66,7 @@ function comparePHashes() {
     .filter((video) => samplesByVideo.has(video.id))
     .map((video, index) => {
       const samples = samplesByVideo.get(video.id);
-      return { ...video, index, samples, static: movementClass(samples, settings) === 'static' };
+      return { ...video, index, samples, static: movementClass(samples, settings) === 'static', partial: samples.some((sample) => sample.unreadable) };
     });
 
   const pairs = [];
@@ -107,6 +107,9 @@ function comparePHashes() {
       static: a.static && b.static,
       comparedSamples: result.compared,
       confidence: matchConfidence(result.compared, a.static && b.static),
+      borderAdjusted: result.borderAdjusted,
+      flipped: result.flipped,
+      partialFingerprint: a.partial || b.partial,
     });
   };
   const reportProgress = () => {
