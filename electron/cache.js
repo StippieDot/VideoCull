@@ -315,6 +315,11 @@ const SCHEMA = `
     frame_dark_ratio REAL,
     fingerprint_key  TEXT,
     sample_state     TEXT,
+    luma_range       INTEGER,
+    border_ltrb      TEXT,
+    crop_phash_hex   TEXT,
+    crop_flipped_phash_hex TEXT,
+    crop_gray_bytes  BLOB,
     created_at       INTEGER,
     updated_at       INTEGER,
     PRIMARY KEY (video_id, sample_index)
@@ -364,6 +369,14 @@ const FINGERPRINT_SCHEMA_COLUMNS = {
   fingerprint_key: 'TEXT',
   // NULL for a decoded sample, 'unreadable' for a position FFmpeg returned no frame for.
   sample_state: 'TEXT',
+  // Highest minus lowest luma of the compared frame.
+  luma_range: 'INTEGER',
+  // Black bars found for the video as "left,top,right,bottom" in 64ths, with the hashes and frame of
+  // the picture inside them. NULL when the video has no bars.
+  border_ltrb: 'TEXT',
+  crop_phash_hex: 'TEXT',
+  crop_flipped_phash_hex: 'TEXT',
+  crop_gray_bytes: 'BLOB',
 };
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
@@ -979,8 +992,9 @@ function saveVideoFingerprints(db, videoId, fingerprints, options = {}) {
   const clear = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
   const insert = db.prepare(`
     INSERT INTO video_fingerprints
-      (video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio, fingerprint_key, sample_state, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio, fingerprint_key, sample_state,
+       luma_range, border_ltrb, crop_phash_hex, crop_flipped_phash_hex, crop_gray_bytes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const write = db.transaction(() => {
     clear.run(videoId);
@@ -995,6 +1009,11 @@ function saveVideoFingerprints(db, videoId, fingerprints, options = {}) {
         fp.frameDarkRatio ?? null,
         options.fingerprintKey ?? null,
         fp.sampleState ?? null,
+        fp.lumaRange ?? null,
+        fp.borderLtrb ?? null,
+        fp.cropPHashHex ?? null,
+        fp.cropFlippedPHashHex ?? null,
+        fp.cropGrayBytes ?? null,
         now,
         now
       );

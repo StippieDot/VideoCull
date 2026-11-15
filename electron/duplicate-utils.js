@@ -447,6 +447,7 @@ module.exports = {
   pHashSampleScore,
   graySampleScore,
   scoreSamples,
+  isDarkSample,
   rawGraySimilarity,
   frameDarkRatio,
   average,

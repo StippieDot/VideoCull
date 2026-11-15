@@ -216,11 +216,42 @@ test('multi-frame extraction args can disable ffmpeg thread limiting', () => {
 });
 
 test('fingerprint building always stores the mirrored hash', () => {
-  const grayFrame = Buffer.from(Array.from({ length: 32 * 32 }, (_, index) => (index % 32) * 8));
-  const [fingerprint] = __test__.buildFingerprintsFromGrayFrames([grayFrame], [12.5]);
+  const primary = Buffer.from(Array.from({ length: 32 * 32 }, (_, index) => (index % 32) * 8));
+  const [fingerprint] = __test__.buildFingerprintsFromGrayFrames([{ primary, analysis: Buffer.alloc(64 * 64, 128) }], [12.5]);
 
   assert.match(fingerprint.flippedPHashHex, /^[0-9a-f]{16}$/);
   assert.notEqual(fingerprint.flippedPHashHex, fingerprint.phashHex);
+});
+
+test('fingerprints carry the luma range and, for a video with black bars, the picture inside them', () => {
+  const letterboxed = (seed) => {
+    const analysis = Buffer.alloc(64 * 64);
+    for (let y = 8; y < 56; y++) {
+      for (let x = 0; x < 64; x++) analysis[y * 64 + x] = 40 + ((x * 3 + y * 5 + seed) % 200);
+    }
+    return { primary: Buffer.from(Array.from({ length: 32 * 32 }, (_, index) => (index * seed) % 256)), analysis };
+  };
+  const plain = { primary: Buffer.alloc(32 * 32, 90), analysis: Buffer.alloc(64 * 64, 90) };
+
+  const barred = __test__.buildFingerprintsFromGrayFrames([letterboxed(3), null, letterboxed(7)], [10, 20, 30]);
+  assert.deepEqual(barred.map((fingerprint) => fingerprint.borderLtrb), ['0,8,0,8', undefined, '0,8,0,8']);
+  assert.match(barred[0].cropPHashHex, /^[0-9a-f]{16}$/);
+  assert.match(barred[0].cropFlippedPHashHex, /^[0-9a-f]{16}$/);
+  assert.equal(barred[0].cropGrayBytes.length, 32 * 32);
+  // The cropped frame holds picture only: nothing of the bars is left in it.
+  assert.ok(barred[0].cropGrayBytes.every((value) => value >= 40));
+  assert.equal(barred[0].lumaRange, 255);
+  assert.equal(barred[1].sampleState, 'unreadable');
+
+  const [unbarred] = __test__.buildFingerprintsFromGrayFrames([plain, plain], [10, 20]);
+  assert.deepEqual(
+    { border: unbarred.borderLtrb, hash: unbarred.cropPHashHex, bytes: unbarred.cropGrayBytes, range: unbarred.lumaRange },
+    { border: null, hash: null, bytes: null, range: 0 },
+  );
+
+  // One frame is not enough to believe a border when the video has several samples.
+  const [single] = __test__.buildFingerprintsFromGrayFrames([letterboxed(3), null], [10, 20]);
+  assert.equal(single.borderLtrb, null);
 });
 
 test('single-frame fallback is enabled for incomplete-output and concat failures', () => {

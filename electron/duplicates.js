@@ -20,15 +20,22 @@ const {
   pHashSampleScore,
   graySampleScore,
   scoreSamples,
+  isDarkSample,
 } = require('./duplicate-utils');
+const {
+  STACKED_FRAME_BYTES,
+  cropToPrimary,
+  detectBorder,
+  lumaRange,
+  splitStackedFrame,
+  stackedFrameFilter,
+} = require('./duplicate-frames');
 
 const ONE_MIB = 1024 * 1024;
-const FRAME_BYTE_COUNT = 32 * 32;
 // Match thumbnails: allow slow seeks, but keep a hung decoder from holding a worker indefinitely.
 const FRAME_EXTRACTION_TIMEOUT_MS = 120_000;
 // Tried in this order when a sample position yields no frame; the thumbnail code uses the same offsets.
 const SAMPLE_RETRY_OFFSETS_SECS = [0, 0.25, -0.25, 0.75, -0.75];
-const FRAME_FILTER = 'scale=32:32:flags=bicubic,setsar=1,format=gray';
 // SYNC NOTE: same literal as CACHE_UNAVAILABLE_CODE in cache-service.js, which is not required here
 // because the cache is injected.
 const CACHE_UNAVAILABLE_CODE = 'CACHE_UNAVAILABLE';
@@ -115,7 +122,7 @@ function buildGrayFrameExtractionArgs(videoPath, timestamp, executionOptions = {
     '-ss', String(Math.max(0, Number(timestamp) || 0)),
     '-i', videoPath,
     '-frames:v', '1',
-    '-vf', FRAME_FILTER,
+    '-vf', stackedFrameFilter(),
     '-f', 'rawvideo',
     '-pix_fmt', 'gray',
     'pipe:1',
@@ -139,7 +146,7 @@ function buildGrayFramesExtractionArgs(videoPath, timestamps, executionOptions =
 
   const filters = [];
   for (let i = 0; i < safeTimestamps.length; i++) {
-    filters.push(`[${i}:v]${FRAME_FILTER},trim=end_frame=1,setpts=PTS-STARTPTS[v${i}]`);
+    filters.push(`[${i}:v]${stackedFrameFilter(i)},trim=end_frame=1,setpts=PTS-STARTPTS[v${i}]`);
   }
   filters.push(`${safeTimestamps.map((_, i) => `[v${i}]`).join('')}concat=n=${safeTimestamps.length}:v=1:a=0[out]`);
   args.push(
@@ -356,7 +363,7 @@ async function findExactGroups(videos, duplicateState, settings, run, sendProgre
 async function extractGrayFramesWithArgs(args, expectedFrameCount, run) {
   return runDuplicateActivity(run, async () => {
     assertNotCancelled(run);
-    const expectedBytes = expectedFrameCount * FRAME_BYTE_COUNT;
+    const expectedBytes = expectedFrameCount * STACKED_FRAME_BYTES;
     let buffer;
     try {
       buffer = await mediaProcess.runFfmpeg(args, run, {
@@ -370,8 +377,8 @@ async function extractGrayFramesWithArgs(args, expectedFrameCount, run) {
     if (buffer.length < expectedBytes) throw new Error('FFmpeg returned 0');
     const frames = [];
     for (let i = 0; i < expectedFrameCount; i++) {
-      const start = i * FRAME_BYTE_COUNT;
-      frames.push(buffer.subarray(start, start + FRAME_BYTE_COUNT));
+      const start = i * STACKED_FRAME_BYTES;
+      frames.push(splitStackedFrame(buffer.subarray(start, start + STACKED_FRAME_BYTES)));
     }
     return frames;
   });
@@ -388,13 +395,22 @@ function extractGrayFrames(videoPath, timestamps, run, executionOptions) {
   return extractGrayFramesWithArgs(args, expectedFrameCount, run);
 }
 
-// A position that could not be decoded keeps its row, marked unreadable and with empty values, so the
-// fingerprint is complete and the video is not extracted again on every run.
-function buildFingerprintsFromGrayFrames(grayFrames, timestamps) {
+// `frames` holds `{ primary, analysis }` per sample, or null for a position that could not be decoded.
+// Such a position keeps its row, marked unreadable and with empty values, so the fingerprint is
+// complete and the video is not extracted again on every run.
+function buildFingerprintsFromGrayFrames(frames, timestamps) {
+  const darkRatios = frames.map((frame) => (frame ? frameDarkRatio(frame.primary) : null));
+  // Black bars are judged over the whole video, so that one scene with dark edges is not a border.
+  const border = detectBorder(
+    frames
+      .filter((frame, index) => frame && !isDarkSample({ darkRatio: darkRatios[index] }))
+      .map((frame) => frame.analysis),
+    timestamps.length > 1 ? 2 : 1,
+  );
   const fingerprints = [];
   for (let i = 0; i < timestamps.length; i++) {
-    const grayBytes = grayFrames[i];
-    if (!grayBytes) {
+    const frame = frames[i];
+    if (!frame) {
       fingerprints.push({
         sampleIndex: i,
         timestampSecs: timestamps[i],
@@ -406,14 +422,21 @@ function buildFingerprintsFromGrayFrames(grayFrames, timestamps) {
       });
       continue;
     }
+    const cropped = border ? cropToPrimary(frame.analysis, border) : null;
     fingerprints.push({
       sampleIndex: i,
       timestampSecs: timestamps[i],
-      phashHex: calculateDctPHash(grayBytes),
+      phashHex: calculateDctPHash(frame.primary),
       // Always stored, so turning on mirrored comparison needs no new fingerprints.
-      flippedPHashHex: calculateDctPHash(flipGrayBytes(grayBytes)),
-      grayBytes,
-      frameDarkRatio: frameDarkRatio(grayBytes),
+      flippedPHashHex: calculateDctPHash(flipGrayBytes(frame.primary)),
+      grayBytes: frame.primary,
+      frameDarkRatio: darkRatios[i],
+      lumaRange: lumaRange(frame.primary),
+      // The picture without its black bars, stored beside the full frame; not compared yet.
+      borderLtrb: border ? [border.left, border.top, border.right, border.bottom].join(',') : null,
+      cropPHashHex: cropped ? calculateDctPHash(cropped) : null,
+      cropFlippedPHashHex: cropped ? calculateDctPHash(flipGrayBytes(cropped)) : null,
+      cropGrayBytes: cropped,
     });
   }
   return fingerprints;
@@ -425,7 +448,7 @@ async function extractSampleWithRetries(videoPath, timestamp, run, executionOpti
     const attemptTimestamp = Math.max(0, timestamp + offset);
     try {
       return {
-        grayBytes: await extractGrayFrame(videoPath, attemptTimestamp, run, executionOptions),
+        frame: await extractGrayFrame(videoPath, attemptTimestamp, run, executionOptions),
         timestamp: attemptTimestamp,
       };
     } catch (err) {
@@ -456,7 +479,7 @@ async function buildFingerprintsForVideo(video, settings, run, executionOptions)
       samples.push(await extractSampleWithRetries(video.path, timestamp, run, executionOptions));
     }
     if (samples.every((sample) => !sample)) throw new Error('FFmpeg returned no frame at any sample position');
-    grayFrames = samples.map((sample) => sample?.grayBytes ?? null);
+    grayFrames = samples.map((sample) => sample?.frame ?? null);
     timestamps = samples.map((sample, index) => sample?.timestamp ?? timestamps[index]);
   }
   assertNotCancelled(run);

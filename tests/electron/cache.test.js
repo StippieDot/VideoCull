@@ -195,30 +195,40 @@ test('an unreadable sample is stored with its marker and completes the fingerpri
   try {
     insertVideo(db, 'a', path.join(folderPath, 'a.mp4'));
     cache.saveVideoFingerprints(db, 'a', [
-      { sampleIndex: 0, timestampSecs: 10, phashHex: 'ffff000000000000', flippedPHashHex: 'ffff000000000001', grayBytes: Buffer.from([1]), frameDarkRatio: 0.1 },
+      {
+        sampleIndex: 0, timestampSecs: 10, phashHex: 'ffff000000000000', flippedPHashHex: 'ffff000000000001', grayBytes: Buffer.from([1]), frameDarkRatio: 0.1,
+        lumaRange: 200, borderLtrb: '0,8,0,8', cropPHashHex: 'aaaa000000000000', cropFlippedPHashHex: 'bbbb000000000000', cropGrayBytes: Buffer.from([2, 3]),
+      },
       { sampleIndex: 1, timestampSecs: 20, phashHex: '', flippedPHashHex: null, grayBytes: Buffer.alloc(0), frameDarkRatio: null, sampleState: 'unreadable' },
     ], { fingerprintKey: 'key' });
 
     assert.equal(cache.getFingerprintCounts(db, ['a'], 2, { fingerprintKey: 'key' }).get('a'), true);
     assert.deepEqual(cache.loadPHashRows(db, ['a'], 2, { fingerprintKey: 'key' }).map((row) => row.sample_state), [null, 'unreadable']);
     assert.deepEqual(cache.loadGraySampleRows(db, ['a'], 2, { fingerprintKey: 'key' }).map((row) => row.sample_state), [null, 'unreadable']);
+    const stored = db.prepare('SELECT luma_range, border_ltrb, crop_phash_hex, crop_flipped_phash_hex, crop_gray_bytes FROM video_fingerprints ORDER BY sample_index').all();
+    assert.deepEqual(stored[0], {
+      luma_range: 200, border_ltrb: '0,8,0,8', crop_phash_hex: 'aaaa000000000000', crop_flipped_phash_hex: 'bbbb000000000000', crop_gray_bytes: Buffer.from([2, 3]),
+    });
+    assert.deepEqual(stored[1], { luma_range: null, border_ltrb: null, crop_phash_hex: null, crop_flipped_phash_hex: null, crop_gray_bytes: null });
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
 
-test('a fingerprint table from an earlier version gains the sample state column', async (t) => {
+test('a fingerprint table from an earlier version gains the newer columns', async (t) => {
   const setup = await openTempCacheDb(t);
   if (!setup) return;
   const { tempRoot, folderPath, db } = setup;
 
   try {
     db.exec('ALTER TABLE video_fingerprints DROP COLUMN sample_state');
+    db.exec('ALTER TABLE video_fingerprints DROP COLUMN crop_gray_bytes');
     cache.closeDb();
     const reopened = cache.openDb(folderPath, { mode: 'centralised', centralCachePath: tempRoot });
     const columns = reopened.prepare('PRAGMA table_info(video_fingerprints)').all().map((row) => row.name);
     assert.ok(columns.includes('sample_state'));
+    assert.ok(columns.includes('crop_gray_bytes'));
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });

@@ -7,7 +7,9 @@ const { ffmpegPath } = require('../../electron/media-tools');
 const { __test__ } = require('../../electron/duplicates');
 const { getSamplingTimestamps } = require('../../electron/duplicate-utils');
 
-const FRAME_BYTES = 32 * 32;
+const { detectBorder, splitStackedFrame } = require('../../electron/duplicate-frames');
+
+const FRAME_BYTES = 64 * 96;
 // Runs only where the bundled FFmpeg has been fetched (npm run fetch:ffmpeg or a dev checkout).
 const hasFfmpeg = fs.existsSync(ffmpegPath);
 
@@ -51,6 +53,26 @@ test.skipIf(!hasFfmpeg)('a file and its remux with another time base are sampled
     // Just after a frame boundary the same seek lands one frame apart; this is what the alignment prevents.
     const unaligned = [1.01, 5.22];
     assert.ok(!frames(clip, unaligned).equals(frames(remux, unaligned)));
+  } finally {
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+}, 60_000);
+
+test.skipIf(!hasFfmpeg)('the compared 32x32 frame is unchanged by the added analysis frame, which shows the black bars', () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'videocull-frames-'));
+  const clip = path.join(folder, 'letterbox.mp4');
+  try {
+    // 320x180 picture with 30-pixel bars above and below: 8 of 64 lines each.
+    run(['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25', '-t', '4', '-vf', 'pad=320:240:0:30', '-pix_fmt', 'yuv420p', clip]);
+    const analysisFrames = [];
+    for (const timestamp of [1, 2, 3]) {
+      const { primary, analysis } = splitStackedFrame(run(__test__.buildGrayFramesExtractionArgs(clip, [timestamp])));
+      const before = run(['-v', 'error', '-ss', String(timestamp), '-i', clip, '-frames:v', '1',
+        '-vf', 'scale=32:32:flags=bicubic,setsar=1,format=gray', '-f', 'rawvideo', '-pix_fmt', 'gray', '-threads', '1', 'pipe:1']);
+      assert.ok(primary.equals(before), `frame at ${timestamp} s`);
+      analysisFrames.push(analysis);
+    }
+    assert.deepEqual(detectBorder(analysisFrames, 2), { left: 0, top: 8, right: 0, bottom: 8 });
   } finally {
     fs.rmSync(folder, { recursive: true, force: true });
   }

@@ -5,7 +5,7 @@ const { CACHE_UNAVAILABLE_CODE } = require('../../electron/cache-service');
 const { normalizeDuplicateSettings } = require('../../electron/duplicate-utils');
 const { processingPause } = require('../../electron/processing-pause');
 
-const FRAME_BYTES = 32 * 32;
+const FRAME_BYTES = 64 * 96;
 const modulePaths = ['duplicates', 'media-process'].map((name) => require.resolve(`../../electron/${name}`));
 
 // FFmpeg is started through a destructured `spawn`, so the fake has to be in place while the
