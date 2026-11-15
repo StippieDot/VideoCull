@@ -332,6 +332,31 @@ export interface DuplicateGroup {
   pairs?: DuplicateGroupPair[];
 }
 
+/** The session stored duplicate results belong to: its folders, subfolder choice and run scope. */
+export interface DuplicateResultsSession {
+  folders: string[];
+  includeSubfolders: boolean;
+  scope: 'all' | 'filtered';
+}
+
+/** What is kept of a duplicate run between sessions: IDs, scores and choices, never paths. */
+export interface StoredDuplicateResults {
+  version: 1;
+  createdAt: number;
+  settingsKey: string;
+  scope: 'all' | 'filtered';
+  /** Every video that took part, with the size and modification time it had. */
+  videos: Array<{ id: string; sizeBytes: number; date: number }>;
+  groups: Array<Pick<DuplicateGroup, 'id' | 'videoIds' | 'manualSuggestedKeeperId' | 'sampleCount' | 'matchType' | 'unreadableSamples'> & {
+    pairs: DuplicateGroupPair[];
+  }>;
+}
+
+export type LoadedDuplicateResults =
+  | { status: 'ok'; results: StoredDuplicateResults }
+  | { status: 'outdated' }
+  | { status: 'none' };
+
 export interface DuplicateProgress {
   stage: 'Preparing' | 'Building fingerprints' | 'Checking exact matches' | 'Comparing pHashes' | 'Finding candidates' | 'Confirming visual matches' | 'Building groups' | 'Done' | 'Cancelled' | 'Error';
   current: number;
@@ -341,6 +366,8 @@ export interface DuplicateProgress {
 
 export interface DuplicateResult {
   status: 'ok' | 'cancelled' | 'error';
+  /** Identity of the matching settings of the run; stored results with another key are discarded. */
+  settingsKey?: string;
   groups?: DuplicateGroup[];
   videos?: Array<Pick<Video, 'id' | 'duplicateGroupId' | 'duplicateSimilarity' | 'duplicateMatchType' | 'duplicateSuggestedKeeper' | 'duplicateExact' | 'duplicateGroupSize' | 'duplicateMatchReason'>>;
   stats?: {
@@ -810,6 +837,9 @@ export interface ElectronAPI {
   saveCacheAtomic: (dirPath: string, videos: Video[]) => Promise<boolean>;
   saveReviewState: (dirPath: string, updates: VideoReviewUpdate[]) => Promise<boolean>;
   clearCache: (dirPath: string) => Promise<boolean>;
+  saveDuplicateResults: (session: DuplicateResultsSession, results: StoredDuplicateResults) => Promise<boolean>;
+  loadDuplicateResults: (session: DuplicateResultsSession) => Promise<LoadedDuplicateResults>;
+  clearDuplicateResults: (session: DuplicateResultsSession) => Promise<boolean>;
   batchDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
   permanentlyDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
   exportReport: (videos: Video[], dirPaths: string[]) => Promise<'saved' | 'cancelled' | 'error'>;

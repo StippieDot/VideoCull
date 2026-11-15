@@ -8,6 +8,7 @@ const { processingPause } = require('./processing-pause');
 const {
   normalizeDuplicateSettings,
   getDuplicateFingerprintKey,
+  getDuplicateResultsSettingsKey,
   getSamplingTimestamps,
   calculateDctPHash,
   flipGrayBytes,
@@ -1404,6 +1405,8 @@ async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cach
   progress(sendProgress, 'Building groups', { current: 1, total: 1 });
   const result = {
     groups,
+    // Stored results are valid only while the matching settings keep this key.
+    settingsKey: getDuplicateResultsSettingsKey(settings),
     videos: deriveVideos(safeVideos, groups),
     settings,
     stats: {

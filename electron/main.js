@@ -19,6 +19,8 @@ const {
   rememberDuplicateSignatures,
   DuplicateCancelledError,
 } = require('./duplicates');
+const { getDuplicateResultsSettingsKey } = require('./duplicate-utils');
+const { createDuplicateResultsStore } = require('./duplicate-results-store');
 const { processingPause } = require('./processing-pause');
 const { createRendererSaveFlush } = require('./renderer-save-flush');
 const { createPowerManager } = require('./power-manager');
@@ -2723,6 +2725,61 @@ ipcMain.handle('save-cache-atomic', (_event, dirPath, videos) => {
   }));
 });
 
+let duplicateResultsStore = null;
+
+function getDuplicateResultsStore() {
+  // Created on first use: the profile decides the data folder only after start-up.
+  duplicateResultsStore ??= createDuplicateResultsStore({ rootDir: app.getPath('userData'), writeJsonFile });
+  return duplicateResultsStore;
+}
+
+/** A session as the renderer names it, accepted only for folders that are loaded now. */
+function validDuplicateResultsSession(session) {
+  if (!session || typeof session !== 'object') return null;
+  const { folders, includeSubfolders, scope } = session;
+  if (!Array.isArray(folders) || folders.length === 0) return null;
+  if (!folders.every((folder) => typeof folder === 'string' && currentScanDirs.has(folder))) return null;
+  if (typeof includeSubfolders !== 'boolean' || (scope !== 'all' && scope !== 'filtered')) return null;
+  return { folders: [...folders], includeSubfolders, scope };
+}
+
+ipcMain.handle('save-duplicate-results', async (_event, session, results) => {
+  const validSession = validDuplicateResultsSession(session);
+  if (!validSession) return false;
+  try {
+    return await getDuplicateResultsStore().save(validSession, results);
+  } catch (error) {
+    log.warn('[duplicate-results] Could not save:', error?.message || error);
+    return false;
+  }
+});
+
+ipcMain.handle('load-duplicate-results', async (_event, session) => {
+  const validSession = validDuplicateResultsSession(session);
+  if (!validSession) return { status: 'none' };
+  try {
+    const results = await getDuplicateResultsStore().load(validSession);
+    if (!results) return { status: 'none' };
+    const appConfig = await readJsonFile(CONFIG_FILE, {});
+    if (results.settingsKey !== getDuplicateResultsSettingsKey(appConfig.duplicates ?? {})) {
+      // A matching setting or the engine changed since: these pairs might no longer match.
+      await getDuplicateResultsStore().remove(validSession);
+      return { status: 'outdated' };
+    }
+    return { status: 'ok', results };
+  } catch (error) {
+    log.warn('[duplicate-results] Could not load:', error?.message || error);
+    return { status: 'none' };
+  }
+});
+
+ipcMain.handle('clear-duplicate-results', async (_event, session) => {
+  const validSession = validDuplicateResultsSession(session);
+  if (!validSession) return false;
+  await getDuplicateResultsStore().remove(validSession).catch(() => {});
+  return true;
+});
+
 ipcMain.handle('clear-cache', async (event, dirPath) => {
   log.warn(`[clear-cache] called for: ${dirPath}`);
   log.warn(`[clear-cache] stack:\n${new Error().stack}`);
@@ -2738,6 +2795,8 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   cancelActiveDuplicateRun();
   scanGeneration += 1;
   clearDuplicateSessionCache();
+  // Stored files name their session only by a hash, so the ones for this folder cannot be picked out.
+  await getDuplicateResultsStore().clearAll().catch((error) => log.warn('[clear-cache] Could not clear duplicate results:', error?.message || error));
 
   const cacheOptions = await getCacheOptions();
   const knownCacheFolders = await getKnownCacheFolders();

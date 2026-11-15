@@ -24,6 +24,9 @@ const {
   chooseSuggestedKeeper,
   rankKeeperCandidates,
   DEFAULT_DUPLICATE_SETTINGS,
+  getDuplicateResultsSettingsKey,
+  MATCHING_SETTING_KEYS,
+  NON_MATCHING_SETTING_KEYS,
 } = require('../../electron/duplicate-utils');
 
 test('even sampling uses N+1 spacing', () => {
@@ -843,4 +846,20 @@ test('the audio rule demotes a copy without sound only when its details were rea
   assert.deepEqual([ranked.keeper.id, ranked.rule, ranked.reasons], ['sound', 'audio', { silent: 'has no audio track' }]);
   assert.equal(rankKeeperCandidates([withSound, { ...silent, metadataVersion: null }], order).keeper.id, 'silent', 'unprobed ties');
   assert.equal(rankKeeperCandidates([withSound, { ...silent, metadataFailedAt: 1 }], order).keeper.id, 'silent', 'failed probe ties');
+});
+
+test('every duplicate setting is listed as matching or not matching, once', () => {
+  const listed = [...MATCHING_SETTING_KEYS, ...NON_MATCHING_SETTING_KEYS];
+  assert.deepEqual([...listed].sort(), Object.keys(DEFAULT_DUPLICATE_SETTINGS).sort());
+  assert.equal(new Set(listed).size, listed.length);
+});
+
+test('the stored-results key changes with matching settings only', () => {
+  const base = getDuplicateResultsSettingsKey({});
+  assert.equal(getDuplicateResultsSettingsKey({ keeperOrder: ['size'], ignoredDuplicatePairs: ['0123456789abcdef|fedcba9876543210'] }), base);
+  assert.notEqual(getDuplicateResultsSettingsKey({ finalSimilarityThreshold: 90 }), base);
+  assert.notEqual(getDuplicateResultsSettingsKey({ sampleCount: 5 }), base);
+  assert.notEqual(getDuplicateResultsSettingsKey({ skipBlankFrames: false }), base);
+  // Separate thresholds count by the value they resolve to.
+  assert.equal(getDuplicateResultsSettingsKey({ separateSimilarityThresholds: true, phashSimilarityThreshold: 95 }), base);
 });

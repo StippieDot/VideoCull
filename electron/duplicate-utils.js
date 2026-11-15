@@ -1,6 +1,8 @@
 // SYNC NOTE: These defaults are duplicated in src/keybind-defaults.ts (DEFAULT_DUPLICATE_SETTINGS).
 // The renderer copy is needed for instant settings UI feedback. Keep both in sync when changing defaults.
 // The rankKeeperCandidates / chooseSuggestedKeeper functions below are also mirrored in src/store.ts.
+const crypto = require('node:crypto');
+
 const DEFAULT_DUPLICATE_SETTINGS = {
   enabled: true,
   runAfterScan: false,
@@ -179,6 +181,37 @@ function getDuplicateFingerprintKey(input = {}) {
     bounds.end,
     maxDuration,
   ].join('|');
+}
+
+// Raise when a change to the comparison or grouping code can change which pairs match, so stored
+// results made by the previous code are discarded.
+const DUPLICATE_ALGORITHM_VERSION = 1;
+
+// Every duplicate setting is in exactly one of these lists (a test checks it), so a new setting cannot
+// be forgotten. Matching settings change which pairs match; the others only change what is done with
+// the result, are resolved into another setting, or are handled when results are loaded.
+const MATCHING_SETTING_KEYS = [
+  'comparisonMode', 'sampleCount', 'samplingWindow', 'customStartPercent', 'customEndPercent',
+  'finalSimilarityThreshold', 'phashFirstSampleOnly', 'durationTolerancePercent', 'requireEverySample',
+  'ignoreBlackPixels', 'ignoreWhitePixels', 'compareFlipped', 'matchBlackBars', 'skipBlankFrames',
+  'matchPartlyUnreadable', 'minComparedSamples', 'maxSamplingDuration',
+];
+const NON_MATCHING_SETTING_KEYS = [
+  'enabled', 'runAfterScan', 'defaultScope', 'protectKeep', 'protectSkipped', 'keeperOrder', 'codecOrder',
+  // Resolved into finalSimilarityThreshold by normalizeDuplicateSettings.
+  'separateSimilarityThresholds', 'phashSimilarityThreshold', 'visualSimilarityThreshold',
+  'retryFailedFingerprintExtraction', 'checkpointIntervalMinutes',
+  // Applied to stored results when they are loaded: an ignored pair is removed and its group rebuilt.
+  'ignoredDuplicatePairs',
+  'phashDefaultApplied', 'averageSamplesDefaultApplied',
+];
+
+/** Identity of everything that decides which pairs match; stored results with another key are discarded. */
+function getDuplicateResultsSettingsKey(input = {}) {
+  const settings = normalizeDuplicateSettings(input);
+  const matching = Object.fromEntries(MATCHING_SETTING_KEYS.map((key) => [key, settings[key]]));
+  const identity = JSON.stringify([DUPLICATE_ALGORITHM_VERSION, getDuplicateFingerprintKey(settings), matching]);
+  return crypto.createHash('sha1').update(identity).digest('hex');
 }
 
 function calculateDctPHash(grayBytes, size = 32, lowSize = 8) {
@@ -653,6 +686,9 @@ module.exports = {
   normalizeDuplicateSettings,
   getSamplingTimestamps,
   getDuplicateFingerprintKey,
+  getDuplicateResultsSettingsKey,
+  MATCHING_SETTING_KEYS,
+  NON_MATCHING_SETTING_KEYS,
   calculateDctPHash,
   flipGrayBytes,
   parsePHashWords,
