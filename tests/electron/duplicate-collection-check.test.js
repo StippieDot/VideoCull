@@ -55,3 +55,11 @@ test('--set passes duplicate settings with JSON values where they parse', () => 
   );
   assert.throws(() => settingOverrides(['--set', 'noValue']), /key=value/);
 });
+
+test('an unconfirmed relation is shown but not judged', () => {
+  const { rows, summary } = compareWithManifest({
+    files: [{ file: 'a.mp4', seed: 'a', expect: 'exact' }, { file: 'a__upload.mp4', seed: 'a', expect: 'check' }],
+  }, () => ({ similarity: 97 }));
+  assert.equal(rows[0].expected, null);
+  assert.deepEqual(summary, { found: 0, missed: 0, wrong: 0, correctlyApart: 0 });
+});

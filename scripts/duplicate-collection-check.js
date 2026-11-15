@@ -135,7 +135,8 @@ function compareWithManifest(manifest, groupOf) {
   for (const entry of manifest.files) {
     const reference = referenceBySeed.get(entry.seed);
     if (reference === entry.file) continue;
-    const expected = entry.expect === 'exact' || entry.expect === 'sameSpan';
+    // 'check': a relation nobody has confirmed yet, shown but not judged.
+    const expected = entry.expect === 'check' ? null : entry.expect === 'exact' || entry.expect === 'sameSpan';
     const found = together(entry.file, reference);
     rows.push({
       kind: entry.expect,
