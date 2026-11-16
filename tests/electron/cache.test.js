@@ -323,6 +323,7 @@ test('cache saves invalidate duplicate data when the same video id refers to a c
     for (const video of [syncVideo, chunkedVideo]) {
       insertFingerprint(db, video.id, 0);
       cache.saveVideoBurst(db, video.id, 'burst-key', 'ok', '[]');
+      cache.saveAudioFingerprint(db, video.id, 'audio-key', 'ok', Buffer.alloc(8, 1));
       cache.updateVideoSignatures(db, video.id, { quick: `${video.id}-quick` });
       cache.markFingerprintFailure(db, video.id, { fingerprintKey: 'settings-a' });
     }
@@ -332,6 +333,7 @@ test('cache saves invalidate duplicate data when the same video id refers to a c
 
     assert.deepEqual(db.prepare('SELECT video_id FROM video_fingerprints').all(), []);
     assert.deepEqual(db.prepare('SELECT video_id FROM video_bursts').all(), []);
+    assert.deepEqual(db.prepare('SELECT video_id FROM video_audio_fingerprints').all(), []);
     assert.deepEqual(
       db.prepare(`
         SELECT id, file_signature_quick, signature_updated_at, fingerprint_failed_at, fingerprint_failure_key
@@ -342,6 +344,32 @@ test('cache saves invalidate duplicate data when the same video id refers to a c
         { id: 'sync-id', file_signature_quick: null, signature_updated_at: null, fingerprint_failed_at: null, fingerprint_failure_key: null },
       ],
     );
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('sound fingerprints are stored per video with their state and read back under their key', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    cache.saveCache(db, ['a', 'b'].map((id) => buildCachedVideo(id, path.join(folderPath, `${id}.mp4`))));
+    cache.saveAudioFingerprint(db, 'a', 'key-1', 'ok', Uint8Array.from([1, 0, 0, 0, 2, 0, 0, 0]));
+    // Only ok rows keep words.
+    cache.saveAudioFingerprint(db, 'b', 'key-1', 'silent', Buffer.alloc(4));
+    cache.saveAudioFingerprint(db, 'b', 'key-1', 'unknown-state', null);
+
+    const rows = cache.loadAudioFingerprints(db, ['a', 'b'], 'key-1');
+    assert.deepEqual(rows.map(({ video_id, state, word_count }) => ({ video_id, state, word_count })), [
+      { video_id: 'a', state: 'ok', word_count: 2 },
+      { video_id: 'b', state: 'silent', word_count: 0 },
+    ]);
+    assert.equal(rows[0].words.readUInt32LE(4), 2);
+    assert.equal(rows[1].words, null);
+    assert.deepEqual(cache.loadAudioFingerprints(db, ['a'], 'key-2'), []);
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });

@@ -53,6 +53,27 @@ describe('runProcess', () => {
     assert.equal(stdout.toString(), 'hello');
   });
 
+  test('streams stdout of any size to a callback without keeping it', async () => {
+    let bytes = 0;
+    const stdout = await runProcess(node, ['-e', 'for (let i = 0; i < 64; i++) process.stdout.write(Buffer.alloc(65536, 1))'], createRunToken(), {
+      maxStdoutBytes: 1024,
+      timeoutMs: 5000,
+      onStdout: (chunk) => { bytes += chunk.length; },
+    });
+    assert.equal(bytes, 64 * 65536);
+    assert.equal(stdout.length, 0);
+  });
+
+  test('a streaming run that produces nothing for the timeout fails with ETIMEDOUT', async () => {
+    await assert.rejects(
+      runProcess(node, ['-e', 'process.stdout.write("a"); setTimeout(() => {}, 5000)'], createRunToken(), {
+        timeoutMs: 300,
+        onStdout: () => {},
+      }),
+      (error) => error.code === 'ETIMEDOUT',
+    );
+  });
+
   test('rejects with the exit code and stderr tail', async () => {
     await assert.rejects(
       runProcess(node, ['-e', 'process.stderr.write("broken input"); process.exit(3)'], createRunToken()),

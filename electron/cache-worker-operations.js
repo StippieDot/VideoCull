@@ -148,6 +148,12 @@ async function executeCacheOperation(operation, args) {
       return run(folderPath, cacheOptions, (db) => (
         cache.markFingerprintFailure(db, args.videoId, { fingerprintKey: args.fingerprintKey })
       ));
+    case 'loadAudioFingerprints':
+      return run(folderPath, cacheOptions, (db) => cache.loadAudioFingerprints(db, args.videoIds, args.audioKey));
+    case 'saveAudioFingerprint':
+      return run(folderPath, cacheOptions, (db) => (
+        cache.saveAudioFingerprint(db, args.videoId, args.audioKey, args.state, args.words)
+      ));
     case 'loadVideoBursts':
       return run(folderPath, cacheOptions, (db) => cache.loadVideoBursts(db, args.videoIds, args.burstKey));
     case 'saveVideoBurst':

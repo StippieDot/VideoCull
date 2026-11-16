@@ -274,6 +274,8 @@ export interface DuplicateSettings {
   /** 'auto': pairs up to nearMissRange points below the similarity value are double-checked (pHash). */
   verifyNearMatches: 'auto' | 'off';
   nearMissRange: 5 | 10 | 15 | 20 | 25 | 30;
+  /** 'sound': the sidebar offers Find partial clips, which reads the sound of every video once. */
+  partialClips: 'off' | 'sound';
   maxSamplingDuration: number;
   retryFailedFingerprintExtraction: boolean;
   checkpointIntervalMinutes: number;

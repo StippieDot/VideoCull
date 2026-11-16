@@ -476,14 +476,16 @@ async function extractSampleWithRetries(videoPath, timestamp, run, executionOpti
   return null;
 }
 
-function buildBurstExtractionArgs(videoPath, startSecs, executionOptions = {}) {
+const NEAR_MISS_BURST = { leadSecs: BURST_LEAD_SECS, fps: BURST_FPS, count: BURST_FRAME_COUNT };
+
+function buildBurstExtractionArgs(videoPath, startSecs, executionOptions = {}, burst = NEAR_MISS_BURST) {
   const args = [
     '-v', 'error',
     '-ss', String(startSecs),
     '-i', videoPath,
-    // The fingerprint's frame filter, five times a second from the start time.
-    '-vf', `fps=${BURST_FPS},${stackedFrameFilter()}`,
-    '-frames:v', String(BURST_FRAME_COUNT),
+    // The fingerprint's frame filter, `burst.fps` times a second from the start time.
+    '-vf', `fps=${burst.fps},${stackedFrameFilter()}`,
+    '-frames:v', String(burst.count),
     '-f', 'rawvideo',
     '-pix_fmt', 'gray',
   ];
@@ -492,16 +494,16 @@ function buildBurstExtractionArgs(videoPath, startSecs, executionOptions = {}) {
   return args;
 }
 
-/** The frames around one sample time, each with its offset from that time; fewer near the end. */
-async function extractBurstFrames(videoPath, timestamp, run, executionOptions) {
-  const start = Math.max(0, timestamp - BURST_LEAD_SECS);
-  const args = buildBurstExtractionArgs(videoPath, start, executionOptions);
+/** The frames around one time, each with its offset from that time; fewer near the end. */
+async function extractBurstFrames(videoPath, timestamp, run, executionOptions, burst = NEAR_MISS_BURST) {
+  const start = Math.max(0, timestamp - burst.leadSecs);
+  const args = buildBurstExtractionArgs(videoPath, start, executionOptions, burst);
   const buffer = await runDuplicateActivity(run, async () => {
     assertNotCancelled(run);
     try {
       return await mediaProcess.runFfmpeg(args, run, {
         timeoutMs: FRAME_EXTRACTION_TIMEOUT_MS,
-        maxStdoutBytes: BURST_FRAME_COUNT * STACKED_FRAME_BYTES,
+        maxStdoutBytes: burst.count * STACKED_FRAME_BYTES,
       });
     } catch (error) {
       assertNotCancelled(run);
@@ -511,7 +513,7 @@ async function extractBurstFrames(videoPath, timestamp, run, executionOptions) {
   const frames = [];
   for (let i = 0; (i + 1) * STACKED_FRAME_BYTES <= buffer.length; i++) {
     frames.push({
-      offset: start - timestamp + i / BURST_FPS,
+      offset: start - timestamp + i / burst.fps,
       ...splitStackedFrame(buffer.subarray(i * STACKED_FRAME_BYTES, (i + 1) * STACKED_FRAME_BYTES)),
     });
   }
@@ -1688,8 +1690,15 @@ function clearDuplicateSessionCache() {
 
 module.exports = {
   DuplicateCancelledError,
+  CACHE_UNAVAILABLE_CODE,
   clearDuplicateSessionCache,
   createDuplicateRun,
+  // Shared with partial clip detection, which runs under the same pause, cancellation and frame rules.
+  assertNotCancelled,
+  extractBurstFrames,
+  extractGrayFrame,
+  runDuplicateActivity,
+  waitForDuplicateProcessing,
   findDuplicates,
   forgetDuplicateVideos,
   rememberDuplicateSignatures,

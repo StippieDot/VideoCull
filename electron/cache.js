@@ -335,6 +335,17 @@ const SCHEMA = `
     created_at  INTEGER
   );
 
+  -- The sound of each video as words, for finding partial clips. state is ok, noAudio, silent,
+  -- repetitive or failed; only ok rows hold words.
+  CREATE TABLE IF NOT EXISTS video_audio_fingerprints (
+    video_id   TEXT PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+    audio_key  TEXT NOT NULL,
+    state      TEXT NOT NULL,
+    words      BLOB,
+    word_count INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER
+  );
+
   CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
   CREATE INDEX IF NOT EXISTS idx_videos_duplicate_hash ON videos(duplicate_hash);
   CREATE INDEX IF NOT EXISTS idx_videos_metadata_date ON videos(metadata_date);
@@ -686,6 +697,7 @@ function createVideoBatchWriter(db, videos, options = {}) {
   );
   const deleteFingerprints = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
   const deleteBursts = db.prepare('DELETE FROM video_bursts WHERE video_id = ?');
+  const deleteAudio = db.prepare('DELETE FROM video_audio_fingerprints WHERE video_id = ?');
 
   const write = db.transaction((vids) => {
     for (const v of vids) {
@@ -694,6 +706,7 @@ function createVideoBatchWriter(db, videos, options = {}) {
       if (changedFingerprintIds.has(v.id)) {
         deleteFingerprints.run(v.id);
         deleteBursts.run(v.id);
+        deleteAudio.run(v.id);
       }
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
@@ -1063,6 +1076,29 @@ function saveVideoBurst(db, videoId, burstKey, state, framesJson) {
   `).run(videoId, burstKey, state, state === 'ok' ? framesJson : null, Date.now());
 }
 
+const AUDIO_STATES = new Set(['ok', 'noAudio', 'silent', 'repetitive', 'failed']);
+
+/** Stored sound fingerprints under `audioKey`, as `{ video_id, state, words, word_count }` rows. */
+function loadAudioFingerprints(db, videoIds, audioKey) {
+  if (!videoIds.length) return [];
+  return batchSelectIn(
+    db,
+    'SELECT video_id, audio_key, state, words, word_count FROM video_audio_fingerprints WHERE video_id IN (__IN__)',
+    videoIds,
+  ).filter((row) => row.audio_key === audioKey);
+}
+
+function saveAudioFingerprint(db, videoId, audioKey, state, words) {
+  if (!videoId || !audioKey || !AUDIO_STATES.has(state)) return;
+  const stored = state === 'ok' && words ? Buffer.from(words) : null;
+  db.prepare(`
+    INSERT INTO video_audio_fingerprints (video_id, audio_key, state, words, word_count, created_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(video_id) DO UPDATE SET
+      audio_key = excluded.audio_key, state = excluded.state, words = excluded.words,
+      word_count = excluded.word_count, created_at = excluded.created_at
+  `).run(videoId, audioKey, state, stored, stored ? Math.floor(stored.length / 4) : 0, Date.now());
+}
+
 function loadFingerprintFailureIds(db, videoIds, options = {}) {
   if (!videoIds.length) return new Set();
   const rows = [];
@@ -1342,6 +1378,8 @@ module.exports = {
   markFingerprintFailure,
   loadVideoBursts,
   saveVideoBurst,
+  loadAudioFingerprints,
+  saveAudioFingerprint,
   loadFingerprintFailureIds,
   markMetadataFailure,
   loadRecentMetadataFailureIds,

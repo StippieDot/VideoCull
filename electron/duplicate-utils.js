@@ -34,6 +34,8 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   // Points below the similarity value within which a pair is double-checked. 20 catches the measured
   // half-second shifts (77–79 % at 95) and admitted 40 pairs among 14,500 videos on a real library.
   nearMissRange: 20,
+  // 'sound': Find partial clips reads the sound of every video once; started by hand only.
+  partialClips: 'off',
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,
@@ -76,6 +78,7 @@ function normalizeDuplicateSettings(input = {}) {
     matchPartlyUnreadable: input.matchPartlyUnreadable !== false,
     minComparedSamples: [1, 2, 3].includes(Number(input.minComparedSamples)) ? Number(input.minComparedSamples) : 'auto',
     verifyNearMatches: input.verifyNearMatches === 'off' ? 'off' : 'auto',
+    partialClips: input.partialClips === 'sound' ? 'sound' : 'off',
     nearMissRange: NEAR_MISS_RANGES.has(Number(input.nearMissRange)) ? Number(input.nearMissRange) : DEFAULT_DUPLICATE_SETTINGS.nearMissRange,
     durationTolerancePercent: clamp(input.durationTolerancePercent ?? DEFAULT_DUPLICATE_SETTINGS.durationTolerancePercent, 0, 100),
     checkpointIntervalMinutes: clamp(input.checkpointIntervalMinutes ?? DEFAULT_DUPLICATE_SETTINGS.checkpointIntervalMinutes, 0, 60),
@@ -214,6 +217,8 @@ const NON_MATCHING_SETTING_KEYS = [
   // Resolved into finalSimilarityThreshold by normalizeDuplicateSettings.
   'separateSimilarityThresholds', 'phashSimilarityThreshold', 'visualSimilarityThreshold',
   'retryFailedFingerprintExtraction', 'checkpointIntervalMinutes',
+  // Partial clips are a separate result with its own run; duplicate matching does not depend on it.
+  'partialClips',
   // Applied to stored results when they are loaded: an ignored pair is removed and its group rebuilt.
   'ignoredDuplicatePairs',
   'phashDefaultApplied', 'averageSamplesDefaultApplied',
