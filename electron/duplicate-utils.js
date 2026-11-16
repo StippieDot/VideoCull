@@ -301,14 +301,23 @@ function pHashSimilarity(hashA, hashB) {
   return ((64 - distance) / 64) * 100;
 }
 
-function rawGraySimilarity(bytesA, bytesB, options = {}) {
+const GRAY_FRAME_SIZE = 32;
+
+/**
+ * Mean absolute difference of two gray frames as a similarity. `mirrorA` compares the mirrored picture
+ * of A by reading its columns right to left: the same arithmetic as comparing flipGrayBytes(A), without
+ * a mirrored copy of every frame.
+ */
+function rawGraySimilarity(bytesA, bytesB, options = {}, mirrorA = false) {
   if (!bytesA || !bytesB || bytesA.length !== bytesB.length || bytesA.length === 0) return 0;
+  if (mirrorA && bytesA.length !== GRAY_FRAME_SIZE * GRAY_FRAME_SIZE) return rawGraySimilarity(flipGrayBytes(bytesA), bytesB, options);
   let total = 0;
   let count = 0;
   const ignoreBlack = Boolean(options.ignoreBlackPixels);
   const ignoreWhite = Boolean(options.ignoreWhitePixels);
   for (let i = 0; i < bytesA.length; i++) {
-    const a = bytesA[i];
+    const column = i % GRAY_FRAME_SIZE;
+    const a = mirrorA ? bytesA[i - column + (GRAY_FRAME_SIZE - 1 - column)] : bytesA[i];
     const b = bytesB[i];
     if (ignoreBlack && a <= 5 && b <= 5) continue;
     if (ignoreWhite && a >= 250 && b >= 250) continue;
@@ -317,6 +326,34 @@ function rawGraySimilarity(bytesA, bytesB, options = {}) {
   }
   if (count === 0) return 100;
   return Math.max(0, 100 - (total / count / 255) * 100);
+}
+
+/**
+ * Moves the gray frames of `rows` into one shared block of memory and points each row at its slice.
+ * The comparison worker then receives the frames without a copy (a view on shared memory is passed by
+ * reference), and the regrouping and the session cache read the same block. Rows are changed in place
+ * on purpose: the session cache holds these same row objects, so their own buffers are freed too.
+ * Frames that already live in shared memory, from an earlier run, stay where they are.
+ */
+function packGrayRows(rows) {
+  const fields = ['gray_bytes', 'crop_gray_bytes'];
+  const needsPacking = (bytes) => bytes && bytes.byteLength > 0 && !(bytes.buffer instanceof SharedArrayBuffer);
+  let total = 0;
+  for (const row of rows) for (const field of fields) if (needsPacking(row[field])) total += row[field].byteLength;
+  if (total === 0) return 0;
+  const shared = new SharedArrayBuffer(total);
+  let offset = 0;
+  for (const row of rows) {
+    for (const field of fields) {
+      const bytes = row[field];
+      if (!needsPacking(bytes)) continue;
+      const view = Buffer.from(shared, offset, bytes.byteLength);
+      view.set(bytes);
+      row[field] = view;
+      offset += bytes.byteLength;
+    }
+  }
+  return total;
 }
 
 function frameDarkRatio(grayBytes) {
@@ -446,8 +483,8 @@ function pHashSamplesByVideo(rows, sampleCount, keepPartlyUnreadable = false) {
 
 function graySamplesByVideo(rows, sampleCount, keepPartlyUnreadable = false) {
   return groupSamplesByVideo(rows, sampleCount, (row) => ({
-    full: { bytes: row.gray_bytes, flippedBytes: null },
-    crop: row.crop_gray_bytes ? { bytes: row.crop_gray_bytes, flippedBytes: null } : null,
+    full: { bytes: row.gray_bytes },
+    crop: row.crop_gray_bytes ? { bytes: row.crop_gray_bytes } : null,
   }), keepPartlyUnreadable);
 }
 
@@ -458,10 +495,7 @@ function pHashSampleScore(variantA, variantB, flipped) {
 function graySampleScore(settings) {
   return (variantA, variantB, flipped) => {
     if (!variantA.bytes || !variantB.bytes) return null;
-    if (!flipped) return rawGraySimilarity(variantA.bytes, variantB.bytes, settings);
-    // The mirrored frame is kept on the sample: one video is compared against many others.
-    variantA.flippedBytes ??= flipGrayBytes(variantA.bytes);
-    return rawGraySimilarity(variantA.flippedBytes, variantB.bytes, settings);
+    return rawGraySimilarity(variantA.bytes, variantB.bytes, settings, flipped);
   };
 }
 
@@ -729,6 +763,7 @@ module.exports = {
   matchConfidence,
   minimumComparedSamples,
   rawGraySimilarity,
+  packGrayRows,
   frameDarkRatio,
   average,
   combineSampleScores,

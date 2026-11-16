@@ -863,3 +863,55 @@ test('the stored-results key changes with matching settings only', () => {
   // Separate thresholds count by the value they resolve to.
   assert.equal(getDuplicateResultsSettingsKey({ separateSimilarityThresholds: true, phashSimilarityThreshold: 95 }), base);
 });
+
+describe('gray frames in shared memory', () => {
+  const { flipGrayBytes, graySampleScore, normalizeDuplicateSettings, packGrayRows, rawGraySimilarity } = require('../../electron/duplicate-utils');
+
+  function randomFrame(seed) {
+    let state = seed >>> 0;
+    return Buffer.from(Array.from({ length: 1024 }, () => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      // Many pure blacks and whites, so the ignore options matter.
+      const value = state >>> 24;
+      return value < 20 ? 0 : value > 235 ? 255 : value;
+    }));
+  }
+
+  test('the mirrored comparison reads the frame backwards with the same result as a mirrored copy', () => {
+    for (const ignoreBlackPixels of [false, true]) {
+      for (const ignoreWhitePixels of [false, true]) {
+        const options = { ignoreBlackPixels, ignoreWhitePixels };
+        for (let seed = 1; seed <= 20; seed++) {
+          const a = randomFrame(seed);
+          const b = seed % 2 ? flipGrayBytes(a) : randomFrame(seed + 100);
+          expect(rawGraySimilarity(a, b, options, true)).toBe(rawGraySimilarity(flipGrayBytes(a), b, options));
+        }
+      }
+    }
+    const score = graySampleScore(normalizeDuplicateSettings({ comparisonMode: 'visual' }));
+    const variant = { bytes: randomFrame(5) };
+    expect(score(variant, { bytes: flipGrayBytes(variant.bytes) }, true)).toBe(100);
+    // No mirrored copy is kept on the sample.
+    expect(Object.keys(variant)).toEqual(['bytes']);
+  });
+
+  test('packing moves every frame into one shared block, keeps the bytes and leaves packed frames alone', () => {
+    const rows = [1, 2, 3].map((seed) => ({
+      video_id: `v${seed}`, gray_bytes: randomFrame(seed), crop_gray_bytes: seed === 2 ? randomFrame(50) : null,
+    }));
+    const copies = rows.map((row) => [Buffer.from(row.gray_bytes), row.crop_gray_bytes && Buffer.from(row.crop_gray_bytes)]);
+    expect(packGrayRows(rows)).toBe(4 * 1024);
+    const shared = rows[0].gray_bytes.buffer;
+    expect(shared).toBeInstanceOf(SharedArrayBuffer);
+    rows.forEach((row, i) => {
+      expect(row.gray_bytes.buffer).toBe(shared);
+      expect(Buffer.compare(row.gray_bytes, copies[i][0])).toBe(0);
+    });
+    expect(Buffer.compare(rows[1].crop_gray_bytes, copies[1][1])).toBe(0);
+    expect(rows[0].crop_gray_bytes).toBeNull();
+    // A second run packs only frames that are not shared yet.
+    rows.push({ video_id: 'v4', gray_bytes: randomFrame(4) });
+    expect(packGrayRows(rows)).toBe(1024);
+    expect(rows[0].gray_bytes.buffer).toBe(shared);
+  });
+});

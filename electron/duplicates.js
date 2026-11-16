@@ -26,6 +26,7 @@ const {
   getDuplicateBurstKey,
   matchConfidence,
   movementClass,
+  packGrayRows,
 } = require('./duplicate-utils');
 const {
   BURST_FPS,
@@ -1646,8 +1647,10 @@ async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cach
   } else {
     assertNotCancelled(run);
     const grayRows = comparisonRows;
+    // One copy of the frames for the worker, the regrouping and the session cache together.
+    const packedBytes = packGrayRows(grayRows);
     comparisonData = { mode: 'visual', rows: grayRows };
-    duplicateLog('Gray sample rows loaded', { rows: grayRows.length });
+    duplicateLog('Gray sample rows loaded', { rows: grayRows.length, packedBytes });
     const visualPairs = await runVisualWorker(representativeVideos, grayRows, settings, run, sendProgress);
     similarityPairs = expandRepresentativePairs(visualPairs, representativeIndex.membersByRepresentativeId);
   }
@@ -1708,6 +1711,7 @@ module.exports = {
     buildBurstForVideo,
     buildFingerprintsForVideo,
     createSimilarityRevalidator,
+    runVisualWorker,
     verifyNearMisses,
     buildGroups,
     stableDuplicateGroupId,
