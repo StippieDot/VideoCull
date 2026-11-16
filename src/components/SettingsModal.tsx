@@ -209,13 +209,11 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
   })();
 
   // SYNC NOTE: the conditions of nearMissVerificationEnabled in electron/pair-verifier.js.
-  const nearMissUnavailableReason = localSettings.duplicates.comparisonMode !== 'phash'
-    ? 'Works with pHash comparison only.'
-    : localSettings.duplicates.sampleCount < 2
-      ? 'Needs at least 2 samples.'
-      : localSettings.duplicates.phashFirstSampleOnly
-        ? 'Not available with First sample scoring.'
-        : null;
+  const nearMissUnavailableReason = localSettings.duplicates.sampleCount < 2
+    ? 'Needs at least 2 samples.'
+    : localSettings.duplicates.comparisonMode === 'phash' && localSettings.duplicates.phashFirstSampleOnly
+      ? 'Not available with First sample scoring.'
+      : null;
 
   // One select over two stored flags: first-sample-only (pHash) wins over every-sample.
   const sampleScoring = localSettings.duplicates.phashFirstSampleOnly
@@ -771,7 +769,7 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                         />
                         <SettingRow
                           label="Double-check near misses"
-                          help={nearMissUnavailableReason ?? 'Looks again at pairs that score just below your similarity value, using frames around each sample. Finds copies that start a moment earlier or later. A wider range finds more and reads frames of more videos once; they are kept for later runs.'}
+                          help={nearMissUnavailableReason ?? 'Looks again at pairs that score just below your similarity value, using frames around each sample. Finds copies that start a moment earlier or later. A wider range finds more and reads frames of more videos once; they are kept for later runs. Visual similarity uses at most 5 points, since its scores of unrelated videos run close to the threshold.'}
                         >
                           {(id) => (
                             <select

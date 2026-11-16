@@ -194,9 +194,10 @@ function getDuplicateFingerprintKey(input = {}) {
 }
 
 // Bursts are read at the fingerprint's sample times, so they are valid only beside those fingerprints.
-// 'hash': the burst stores hashes only, which serves pHash mode.
+// 'hash' bursts store hashes and serve pHash mode; 'gray' bursts store the frames for Visual mode.
 function getDuplicateBurstKey(input = {}) {
-  return `${getDuplicateFingerprintKey(input)}|b1|hash`;
+  const settings = normalizeDuplicateSettings(input);
+  return `${getDuplicateFingerprintKey(settings)}|b1|${settings.comparisonMode === 'visual' ? 'gray' : 'hash'}`;
 }
 
 // Raise when a change to the comparison or grouping code can change which pairs match, so stored

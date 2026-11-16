@@ -223,11 +223,11 @@ function createCacheService({
     saveAudioFingerprint: (folderPath, cacheOptions, videoId, audioKey, state, words) => scopedRequest(
       'saveAudioFingerprint', folderPath, cacheOptions, { videoId, audioKey, state, words },
     ),
-    loadVideoBursts: (folderPath, cacheOptions, videoIds, burstKey) => scopedRequest(
-      'loadVideoBursts', folderPath, cacheOptions, { videoIds, burstKey },
+    loadVideoBursts: (folderPath, cacheOptions, videoIds, burstKey, kind) => scopedRequest(
+      'loadVideoBursts', folderPath, cacheOptions, { videoIds, burstKey, kind },
     ),
-    saveVideoBurst: (folderPath, cacheOptions, videoId, burstKey, state, framesJson) => scopedRequest(
-      'saveVideoBurst', folderPath, cacheOptions, { videoId, burstKey, state, framesJson },
+    saveVideoBurst: (folderPath, cacheOptions, videoId, burstKey, state, framesJson, kind) => scopedRequest(
+      'saveVideoBurst', folderPath, cacheOptions, { videoId, burstKey, state, framesJson, kind },
     ),
   };
 }

@@ -155,10 +155,10 @@ async function executeCacheOperation(operation, args) {
         cache.saveAudioFingerprint(db, args.videoId, args.audioKey, args.state, args.words)
       ));
     case 'loadVideoBursts':
-      return run(folderPath, cacheOptions, (db) => cache.loadVideoBursts(db, args.videoIds, args.burstKey));
+      return run(folderPath, cacheOptions, (db) => cache.loadVideoBursts(db, args.videoIds, args.burstKey, args.kind));
     case 'saveVideoBurst':
       return run(folderPath, cacheOptions, (db) => (
-        cache.saveVideoBurst(db, args.videoId, args.burstKey, args.state, args.framesJson)
+        cache.saveVideoBurst(db, args.videoId, args.burstKey, args.state, args.framesJson, args.kind)
       ));
     default:
       throw new Error(`Unknown cache operation: ${operation}`);

@@ -34,6 +34,7 @@ const {
   BURST_LEAD_SECS,
   MANY_NEAR_MISSES_PER_VIDEO,
   burstBudget,
+  burstKind,
   nearMissVerificationEnabled,
   parseBurst,
   selectBurstVideos,
@@ -532,7 +533,7 @@ function parseBorder(value) {
  * A burst per sample position of the video, read at the times its fingerprint was taken and cut to the
  * same black bars. Returns the stored form (see parseBurst); throws when no position gave a frame.
  */
-async function buildBurstForVideo(video, rows, run, executionOptions) {
+async function buildBurstForVideo(video, rows, run, executionOptions, kind = 'hash') {
   const ordered = [...rows].sort((a, b) => a.sample_index - b.sample_index);
   const border = parseBorder(ordered.find((row) => row.border_ltrb)?.border_ltrb);
   const samples = [];
@@ -551,6 +552,9 @@ async function buildBurstForVideo(video, rows, run, executionOptions) {
     }
     samples.push(frames.length === 0 ? null : frames.map((frame) => {
       const cropped = border ? cropToPrimary(frame.analysis, border) : null;
+      if (kind === 'gray') {
+        return [Math.round(frame.offset * 1000), Buffer.from(frame.primary).toString('base64'), cropped ? Buffer.from(cropped).toString('base64') : null];
+      }
       return [
         Math.round(frame.offset * 1000),
         calculateDctPHash(frame.primary),
@@ -705,13 +709,13 @@ async function backfillFingerprints(videos, duplicateState, settings, run, sendP
   });
 }
 
-async function loadBursts(videos, burstKey, settings, cacheAccess, cacheOptions, run) {
+async function loadBursts(videos, burstKey, kind, settings, cacheAccess, cacheOptions, run) {
   const bursts = new Map();
   for (const [folderPath, folderVideos] of groupVideosByFolder(videos)) {
     await waitForDuplicateProcessing(run);
-    const rows = await cacheAccess.loadVideoBursts(folderPath, cacheOptions, folderVideos.map((video) => video.id), burstKey);
+    const rows = await cacheAccess.loadVideoBursts(folderPath, cacheOptions, folderVideos.map((video) => video.id), burstKey, kind);
     for (const row of rows) {
-      const burst = parseBurst(row.state, row.frames_json);
+      const burst = parseBurst(row.state, row.frames_json, kind);
       // A failed burst is read again only when failed extractions are retried.
       if (!burst || (burst.state === 'failed' && settings.retryFailedFingerprintExtraction)) continue;
       bursts.set(row.video_id, burst);
@@ -720,7 +724,7 @@ async function loadBursts(videos, burstKey, settings, cacheAccess, cacheOptions,
   return bursts;
 }
 
-async function extractBursts(videos, rowsByVideo, bursts, burstKey, run, sendProgress, maxConcurrency, executionOptions, cacheAccess, cacheOptions) {
+async function extractBursts(videos, rowsByVideo, bursts, burstKey, kind, run, sendProgress, maxConcurrency, executionOptions, cacheAccess, cacheOptions) {
   progress(sendProgress, 'Verifying matches', { current: 0, total: videos.length });
   const takeNextVideo = createQueueCursor(videos);
   let current = 0;
@@ -733,10 +737,10 @@ async function extractBursts(videos, rowsByVideo, bursts, burstKey, run, sendPro
       if (!video) break;
       const folderPath = path.dirname(video.path);
       try {
-        const framesJson = await buildBurstForVideo(video, rowsByVideo.get(video.id) ?? [], run, executionOptions);
+        const framesJson = await buildBurstForVideo(video, rowsByVideo.get(video.id) ?? [], run, executionOptions, kind);
         assertNotCancelled(run);
-        await cacheAccess.saveVideoBurst(folderPath, cacheOptions, video.id, burstKey, 'ok', framesJson);
-        bursts.set(video.id, parseBurst('ok', framesJson));
+        await cacheAccess.saveVideoBurst(folderPath, cacheOptions, video.id, burstKey, 'ok', framesJson, kind);
+        bursts.set(video.id, parseBurst('ok', framesJson, kind));
       } catch (err) {
         if (err instanceof DuplicateCancelledError) throw err;
         if (err?.code === CACHE_UNAVAILABLE_CODE) {
@@ -747,8 +751,8 @@ async function extractBursts(videos, rowsByVideo, bursts, burstKey, run, sendPro
         // As with fingerprints, a timeout is not stored, so the video is tried again next run.
         if (!run?.cancelled && err?.code !== 'ETIMEDOUT') {
           try {
-            await cacheAccess.saveVideoBurst(folderPath, cacheOptions, video.id, burstKey, 'failed', null);
-            bursts.set(video.id, parseBurst('failed', null));
+            await cacheAccess.saveVideoBurst(folderPath, cacheOptions, video.id, burstKey, 'failed', null, kind);
+            bursts.set(video.id, parseBurst('failed', null, kind));
           } catch (markError) {
             duplicateLog('Could not record burst failure', { path: video.path, error: markError?.message || String(markError) });
           }
@@ -787,18 +791,23 @@ async function verifyNearMisses({ comparison, videos, rows, settings, videoCount
   const involvedRows = rows.filter((row) => involvedIds.has(row.video_id));
   const rowsByVideo = groupBy(involvedRows, (row) => row.video_id);
   const burstKey = getDuplicateBurstKey(settings);
+  const kind = burstKind(settings);
+  const visual = kind === 'gray';
 
-  const bursts = await loadBursts([...videosById.values()], burstKey, settings, cacheAccess, cacheOptions, run);
+  const bursts = await loadBursts([...videosById.values()], burstKey, kind, settings, cacheAccess, cacheOptions, run);
   const budget = checkAll ? Infinity : burstBudget(videoCount);
   const selected = selectBurstVideos(nearMisses, (id) => bursts.get(id)?.state, budget)
     .map((id) => videosById.get(id))
     .filter(Boolean);
   const failed = selected.length > 0
-    ? await extractBursts(selected, rowsByVideo, bursts, burstKey, run, sendProgress, maxConcurrency, executionOptions, cacheAccess, cacheOptions)
+    ? await extractBursts(selected, rowsByVideo, bursts, burstKey, kind, run, sendProgress, maxConcurrency, executionOptions, cacheAccess, cacheOptions)
     : 0;
   assertNotCancelled(run);
 
-  const samplesByVideo = pHashSamplesByVideo(involvedRows, settings.sampleCount, settings.matchPartlyUnreadable);
+  const samplesByVideo = visual
+    ? graySamplesByVideo(involvedRows, settings.sampleCount, settings.matchPartlyUnreadable)
+    : pHashSamplesByVideo(involvedRows, settings.sampleCount, settings.matchPartlyUnreadable);
+  const sampleScore = visual ? graySampleScore(settings) : pHashSampleScore;
   for (const pair of nearMisses) {
     const samplesA = samplesByVideo.get(pair.aId);
     const samplesB = samplesByVideo.get(pair.bId);
@@ -810,6 +819,7 @@ async function verifyNearMisses({ comparison, videos, rows, settings, videoCount
       { samples: samplesA, burst: bursts.get(pair.aId), durationSecs: Number(videosById.get(pair.aId)?.durationSecs) },
       { samples: samplesB, burst: bursts.get(pair.bId), durationSecs: Number(videosById.get(pair.bId)?.durationSecs) },
       settings,
+      sampleScore,
     );
     stats[result.outcome]++;
     if (result.outcome !== 'accepted') continue;
@@ -817,7 +827,8 @@ async function verifyNearMisses({ comparison, videos, rows, settings, videoCount
     acceptedPairs.push({
       aId: pair.aId,
       bId: pair.bId,
-      pHashSimilarity: result.similarity,
+      // The fields each worker gives its own matches.
+      ...(visual ? { similarity: result.similarity, matchType: 'visual', pHashSimilarity: null } : { pHashSimilarity: result.similarity }),
       comparedSamples: result.compared,
       static: isStatic,
       confidence: matchConfidence(result.compared, isStatic),
@@ -957,7 +968,7 @@ function runVisualWorker(videos, grayRows, settings, run, sendProgress) {
           bucketed: message.bucketed,
           buckets: message.bucketCount,
         });
-        resolve(message.pairs ?? []);
+        resolve({ pairs: message.pairs ?? [], nearMisses: message.nearMisses ?? [], nearMissCount: message.nearMissCount ?? 0 });
       } else if (message.type === 'error') {
         run.worker = null;
         pauseHandle.release();
@@ -1651,7 +1662,27 @@ async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cach
     const packedBytes = packGrayRows(grayRows);
     comparisonData = { mode: 'visual', rows: grayRows };
     duplicateLog('Gray sample rows loaded', { rows: grayRows.length, packedBytes });
-    const visualPairs = await runVisualWorker(representativeVideos, grayRows, settings, run, sendProgress);
+    const comparison = await runVisualWorker(representativeVideos, grayRows, settings, run, sendProgress);
+    let visualPairs = comparison.pairs;
+    if (nearMissVerificationEnabled(settings)) {
+      const verified = await verifyNearMisses({
+        comparison,
+        videos: representativeVideos,
+        rows: grayRows,
+        settings,
+        videoCount: safeVideos.length,
+        checkAll: checkAllNearMisses,
+        run,
+        sendProgress,
+        maxConcurrency,
+        executionOptions,
+        cacheAccess,
+        cacheOptions,
+      });
+      verification = verified.stats;
+      visualPairs = [...visualPairs, ...verified.acceptedPairs];
+      comparisonData.verifiedScores = new Map(verified.acceptedPairs.map((pair) => [internalPairKey(pair.aId, pair.bId), pair.similarity]));
+    }
     similarityPairs = expandRepresentativePairs(visualPairs, representativeIndex.membersByRepresentativeId);
   }
   assertNotCancelled(run);

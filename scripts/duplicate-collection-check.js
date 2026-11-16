@@ -75,13 +75,13 @@ function createMemoryCache() {
       const stored = state === 'ok' && words ? Buffer.from(words) : null;
       audio.set(videoId, { video_id: videoId, audio_key: audioKey, state, words: stored, word_count: stored ? stored.length / 4 : 0 });
     },
-    async loadVideoBursts(_folder, _options, videoIds, burstKey) {
+    async loadVideoBursts(_folder, _options, videoIds, burstKey, kind = 'hash') {
       return videoIds
-        .map((videoId) => bursts.get(videoId))
+        .map((videoId) => bursts.get(`${kind}|${videoId}`))
         .filter((row) => row?.burst_key === burstKey);
     },
-    async saveVideoBurst(_folder, _options, videoId, burstKey, state, framesJson) {
-      bursts.set(videoId, { video_id: videoId, burst_key: burstKey, state, frames_json: framesJson });
+    async saveVideoBurst(_folder, _options, videoId, burstKey, state, framesJson, kind = 'hash') {
+      bursts.set(`${kind}|${videoId}`, { video_id: videoId, burst_key: burstKey, state, frames_json: framesJson });
     },
   };
 }

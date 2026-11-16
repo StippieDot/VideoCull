@@ -8,6 +8,12 @@ const {
   matchConfidence,
   durationsWithinTolerance,
 } = require('./duplicate-utils');
+const {
+  PENDING_LIST_LIMIT,
+  keepBestNearMisses,
+  nearMissFloor,
+  nearMissVerificationEnabled,
+} = require('./pair-verifier');
 
 const BUCKET_SIZE_SECS = 1;
 const pauseView = workerData.pauseSignal ? new Int32Array(workerData.pauseSignal) : null;
@@ -90,10 +96,22 @@ function compareVisuals() {
     if ((total & 1023) === 0) pauseCheckpoint();
   });
 
+  const verify = nearMissVerificationEnabled(settings);
+  const floor = verify ? nearMissFloor(settings) : undefined;
+  let nearMisses = [];
+  let nearMissCount = 0;
   const comparePair = (a, b) => {
     if (!durationsWithinTolerance(a, b, settings)) return;
-    const result = scoreSamples(a.samples, b.samples, settings, sampleScore, { stopBelowThreshold: true });
-    if (!result || result.similarity < settings.finalSimilarityThreshold) return;
+    const result = scoreSamples(a.samples, b.samples, settings, sampleScore, { stopBelowThreshold: true, floor });
+    if (!result) return;
+    if (result.similarity < settings.finalSimilarityThreshold) {
+      if (!verify || result.similarity < floor || result.compared < 2) return;
+      nearMissCount++;
+      nearMisses.push({ aId: a.id, bId: b.id, similarity: result.similarity });
+      // Trimmed in steps so the list never holds more than twice the limit.
+      if (nearMisses.length >= PENDING_LIST_LIMIT * 2) nearMisses = keepBestNearMisses(nearMisses);
+      return;
+    }
     pairs.push({
       aId: a.id,
       bId: b.id,
@@ -128,6 +146,8 @@ function compareVisuals() {
   parentPort.postMessage({
     type: 'done',
     pairs,
+    nearMisses: keepBestNearMisses(nearMisses),
+    nearMissCount,
     compared,
     total,
     bucketed: true,

@@ -24,20 +24,28 @@ const BURST_BUDGET_SHARE = 0.1;
 const PENDING_LIST_LIMIT = 50_000;
 // More near misses than this per video: the band is not selective for this library.
 const MANY_NEAR_MISSES_PER_VIDEO = 5;
+// Visual scores of unrelated pictures run high (76-83 %), so its band never reaches further than this
+// below the threshold. Measured on the collection at 95 and 90: no unrelated pair was accepted.
+const VISUAL_NEAR_MISS_RANGE = 5;
 // (crop A, crop B); (full, full) first so it wins a tie.
 const HYPOTHESES = [[false, false], [true, false], [false, true], [true, true]];
 
-/** Near misses are double-checked in pHash mode with at least two samples scored on all of them. */
+/** Near misses are double-checked with at least two samples, all of them scored. */
 function nearMissVerificationEnabled(settings) {
   return settings.verifyNearMatches === 'auto'
-    && settings.comparisonMode === 'phash'
     && settings.sampleCount >= 2
-    && !settings.phashFirstSampleOnly;
+    && !(settings.comparisonMode === 'phash' && settings.phashFirstSampleOnly);
 }
 
 /** The lowest score that is still a near miss; pairs from here up to the threshold are double-checked. */
 function nearMissFloor(settings) {
-  return Math.max(0, settings.finalSimilarityThreshold - settings.nearMissRange);
+  const range = settings.comparisonMode === 'visual' ? Math.min(settings.nearMissRange, VISUAL_NEAR_MISS_RANGE) : settings.nearMissRange;
+  return Math.max(0, settings.finalSimilarityThreshold - range);
+}
+
+/** The kind of burst a comparison method reads: hashes for pHash, gray frames for Visual similarity. */
+function burstKind(settings) {
+  return settings.comparisonMode === 'visual' ? 'gray' : 'hash';
 }
 
 /** Bursts a normal run may extract: about a tenth of the videos, at least 20 and at most 200. */
@@ -53,10 +61,11 @@ function keepBestNearMisses(nearMisses, limit = PENDING_LIST_LIMIT) {
 
 /**
  * Stored burst → what the verifier reads. `framesJson` holds, per sample index, null or a list of
- * [offset in ms from the sample time, hash, mirrored hash, cropped hash, cropped mirrored hash].
+ * frames: [offset in ms from the sample time, hash, mirrored hash, cropped hash, cropped mirrored hash]
+ * for 'hash' bursts, [offset in ms, gray frame, cropped gray frame] in base64 for 'gray' bursts.
  * Returns null for unreadable stored data, which then counts as no burst.
  */
-function parseBurst(state, framesJson) {
+function parseBurst(state, framesJson, kind = 'hash') {
   if (state !== 'ok') return { state: 'failed', samples: [] };
   let stored;
   try {
@@ -65,6 +74,16 @@ function parseBurst(state, framesJson) {
     return null;
   }
   if (!Array.isArray(stored)) return null;
+  if (kind === 'gray') {
+    const samples = stored.map((frames) => (Array.isArray(frames) && frames.length > 0
+      ? frames.map(([offsetMs, full, crop]) => ({
+          offset: Number(offsetMs) / 1000,
+          full: { bytes: Buffer.from(String(full), 'base64') },
+          crop: crop ? { bytes: Buffer.from(String(crop), 'base64') } : null,
+        }))
+      : null));
+    return { state: 'ok', samples };
+  }
   const samples = stored.map((frames) => (Array.isArray(frames) && frames.length > 0
     ? frames.map(([offsetMs, hash, flipped, cropHash, cropFlipped]) => ({
         offset: Number(offsetMs) / 1000,
@@ -89,10 +108,10 @@ function nearestFrame(frames, offset) {
   return Math.max(0, Math.min(frames.length - 1, index));
 }
 
-function scoreFrame(variantA, variantB, settings) {
-  const score = pHashSampleScore(variantA, variantB, false);
+function scoreFrame(variantA, variantB, settings, sampleScore) {
+  const score = sampleScore(variantA, variantB, false);
   if (!settings.compareFlipped) return { score, flipped: false };
-  const flippedScore = pHashSampleScore(variantA, variantB, true);
+  const flippedScore = sampleScore(variantA, variantB, true);
   return flippedScore > score ? { score: flippedScore, flipped: true } : { score, flipped: false };
 }
 
@@ -102,7 +121,7 @@ function scoreFrame(variantA, variantB, settings) {
  * the share of the video between them times the difference in length. Returns the best alignment over
  * the border hypotheses, or null when fewer than two positions can be compared.
  */
-function verifyDirection(samplesA, burstB, durationA, durationB, settings) {
+function verifyDirection(samplesA, burstB, durationA, durationB, settings, sampleScore = pHashSampleScore) {
   const positions = [];
   for (let i = 0; i < samplesA.length; i++) {
     if (isUsableSample(samplesA[i], settings) && burstB.samples[i]?.length) positions.push(i);
@@ -122,7 +141,7 @@ function verifyDirection(samplesA, burstB, durationA, durationB, settings) {
     const variantsA = positions.map((index) => (cropA ? samplesA[index].crop : samplesA[index].full));
     if (variantsA.some((variant) => !variant)) continue;
     if (framesB.some((frames) => frames.some((frame) => !(cropB ? frame.crop : frame.full)))) continue;
-    const scored = framesB.map((frames, p) => frames.map((frame) => scoreFrame(variantsA[p], cropB ? frame.crop : frame.full, settings)));
+    const scored = framesB.map((frames, p) => frames.map((frame) => scoreFrame(variantsA[p], cropB ? frame.crop : frame.full, settings, sampleScore)));
 
     for (const first of framesB[0]) {
       for (const last of framesB[framesB.length - 1]) {
@@ -161,13 +180,13 @@ function verifyDirection(samplesA, burstB, durationA, durationB, settings) {
  * is 'pending' while a side has no burst yet, and 'unverifiable' when both failed.
  * SYNC NOTE: selectBurstVideos treats a pair as settled under the same rule.
  */
-function verifyNearMiss(a, b, settings) {
+function verifyNearMiss(a, b, settings, sampleScore = pHashSampleScore) {
   if (a.burst?.state !== 'ok' && b.burst?.state !== 'ok') {
     return { outcome: !a.burst || !b.burst ? 'pending' : 'unverifiable' };
   }
   const results = [];
-  if (b.burst?.state === 'ok') results.push(verifyDirection(a.samples, b.burst, a.durationSecs, b.durationSecs, settings));
-  if (a.burst?.state === 'ok') results.push(verifyDirection(b.samples, a.burst, b.durationSecs, a.durationSecs, settings));
+  if (b.burst?.state === 'ok') results.push(verifyDirection(a.samples, b.burst, a.durationSecs, b.durationSecs, settings, sampleScore));
+  if (a.burst?.state === 'ok') results.push(verifyDirection(b.samples, a.burst, b.durationSecs, a.durationSecs, settings, sampleScore));
   const best = results.filter(Boolean).sort((x, y) => y.similarity - x.similarity)[0];
   if (!best) return { outcome: 'unverifiable' };
   const needed = Math.max(2, minimumComparedSamples(settings, false));
@@ -228,6 +247,7 @@ module.exports = {
   PENDING_LIST_LIMIT,
   nearMissVerificationEnabled,
   nearMissFloor,
+  burstKind,
   burstBudget,
   keepBestNearMisses,
   parseBurst,

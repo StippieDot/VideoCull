@@ -1,9 +1,11 @@
 const {
+  graySampleScore,
   normalizeDuplicateSettings,
   parsePHashWords,
 } = require('../../electron/duplicate-utils');
 const {
   burstBudget,
+  burstKind,
   keepBestNearMisses,
   nearMissFloor,
   nearMissVerificationEnabled,
@@ -136,6 +138,23 @@ describe('timing verification of near misses', () => {
     expect(parseBurst('failed', null)).toEqual({ state: 'failed', samples: [] });
     expect(parseBurst('ok', '{')).toBeNull();
   });
+
+  test('a gray burst reads back its frames and is verified with the Visual score', () => {
+    const frame = (seed) => Buffer.from(Array.from({ length: 1024 }, (_, i) => (i * seed + seed * 7) % 256));
+    const json = JSON.stringify([0, 1, 2].map((index) => [-200, 0, 200].map((offsetMs) => [
+      offsetMs,
+      (offsetMs === 200 ? frame(index + 1) : frame(index + 50)).toString('base64'),
+      null,
+    ])));
+    const burst = parseBurst('ok', json, 'gray');
+    expect(Buffer.compare(burst.samples[1][2].full.bytes, frame(2))).toBe(0);
+    const visual = settings({ comparisonMode: 'visual' });
+    const graySamples = [0, 1, 2].map((index) => ({
+      index, darkRatio: 0, unreadable: false, lumaRange: 200, timestamp: (index + 1) * 25, full: { bytes: frame(index + 1) }, crop: null,
+    }));
+    const result = verifyNearMiss({ samples: graySamples, durationSecs: 100 }, { samples: graySamples, burst, durationSecs: 100 }, visual, graySampleScore(visual));
+    expect(result).toMatchObject({ outcome: 'accepted', similarity: 100, shiftSecs: 0.2 });
+  });
 });
 
 describe('near-miss selection and budget', () => {
@@ -178,9 +197,11 @@ describe('near-miss selection and budget', () => {
     expect(keepBestNearMisses(list, 10)).toBe(list);
   });
 
-  test('verification is off in Visual mode, with one sample, with first-sample scoring and when switched off', () => {
+  test('verification is off with one sample, with first-sample scoring and when switched off', () => {
     expect(nearMissVerificationEnabled(settings())).toBe(true);
-    expect(nearMissVerificationEnabled(settings({ comparisonMode: 'visual' }))).toBe(false);
+    expect(nearMissVerificationEnabled(settings({ comparisonMode: 'visual' }))).toBe(true);
+    // First-sample scoring is a pHash setting; Visual similarity always averages.
+    expect(nearMissVerificationEnabled(settings({ comparisonMode: 'visual', phashFirstSampleOnly: true }))).toBe(true);
     expect(nearMissVerificationEnabled(settings({ sampleCount: 1 }))).toBe(false);
     expect(nearMissVerificationEnabled(settings({ phashFirstSampleOnly: true }))).toBe(false);
     expect(nearMissVerificationEnabled(settings({ verifyNearMatches: 'off' }))).toBe(false);
@@ -189,6 +210,10 @@ describe('near-miss selection and budget', () => {
   test('the band starts the chosen number of points below the similarity value', () => {
     expect(nearMissFloor(settings())).toBe(75);
     expect(nearMissFloor(settings({ nearMissRange: 10, similarityThreshold: 90 }))).toBe(80);
+    // Visual similarity never looks further than 5 points down.
+    expect(nearMissFloor(settings({ comparisonMode: 'visual', nearMissRange: 20 }))).toBe(90);
+    expect(burstKind(settings({ comparisonMode: 'visual' }))).toBe('gray');
+    expect(burstKind(settings())).toBe('hash');
     expect(settings({ nearMissRange: 17 }).nearMissRange).toBe(20);
   });
 });

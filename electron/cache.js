@@ -346,6 +346,15 @@ const SCHEMA = `
     created_at INTEGER
   );
 
+  -- The same for Visual similarity: the gray frames around each sample time.
+  CREATE TABLE IF NOT EXISTS video_gray_bursts (
+    video_id    TEXT PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+    burst_key   TEXT NOT NULL,
+    state       TEXT NOT NULL,
+    frames_json TEXT,
+    created_at  INTEGER
+  );
+
   CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
   CREATE INDEX IF NOT EXISTS idx_videos_duplicate_hash ON videos(duplicate_hash);
   CREATE INDEX IF NOT EXISTS idx_videos_metadata_date ON videos(metadata_date);
@@ -697,6 +706,7 @@ function createVideoBatchWriter(db, videos, options = {}) {
   );
   const deleteFingerprints = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
   const deleteBursts = db.prepare('DELETE FROM video_bursts WHERE video_id = ?');
+  const deleteGrayBursts = db.prepare('DELETE FROM video_gray_bursts WHERE video_id = ?');
   const deleteAudio = db.prepare('DELETE FROM video_audio_fingerprints WHERE video_id = ?');
 
   const write = db.transaction((vids) => {
@@ -706,6 +716,7 @@ function createVideoBatchWriter(db, videos, options = {}) {
       if (changedFingerprintIds.has(v.id)) {
         deleteFingerprints.run(v.id);
         deleteBursts.run(v.id);
+        deleteGrayBursts.run(v.id);
         deleteAudio.run(v.id);
       }
       upsertVideo.run(
@@ -1057,20 +1068,28 @@ function markFingerprintFailure(db, videoId, options = {}) {
     .run(Date.now(), options.fingerprintKey ?? null, videoId);
 }
 
-/** Stored bursts under `burstKey`, as `{ video_id, state, frames_json }` rows. */
-function loadVideoBursts(db, videoIds, burstKey) {
+const BURST_TABLES = { hash: 'video_bursts', gray: 'video_gray_bursts' };
+
+function burstTable(kind) {
+  const table = BURST_TABLES[kind ?? 'hash'];
+  if (!table) throw new Error(`Unknown burst kind: ${kind}`);
+  return table;
+}
+
+/** Stored bursts of `kind` ('hash' or 'gray') under `burstKey`, as `{ video_id, state, frames_json }` rows. */
+function loadVideoBursts(db, videoIds, burstKey, kind = 'hash') {
   if (!videoIds.length) return [];
   return batchSelectIn(
     db,
-    'SELECT video_id, burst_key, state, frames_json FROM video_bursts WHERE video_id IN (__IN__)',
+    `SELECT video_id, burst_key, state, frames_json FROM ${burstTable(kind)} WHERE video_id IN (__IN__)`,
     videoIds,
   ).filter((row) => row.burst_key === burstKey);
 }
 
-function saveVideoBurst(db, videoId, burstKey, state, framesJson) {
+function saveVideoBurst(db, videoId, burstKey, state, framesJson, kind = 'hash') {
   if (!videoId || !burstKey || (state !== 'ok' && state !== 'failed')) return;
   db.prepare(`
-    INSERT INTO video_bursts (video_id, burst_key, state, frames_json, created_at) VALUES (?, ?, ?, ?, ?)
+    INSERT INTO ${burstTable(kind)} (video_id, burst_key, state, frames_json, created_at) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(video_id) DO UPDATE SET
       burst_key = excluded.burst_key, state = excluded.state, frames_json = excluded.frames_json, created_at = excluded.created_at
   `).run(videoId, burstKey, state, state === 'ok' ? framesJson : null, Date.now());
@@ -1199,7 +1218,8 @@ function loadGraySampleRows(db, videoIds, sampleCount, options = {}) {
     const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const startedAt = performance.now();
     const batch = db.prepare(`
-      SELECT video_id, sample_index, phash_hex, gray_bytes, frame_dark_ratio, sample_state, luma_range, crop_gray_bytes
+      SELECT video_id, sample_index, timestamp_secs, phash_hex, gray_bytes, frame_dark_ratio, sample_state, luma_range,
+             border_ltrb, crop_gray_bytes
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
         ${fingerprintFilter}
