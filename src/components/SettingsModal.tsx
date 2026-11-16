@@ -792,6 +792,21 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                             </select>
                           )}
                         </SettingRow>
+                        <SettingRow
+                          label="Partial clips"
+                          help="Finds videos that contain a part of another video, such as an excerpt of a longer recording. Reads the sound of every video once, which takes a while. Start it with Find Partial Clips in the sidebar."
+                        >
+                          {(id) => (
+                            <select
+                              id={id}
+                              value={localSettings.duplicates.partialClips}
+                              onChange={(e) => handleDuplicateChange('partialClips', e.target.value === 'sound' ? 'sound' : 'off')}
+                            >
+                              <option value="off">Off</option>
+                              <option value="sound">By sound</option>
+                            </select>
+                          )}
+                        </SettingRow>
                         <SwitchRow
                           label="Protect marked keep videos"
                           help="Videos marked Keep are never suggested for deletion."

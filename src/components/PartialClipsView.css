@@ -1,0 +1,131 @@
+.partial-clips-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 6px 20px 20px;
+}
+
+.partial-clips-empty {
+  margin: 24px 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.partial-clip-card {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.partial-clip-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 8px;
+}
+
+.partial-clip-summary {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.partial-clip-summary p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.partial-clip-evidence {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.partial-clip-timebar {
+  position: relative;
+  height: 6px;
+  margin: 0 14px 10px;
+  border-radius: 3px;
+  background: var(--bg-surface-hover);
+}
+
+.partial-clip-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.partial-clip-segment.differentPicture,
+.partial-clip-segment.unconfirmed {
+  background: var(--text-tertiary);
+}
+
+.partial-clip-video {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+.partial-clip-video img,
+.partial-clip-thumb-placeholder {
+  width: 82px;
+  height: 46px;
+  object-fit: cover;
+  border-radius: 5px;
+  background: #0b0a10;
+}
+
+.partial-clip-video.status-keep {
+  box-shadow: inset 3px 0 0 rgba(71, 176, 120, 0.9);
+}
+
+.partial-clip-video.status-delete {
+  box-shadow: inset 3px 0 0 rgba(255, 87, 107, 0.9);
+  background: rgba(255, 87, 107, 0.06);
+}
+
+.partial-clip-role {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.partial-clip-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.partial-clip-actions .duplicate-play-btn {
+  width: 30px;
+  height: 30px;
+}
+
+.partial-clip-actions .duplicate-play-btn.active {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.partial-clips-collapsed {
+  display: grid;
+  gap: 12px;
+}
+
+.partial-clips-collapsed > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 6px 0;
+}

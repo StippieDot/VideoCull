@@ -61,6 +61,7 @@ function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}) {
       onFindDuplicates={vi.fn()}
       onSwitchDuplicateMethod={vi.fn()}
       onCheckNearMisses={vi.fn()}
+      onFindPartialClips={vi.fn()}
       onOpenDuplicateSettings={vi.fn()}
       onOpenDocumentation={vi.fn()}
       onRequestPermanentDelete={vi.fn().mockResolvedValue(false)}
@@ -340,6 +341,31 @@ describe('Sidebar recent folder behavior', () => {
     rerender(<></>);
     renderSidebar();
     expect(screen.queryByText(/not yet checked/)).toBeNull();
+  });
+
+  test('Find Partial Clips is offered only when the setting is on, and its list opens from the sidebar', async () => {
+    const onFindPartialClips = vi.fn();
+    const videos = [makeVideo('a'), makeVideo('b')];
+    useStore.setState({
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+      videos,
+      filteredVideos: videos,
+      stats: { ...useStore.getState().stats, total: 2, pending: 2 },
+    });
+    const { unmount } = renderSidebar({ onFindPartialClips });
+    expect(screen.queryByRole('button', { name: 'Find Partial Clips' })).toBeNull();
+    unmount();
+
+    useStore.setState({
+      settings: { ...useStore.getState().settings, duplicates: { ...useStore.getState().settings.duplicates, partialClips: 'sound' } },
+      partialClips: [],
+    });
+    renderSidebar({ onFindPartialClips });
+    await userEvent.click(screen.getByRole('button', { name: 'Find Partial Clips' }));
+    expect(onFindPartialClips).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Partial Clips (0)' }));
+    expect(useStore.getState()).toMatchObject({ partialClipsMode: true, duplicateGroupsMode: true });
   });
 
   test('opens documentation from the sidebar header button', async () => {

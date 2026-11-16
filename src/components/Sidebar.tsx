@@ -36,6 +36,8 @@ interface SidebarProps {
   onSwitchDuplicateMethod: () => void;
   /** Finds duplicates again and double-checks every near miss, without the per-run limit. */
   onCheckNearMisses: () => void;
+  /** Reads the sound of every video once and finds videos that contain part of another. */
+  onFindPartialClips: () => void;
   onOpenDuplicateSettings: () => void;
   onOpenDocumentation: () => void;
   onRequestPermanentDelete: (filePaths: string[]) => Promise<boolean>;
@@ -108,8 +110,13 @@ function SidebarDuplicateSection({
   onFindDuplicates,
   onSwitchDuplicateMethod,
   onCheckNearMisses,
+  onFindPartialClips,
   onOpenDuplicateSettings,
-}: Pick<SidebarProps, 'onFindDuplicates' | 'onSwitchDuplicateMethod' | 'onCheckNearMisses' | 'onOpenDuplicateSettings'>) {
+}: Pick<SidebarProps, 'onFindDuplicates' | 'onSwitchDuplicateMethod' | 'onCheckNearMisses' | 'onFindPartialClips' | 'onOpenDuplicateSettings'>) {
+  const partialClips = useStore((s) => s.partialClips);
+  const partialClipsMode = useStore((s) => s.partialClipsMode);
+  const setPartialClipsMode = useStore((s) => s.setPartialClipsMode);
+  const partialClipsEnabled = useStore((s) => s.settings.duplicates.partialClips !== 'off');
   const otherMethod = useStore(otherDuplicateMethod);
   const duplicateSettings = useStore((s) => s.settings.duplicates);
   const statsTotal = useStore((s) => s.stats.total);
@@ -284,6 +291,16 @@ function SidebarDuplicateSection({
           <p className="sidebar-duplicate-note">{describeRestoredRun(duplicateRun, videoCount)}</p>
         )}
         <UncheckedNearMisses run={duplicateRun} disabled={duplicateDisabled} onCheck={onCheckNearMisses} />
+        {partialClips && (
+          <button className="btn btn-outline sidebar-wide-action" onClick={() => setPartialClipsMode(!partialClipsMode)}>
+            {partialClipsMode ? `Duplicate Groups (${duplicateGroupCount})` : `Partial Clips (${partialClips.length})`}
+          </button>
+        )}
+        {partialClipsEnabled && (
+          <button className="btn btn-outline sidebar-wide-action" onClick={onFindPartialClips} disabled={duplicateDisabled} title="Reads the sound of every video once">
+            Find Partial Clips
+          </button>
+        )}
         <button
           className="btn btn-primary sidebar-wide-action"
           onClick={onFindDuplicates}
@@ -339,6 +356,22 @@ function SidebarDuplicateSection({
         <p className="sidebar-duplicate-note">{describeRestoredRun(duplicateRun, videoCount)}</p>
       )}
       <UncheckedNearMisses run={duplicateRun} disabled={duplicateDisabled} onCheck={onCheckNearMisses} />
+      {partialClips && (
+        <button
+          className="btn btn-outline sidebar-wide-action"
+          onClick={() => {
+            setPartialClipsMode(true);
+            setDuplicateGroupsMode(true);
+          }}
+        >
+          Partial Clips ({partialClips.length})
+        </button>
+      )}
+      {partialClipsEnabled && (
+        <button className="btn btn-outline sidebar-wide-action" onClick={onFindPartialClips} disabled={duplicateDisabled} title="Reads the sound of every video once">
+          Find Partial Clips
+        </button>
+      )}
     </section>
   );
 }
@@ -657,6 +690,7 @@ export default function Sidebar({
   onFindDuplicates,
   onSwitchDuplicateMethod,
   onCheckNearMisses,
+  onFindPartialClips,
   onOpenDuplicateSettings,
   onOpenDocumentation,
   onRequestPermanentDelete,
@@ -970,6 +1004,7 @@ export default function Sidebar({
         onFindDuplicates={onFindDuplicates}
         onSwitchDuplicateMethod={onSwitchDuplicateMethod}
         onCheckNearMisses={onCheckNearMisses}
+        onFindPartialClips={onFindPartialClips}
         onOpenDuplicateSettings={onOpenDuplicateSettings}
       />
       {recentContextMenu && (

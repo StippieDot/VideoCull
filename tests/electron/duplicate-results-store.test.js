@@ -53,6 +53,16 @@ test('results round-trip, and the file holds no paths', async () => {
   }
 });
 
+test('partial clips are kept with the results when well formed', () => {
+  const segment = { startA: 10, startB: 0, lengthSecs: 20, soundSimilarity: 96.2, pictureState: 'confirmed', pictureSimilarity: 99 };
+  const clip = { aId: A, bId: C, relation: 'partial', state: 'confirmed', shorterId: C, segments: [segment], coverage: 1, soundSimilarity: 96.2, pictureSimilarity: 99, path: 'D:\\x.mp4' };
+  const sanitized = sanitizeResults(results({ partialClips: [clip, { ...clip, shorterId: B }, { ...clip, segments: [{ ...segment, startA: -1 }] }] }));
+  assert.equal(sanitized.partialClips.length, 1);
+  assert.equal(sanitized.partialClips[0].path, undefined);
+  assert.deepEqual(sanitized.partialClips[0].segments, [segment]);
+  assert.equal(sanitizeResults(results()).partialClips, undefined);
+});
+
 test('the session name ignores path case on Windows and depends on subfolders and scope', () => {
   const lower = { ...session, folders: ['d:\\videos'] };
   if (process.platform === 'win32') assert.equal(sessionFileName(lower), sessionFileName(session));

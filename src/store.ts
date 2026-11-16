@@ -1190,6 +1190,8 @@ const useStore = create<VideoStore>((set, get) => ({
   duplicateGroupsMode: false,
   duplicateGroups: [],
   duplicateRun: null,
+  partialClips: null,
+  partialClipsMode: false,
   duplicateProgress: null,
   isFindingDuplicates: false,
   duplicateViewMode: 'rows',
@@ -1282,6 +1284,8 @@ const useStore = create<VideoStore>((set, get) => ({
       duplicateGroupsMode: false,
       duplicateGroups: [],
       duplicateRun: null,
+      partialClips: null,
+      partialClipsMode: false,
       duplicateProgress: null,
       duplicateFilter: false,
       duplicatePathFilter: '',
@@ -1321,6 +1325,8 @@ const useStore = create<VideoStore>((set, get) => ({
       duplicateGroupsMode: false,
       duplicateGroups: [],
       duplicateRun: null,
+      partialClips: null,
+      partialClipsMode: false,
       duplicateProgress: null,
       duplicateFilter: false,
       duplicatePathFilter: '',
@@ -1470,6 +1476,8 @@ const useStore = create<VideoStore>((set, get) => ({
       ...(shouldClearDuplicates ? {
         duplicateGroups: [],
         duplicateRun: null,
+        partialClips: null,
+        partialClipsMode: false,
         duplicateGroupsMode: false,
         duplicateFilter: false,
         reviewMode: false,
@@ -1833,12 +1841,28 @@ const useStore = create<VideoStore>((set, get) => ({
     const state = get();
     // A run, another folder or a new session while the file was read wins over the stored result.
     if (state.duplicateGroups.length > 0 || state.directories.join('\n') !== session.folders.join('\n')) return 'skipped';
-    const { groups, run } = restoreStoredResults(loaded.results, state.videos, state.settings.duplicates.ignoredDuplicatePairs ?? []);
+    const { groups, partialClips, run } = restoreStoredResults(loaded.results, state.videos, state.settings.duplicates.ignoredDuplicatePairs ?? []);
     const groupsWithKeepers = applyKeeperOrderToGroups(groups, state.videos, state.settings.duplicates.keeperOrder, state.settings.duplicates.codecOrder);
     const videos = applyDuplicateGroupsToVideos(state.videos, groupsWithKeepers);
     // The grid stays in front; the sidebar offers the restored groups with their date.
-    set({ ...buildVideoStateUpdate(state, videos, ['duplicate'], { duplicateGroups: groupsWithKeepers }), duplicateRun: run });
+    set({ ...buildVideoStateUpdate(state, videos, ['duplicate'], { duplicateGroups: groupsWithKeepers }), duplicateRun: run, partialClips });
     return 'ok';
+  },
+  applyPartialClips: (partialClips, run) => set((state) => ({
+    partialClips,
+    partialClipsMode: true,
+    duplicateGroupsMode: true,
+    // Stored results are kept per duplicate run; a session without one gets a record for the clips.
+    duplicateRun: state.duplicateRun ?? (run?.settingsKey ? describeDuplicateRun(run.videos, run.settingsKey, run.scope) : null),
+  })),
+  setPartialClipsMode: (partialClipsMode) => set({ partialClipsMode }),
+  dismissPartialClip: (aId, bId) => {
+    set((state) => ({
+      partialClips: state.partialClips?.filter((clip) => !(
+        (clip.aId === aId && clip.bId === bId) || (clip.aId === bId && clip.bId === aId)
+      )) ?? null,
+    }));
+    get().addIgnoredDuplicatePairs([aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`]);
   },
   addIgnoredDuplicatePairs: (pairKeys) => {
     const normalized = pairKeys
@@ -2019,7 +2043,11 @@ const useStore = create<VideoStore>((set, get) => ({
       gridSelectionAnchorId: nextGridSelectionAnchorId,
       ...(groupsChanged ? {
         duplicateGroups: prunedGroups,
-        ...(prunedGroups.length === 0 ? { duplicateGroupsMode: false } : {}),
+        ...(prunedGroups.length === 0 && !stateBefore.partialClipsMode ? { duplicateGroupsMode: false } : {}),
+      } : {}),
+      // A partial clip needs both of its videos.
+      ...(deletedVideoIds.size > 0 && stateBefore.partialClips ? {
+        partialClips: stateBefore.partialClips.filter((clip) => !deletedVideoIds.has(clip.aId) && !deletedVideoIds.has(clip.bId)),
       } : {}),
     });
   },
@@ -2325,7 +2353,8 @@ export function hasActiveFilters(state: VideoStore): boolean {
 const DUPLICATE_RESULTS_SAVE_DELAY_MS = 1500;
 let duplicateResultsSaveTimer: ReturnType<typeof setTimeout> | null = null;
 useStore.subscribe((state, previous) => {
-  if (state.duplicateGroups === previous.duplicateGroups && state.duplicateRun === previous.duplicateRun) return;
+  if (state.duplicateGroups === previous.duplicateGroups && state.duplicateRun === previous.duplicateRun
+    && state.partialClips === previous.partialClips) return;
   if (!state.duplicateRun || typeof window === 'undefined' || !window.electronAPI?.saveDuplicateResults) return;
   if (duplicateResultsSaveTimer) clearTimeout(duplicateResultsSaveTimer);
   duplicateResultsSaveTimer = setTimeout(() => {
@@ -2334,8 +2363,8 @@ useStore.subscribe((state, previous) => {
     const run = latest.duplicateRun;
     if (!run || latest.directories.length === 0 || !window.electronAPI?.saveDuplicateResults) return;
     const session = { folders: [...latest.directories], includeSubfolders: latest.includeSubfolders, scope: run.scope };
-    const write = latest.duplicateGroups.length > 0
-      ? window.electronAPI.saveDuplicateResults(session, toStoredResults(run, latest.duplicateGroups))
+    const write = latest.duplicateGroups.length > 0 || (latest.partialClips?.length ?? 0) > 0
+      ? window.electronAPI.saveDuplicateResults(session, toStoredResults(run, latest.duplicateGroups, latest.partialClips))
       : window.electronAPI.clearDuplicateResults(session);
     write.catch((error) => console.warn('[duplicates] Could not store results:', error));
   }, DUPLICATE_RESULTS_SAVE_DELAY_MS);

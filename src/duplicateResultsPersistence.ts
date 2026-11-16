@@ -1,5 +1,5 @@
 import { rebuildDuplicateGroups, summariseDuplicateGroup } from './duplicateGroupRebuild';
-import type { DuplicateGroup, DuplicateVerificationStats, StoredDuplicateResults, Video } from './types';
+import type { DuplicateGroup, DuplicateVerificationStats, PartialClip, StoredDuplicateResults, Video } from './types';
 
 /** Where the duplicate groups on screen came from: a run, or results stored by an earlier one. */
 export interface DuplicateRunInfo {
@@ -37,8 +37,9 @@ export function describeDuplicateRun(
 }
 
 /** The file content for the groups on screen: what is needed to rebuild them, without paths. */
-export function toStoredResults(run: DuplicateRunInfo, groups: DuplicateGroup[]): StoredDuplicateResults {
+export function toStoredResults(run: DuplicateRunInfo, groups: DuplicateGroup[], partialClips: PartialClip[] | null = null): StoredDuplicateResults {
   return {
+    ...(partialClips && partialClips.length > 0 ? { partialClips } : {}),
     version: 1,
     createdAt: run.createdAt,
     settingsKey: run.settingsKey,
@@ -66,10 +67,14 @@ export function restoreStoredResults(
   stored: StoredDuplicateResults,
   currentVideos: Video[],
   ignoredPairKeys: string[],
-): { groups: DuplicateGroup[]; run: DuplicateRunInfo } {
+): { groups: DuplicateGroup[]; partialClips: PartialClip[] | null; run: DuplicateRunInfo } {
   const current = new Map(currentVideos.map((video) => [video.id, video]));
   const removedVideoIds = new Set(stored.videos.filter((video) => current.get(video.id)?.date !== video.date).map((video) => video.id));
   const ignored = new Set(ignoredPairKeys);
+  const partialClips = stored.partialClips?.filter((clip) => (
+    current.has(clip.aId) && current.has(clip.bId) && !removedVideoIds.has(clip.aId) && !removedVideoIds.has(clip.bId)
+    && !ignored.has(clip.aId < clip.bId ? `${clip.aId}|${clip.bId}` : `${clip.bId}|${clip.aId}`)
+  )) ?? null;
   const groups = stored.groups.flatMap((storedGroup) => {
     const template: DuplicateGroup = { ...storedGroup, similarity: 0, suggestedKeeperId: null, reason: '' };
     const full = summariseDuplicateGroup(storedGroup.videoIds, storedGroup.pairs, template, current);
@@ -78,6 +83,7 @@ export function restoreStoredResults(
   const participants = new Set(stored.videos.map((video) => video.id));
   return {
     groups,
+    partialClips,
     run: {
       createdAt: stored.createdAt,
       settingsKey: stored.settingsKey,

@@ -14,11 +14,14 @@ const KEPT_SESSIONS = 10;
 const MAX_VIDEOS = 1_000_000;
 const MAX_GROUPS = 500_000;
 const MAX_PAIRS_PER_GROUP = 10_000;
+const MAX_PARTIAL_CLIPS = 500_000;
+const MAX_SEGMENTS_PER_CLIP = 1_000;
 
 const VIDEO_ID = /^[0-9a-f]{16}$/;
 const GROUP_ID = /^dup-[0-9a-f]{16}$/;
 const MATCH_TYPES = new Set(['exact', 'phash', 'visual']);
 const GROUP_MATCH_TYPES = new Set(['exact', 'phash', 'visual', 'mixed']);
+const PICTURE_STATES = new Set(['confirmed', 'differentPicture', 'unconfirmed']);
 
 /**
  * File name for a session: its folders (compared as the file system compares paths), whether
@@ -99,6 +102,45 @@ function sanitizeGroup(value) {
   };
 }
 
+/** @param {unknown} value */
+function sanitizePercent(value) {
+  return isFiniteNumber(value) && value >= 0 && value <= 100 ? value : null;
+}
+
+/** @param {unknown} value */
+function sanitizePartialClip(value) {
+  if (!value || typeof value !== 'object') return null;
+  const clip = /** @type {Record<string, unknown>} */ (value);
+  if (!VIDEO_ID.test(String(clip.aId)) || !VIDEO_ID.test(String(clip.bId)) || clip.aId === clip.bId) return null;
+  if (clip.shorterId !== clip.aId && clip.shorterId !== clip.bId) return null;
+  if ((clip.relation !== 'partial' && clip.relation !== 'audioOnly') || !PICTURE_STATES.has(String(clip.state))) return null;
+  if (!Array.isArray(clip.segments) || clip.segments.length === 0 || clip.segments.length > MAX_SEGMENTS_PER_CLIP) return null;
+  const segments = [];
+  for (const segment of clip.segments) {
+    if (!segment || ![segment.startA, segment.startB, segment.lengthSecs].every((n) => isFiniteNumber(n) && n >= 0)) return null;
+    if (!PICTURE_STATES.has(String(segment.pictureState))) return null;
+    segments.push({
+      startA: segment.startA,
+      startB: segment.startB,
+      lengthSecs: segment.lengthSecs,
+      soundSimilarity: sanitizePercent(segment.soundSimilarity) ?? 0,
+      pictureState: String(segment.pictureState),
+      pictureSimilarity: sanitizePercent(segment.pictureSimilarity),
+    });
+  }
+  return {
+    aId: String(clip.aId),
+    bId: String(clip.bId),
+    relation: clip.relation,
+    state: String(clip.state),
+    shorterId: String(clip.shorterId),
+    segments,
+    coverage: isFiniteNumber(clip.coverage) && clip.coverage >= 0 && clip.coverage <= 1 ? clip.coverage : null,
+    soundSimilarity: sanitizePercent(clip.soundSimilarity) ?? 0,
+    pictureSimilarity: sanitizePercent(clip.pictureSimilarity),
+  };
+}
+
 /**
  * Keeps only known fields of a results payload, or returns null when its shape is wrong. Used on
  * what the renderer sends and on what is read back from disk.
@@ -123,6 +165,14 @@ function sanitizeResults(value) {
     const group = sanitizeGroup(entry);
     if (group) groups.push(group);
   }
+  // Optional: absent in files written before partial clips existed.
+  const partialClips = [];
+  if (Array.isArray(results.partialClips) && results.partialClips.length <= MAX_PARTIAL_CLIPS) {
+    for (const entry of results.partialClips) {
+      const clip = sanitizePartialClip(entry);
+      if (clip) partialClips.push(clip);
+    }
+  }
   return {
     version: RESULTS_FORMAT_VERSION,
     createdAt: results.createdAt,
@@ -130,6 +180,7 @@ function sanitizeResults(value) {
     scope: results.scope,
     videos,
     groups,
+    ...(partialClips.length > 0 ? { partialClips } : {}),
   };
 }
 

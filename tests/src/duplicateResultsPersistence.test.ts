@@ -44,6 +44,23 @@ describe('stored duplicate results', () => {
     expect(groups.map((group) => group.videoIds)).toEqual([['a', 'b']]);
   });
 
+  test('partial clips are stored and come back unless a video changed or the pair was dismissed', () => {
+    const clip = (aId: string, bId: string) => ({
+      aId, bId, relation: 'partial' as const, state: 'confirmed' as const, shorterId: bId,
+      segments: [{ startA: 10, startB: 0, lengthSecs: 20, soundSimilarity: 96, pictureState: 'confirmed' as const, pictureSimilarity: 99 }],
+      coverage: 1, soundSimilarity: 96, pictureSimilarity: 99,
+    });
+    const videos = ['a', 'b', 'c', 'd'].map((id) => makeVideo(id, { date: 10, sizeBytes: 5 }));
+    const run = describeDuplicateRun(videos, 'key', 'all');
+    const file = toStoredResults(run, [], [clip('a', 'd'), clip('b', 'd'), clip('c', 'd')]);
+    expect(file.partialClips).toHaveLength(3);
+    expect(toStoredResults(run, [], null).partialClips).toBeUndefined();
+
+    const changed = videos.map((video) => (video.id === 'b' ? { ...video, date: 99 } : video));
+    const { partialClips } = restoreStoredResults(file, changed, ['c|d']);
+    expect(partialClips?.map((entry) => entry.aId)).toEqual(['a']);
+  });
+
   test('new videos are counted for a full run and not for a filtered one', () => {
     const videos = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => makeVideo(id, { date: 10 }));
     expect(restoreStoredResults(stored(), videos, []).run.addedSince).toBe(2);

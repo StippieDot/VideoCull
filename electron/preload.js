@@ -58,6 +58,7 @@ const electronAPI = {
 
   // Duplicate detection
   findDuplicates: (videos, options) => ipcRenderer.invoke('find-duplicates', videos, options),
+  findPartialClips: (videos, options) => ipcRenderer.invoke('find-partial-clips', videos, options),
   cancelDuplicateDetection: () => ipcRenderer.invoke('cancel-duplicate-detection'),
   onDuplicateProgress: (callback) => subscribe('duplicate-progress', callback),
 

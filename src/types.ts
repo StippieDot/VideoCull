@@ -360,6 +360,8 @@ export interface StoredDuplicateResults {
   groups: Array<Pick<DuplicateGroup, 'id' | 'videoIds' | 'manualSuggestedKeeperId' | 'sampleCount' | 'matchType' | 'unreadableSamples'> & {
     pairs: DuplicateGroupPair[];
   }>;
+  /** The last Find partial clips of the session, when one ran. */
+  partialClips?: PartialClip[];
 }
 
 export type LoadedDuplicateResults =
@@ -368,7 +370,8 @@ export type LoadedDuplicateResults =
   | { status: 'none' };
 
 export interface DuplicateProgress {
-  stage: 'Preparing' | 'Building fingerprints' | 'Checking exact matches' | 'Comparing pHashes' | 'Verifying matches' | 'Finding candidates' | 'Confirming visual matches' | 'Building groups' | 'Done' | 'Cancelled' | 'Error';
+  stage: 'Preparing' | 'Building fingerprints' | 'Checking exact matches' | 'Comparing pHashes' | 'Verifying matches' | 'Finding candidates' | 'Confirming visual matches' | 'Building groups'
+    | 'Reading sound' | 'Searching partial clips' | 'Checking pictures' | 'Done' | 'Cancelled' | 'Error';
   current: number;
   total: number;
   message?: string;
@@ -388,6 +391,47 @@ export interface DuplicateResult {
     /** Near misses double-checked with frames around the sample times; absent when that is off. */
     verification?: DuplicateVerificationStats;
   };
+  error?: string;
+}
+
+/** One shared stretch of a partial clip: where it starts in each video, and what pictures showed. */
+export interface PartialClipSegment {
+  startA: number;
+  startB: number;
+  lengthSecs: number;
+  soundSimilarity: number;
+  pictureState: 'confirmed' | 'differentPicture' | 'unconfirmed';
+  pictureSimilarity: number | null;
+}
+
+/**
+ * Two videos that share stretches. 'partial': sound and pictures match, so one contains part of the
+ * other. 'audioOnly': only the sound matches; the pictures differ or could not be checked.
+ */
+export interface PartialClip {
+  aId: string;
+  bId: string;
+  relation: 'partial' | 'audioOnly';
+  state: 'confirmed' | 'differentPicture' | 'unconfirmed';
+  shorterId: string;
+  segments: PartialClipSegment[];
+  /** Share of the shorter video the stretches cover. */
+  coverage: number | null;
+  soundSimilarity: number;
+  pictureSimilarity: number | null;
+}
+
+export interface PartialClipResult {
+  status: 'ok' | 'cancelled' | 'error';
+  clips?: PartialClip[];
+  settingsKey?: string;
+  stats?: {
+    videos: number;
+    soundRead: number;
+    candidates: number;
+    partial: number;
+    audioOnly: number;
+  } | null;
   error?: string;
 }
 
@@ -546,6 +590,10 @@ export interface VideoStore {
   duplicateGroups: DuplicateGroup[];
   /** Where the groups on screen came from; null when there is no result to store. */
   duplicateRun: DuplicateRunInfo | null;
+  /** Result of the last Find partial clips in this session; null before one ran. */
+  partialClips: PartialClip[] | null;
+  /** The duplicate view shows the partial clips instead of the groups. */
+  partialClipsMode: boolean;
   duplicateProgress: DuplicateProgress | null;
   isFindingDuplicates: boolean;
   duplicateViewMode: DuplicateViewMode;
@@ -643,6 +691,11 @@ export interface VideoStore {
   /** Brings back the stored groups of the open session after its scan. */
   restoreDuplicateResults: () => Promise<LoadedDuplicateResults['status'] | 'skipped'>;
   addIgnoredDuplicatePairs: (pairKeys: string[]) => void;
+  /** Shows the result of Find partial clips; `run` describes it for storage when no duplicate run did. */
+  applyPartialClips: (clips: PartialClip[], run?: { videos: Video[]; scope: 'all' | 'filtered'; settingsKey?: string }) => void;
+  setPartialClipsMode: (mode: boolean) => void;
+  /** Marks the two videos as not a match and takes their entry off the partial clip list. */
+  dismissPartialClip: (aId: string, bId: string) => void;
   removeIgnoredDuplicatePairs: (pairKeys: string[]) => void;
   clearIgnoredDuplicatePairs: () => void;
   setDuplicateProgress: (progress: DuplicateProgress | null) => void;
@@ -859,6 +912,8 @@ export interface ElectronAPI {
   onThumbProgress: (callback: (data: ThumbProgress) => void) => () => void;
   onThumbReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;
   findDuplicates: (videos: Video[], options?: { settings?: Partial<DuplicateSettings>; checkAllNearMisses?: boolean }) => Promise<DuplicateResult>;
+  /** Pairs in `skipPairKeys` (already duplicates) are not searched. Uses the duplicate run's progress and cancel. */
+  findPartialClips: (videos: Video[], options?: { settings?: Partial<DuplicateSettings>; skipPairKeys?: string[] }) => Promise<PartialClipResult>;
   cancelDuplicateDetection: () => Promise<boolean>;
   onDuplicateProgress: (callback: (data: DuplicateProgress) => void) => () => void;
   onMenuAction: (callback: (action: MenuAction) => void) => () => void;
