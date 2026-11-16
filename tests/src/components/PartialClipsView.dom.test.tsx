@@ -50,6 +50,9 @@ describe('partial clips list', () => {
     render(<PartialClipsView />);
 
     expect(screen.getByText('Contains 0:20 of concert.mp4, from 0:30 to 0:50 — sound and picture match')).toBeTruthy();
+    // The time bar runs from the start to the end of the longer video.
+    expect(screen.getAllByText('10:00').length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle('0:30 – 0:50').length).toBeGreaterThan(0);
     expect(screen.getByText('highlight.mp4 is an excerpt of remix.mp4 — sound and picture match')).toBeTruthy();
     expect(screen.getByText('1 pair shares the same sound with different pictures')).toBeTruthy();
     expect(screen.getByText(/Same sound as concert.mp4 from 0:30 to 0:50; pictures differ/)).toBeTruthy();

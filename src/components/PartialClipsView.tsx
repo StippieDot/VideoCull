@@ -82,18 +82,24 @@ function evidenceLabel(clip: PartialClip): string {
 function TimeBar({ clip, longer }: { clip: PartialClip; longer: Video }) {
   const duration = Number(longer.durationSecs) || 0;
   if (duration <= 0) return null;
+  // The sentence above says the same, so screen readers skip the bar.
   return (
-    <div className="partial-clip-timebar" aria-hidden="true">
-      {clip.segments.map((segment, index) => {
-        const { start, end } = inLonger(clip, segment);
-        return (
-          <span
-            key={index}
-            className={`partial-clip-segment ${segment.pictureState}`}
-            style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0.5, ((end - start) / duration) * 100)}%` }}
-          />
-        );
-      })}
+    <div className="partial-clip-timeline" aria-hidden="true">
+      <span>0:00</span>
+      <div className="partial-clip-timebar">
+        {clip.segments.map((segment, index) => {
+          const { start, end } = inLonger(clip, segment);
+          return (
+            <span
+              key={index}
+              className={`partial-clip-segment ${segment.pictureState}`}
+              title={`${formatDuration(start)} – ${formatDuration(end)}`}
+              style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0.5, ((end - start) / duration) * 100)}%` }}
+            />
+          );
+        })}
+      </div>
+      <span>{formatDuration(duration)}</span>
     </div>
   );
 }

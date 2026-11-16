@@ -49,10 +49,20 @@
   font-size: 12px;
 }
 
+.partial-clip-timeline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 14px 10px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .partial-clip-timebar {
   position: relative;
+  flex: 1;
   height: 6px;
-  margin: 0 14px 10px;
   border-radius: 3px;
   background: var(--bg-surface-hover);
 }

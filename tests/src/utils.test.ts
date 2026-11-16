@@ -13,7 +13,7 @@ import {
   isFolderShownByFilter,
   formatRecentPath,
   formatRelativeTime,
-  formatPictureResolutionLabel,
+  formatPictureSizeNote,
   formatResolutionLabel,
   formatSize,
   getFolderLabel,
@@ -88,9 +88,9 @@ test('codec, resolution, and fps labels are formatted for display', () => {
   expect(formatResolutionLabel(854, 480)).toBe('480p');
   expect(formatResolutionLabel(null, 480)).toBe('');
   // With black bars, the picture inside them is named when it is smaller than the frame.
-  expect(formatPictureResolutionLabel(1138, 640, { width: 1138, height: 480 })).toBe('480p picture in 640p');
-  expect(formatPictureResolutionLabel(1920, 1080, { width: 1920, height: 800 })).toBe('1080p');
-  expect(formatPictureResolutionLabel(854, 480, null)).toBe('480p');
+  expect(formatPictureSizeNote(1138, 640, { width: 1138, height: 480 })).toBe('480p picture inside black bars');
+  expect(formatPictureSizeNote(1920, 1080, { width: 1920, height: 800 })).toBeUndefined();
+  expect(formatPictureSizeNote(854, 480, null)).toBeUndefined();
   expect(formatFps(30)).toBe('30fps');
   expect(formatFps(29.97)).toBe('29.97fps');
   expect(formatFps(null)).toBe('');

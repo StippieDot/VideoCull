@@ -227,18 +227,17 @@ export function resolutionTier(width: number | null | undefined, height: number 
 }
 
 /**
- * The resolution label of a video in a duplicate group. With black bars the picture inside them is what
- * counts, so a copy whose picture is smaller than its frame reads "480p picture in 640p".
+ * Tooltip for the resolution of a video in a duplicate group whose picture inside black bars is smaller
+ * than its frame, such as "480p picture inside black bars"; undefined when the two are the same.
  */
-export function formatPictureResolutionLabel(
+export function formatPictureSizeNote(
   width: number | null | undefined,
   height: number | null | undefined,
   pictureSize: { width: number; height: number } | null | undefined,
-): string {
-  const frame = formatResolutionLabel(width, height);
-  if (!pictureSize) return frame;
+): string | undefined {
+  if (!pictureSize) return undefined;
   const picture = formatResolutionLabel(pictureSize.width, pictureSize.height);
-  return picture && picture !== frame ? `${picture} picture in ${frame}` : frame;
+  return picture && picture !== formatResolutionLabel(width, height) ? `${picture} picture inside black bars` : undefined;
 }
 
 export function formatResolutionLabel(width: number | null | undefined, height: number | null | undefined): string {

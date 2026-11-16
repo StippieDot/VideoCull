@@ -15,7 +15,8 @@ import type { DuplicateGroup, DuplicateViewMode, Video } from '../types';
 import {
   formatDuration,
   formatFps,
-  formatPictureResolutionLabel,
+  formatPictureSizeNote,
+  formatResolutionLabel,
   formatSize,
   resolutionTier,
 } from '../utils';
@@ -297,10 +298,10 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
 }: DuplicateRowItemProps) {
   const statusBadge = statusBadgeContent(video);
   const thumbnailSrc = thumbSrc(video);
-  const chip = (key: string, label: string) => {
+  const chip = (key: string, label: string, title?: string) => {
     const state = flags[key] ?? 'equal';
     return (
-      <span key={key} className={`meta-chip ${state}`}>
+      <span key={key} className={`meta-chip ${state}`} title={title}>
         {label}
       </span>
     );
@@ -333,7 +334,7 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
           {parentPath(video.path)}
         </span>
         <span className="duplicate-meta-chips">
-          {chip('resolution', formatPictureResolutionLabel(video.width, video.height, pictureSize))}
+          {chip('resolution', formatResolutionLabel(video.width, video.height), formatPictureSizeNote(video.width, video.height, pictureSize))}
           {chip('fps', formatFps(video.fps))}
           {chip('bitrate', bitrateLabel(video))}
           {chip('duration', formatDuration(video.durationSecs))}
@@ -395,7 +396,7 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
         isSelected={isSelected}
         onToggleSelect={() => onToggleSelection(video)}
         onPlay={() => onPlayVideo(video.id, groupVideoIds)}
-        resolutionLabel={pictureSize ? formatPictureResolutionLabel(video.width, video.height, pictureSize) : undefined}
+        resolutionTitle={formatPictureSizeNote(video.width, video.height, pictureSize)}
       />
     </div>
   );
