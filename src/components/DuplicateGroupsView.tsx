@@ -432,13 +432,16 @@ const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
           >
             {groupView.group.similarity.toFixed(1)}%
           </strong>
-          <em>{groupView.groupSize} videos</em>
-          <em>{formatSize(groupView.totalSize)}</em>
-          <em>{groupView.group.reason}</em>
-          {notes.map((note) => <em key={note}>{note}</em>)}
+          <em className="duplicate-group-fact">{groupView.groupSize} videos</em>
+          <em className="duplicate-group-fact">{formatSize(groupView.totalSize)}</em>
           {warnings.map((warning) => (
             <span key={warning} className="duplicate-match-badge low-confidence">{warning}</span>
           ))}
+          {/* Only the description gives way when the header is narrow; the full text is in the tooltip. */}
+          <span className="duplicate-group-notes" title={[groupView.group.reason, ...notes].join(' · ')}>
+            <em>{groupView.group.reason}</em>
+            {notes.map((note) => <em key={note}>{note}</em>)}
+          </span>
         </div>
         <div className="duplicate-group-actions">
           <button

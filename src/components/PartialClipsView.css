@@ -4,6 +4,8 @@
   overflow-y: auto;
   display: grid;
   align-content: start;
+  /* Rows take their content's height; auto rows would shrink cards to fit the scroll area. */
+  grid-auto-rows: max-content;
   gap: 12px;
   padding: 6px 20px 20px;
 }

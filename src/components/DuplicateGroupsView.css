@@ -191,6 +191,31 @@
   font-size: 15px;
 }
 
+.duplicate-group-title > strong,
+.duplicate-group-title > .duplicate-match-badge,
+.duplicate-group-title > .duplicate-group-fact {
+  flex-shrink: 0;
+}
+
+.duplicate-group-notes {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.duplicate-group-title .duplicate-group-notes em {
+  display: inline;
+  overflow: visible;
+}
+
+.duplicate-group-notes em + em::before {
+  content: ' · ';
+}
+
 .duplicate-group-title em {
   color: var(--text-tertiary);
   font-style: normal;
