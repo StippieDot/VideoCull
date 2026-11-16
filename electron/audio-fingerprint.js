@@ -174,9 +174,12 @@ function wordsToBuffer(words) {
   return buffer;
 }
 
+// Takes any Uint8Array: rows from the cache worker arrive as plain Uint8Arrays, not Buffers.
 function wordsFromBuffer(buffer) {
   const words = new Uint32Array(Math.floor((buffer?.length ?? 0) / 4));
-  for (let i = 0; i < words.length; i++) words[i] = buffer.readUInt32LE(i * 4);
+  if (words.length === 0) return words;
+  const view = new DataView(buffer.buffer, buffer.byteOffset, words.length * 4);
+  for (let i = 0; i < words.length; i++) words[i] = view.getUint32(i * 4, true);
   return words;
 }
 

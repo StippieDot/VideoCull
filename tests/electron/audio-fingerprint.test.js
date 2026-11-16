@@ -75,6 +75,8 @@ describe('sound fingerprint words', () => {
     const words = Uint32Array.from([0, 1, 0xffffffff, 0x80000001]);
     expect(wordsFromBuffer(wordsToBuffer(words))).toEqual(words);
     expect(wordsFromBuffer(null)).toEqual(new Uint32Array(0));
+    // As the cache worker delivers it: a plain Uint8Array.
+    expect(wordsFromBuffer(new Uint8Array(wordsToBuffer(words)))).toEqual(words);
   });
 
   test('FFmpeg reporting no audio track is recognised', () => {
