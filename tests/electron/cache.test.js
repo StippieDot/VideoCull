@@ -322,6 +322,7 @@ test('cache saves invalidate duplicate data when the same video id refers to a c
     cache.saveCache(db, [syncVideo, chunkedVideo]);
     for (const video of [syncVideo, chunkedVideo]) {
       insertFingerprint(db, video.id, 0);
+      cache.saveVideoBurst(db, video.id, 'burst-key', 'ok', '[]');
       cache.updateVideoSignatures(db, video.id, { quick: `${video.id}-quick` });
       cache.markFingerprintFailure(db, video.id, { fingerprintKey: 'settings-a' });
     }
@@ -330,6 +331,7 @@ test('cache saves invalidate duplicate data when the same video id refers to a c
     await cache.saveCacheChunked(db, [{ ...chunkedVideo, date: 201 }]);
 
     assert.deepEqual(db.prepare('SELECT video_id FROM video_fingerprints').all(), []);
+    assert.deepEqual(db.prepare('SELECT video_id FROM video_bursts').all(), []);
     assert.deepEqual(
       db.prepare(`
         SELECT id, file_signature_quick, signature_updated_at, fingerprint_failed_at, fingerprint_failure_key
@@ -340,6 +342,33 @@ test('cache saves invalidate duplicate data when the same video id refers to a c
         { id: 'sync-id', file_signature_quick: null, signature_updated_at: null, fingerprint_failed_at: null, fingerprint_failure_key: null },
       ],
     );
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('bursts are stored per video and read back only under their key', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    const videos = ['a', 'b'].map((id) => buildCachedVideo(id, path.join(folderPath, `${id}.mp4`)));
+    cache.saveCache(db, videos);
+    cache.saveVideoBurst(db, 'a', 'key-1', 'ok', '[[[0,"00ff","ff00",null,null]]]');
+    cache.saveVideoBurst(db, 'b', 'key-1', 'failed', 'ignored');
+    // A later burst for the same video replaces the earlier one.
+    cache.saveVideoBurst(db, 'a', 'key-1', 'ok', '[null]');
+
+    assert.deepEqual(
+      cache.loadVideoBursts(db, ['a', 'b'], 'key-1').map(({ video_id, state, frames_json }) => ({ video_id, state, frames_json })),
+      [{ video_id: 'a', state: 'ok', frames_json: '[null]' }, { video_id: 'b', state: 'failed', frames_json: null }],
+    );
+    assert.deepEqual(cache.loadVideoBursts(db, ['a', 'b'], 'key-2'), []);
+
+    cache.deleteVideosByIds(db, ['a']);
+    assert.deepEqual(cache.loadVideoBursts(db, ['a'], 'key-1'), []);
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });

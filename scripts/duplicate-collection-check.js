@@ -24,6 +24,7 @@ function createMemoryCache() {
   const fingerprints = new Map();
   const failures = new Map();
   const signatures = new Map();
+  const bursts = new Map();
   return {
     async loadDuplicateFolderState(_folder, _options, videoIds, settings) {
       const completeEntries = [];
@@ -63,6 +64,14 @@ function createMemoryCache() {
     },
     async markFingerprintFailure(_folder, _options, videoId, key) {
       failures.set(videoId, key);
+    },
+    async loadVideoBursts(_folder, _options, videoIds, burstKey) {
+      return videoIds
+        .map((videoId) => bursts.get(videoId))
+        .filter((row) => row?.burst_key === burstKey);
+    },
+    async saveVideoBurst(_folder, _options, videoId, burstKey, state, framesJson) {
+      bursts.set(videoId, { video_id: videoId, burst_key: burstKey, state, frames_json: framesJson });
     },
   };
 }
@@ -249,6 +258,11 @@ async function runCheck(folder, mode, snapshotFile, sampleCount, overrides = {},
   stages.forEach(([stage, time], index) => {
     console.log(`  ${stage.padEnd(28)} ${(stages[index + 1]?.[1] ?? finishedAt) - time} ms`);
   });
+  const verification = result.stats?.verification;
+  if (verification) {
+    console.log(`near misses: ${verification.candidates} checked, ${verification.accepted} accepted, ${verification.rejected} rejected, `
+      + `${verification.unverifiable} unverifiable, ${verification.pending} pending${verification.manyNearMisses ? ' (many)' : ''}`);
+  }
 
   const manifestPath = path.join(folder, 'manifest.json');
   if (fs.existsSync(manifestPath)) {

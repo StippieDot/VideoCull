@@ -23,7 +23,21 @@ const {
   scoreSamples,
   isDarkSample,
   fingerprintToRow,
+  getDuplicateBurstKey,
+  matchConfidence,
+  movementClass,
 } = require('./duplicate-utils');
+const {
+  BURST_FPS,
+  BURST_FRAME_COUNT,
+  BURST_LEAD_SECS,
+  MANY_NEAR_MISSES_PER_VIDEO,
+  burstBudget,
+  nearMissVerificationEnabled,
+  parseBurst,
+  selectBurstVideos,
+  verifyNearMiss,
+} = require('./pair-verifier');
 const {
   STACKED_FRAME_BYTES,
   cropToPrimary,
@@ -462,6 +476,91 @@ async function extractSampleWithRetries(videoPath, timestamp, run, executionOpti
   return null;
 }
 
+function buildBurstExtractionArgs(videoPath, startSecs, executionOptions = {}) {
+  const args = [
+    '-v', 'error',
+    '-ss', String(startSecs),
+    '-i', videoPath,
+    // The fingerprint's frame filter, five times a second from the start time.
+    '-vf', `fps=${BURST_FPS},${stackedFrameFilter()}`,
+    '-frames:v', String(BURST_FRAME_COUNT),
+    '-f', 'rawvideo',
+    '-pix_fmt', 'gray',
+  ];
+  if (executionOptions.cpuThreadsLimited !== false) args.push('-threads', '1');
+  args.push('pipe:1');
+  return args;
+}
+
+/** The frames around one sample time, each with its offset from that time; fewer near the end. */
+async function extractBurstFrames(videoPath, timestamp, run, executionOptions) {
+  const start = Math.max(0, timestamp - BURST_LEAD_SECS);
+  const args = buildBurstExtractionArgs(videoPath, start, executionOptions);
+  const buffer = await runDuplicateActivity(run, async () => {
+    assertNotCancelled(run);
+    try {
+      return await mediaProcess.runFfmpeg(args, run, {
+        timeoutMs: FRAME_EXTRACTION_TIMEOUT_MS,
+        maxStdoutBytes: BURST_FRAME_COUNT * STACKED_FRAME_BYTES,
+      });
+    } catch (error) {
+      assertNotCancelled(run);
+      throw error;
+    }
+  });
+  const frames = [];
+  for (let i = 0; (i + 1) * STACKED_FRAME_BYTES <= buffer.length; i++) {
+    frames.push({
+      offset: start - timestamp + i / BURST_FPS,
+      ...splitStackedFrame(buffer.subarray(i * STACKED_FRAME_BYTES, (i + 1) * STACKED_FRAME_BYTES)),
+    });
+  }
+  return frames;
+}
+
+function parseBorder(value) {
+  const parts = String(value ?? '').split(',').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) return null;
+  const [left, top, right, bottom] = parts;
+  return { left, top, right, bottom };
+}
+
+/**
+ * A burst per sample position of the video, read at the times its fingerprint was taken and cut to the
+ * same black bars. Returns the stored form (see parseBurst); throws when no position gave a frame.
+ */
+async function buildBurstForVideo(video, rows, run, executionOptions) {
+  const ordered = [...rows].sort((a, b) => a.sample_index - b.sample_index);
+  const border = parseBorder(ordered.find((row) => row.border_ltrb)?.border_ltrb);
+  const samples = [];
+  for (const row of ordered) {
+    await waitForDuplicateProcessing(run);
+    if (row.sample_state === 'unreadable' || row.timestamp_secs === null || row.timestamp_secs === undefined) {
+      samples.push(null);
+      continue;
+    }
+    let frames = [];
+    try {
+      frames = await extractBurstFrames(video.path, Number(row.timestamp_secs), run, executionOptions);
+    } catch (err) {
+      // Cancellation and a slow drive end the video; any other failure only leaves this position empty.
+      if (run?.cancelled || err instanceof DuplicateCancelledError || err?.code === 'ETIMEDOUT') throw err;
+    }
+    samples.push(frames.length === 0 ? null : frames.map((frame) => {
+      const cropped = border ? cropToPrimary(frame.analysis, border) : null;
+      return [
+        Math.round(frame.offset * 1000),
+        calculateDctPHash(frame.primary),
+        calculateDctPHash(flipGrayBytes(frame.primary)),
+        cropped ? calculateDctPHash(cropped) : null,
+        cropped ? calculateDctPHash(flipGrayBytes(cropped)) : null,
+      ];
+    }));
+  }
+  if (samples.every((sample) => sample === null)) throw new Error('FFmpeg returned no frames around any sample time');
+  return JSON.stringify(samples);
+}
+
 async function buildFingerprintsForVideo(video, settings, run, executionOptions) {
   let timestamps = getSamplingTimestamps(video.durationSecs, settings.sampleCount, settings, video.fps);
   let grayFrames;
@@ -603,6 +702,133 @@ async function backfillFingerprints(videos, duplicateState, settings, run, sendP
   });
 }
 
+async function loadBursts(videos, burstKey, settings, cacheAccess, cacheOptions, run) {
+  const bursts = new Map();
+  for (const [folderPath, folderVideos] of groupVideosByFolder(videos)) {
+    await waitForDuplicateProcessing(run);
+    const rows = await cacheAccess.loadVideoBursts(folderPath, cacheOptions, folderVideos.map((video) => video.id), burstKey);
+    for (const row of rows) {
+      const burst = parseBurst(row.state, row.frames_json);
+      // A failed burst is read again only when failed extractions are retried.
+      if (!burst || (burst.state === 'failed' && settings.retryFailedFingerprintExtraction)) continue;
+      bursts.set(row.video_id, burst);
+    }
+  }
+  return bursts;
+}
+
+async function extractBursts(videos, rowsByVideo, bursts, burstKey, run, sendProgress, maxConcurrency, executionOptions, cacheAccess, cacheOptions) {
+  progress(sendProgress, 'Verifying matches', { current: 0, total: videos.length });
+  const takeNextVideo = createQueueCursor(videos);
+  let current = 0;
+  let failed = 0;
+  const workerCount = Math.max(1, Math.min(Math.floor(maxConcurrency) || 1, videos.length || 1));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (true) {
+      await waitForDuplicateProcessing(run);
+      const video = takeNextVideo();
+      if (!video) break;
+      const folderPath = path.dirname(video.path);
+      try {
+        const framesJson = await buildBurstForVideo(video, rowsByVideo.get(video.id) ?? [], run, executionOptions);
+        assertNotCancelled(run);
+        await cacheAccess.saveVideoBurst(folderPath, cacheOptions, video.id, burstKey, 'ok', framesJson);
+        bursts.set(video.id, parseBurst('ok', framesJson));
+      } catch (err) {
+        if (err instanceof DuplicateCancelledError) throw err;
+        if (err?.code === CACHE_UNAVAILABLE_CODE) {
+          run.cancel();
+          throw new DuplicateCancelledError();
+        }
+        failed++;
+        // As with fingerprints, a timeout is not stored, so the video is tried again next run.
+        if (!run?.cancelled && err?.code !== 'ETIMEDOUT') {
+          try {
+            await cacheAccess.saveVideoBurst(folderPath, cacheOptions, video.id, burstKey, 'failed', null);
+            bursts.set(video.id, parseBurst('failed', null));
+          } catch (markError) {
+            duplicateLog('Could not record burst failure', { path: video.path, error: markError?.message || String(markError) });
+          }
+        }
+      }
+      current++;
+      progress(sendProgress, 'Verifying matches', { current, total: videos.length });
+    }
+  }));
+  return failed;
+}
+
+/**
+ * Double-checks the near misses of a pHash comparison: extracts bursts within the budget (all of them
+ * with `checkAll`), then verifies every listed near miss against the bursts that exist. Pairs and
+ * video IDs are those of the representatives. No pair-level state is kept: a near miss is settled once
+ * either video has a burst, and bursts are cached per video.
+ */
+async function verifyNearMisses({ comparison, videos, rows, settings, videoCount, checkAll, run, sendProgress, maxConcurrency, executionOptions, cacheAccess, cacheOptions }) {
+  const ignored = new Set(settings.ignoredDuplicatePairs ?? []);
+  const nearMisses = comparison.nearMisses.filter((pair) => !ignored.has(storedPairKey(pair.aId, pair.bId)));
+  // Pairs beyond the pending list are counted, not kept; a later run lists them again.
+  const unlisted = Math.max(0, comparison.nearMissCount - comparison.nearMisses.length);
+  const stats = {
+    candidates: nearMisses.length + unlisted,
+    accepted: 0,
+    rejected: 0,
+    unverifiable: 0,
+    pending: unlisted,
+    complete: false,
+    manyNearMisses: comparison.nearMissCount > MANY_NEAR_MISSES_PER_VIDEO * videoCount,
+  };
+  const acceptedPairs = [];
+  const involvedIds = new Set(nearMisses.flatMap((pair) => [pair.aId, pair.bId]));
+  const videosById = new Map(videos.filter((video) => involvedIds.has(video.id)).map((video) => [video.id, video]));
+  const involvedRows = rows.filter((row) => involvedIds.has(row.video_id));
+  const rowsByVideo = groupBy(involvedRows, (row) => row.video_id);
+  const burstKey = getDuplicateBurstKey(settings);
+
+  const bursts = await loadBursts([...videosById.values()], burstKey, settings, cacheAccess, cacheOptions, run);
+  const budget = checkAll ? Infinity : burstBudget(videoCount);
+  const selected = selectBurstVideos(nearMisses, (id) => bursts.get(id)?.state, budget)
+    .map((id) => videosById.get(id))
+    .filter(Boolean);
+  const failed = selected.length > 0
+    ? await extractBursts(selected, rowsByVideo, bursts, burstKey, run, sendProgress, maxConcurrency, executionOptions, cacheAccess, cacheOptions)
+    : 0;
+  assertNotCancelled(run);
+
+  const samplesByVideo = pHashSamplesByVideo(involvedRows, settings.sampleCount, settings.matchPartlyUnreadable);
+  for (const pair of nearMisses) {
+    const samplesA = samplesByVideo.get(pair.aId);
+    const samplesB = samplesByVideo.get(pair.bId);
+    if (!samplesA || !samplesB) {
+      stats.unverifiable++;
+      continue;
+    }
+    const result = verifyNearMiss(
+      { samples: samplesA, burst: bursts.get(pair.aId), durationSecs: Number(videosById.get(pair.aId)?.durationSecs) },
+      { samples: samplesB, burst: bursts.get(pair.bId), durationSecs: Number(videosById.get(pair.bId)?.durationSecs) },
+      settings,
+    );
+    stats[result.outcome]++;
+    if (result.outcome !== 'accepted') continue;
+    const isStatic = movementClass(samplesA, settings) === 'static' && movementClass(samplesB, settings) === 'static';
+    acceptedPairs.push({
+      aId: pair.aId,
+      bId: pair.bId,
+      pHashSimilarity: result.similarity,
+      comparedSamples: result.compared,
+      static: isStatic,
+      confidence: matchConfidence(result.compared, isStatic),
+      borderAdjusted: result.borderAdjusted,
+      flipped: result.flipped,
+      partialFingerprint: samplesA.some((sample) => sample.unreadable) || samplesB.some((sample) => sample.unreadable),
+      timingAdjusted: true,
+    });
+  }
+  stats.complete = stats.pending === 0;
+  duplicateLog('Near-miss verification complete', { ...stats, bursts: selected.length, burstFailures: failed });
+  return { acceptedPairs, stats };
+}
+
 function createSimilarityRevalidator(settings, comparisonData = null) {
   if (!comparisonData?.mode || !Array.isArray(comparisonData.rows)) return null;
   const phash = comparisonData.mode === 'phash';
@@ -614,6 +840,9 @@ function createSimilarityRevalidator(settings, comparisonData = null) {
   const sampleScore = phash ? pHashSampleScore : graySampleScore(settings);
   const scoreOptions = { firstSampleOnly: phash && settings.phashFirstSampleOnly };
   const computeSimilarity = (aId, bId, enforceThreshold) => {
+    // A pair accepted after its timing was corrected keeps that score: scored directly it is a near miss.
+    const verified = comparisonData.verifiedScores?.get(internalPairKey(aId, bId));
+    if (verified !== undefined) return verified;
     const samplesA = samplesByVideo.get(aId);
     const samplesB = samplesByVideo.get(bId);
     if (!samplesA || !samplesB) return undefined;
@@ -663,8 +892,9 @@ function runPHashWorker(videos, phashRows, settings, run, sendProgress) {
           bucketed: message.bucketed,
           buckets: message.bucketCount,
           unknownDurationCount: message.unknownDurationCount,
+          nearMisses: message.nearMissCount ?? 0,
         });
-        resolve(message.pairs ?? []);
+        resolve({ pairs: message.pairs ?? [], nearMisses: message.nearMisses ?? [], nearMissCount: message.nearMissCount ?? 0 });
       } else if (message.type === 'error') {
         run.worker = null;
         pauseHandle.release();
@@ -1000,7 +1230,7 @@ function summariseGroupPairs(pairs, videos, settings) {
   let fuzzyMatchType = null;
   let fewestComparedSamples = null;
   let lowConfidence = false;
-  const flags = { static: false, borderAdjusted: false, flipped: false, partialFingerprint: false };
+  const flags = { static: false, borderAdjusted: false, flipped: false, partialFingerprint: false, timingAdjusted: false };
   for (const pair of pairs) {
     if (pair.matchType === 'exact') {
       exactVideoIds.add(pair.aId);
@@ -1234,6 +1464,8 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
           borderAdjusted: Boolean(matched.borderAdjusted),
           flipped: Boolean(matched.flipped),
           partialFingerprint: Boolean(matched.partialFingerprint),
+          // Matched after the sample times were corrected for a small shift (near-miss check).
+          timingAdjusted: Boolean(matched.timingAdjusted),
         });
       }
     }
@@ -1333,7 +1565,7 @@ function deriveVideos(videos, groups) {
   });
 }
 
-async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cacheOptions, maxConcurrency, executionOptions, run, sendProgress }) {
+async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cacheOptions, maxConcurrency, executionOptions, run, sendProgress, checkAllNearMisses = false }) {
   const settings = normalizeDuplicateSettings(rawSettings);
   const safeVideos = Array.isArray(videos) ? videos.filter((video) => video?.id && video?.path) : [];
   const videosById = new Map(safeVideos.map((video) => [video.id, video]));
@@ -1370,6 +1602,7 @@ async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cach
   assertNotCancelled(run);
   let similarityPairs = [];
   let comparisonData = null;
+  let verification = null;
   const representativeIds = new Set(representativeVideos.map((video) => video.id));
   const comparisonRows = duplicateState.comparisonRows.filter((row) => representativeIds.has(row.video_id));
   if (settings.comparisonMode === 'phash') {
@@ -1382,7 +1615,27 @@ async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cach
       missingRows: Math.max(0, expectedRows - phashRows.length),
       missingVideosApprox: Math.ceil(Math.max(0, expectedRows - phashRows.length) / settings.sampleCount),
     });
-    const pHashPairs = await runPHashWorker(representativeVideos, phashRows, settings, run, sendProgress);
+    const comparison = await runPHashWorker(representativeVideos, phashRows, settings, run, sendProgress);
+    let pHashPairs = comparison.pairs;
+    if (nearMissVerificationEnabled(settings)) {
+      const verified = await verifyNearMisses({
+        comparison,
+        videos: representativeVideos,
+        rows: phashRows,
+        settings,
+        videoCount: safeVideos.length,
+        checkAll: checkAllNearMisses,
+        run,
+        sendProgress,
+        maxConcurrency,
+        executionOptions,
+        cacheAccess,
+        cacheOptions,
+      });
+      verification = verified.stats;
+      pHashPairs = [...pHashPairs, ...verified.acceptedPairs];
+      comparisonData.verifiedScores = new Map(verified.acceptedPairs.map((pair) => [internalPairKey(pair.aId, pair.bId), pair.pHashSimilarity]));
+    }
     similarityPairs = expandRepresentativePairs(pHashPairs.map((pair) => ({
       ...pair,
       similarity: pair.pHashSimilarity,
@@ -1414,6 +1667,7 @@ async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cach
       duplicateVideoCount: groups.reduce((sum, group) => sum + group.videoIds.length, 0),
       exactGroupCount: groups.filter((group) => group.matchType === 'exact').length,
       similarityGroupCount: groups.filter((group) => group.matchType !== 'exact').length,
+      ...(verification ? { verification } : {}),
     },
   };
   duplicateLog('Run complete', result.stats);
@@ -1441,6 +1695,11 @@ module.exports = {
   rememberDuplicateSignatures,
   __test__: {
     backfillFingerprints,
+    buildBurstExtractionArgs,
+    buildBurstForVideo,
+    buildFingerprintsForVideo,
+    createSimilarityRevalidator,
+    verifyNearMisses,
     buildGroups,
     stableDuplicateGroupId,
     buildExactRepresentativeIndex,

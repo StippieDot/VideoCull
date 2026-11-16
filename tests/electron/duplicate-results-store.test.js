@@ -43,7 +43,7 @@ test('results round-trip, and the file holds no paths', async () => {
     const loaded = await store.load(session);
     assert.deepEqual(loaded.groups[0].pairs[0], {
       aId: A, bId: B, similarity: 98.5, matchType: 'phash', comparedSamples: 3, confidence: 'normal',
-      static: false, borderAdjusted: false, flipped: false, partialFingerprint: false,
+      static: false, borderAdjusted: false, flipped: false, partialFingerprint: false, timingAdjusted: false,
     });
     assert.equal(loaded.groups[0].manualSuggestedKeeperId, B);
     const text = await fs.readFile(path.join(rootDir, 'duplicate-results', sessionFileName(session)), 'utf8');

@@ -47,7 +47,7 @@ export function summariseDuplicateGroup(
   let fuzzyMatchType: DuplicateGroup['matchType'] | null = null;
   let fewestComparedSamples: number | null = null;
   let lowConfidence = false;
-  const flags = { static: false, borderAdjusted: false, flipped: false, partialFingerprint: false };
+  const flags = { static: false, borderAdjusted: false, flipped: false, partialFingerprint: false, timingAdjusted: false };
   for (const pair of pairs) {
     if (pair.matchType === 'exact') {
       exactVideoIds.add(pair.aId);

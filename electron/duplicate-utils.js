@@ -30,6 +30,10 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   skipBlankFrames: true,
   matchPartlyUnreadable: true,
   minComparedSamples: 'auto',
+  verifyNearMatches: 'auto',
+  // Points below the similarity value within which a pair is double-checked. 20 catches the measured
+  // half-second shifts (77–79 % at 95) and admitted 40 pairs among 14,500 videos on a real library.
+  nearMissRange: 20,
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,
@@ -40,6 +44,7 @@ const DEFAULT_DUPLICATE_SETTINGS = {
 
 const SAMPLE_COUNT_OPTIONS = new Set([1, 2, 3, 4, 5, 7, 9]);
 const COMPARISON_MODES = new Set(['phash', 'visual']);
+const NEAR_MISS_RANGES = new Set([5, 10, 15, 20, 25, 30]);
 const KEEPER_RULES = new Set(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
 const CODEC_FAMILIES = new Set(DEFAULT_DUPLICATE_SETTINGS.codecOrder);
 
@@ -70,6 +75,8 @@ function normalizeDuplicateSettings(input = {}) {
     skipBlankFrames: input.skipBlankFrames !== false,
     matchPartlyUnreadable: input.matchPartlyUnreadable !== false,
     minComparedSamples: [1, 2, 3].includes(Number(input.minComparedSamples)) ? Number(input.minComparedSamples) : 'auto',
+    verifyNearMatches: input.verifyNearMatches === 'off' ? 'off' : 'auto',
+    nearMissRange: NEAR_MISS_RANGES.has(Number(input.nearMissRange)) ? Number(input.nearMissRange) : DEFAULT_DUPLICATE_SETTINGS.nearMissRange,
     durationTolerancePercent: clamp(input.durationTolerancePercent ?? DEFAULT_DUPLICATE_SETTINGS.durationTolerancePercent, 0, 100),
     checkpointIntervalMinutes: clamp(input.checkpointIntervalMinutes ?? DEFAULT_DUPLICATE_SETTINGS.checkpointIntervalMinutes, 0, 60),
     ignoredDuplicatePairs: normalizeIgnoredDuplicatePairs(input.ignoredDuplicatePairs),
@@ -183,6 +190,12 @@ function getDuplicateFingerprintKey(input = {}) {
   ].join('|');
 }
 
+// Bursts are read at the fingerprint's sample times, so they are valid only beside those fingerprints.
+// 'hash': the burst stores hashes only, which serves pHash mode.
+function getDuplicateBurstKey(input = {}) {
+  return `${getDuplicateFingerprintKey(input)}|b1|hash`;
+}
+
 // Raise when a change to the comparison or grouping code can change which pairs match, so stored
 // results made by the previous code are discarded.
 const DUPLICATE_ALGORITHM_VERSION = 1;
@@ -194,7 +207,7 @@ const MATCHING_SETTING_KEYS = [
   'comparisonMode', 'sampleCount', 'samplingWindow', 'customStartPercent', 'customEndPercent',
   'finalSimilarityThreshold', 'phashFirstSampleOnly', 'durationTolerancePercent', 'requireEverySample',
   'ignoreBlackPixels', 'ignoreWhitePixels', 'compareFlipped', 'matchBlackBars', 'skipBlankFrames',
-  'matchPartlyUnreadable', 'minComparedSamples', 'maxSamplingDuration',
+  'matchPartlyUnreadable', 'minComparedSamples', 'maxSamplingDuration', 'verifyNearMatches', 'nearMissRange',
 ];
 const NON_MATCHING_SETTING_KEYS = [
   'enabled', 'runAfterScan', 'defaultScope', 'protectKeep', 'protectSkipped', 'keeperOrder', 'codecOrder',
@@ -391,6 +404,7 @@ function groupSamplesByVideo(rows, sampleCount, toSample, keepPartlyUnreadable) 
       darkRatio: Number(row.frame_dark_ratio ?? 0),
       unreadable: row.sample_state === 'unreadable',
       lumaRange: row.luma_range ?? null,
+      timestamp: row.timestamp_secs ?? null,
       // The full-frame hash in both modes: the movement class is judged on it.
       motionHash: row.phash_hex ? parsePHashWords(row.phash_hex) : null,
       ...toSample(row),
@@ -451,6 +465,8 @@ function fingerprintToRow(videoId, fingerprint) {
   return {
     video_id: videoId,
     sample_index: fingerprint.sampleIndex,
+    timestamp_secs: fingerprint.timestampSecs ?? null,
+    border_ltrb: fingerprint.borderLtrb ?? null,
     phash_hex: fingerprint.phashHex,
     flipped_phash_hex: fingerprint.flippedPHashHex ?? null,
     gray_bytes: fingerprint.grayBytes,
@@ -491,8 +507,9 @@ function scoreSamples(samplesA, samplesB, settings, sampleScore, options = {}) {
   return best;
 }
 
-function scoreSampleVariants(samplesA, samplesB, settings, sampleScore, { firstSampleOnly = false, stopBelowThreshold = false }, cropA, cropB) {
-  const threshold = settings.finalSimilarityThreshold;
+function scoreSampleVariants(samplesA, samplesB, settings, sampleScore, { firstSampleOnly = false, stopBelowThreshold = false, floor = undefined }, cropA, cropB) {
+  // `floor`: the lowest score the caller still wants back, below the threshold for near misses.
+  const threshold = floor ?? settings.finalSimilarityThreshold;
   // An average at the threshold allows this much shortfall in total; past it the pair cannot match,
   // which ends most comparisons of unrelated videos after the first sample.
   const maxShortfall = stopBelowThreshold ? (100 - threshold) * settings.sampleCount : Infinity;
@@ -686,6 +703,7 @@ module.exports = {
   normalizeDuplicateSettings,
   getSamplingTimestamps,
   getDuplicateFingerprintKey,
+  getDuplicateBurstKey,
   getDuplicateResultsSettingsKey,
   MATCHING_SETTING_KEYS,
   NON_MATCHING_SETTING_KEYS,

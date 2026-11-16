@@ -217,6 +217,12 @@ function createCacheService({
     markFingerprintFailure: (folderPath, cacheOptions, videoId, fingerprintKey) => scopedRequest(
       'markFingerprintFailure', folderPath, cacheOptions, { videoId, fingerprintKey },
     ),
+    loadVideoBursts: (folderPath, cacheOptions, videoIds, burstKey) => scopedRequest(
+      'loadVideoBursts', folderPath, cacheOptions, { videoIds, burstKey },
+    ),
+    saveVideoBurst: (folderPath, cacheOptions, videoId, burstKey, state, framesJson) => scopedRequest(
+      'saveVideoBurst', folderPath, cacheOptions, { videoId, burstKey, state, framesJson },
+    ),
   };
 }
 

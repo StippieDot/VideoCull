@@ -2591,6 +2591,8 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
       executionOptions: duplicateExecutionOptions,
       run,
       sendProgress: (payload) => sendToRenderer('duplicate-progress', payload),
+      // "Check remaining near misses": no limit on how many videos get a burst this run.
+      checkAllNearMisses: options?.checkAllNearMisses === true,
     });
     if (activeDuplicateRun === run) activeDuplicateRun = null;
     sendToRenderer('duplicate-progress', { stage: 'Done', current: result.stats.duplicateVideoCount, total: result.stats.duplicateVideoCount });

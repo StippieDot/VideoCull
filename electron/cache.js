@@ -325,6 +325,16 @@ const SCHEMA = `
     PRIMARY KEY (video_id, sample_index)
   );
 
+  -- Frames around each sample time, read to double-check near misses. state 'failed' records a video
+  -- that gave no frames, so it is not read again until failed extractions are retried.
+  CREATE TABLE IF NOT EXISTS video_bursts (
+    video_id    TEXT PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+    burst_key   TEXT NOT NULL,
+    state       TEXT NOT NULL,
+    frames_json TEXT,
+    created_at  INTEGER
+  );
+
   CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
   CREATE INDEX IF NOT EXISTS idx_videos_duplicate_hash ON videos(duplicate_hash);
   CREATE INDEX IF NOT EXISTS idx_videos_metadata_date ON videos(metadata_date);
@@ -675,11 +685,16 @@ function createVideoBatchWriter(db, videos, options = {}) {
     'INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)'
   );
   const deleteFingerprints = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
+  const deleteBursts = db.prepare('DELETE FROM video_bursts WHERE video_id = ?');
 
   const write = db.transaction((vids) => {
     for (const v of vids) {
       resolvePathConflict(v);
-      if (changedFingerprintIds.has(v.id)) deleteFingerprints.run(v.id);
+      // Everything read from the file goes when the file changed; the video row itself stays.
+      if (changedFingerprintIds.has(v.id)) {
+        deleteFingerprints.run(v.id);
+        deleteBursts.run(v.id);
+      }
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
@@ -1029,6 +1044,25 @@ function markFingerprintFailure(db, videoId, options = {}) {
     .run(Date.now(), options.fingerprintKey ?? null, videoId);
 }
 
+/** Stored bursts under `burstKey`, as `{ video_id, state, frames_json }` rows. */
+function loadVideoBursts(db, videoIds, burstKey) {
+  if (!videoIds.length) return [];
+  return batchSelectIn(
+    db,
+    'SELECT video_id, burst_key, state, frames_json FROM video_bursts WHERE video_id IN (__IN__)',
+    videoIds,
+  ).filter((row) => row.burst_key === burstKey);
+}
+
+function saveVideoBurst(db, videoId, burstKey, state, framesJson) {
+  if (!videoId || !burstKey || (state !== 'ok' && state !== 'failed')) return;
+  db.prepare(`
+    INSERT INTO video_bursts (video_id, burst_key, state, frames_json, created_at) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(video_id) DO UPDATE SET
+      burst_key = excluded.burst_key, state = excluded.state, frames_json = excluded.frames_json, created_at = excluded.created_at
+  `).run(videoId, burstKey, state, state === 'ok' ? framesJson : null, Date.now());
+}
+
 function loadFingerprintFailureIds(db, videoIds, options = {}) {
   if (!videoIds.length) return new Set();
   const rows = [];
@@ -1102,8 +1136,8 @@ function loadPHashRows(db, videoIds, sampleCount, options = {}) {
     const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const startedAt = performance.now();
     const batch = db.prepare(`
-      SELECT video_id, sample_index, phash_hex, flipped_phash_hex, frame_dark_ratio, sample_state, luma_range,
-             crop_phash_hex, crop_flipped_phash_hex
+      SELECT video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, frame_dark_ratio, sample_state, luma_range,
+             border_ltrb, crop_phash_hex, crop_flipped_phash_hex
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
         ${fingerprintFilter}
@@ -1306,6 +1340,8 @@ module.exports = {
   getFingerprintCounts,
   saveVideoFingerprints,
   markFingerprintFailure,
+  loadVideoBursts,
+  saveVideoBurst,
   loadFingerprintFailureIds,
   markMetadataFailure,
   loadRecentMetadataFailureIds,

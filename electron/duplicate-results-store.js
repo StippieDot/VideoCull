@@ -52,6 +52,7 @@ function sanitizePair(value) {
     borderAdjusted: pair.borderAdjusted === true,
     flipped: pair.flipped === true,
     partialFingerprint: pair.partialFingerprint === true,
+    timingAdjusted: pair.timingAdjusted === true,
   };
 }
 
