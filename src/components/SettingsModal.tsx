@@ -208,6 +208,15 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
     return parts.length > 0 ? `Unrelated videos start to match with ${parts.join(' and ')}.` : null;
   })();
 
+  // SYNC NOTE: the conditions of nearMissVerificationEnabled in electron/pair-verifier.js.
+  const nearMissUnavailableReason = localSettings.duplicates.comparisonMode !== 'phash'
+    ? 'Works with pHash comparison only.'
+    : localSettings.duplicates.sampleCount < 2
+      ? 'Needs at least 2 samples.'
+      : localSettings.duplicates.phashFirstSampleOnly
+        ? 'Not available with First sample scoring.'
+        : null;
+
   // One select over two stored flags: first-sample-only (pHash) wins over every-sample.
   const sampleScoring = localSettings.duplicates.phashFirstSampleOnly
     ? 'first'
@@ -760,6 +769,29 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           checked={localSettings.duplicates.matchBlackBars}
                           onChange={(checked) => handleDuplicateChange('matchBlackBars', checked)}
                         />
+                        <SettingRow
+                          label="Double-check near misses"
+                          help={nearMissUnavailableReason ?? 'Looks again at pairs that score just below your similarity value, using frames around each sample. Finds copies that start a moment earlier or later. A wider range finds more and reads frames of more videos once; they are kept for later runs.'}
+                        >
+                          {(id) => (
+                            <select
+                              id={id}
+                              value={localSettings.duplicates.verifyNearMatches === 'off' ? 'off' : String(localSettings.duplicates.nearMissRange)}
+                              disabled={nearMissUnavailableReason !== null}
+                              onChange={(e) => setLocalSettings((prev) => ({
+                                ...prev,
+                                duplicates: e.target.value === 'off'
+                                  ? { ...prev.duplicates, verifyNearMatches: 'off' }
+                                  : { ...prev.duplicates, verifyNearMatches: 'auto', nearMissRange: Number(e.target.value) as AppSettings['duplicates']['nearMissRange'] },
+                              }))}
+                            >
+                              <option value="off">Off</option>
+                              {[5, 10, 15, 20, 25, 30].map((range) => (
+                                <option key={range} value={range}>Up to {range} points below</option>
+                              ))}
+                            </select>
+                          )}
+                        </SettingRow>
                         <SwitchRow
                           label="Protect marked keep videos"
                           help="Videos marked Keep are never suggested for deletion."

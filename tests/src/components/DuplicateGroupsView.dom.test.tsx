@@ -282,7 +282,7 @@ describe('DuplicateGroupsView behavior', () => {
         }),
         makeDuplicateGroup({
           id: 'normal', videoIds: ['c', 'd'], similarity: 96, reason: 'Same content at 3 of 3 sampled moments', suggestedKeeperId: 'c',
-          confidence: 'normal', comparedSamples: 3, durationDifferenceSecs: 2.5,
+          confidence: 'normal', comparedSamples: 3, durationDifferenceSecs: 2.5, timingAdjusted: true,
         }),
       ],
     });
@@ -292,6 +292,7 @@ describe('DuplicateGroupsView behavior', () => {
     const warning = await screen.findByText('Single-frame match — check before deleting');
     expect(screen.getByText('Partly unreadable')).toBeTruthy();
     expect(screen.getByText('Lengths differ by 2.5 s')).toBeTruthy();
+    expect(screen.getByText('Starts a moment earlier or later')).toBeTruthy();
     expect(screen.queryByText('Little movement — check before deleting')).toBeNull();
     // Sorted by similarity, highest first, the 100% group would lead; needing a check puts it last.
     const normalReason = screen.getByText('Same content at 3 of 3 sampled moments');

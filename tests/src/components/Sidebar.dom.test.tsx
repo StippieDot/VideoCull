@@ -60,6 +60,7 @@ function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}) {
       onCloseSession={vi.fn()}
       onFindDuplicates={vi.fn()}
       onSwitchDuplicateMethod={vi.fn()}
+      onCheckNearMisses={vi.fn()}
       onOpenDuplicateSettings={vi.fn()}
       onOpenDocumentation={vi.fn()}
       onRequestPermanentDelete={vi.fn().mockResolvedValue(false)}
@@ -314,6 +315,31 @@ describe('Sidebar recent folder behavior', () => {
     renderSidebar({ onSwitchDuplicateMethod });
     await userEvent.click(screen.getByRole('button', { name: 'Run Again with pHash' }));
     expect(onSwitchDuplicateMethod).toHaveBeenCalledTimes(1);
+  });
+
+  test('unchecked near misses are named, with the action that checks them', async () => {
+    const onCheckNearMisses = vi.fn();
+    const videos = [makeVideo('a'), makeVideo('b')];
+    const verification = { candidates: 4, accepted: 1, rejected: 0, unverifiable: 0, pending: 3, complete: false, manyNearMisses: false };
+    useStore.setState({
+      directory: 'D:\Media',
+      directories: ['D:\Media'],
+      videos,
+      filteredVideos: videos,
+      stats: { ...useStore.getState().stats, total: 2, pending: 2 },
+      duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })],
+      duplicateGroupsMode: true,
+      duplicateRun: { createdAt: 1, settingsKey: 'k', scope: 'all', videos: [], restored: false, addedSince: 0, verification },
+    });
+    const { rerender } = renderSidebar({ onCheckNearMisses });
+    expect(screen.getByText('3 near misses not yet checked')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Check remaining near misses' }));
+    expect(onCheckNearMisses).toHaveBeenCalledTimes(1);
+
+    useStore.setState({ duplicateRun: { ...useStore.getState().duplicateRun!, verification: { ...verification, pending: 0, complete: true } } });
+    rerender(<></>);
+    renderSidebar();
+    expect(screen.queryByText(/not yet checked/)).toBeNull();
   });
 
   test('opens documentation from the sidebar header button', async () => {

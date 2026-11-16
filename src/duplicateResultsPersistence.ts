@@ -1,5 +1,5 @@
 import { rebuildDuplicateGroups, summariseDuplicateGroup } from './duplicateGroupRebuild';
-import type { DuplicateGroup, StoredDuplicateResults, Video } from './types';
+import type { DuplicateGroup, DuplicateVerificationStats, StoredDuplicateResults, Video } from './types';
 
 /** Where the duplicate groups on screen came from: a run, or results stored by an earlier one. */
 export interface DuplicateRunInfo {
@@ -11,6 +11,13 @@ export interface DuplicateRunInfo {
   restored: boolean;
   /** Scope 'all': videos in the scan that did not take part in the run. */
   addedSince: number;
+  /** Near-miss checking of the run; not stored, so absent for restored results. */
+  verification?: DuplicateVerificationStats;
+}
+
+/** "3 near misses not yet checked". */
+export function describeUncheckedNearMisses(count: number): string {
+  return `${count} near ${count === 1 ? 'miss' : 'misses'} not yet checked`;
 }
 
 export function describeDuplicateRun(

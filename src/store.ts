@@ -1802,7 +1802,7 @@ const useStore = create<VideoStore>((set, get) => ({
   applyDuplicateResult: (result, run) => {
     const stateBefore = get();
     const duplicateRun = run && result.settingsKey
-      ? describeDuplicateRun(run.videos, result.settingsKey, run.scope)
+      ? { ...describeDuplicateRun(run.videos, result.settingsKey, run.scope), verification: result.stats?.verification }
       : null;
     const groupsWithKeepers = result.groups
       ? applyKeeperOrderToGroups(result.groups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder, stateBefore.settings.duplicates.codecOrder)

@@ -271,6 +271,9 @@ export interface DuplicateSettings {
   skipBlankFrames: boolean;
   matchPartlyUnreadable: boolean;
   minComparedSamples: 'auto' | 1 | 2 | 3;
+  /** 'auto': pairs up to nearMissRange points below the similarity value are double-checked (pHash). */
+  verifyNearMatches: 'auto' | 'off';
+  nearMissRange: 5 | 10 | 15 | 20 | 25 | 30;
   maxSamplingDuration: number;
   retryFailedFingerprintExtraction: boolean;
   checkpointIntervalMinutes: number;
@@ -291,6 +294,7 @@ export interface DuplicateGroupPair {
   borderAdjusted?: boolean;
   flipped?: boolean;
   partialFingerprint?: boolean;
+  timingAdjusted?: boolean;
 }
 
 export interface DuplicateGroup {
@@ -320,6 +324,8 @@ export interface DuplicateGroup {
   flipped?: boolean;
   /** A video was compared without the samples that could not be read. */
   partialFingerprint?: boolean;
+  /** A match was only found after the sample times were corrected for a copy that starts a moment earlier or later. */
+  timingAdjusted?: boolean;
   /** How far the members' lengths differ, when it is more than 1 second and 1 percent. */
   durationDifferenceSecs?: number | null;
   /** The keeper rule that decided, or 'path' when nothing else did. */
@@ -360,7 +366,7 @@ export type LoadedDuplicateResults =
   | { status: 'none' };
 
 export interface DuplicateProgress {
-  stage: 'Preparing' | 'Building fingerprints' | 'Checking exact matches' | 'Comparing pHashes' | 'Finding candidates' | 'Confirming visual matches' | 'Building groups' | 'Done' | 'Cancelled' | 'Error';
+  stage: 'Preparing' | 'Building fingerprints' | 'Checking exact matches' | 'Comparing pHashes' | 'Verifying matches' | 'Finding candidates' | 'Confirming visual matches' | 'Building groups' | 'Done' | 'Cancelled' | 'Error';
   current: number;
   total: number;
   message?: string;
@@ -377,8 +383,22 @@ export interface DuplicateResult {
     duplicateVideoCount: number;
     exactGroupCount: number;
     similarityGroupCount: number;
+    /** Near misses double-checked with frames around the sample times; absent when that is off. */
+    verification?: DuplicateVerificationStats;
   };
   error?: string;
+}
+
+export interface DuplicateVerificationStats {
+  candidates: number;
+  accepted: number;
+  rejected: number;
+  unverifiable: number;
+  /** Not checked yet; a later run, or Check remaining near misses, checks them. */
+  pending: number;
+  complete: boolean;
+  /** More near misses than five per video: many videos in this library resemble each other. */
+  manyNearMisses: boolean;
 }
 
 // ── Undo Entry ─────────────────────────────────────────────────────
@@ -836,7 +856,7 @@ export interface ElectronAPI {
   onProcessingPauseState: (callback: (data: ProcessingPauseState) => void) => () => void;
   onThumbProgress: (callback: (data: ThumbProgress) => void) => () => void;
   onThumbReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;
-  findDuplicates: (videos: Video[], options?: { settings?: Partial<DuplicateSettings> }) => Promise<DuplicateResult>;
+  findDuplicates: (videos: Video[], options?: { settings?: Partial<DuplicateSettings>; checkAllNearMisses?: boolean }) => Promise<DuplicateResult>;
   cancelDuplicateDetection: () => Promise<boolean>;
   onDuplicateProgress: (callback: (data: DuplicateProgress) => void) => () => void;
   onMenuAction: (callback: (action: MenuAction) => void) => () => void;

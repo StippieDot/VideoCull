@@ -28,6 +28,7 @@ import { applyDocumentTheme } from './theme';
 import './App.css';
 import { openVideoExternally, revealInExplorer } from './appCommands';
 import { sameSessionFolders } from './sessions';
+import { describeUncheckedNearMisses } from './duplicateResultsPersistence';
 
 const CURRENT_METADATA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
@@ -379,7 +380,7 @@ export default function App() {
   }, [pushToast]);
 
   /** `restart` starts over while a run is going; the main process cancels the earlier run. */
-  const handleFindDuplicates = useCallback(async ({ restart = false }: { restart?: boolean } = {}) => {
+  const handleFindDuplicates = useCallback(async ({ restart = false, checkAllNearMisses = false }: { restart?: boolean; checkAllNearMisses?: boolean } = {}) => {
     const state = useStore.getState();
     // Read at call time: a method switch updates the settings just before calling this.
     const duplicateSettings = state.settings.duplicates;
@@ -406,7 +407,7 @@ export default function App() {
     setIsFindingDuplicates(true);
     setDuplicateProgress({ stage: 'Preparing', current: 0, total: scopeVideos.length });
     try {
-      const result = await window.electronAPI.findDuplicates(scopeVideos, { settings: duplicateSettings });
+      const result = await window.electronAPI.findDuplicates(scopeVideos, { settings: duplicateSettings, checkAllNearMisses });
       if (duplicateRunId !== duplicateRunIdRef.current) return;
       if (result.status === 'ok') {
         const activeIds = new Set(useStore.getState().videos.map((video) => video.id));
@@ -415,10 +416,12 @@ export default function App() {
         applyDuplicateResult(result, { videos: scopeVideos, scope: duplicateSettings.defaultScope === 'filtered' ? 'filtered' : 'all' });
         useStore.getState().setLastDuplicateMethod(duplicateSettings.comparisonMode);
         const count = result.stats?.duplicateVideoCount ?? 0;
+        const pending = result.stats?.verification?.pending ?? 0;
         pushToast({
           title: count > 0 ? 'Duplicates found' : 'No duplicates found',
-          detail: count > 0 ? `${result.stats?.groupCount ?? 0} duplicate groups detected.` : 'No mostly identical videos matched.',
+          detail: `${count > 0 ? `${result.stats?.groupCount ?? 0} duplicate groups detected.` : 'No mostly identical videos matched.'}${pending > 0 ? ` ${describeUncheckedNearMisses(pending)}.` : ''}`,
           kind: count > 0 ? 'success' : 'info',
+          ...(pending > 0 ? { actionLabel: 'Check them', action: () => void findDuplicatesRef.current({ restart: true, checkAllNearMisses: true }) } : {}),
         });
       } else if (result.status === 'cancelled') {
         pushToast({ title: 'Duplicate detection cancelled', kind: 'info' });
@@ -1398,6 +1401,7 @@ export default function App() {
             onCloseSession={() => void handleCloseSession()}
             onFindDuplicates={() => void handleFindDuplicates()}
             onSwitchDuplicateMethod={handleSwitchDuplicateMethod}
+            onCheckNearMisses={() => void handleFindDuplicates({ checkAllNearMisses: true })}
             onOpenDuplicateSettings={() => openSettings('duplicates')}
             onRequestPermanentDelete={requestPermanentDelete}
             globalMute={globalMute}

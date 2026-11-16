@@ -83,6 +83,8 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   skipBlankFrames: true,
   matchPartlyUnreadable: true,
   minComparedSamples: 'auto',
+  verifyNearMatches: 'auto',
+  nearMissRange: 20,
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,

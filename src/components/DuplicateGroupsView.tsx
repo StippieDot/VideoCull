@@ -396,6 +396,7 @@ function groupEvidenceNotes(group: DuplicateGroup): { warnings: string[]; notes:
   if (group.borderAdjusted) notes.push('Black bars ignored');
   if (group.flipped) notes.push('Mirrored');
   if (group.partialFingerprint) notes.push('Partly unreadable');
+  if (group.timingAdjusted) notes.push('Starts a moment earlier or later');
   if (group.durationDifferenceSecs) notes.push(`Lengths differ by ${group.durationDifferenceSecs.toFixed(1)} s`);
   return { warnings, notes };
 }

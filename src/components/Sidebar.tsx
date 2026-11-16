@@ -1,4 +1,4 @@
-import type { DuplicateRunInfo } from '../duplicateResultsPersistence';
+import { describeUncheckedNearMisses, type DuplicateRunInfo } from '../duplicateResultsPersistence';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { ColorTheme, DuplicateSortField, RecentSession, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
@@ -34,6 +34,8 @@ interface SidebarProps {
   onFindDuplicates: () => void;
   /** Finds duplicates again with the other comparison method, which becomes the setting. */
   onSwitchDuplicateMethod: () => void;
+  /** Finds duplicates again and double-checks every near miss, without the per-run limit. */
+  onCheckNearMisses: () => void;
   onOpenDuplicateSettings: () => void;
   onOpenDocumentation: () => void;
   onRequestPermanentDelete: (filePaths: string[]) => Promise<boolean>;
@@ -105,8 +107,9 @@ function getRangeTrackStyle(min: number, max: number, selectedMin: number, selec
 function SidebarDuplicateSection({
   onFindDuplicates,
   onSwitchDuplicateMethod,
+  onCheckNearMisses,
   onOpenDuplicateSettings,
-}: Pick<SidebarProps, 'onFindDuplicates' | 'onSwitchDuplicateMethod' | 'onOpenDuplicateSettings'>) {
+}: Pick<SidebarProps, 'onFindDuplicates' | 'onSwitchDuplicateMethod' | 'onCheckNearMisses' | 'onOpenDuplicateSettings'>) {
   const otherMethod = useStore(otherDuplicateMethod);
   const duplicateSettings = useStore((s) => s.settings.duplicates);
   const statsTotal = useStore((s) => s.stats.total);
@@ -280,6 +283,7 @@ function SidebarDuplicateSection({
         {duplicateRun?.restored && (
           <p className="sidebar-duplicate-note">{describeRestoredRun(duplicateRun, videoCount)}</p>
         )}
+        <UncheckedNearMisses run={duplicateRun} disabled={duplicateDisabled} onCheck={onCheckNearMisses} />
         <button
           className="btn btn-primary sidebar-wide-action"
           onClick={onFindDuplicates}
@@ -334,7 +338,25 @@ function SidebarDuplicateSection({
       {duplicateGroupCount > 0 && duplicateRun?.restored && (
         <p className="sidebar-duplicate-note">{describeRestoredRun(duplicateRun, videoCount)}</p>
       )}
+      <UncheckedNearMisses run={duplicateRun} disabled={duplicateDisabled} onCheck={onCheckNearMisses} />
     </section>
+  );
+}
+
+/** While near misses of the last run are unchecked, the result is not complete; says so, with the action. */
+function UncheckedNearMisses({ run, disabled, onCheck }: { run: DuplicateRunInfo | null; disabled: boolean; onCheck: () => void }) {
+  const verification = run?.verification;
+  if (!verification || verification.pending === 0) return null;
+  return (
+    <>
+      <p className="sidebar-duplicate-note">
+        {describeUncheckedNearMisses(verification.pending)}
+        {verification.manyNearMisses ? ' — many videos in this library look alike, so checking them all takes a while' : ''}
+      </p>
+      <button className="btn btn-outline sidebar-wide-action" onClick={onCheck} disabled={disabled}>
+        Check remaining near misses
+      </button>
+    </>
   );
 }
 
@@ -634,6 +656,7 @@ export default function Sidebar({
   onCloseSession,
   onFindDuplicates,
   onSwitchDuplicateMethod,
+  onCheckNearMisses,
   onOpenDuplicateSettings,
   onOpenDocumentation,
   onRequestPermanentDelete,
@@ -946,6 +969,7 @@ export default function Sidebar({
       <SidebarDuplicateSection
         onFindDuplicates={onFindDuplicates}
         onSwitchDuplicateMethod={onSwitchDuplicateMethod}
+        onCheckNearMisses={onCheckNearMisses}
         onOpenDuplicateSettings={onOpenDuplicateSettings}
       />
       {recentContextMenu && (
