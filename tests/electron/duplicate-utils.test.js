@@ -198,6 +198,30 @@ test('keeper ordering uses bitrate when displayed resolution tiers match', () =>
   assert.equal(chooseSuggestedKeeper([morePixels, higherBitrate, lowerTier], normalizeDuplicateSettings({}))?.id, 'higher-bitrate');
 });
 
+test('a copy with black bars counts with the picture inside them', () => {
+  const { pictureSizeInsideBars, rankKeeperCandidates } = require('../../electron/duplicate-utils');
+  // A 640-high frame with 80 of its 640 lines black at top and bottom (8 of 64 analysis lines each).
+  assert.deepEqual(pictureSizeInsideBars(1138, 640, '0,8,0,8'), { width: 1138, height: 480 });
+  assert.equal(pictureSizeInsideBars(1138, 640, null), null);
+  assert.equal(pictureSizeInsideBars(1138, 640, '0,40,0,40'), null);
+  assert.equal(pictureSizeInsideBars(null, 640, '0,8,0,8'), null);
+
+  const original = { id: 'original', path: 'P:\a.mp4', width: 854, height: 480, videoBitrate: 900_000 };
+  const letterbox = { id: 'letterbox', path: 'P:\b.mp4', width: 1138, height: 640, videoBitrate: 700_000 };
+  const order = normalizeDuplicateSettings({}).keeperOrder;
+  // On the frame size alone the letterboxed copy wins.
+  assert.equal(rankKeeperCandidates([original, letterbox], order).keeper.id, 'letterbox');
+  const ranking = rankKeeperCandidates([original, letterbox], order, undefined, {}, { letterbox: { width: 1138, height: 480 } });
+  assert.equal(ranking.keeper.id, 'original');
+  assert.equal(ranking.rule, 'videoBitrate');
+  // A larger picture still wins; it only loses by its picture, never by its bars.
+  const sharper = { ...letterbox, width: 2276, height: 1280 };
+  const bigger = rankKeeperCandidates([original, sharper], order, undefined, {}, { letterbox: { width: 2276, height: 960 } });
+  assert.equal(bigger.keeper.id, 'letterbox');
+  const smaller = rankKeeperCandidates([{ ...original, width: 1920, height: 1080 }, letterbox], order, undefined, {}, { letterbox: { width: 1138, height: 480 } });
+  assert.equal(smaller.reasons.letterbox, 'smaller picture inside black bars');
+});
+
 test('keeper ordering does not assign a resolution tier to incomplete metadata', () => {
   const incomplete = { id: 'incomplete', path: 'P:\\incomplete.mp4', width: 1920, height: null, videoBitrate: 6008000 };
   const complete = { id: 'complete', path: 'P:\\complete.mp4', width: 1280, height: 720, videoBitrate: 3586000 };

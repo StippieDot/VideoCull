@@ -23,6 +23,7 @@ const {
   scoreSamples,
   isDarkSample,
   fingerprintToRow,
+  pictureSizeInsideBars,
   getDuplicateBurstKey,
   matchConfidence,
   movementClass,
@@ -1450,7 +1451,12 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       const samples = options.unreadableSamplesByVideo?.get(videoId);
       if (samples) unreadableSamples[videoId] = samples;
     }
-    const ranking = rankKeeperCandidates(videos, settings.keeperOrder, settings.codecOrder, unreadableSamples);
+    const pictureSizes = {};
+    for (const videoId of ids) {
+      const size = options.pictureSizesByVideo?.get(videoId);
+      if (size) pictureSizes[videoId] = size;
+    }
+    const ranking = rankKeeperCandidates(videos, settings.keeperOrder, settings.codecOrder, unreadableSamples, pictureSizes);
     const resolveGroupPairSimilarity = (aId, bId) => {
       if (!candidate.usedRevalidation || !revalidateScore) return directSimilarity(aId, bId);
       const recomputed = revalidateScore(aId, bId);
@@ -1496,6 +1502,8 @@ function buildGroups(exactGroups, matchedPairs, videosById, settings, options = 
       // Per member with fingerprint data, the sample positions it could not read (empty when all
       // were read). The keeper's health rule compares these between the current members.
       unreadableSamples,
+      // Per member with black bars, the picture inside them; the resolution rule compares these.
+      pictureSizes,
       sampleCount: settings.sampleCount,
     });
   }
@@ -1526,6 +1534,19 @@ function durationDifference(videos) {
  * Per video with fingerprint rows, the unreadable sample positions with their place in the video in
  * percent. A byte-identical copy that was not fingerprinted itself shares its representative's.
  */
+/** Per video whose fingerprint found black bars, the size of the picture inside them. */
+function pictureSizesByVideo(rows, videos, representativeIndex) {
+  const borderByVideo = new Map();
+  for (const row of rows) if (row.border_ltrb && !borderByVideo.has(row.video_id)) borderByVideo.set(row.video_id, row.border_ltrb);
+  const result = new Map();
+  for (const video of videos) {
+    const representativeId = representativeIndex.representativeByVideoId.get(video.id) ?? video.id;
+    const size = pictureSizeInsideBars(video.width, video.height, borderByVideo.get(video.id) ?? borderByVideo.get(representativeId));
+    if (size) result.set(video.id, size);
+  }
+  return result;
+}
+
 function unreadableSamplesByVideo(rows, videos, settings, representativeIndex) {
   const byVideo = new Map();
   for (const row of rows) {
@@ -1690,6 +1711,7 @@ async function findDuplicates({ videos, settings: rawSettings, cacheAccess, cach
   const groups = buildGroups(exactGroups, similarityPairs, videosById, settings, {
     revalidateSimilarity: createSimilarityRevalidator(settings, comparisonData),
     unreadableSamplesByVideo: unreadableSamplesByVideo(duplicateState.comparisonRows, safeVideos, settings, representativeIndex),
+    pictureSizesByVideo: pictureSizesByVideo(duplicateState.comparisonRows, safeVideos, representativeIndex),
   });
   progress(sendProgress, 'Building groups', { current: 1, total: 1 });
   const result = {

@@ -446,6 +446,7 @@ function codecPreferenceScore(video: Video, codecOrder: string[]): number {
 }
 
 type UnreadableSamples = Record<string, Array<{ index: number; percent: number | null }>>;
+type PictureSizes = Record<string, { width: number; height: number }>;
 
 function hasProbedMetadata(video: Video): boolean {
   return video.metadataVersion != null && !video.metadataFailedAt;
@@ -473,11 +474,12 @@ function formatPositions(samples: Array<{ index: number; percent: number | null 
 type KeeperRanking = { keeper: Video; rule: string; tieBreak: boolean; reasons: Record<string, string> };
 
 // Higher is better for every rule.
-function keeperRuleScore(video: Video, rule: string, codecOrder: string[], health: Map<string, unknown[]>): number {
+function keeperRuleScore(video: Video, rule: string, codecOrder: string[], health: Map<string, unknown[]>, pictureSizes: PictureSizes = {}): number {
   if (rule === 'health') return -(health.get(video.id)?.length ?? 0);
   // Unknown metadata ties with the best, so an unprobed video is never demoted for missing sound.
   if (rule === 'audio') return !hasProbedMetadata(video) || video.audioCodec ? 1 : 0;
-  if (rule === 'resolution') return resolutionDisplayTier(video);
+  // Extra black around a picture is not more picture: a member with bars counts with the picture inside them.
+  if (rule === 'resolution') return resolutionDisplayTier({ ...video, ...pictureSizes[video.id] });
   if (rule === 'videoBitrate') return finiteNumber(video.videoBitrate ?? video.totalBitrate);
   if (rule === 'duration') return finiteNumber(video.durationSecs);
   if (rule === 'fps') return finiteNumber(video.fps);
@@ -501,11 +503,11 @@ function formatSeconds(seconds: number): string {
   return seconds >= 10 ? String(Math.round(seconds)) : String(Math.round(seconds * 10) / 10);
 }
 
-function keeperReason(rule: string, video: Video, best: number, codecOrder: string[], health: Map<string, Array<{ index: number; percent: number | null }>>): string {
-  const score = keeperRuleScore(video, rule, codecOrder, health);
+function keeperReason(rule: string, video: Video, best: number, codecOrder: string[], health: Map<string, Array<{ index: number; percent: number | null }>>, pictureSizes: PictureSizes = {}): string {
+  const score = keeperRuleScore(video, rule, codecOrder, health, pictureSizes);
   if (rule === 'health') return `could not be read at ${formatPositions(health.get(video.id) ?? [])}`;
   if (rule === 'audio') return 'has no audio track';
-  if (rule === 'resolution') return 'lower resolution';
+  if (rule === 'resolution') return pictureSizes[video.id] ? 'smaller picture inside black bars' : 'lower resolution';
   if (rule === 'videoBitrate') return 'lower bitrate';
   if (rule === 'duration') return `shorter by ${formatSeconds(best - score)} s`;
   if (rule === 'fps') return score > 0 ? `${score} fps instead of ${best}` : 'unknown frame rate';
@@ -516,7 +518,7 @@ function keeperReason(rule: string, video: Video, best: number, codecOrder: stri
 
 // SYNC NOTE: This function mirrors rankKeeperCandidates in electron/duplicate-utils.js; the parity
 // test in tests/src/store.test.ts runs both on the same groups.
-function rankKeeperCandidates(videos: Video[], order: string[], codecOrder: string[], unreadableSamples: UnreadableSamples = {}): KeeperRanking | null {
+function rankKeeperCandidates(videos: Video[], order: string[], codecOrder: string[], unreadableSamples: UnreadableSamples = {}, pictureSizes: PictureSizes = {}): KeeperRanking | null {
   if (videos.length === 0) return null;
   const health = confirmedUnreadablePositions(videos, unreadableSamples);
   let candidates = [...videos];
@@ -524,12 +526,12 @@ function rankKeeperCandidates(videos: Video[], order: string[], codecOrder: stri
   let rule = 'path';
   for (const current of order) {
     if (candidates.length < 2) break;
-    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder, health)]));
+    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder, health, pictureSizes)]));
     const best = Math.max(...scores.values());
     const margin = keeperRuleMargin(current, videos);
     const kept = candidates.filter((video) => (scores.get(video.id) ?? 0) >= best - margin);
     for (const video of candidates) {
-      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder, health);
+      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder, health, pictureSizes);
     }
     if (kept.length === 1) rule = current;
     candidates = kept;
@@ -544,8 +546,9 @@ function chooseSuggestedKeeperId(
   order: string[],
   codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder,
   unreadableSamples: UnreadableSamples = {},
+  pictureSizes: PictureSizes = {},
 ): string | null {
-  return rankKeeperCandidates(videos, order, codecOrder, unreadableSamples)?.keeper.id ?? null;
+  return rankKeeperCandidates(videos, order, codecOrder, unreadableSamples, pictureSizes)?.keeper.id ?? null;
 }
 
 function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], order: string[], codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder): DuplicateGroup[] {
@@ -558,7 +561,7 @@ function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], ord
     const manualSuggestedKeeperId = group.manualSuggestedKeeperId && group.videoIds.includes(group.manualSuggestedKeeperId)
       ? group.manualSuggestedKeeperId
       : null;
-    const ranking = rankKeeperCandidates(groupVideos, order, codecOrder, group.unreadableSamples);
+    const ranking = rankKeeperCandidates(groupVideos, order, codecOrder, group.unreadableSamples, group.pictureSizes);
     return {
       ...group,
       manualSuggestedKeeperId,
@@ -1775,6 +1778,7 @@ const useStore = create<VideoStore>((set, get) => ({
       stateBefore.settings.duplicates.keeperOrder,
       stateBefore.settings.duplicates.codecOrder,
       group.unreadableSamples,
+      group.pictureSizes,
     );
     if (
       group.manualSuggestedKeeperId === manualSuggestedKeeperId &&

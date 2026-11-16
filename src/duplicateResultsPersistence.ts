@@ -54,6 +54,7 @@ export function toStoredResults(run: DuplicateRunInfo, groups: DuplicateGroup[],
       sampleCount: group.sampleCount ?? 0,
       matchType: group.matchType,
       unreadableSamples: group.unreadableSamples ?? {},
+      pictureSizes: group.pictureSizes ?? {},
     })),
   };
 }

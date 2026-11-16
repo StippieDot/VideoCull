@@ -338,6 +338,8 @@ export interface DuplicateGroup {
   keeperReasons?: Record<string, string>;
   /** Per member with fingerprint data: sample positions it could not read (empty when all were read). */
   unreadableSamples?: Record<string, Array<{ index: number; percent: number | null }>>;
+  /** Per member with black bars: the picture inside them, which the resolution rule compares. */
+  pictureSizes?: Record<string, { width: number; height: number }>;
   /** The accepted pairs between members; a group is rebuilt from these when members or pairs go away. */
   pairs?: DuplicateGroupPair[];
 }
@@ -357,7 +359,7 @@ export interface StoredDuplicateResults {
   scope: 'all' | 'filtered';
   /** Every video that took part, with the size and modification time it had. */
   videos: Array<{ id: string; sizeBytes: number; date: number }>;
-  groups: Array<Pick<DuplicateGroup, 'id' | 'videoIds' | 'manualSuggestedKeeperId' | 'sampleCount' | 'matchType' | 'unreadableSamples'> & {
+  groups: Array<Pick<DuplicateGroup, 'id' | 'videoIds' | 'manualSuggestedKeeperId' | 'sampleCount' | 'matchType' | 'unreadableSamples' | 'pictureSizes'> & {
     pairs: DuplicateGroupPair[];
   }>;
   /** The last Find partial clips of the session, when one ran. */

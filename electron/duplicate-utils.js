@@ -618,6 +618,26 @@ function resolutionDisplayTier(video) {
   return shortestEdge;
 }
 
+// Black bars are measured on a 64 x 64 analysis frame (duplicate-frames.js).
+const BORDER_GRID = 64;
+
+/**
+ * The size of the picture inside a video's black bars, from its frame size and the bars stored with its
+ * fingerprint ("left,top,right,bottom" on the analysis grid). Null without bars or frame size.
+ */
+function pictureSizeInsideBars(width, height, borderLtrb) {
+  const parts = String(borderLtrb ?? '').split(',').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part) || part < 0)) return null;
+  const [left, top, right, bottom] = parts;
+  const w = finiteNumber(width);
+  const h = finiteNumber(height);
+  if (w <= 0 || h <= 0 || left + right >= BORDER_GRID || top + bottom >= BORDER_GRID) return null;
+  return {
+    width: Math.round((w * (BORDER_GRID - left - right)) / BORDER_GRID),
+    height: Math.round((h * (BORDER_GRID - top - bottom)) / BORDER_GRID),
+  };
+}
+
 // ffprobe names other than the family keys in codecOrder. SYNC NOTE: mirrored in src/store.ts.
 const CODEC_ALIASES = { h265: 'hevc', wmv1: 'vc1', wmv2: 'vc1', wmv3: 'vc1' };
 
@@ -658,12 +678,13 @@ function formatPositions(samples) {
   return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0];
 }
 
-// Higher is better for every rule.
-function keeperRuleScore(video, rule, codecOrder, health) {
+// Higher is better for every rule. `pictureSizes`: per member with black bars, the picture inside them,
+// which is what the resolution rule compares; extra black around a picture is not more picture.
+function keeperRuleScore(video, rule, codecOrder, health, pictureSizes = {}) {
   if (rule === 'health') return -(health.get(video.id)?.length ?? 0);
   // Unknown metadata ties with the best, so an unprobed video is never demoted for missing sound.
   if (rule === 'audio') return !hasProbedMetadata(video) || video.audioCodec ? 1 : 0;
-  if (rule === 'resolution') return resolutionDisplayTier(video);
+  if (rule === 'resolution') return resolutionDisplayTier(pictureSizes[video.id] ?? video);
   if (rule === 'videoBitrate') return finiteNumber(video.videoBitrate ?? video.totalBitrate);
   if (rule === 'duration') return finiteNumber(video.durationSecs);
   if (rule === 'fps') return finiteNumber(video.fps);
@@ -691,11 +712,11 @@ function formatSeconds(seconds) {
 }
 
 /** One fixed phrase for why `video` lost at `rule` against the best score `best`. */
-function keeperReason(rule, video, best, codecOrder, health) {
-  const score = keeperRuleScore(video, rule, codecOrder, health);
+function keeperReason(rule, video, best, codecOrder, health, pictureSizes = {}) {
+  const score = keeperRuleScore(video, rule, codecOrder, health, pictureSizes);
   if (rule === 'health') return `could not be read at ${formatPositions(health.get(video.id) ?? [])}`;
   if (rule === 'audio') return 'has no audio track';
-  if (rule === 'resolution') return 'lower resolution';
+  if (rule === 'resolution') return pictureSizes[video.id] ? 'smaller picture inside black bars' : 'lower resolution';
   if (rule === 'videoBitrate') return 'lower bitrate';
   if (rule === 'duration') return `shorter by ${formatSeconds(best - score)} s`;
   if (rule === 'fps') return score > 0 ? `${score} fps instead of ${best}` : 'unknown frame rate';
@@ -711,7 +732,7 @@ function keeperReason(rule, video, best, codecOrder, health) {
  * tie-break, and per other member the phrase for the rule it lost at.
  * SYNC NOTE: mirrored by rankKeeperCandidates in src/store.ts.
  */
-function rankKeeperCandidates(videos, order, codecOrder = DEFAULT_DUPLICATE_SETTINGS.codecOrder, unreadableSamples = {}) {
+function rankKeeperCandidates(videos, order, codecOrder = DEFAULT_DUPLICATE_SETTINGS.codecOrder, unreadableSamples = {}, pictureSizes = {}) {
   if (videos.length === 0) return null;
   const health = confirmedUnreadablePositions(videos, unreadableSamples);
   let candidates = [...videos];
@@ -719,12 +740,12 @@ function rankKeeperCandidates(videos, order, codecOrder = DEFAULT_DUPLICATE_SETT
   let rule = 'path';
   for (const current of order) {
     if (candidates.length < 2) break;
-    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder, health)]));
+    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder, health, pictureSizes)]));
     const best = Math.max(...scores.values());
     const margin = keeperRuleMargin(current, videos);
     const kept = candidates.filter((video) => scores.get(video.id) >= best - margin);
     for (const video of candidates) {
-      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder, health);
+      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder, health, pictureSizes);
     }
     if (kept.length === 1) rule = current;
     candidates = kept;
@@ -771,4 +792,5 @@ module.exports = {
   durationsWithinTolerance,
   chooseSuggestedKeeper,
   rankKeeperCandidates,
+  pictureSizeInsideBars,
 };

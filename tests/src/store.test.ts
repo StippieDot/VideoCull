@@ -350,11 +350,13 @@ describe('keeper ranking matches the backend copy', () => {
       [{ id: 'a', path: 'a.mp4', ...base, audioCodec: null, metadataVersion: 2 }, { id: 'b', path: 'b.mp4', ...base, width: 1280, height: 720, audioCodec: 'aac', metadataVersion: 2 }],
     ];
     const unreadable = { a: [{ index: 1, percent: 50 }], b: [] };
+    // a's frame holds a 1280 x 720 picture inside black bars.
+    const pictureSizes = { a: { width: 1280, height: 720 } };
     for (const members of groups) {
       const videos = members.map((member) => ({ ...makeVideo(member.id), ...member }));
-      for (const samples of [{}, unreadable]) {
-      const expected = backend.rankKeeperCandidates(videos, order, codecOrder, samples)!;
-      const actual = __test__.rankKeeperCandidates(videos, order, codecOrder, samples);
+      for (const [samples, sizes] of [[{}, {}], [unreadable, {}], [{}, pictureSizes]] as const) {
+      const expected = backend.rankKeeperCandidates(videos, order, codecOrder, samples, sizes)!;
+      const actual = __test__.rankKeeperCandidates(videos, order, codecOrder, samples, sizes);
       expect({ keeper: actual?.keeper.id, rule: actual?.rule, tieBreak: actual?.tieBreak, reasons: actual?.reasons })
         .toEqual({ keeper: expected.keeper.id, rule: expected.rule, tieBreak: expected.tieBreak, reasons: expected.reasons });
       }

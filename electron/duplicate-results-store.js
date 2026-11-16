@@ -73,6 +73,23 @@ function sanitizeUnreadableSamples(value, members) {
   return result;
 }
 
+/** @param {unknown} value @param {Set<string>} members */
+function sanitizePictureSizes(value, members) {
+  if (!value || typeof value !== 'object') return {};
+  /** @type {Record<string, { width: number, height: number }>} */
+  const result = {};
+  for (const [videoId, size] of Object.entries(value)) {
+    if (!members.has(videoId) || !size || typeof size !== 'object') continue;
+    const { width, height } = /** @type {Record<string, unknown>} */ (size);
+    if (!Number.isInteger(width) || !Number.isInteger(height)) continue;
+    const w = Number(width);
+    const h = Number(height);
+    if (w <= 0 || h <= 0 || w > 100_000 || h > 100_000) continue;
+    result[videoId] = { width: w, height: h };
+  }
+  return result;
+}
+
 /** @param {unknown} value */
 function sanitizeGroup(value) {
   if (!value || typeof value !== 'object') return null;
@@ -99,6 +116,7 @@ function sanitizeGroup(value) {
     sampleCount: Number.isInteger(group.sampleCount) ? group.sampleCount : 0,
     matchType: GROUP_MATCH_TYPES.has(String(group.matchType)) ? String(group.matchType) : 'phash',
     unreadableSamples: sanitizeUnreadableSamples(group.unreadableSamples, members),
+    pictureSizes: sanitizePictureSizes(group.pictureSizes, members),
   };
 }
 
