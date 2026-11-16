@@ -75,8 +75,8 @@ export function describePartialClip(clip: PartialClip, shorter: Video, longer: V
 
 function evidenceLabel(clip: PartialClip): string {
   return clip.pictureSimilarity === null
-    ? `Sound ${Math.round(clip.soundSimilarity)} %`
-    : `Sound ${Math.round(clip.soundSimilarity)} % · picture ${Math.round(clip.pictureSimilarity)} %`;
+    ? `Sound ${Math.round(clip.soundSimilarity)}%`
+    : `Sound ${Math.round(clip.soundSimilarity)}% · picture ${Math.round(clip.pictureSimilarity)}%`;
 }
 
 function TimeBar({ clip, longer }: { clip: PartialClip; longer: Video }) {

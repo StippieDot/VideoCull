@@ -74,6 +74,34 @@ describe('runProcess', () => {
     );
   });
 
+  test('a promise from the stdout callback holds the output, and the timeout waits meanwhile', async () => {
+    let chunks = 0;
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    const finished = runProcess(node, ['-e', 'for (let i = 0; i < 32; i++) process.stdout.write(Buffer.alloc(65536, 1))'], createRunToken(), {
+      timeoutMs: 200,
+      onStdout: () => {
+        chunks++;
+        return chunks === 1 ? held : undefined;
+      },
+    });
+    // Longer than the timeout: a held stream is paused, not hung.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(chunks, 1);
+    release();
+    await finished;
+    assert.ok(chunks > 1);
+  });
+
+  test('a rejected promise from the stdout callback ends the process with its error', async () => {
+    await assert.rejects(
+      runProcess(node, ['-e', 'process.stdout.write("a"); setTimeout(() => {}, 5000)'], createRunToken(), {
+        onStdout: () => Promise.reject(new Error('Cancelled while paused')),
+      }),
+      /Cancelled while paused/,
+    );
+  });
+
   test('rejects with the exit code and stderr tail', async () => {
     await assert.rejects(
       runProcess(node, ['-e', 'process.stderr.write("broken input"); process.exit(3)'], createRunToken()),

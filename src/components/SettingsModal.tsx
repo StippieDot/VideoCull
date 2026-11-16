@@ -769,7 +769,7 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                         />
                         <SettingRow
                           label="Double-check near misses"
-                          help={nearMissUnavailableReason ?? 'Looks again at pairs that score just below your similarity value, using frames around each sample. Finds copies that start a moment earlier or later. A wider range finds more and reads frames of more videos once; they are kept for later runs. Visual similarity uses at most 5 points, since its scores of unrelated videos run close to the threshold.'}
+                          help={nearMissUnavailableReason ?? 'Looks again at pairs just below your similarity value, with frames around each sample, to find copies that start a moment earlier or later. A wider range finds more and reads more frames. Visual similarity uses at most 5 points.'}
                         >
                           {(id) => (
                             <select

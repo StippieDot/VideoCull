@@ -84,12 +84,18 @@ function createSoundLane() {
 async function fingerprintSound(lane, video, run, executionOptions) {
   const args = buildAudioExtractionArgs(mediaProcess.toFfmpegInputPath(video.path));
   if (executionOptions.cpuThreadsLimited !== false) args.splice(args.length - 1, 0, '-threads', '1');
+  await duplicates.waitForDuplicateProcessing(run);
   lane.worker.postMessage({ type: 'start' });
-  // shortcut: a pause waits for the file being read to finish, upgrade when long files on slow drives make pausing feel stuck.
-  await duplicates.runDuplicateActivity(run, () => mediaProcess.runFfmpeg(args, run, {
+  // Not one long activity: a whole file can take minutes, and Pause must take effect at once. While
+  // paused the read stops after the current chunk and FFmpeg waits; cancelling ends it.
+  await mediaProcess.runFfmpeg(args, run, {
     timeoutMs: SOUND_IDLE_TIMEOUT_MS,
-    onStdout: (chunk) => lane.worker.postMessage({ type: 'chunk', bytes: chunk }),
-  }));
+    onStdout: (chunk) => {
+      lane.worker.postMessage({ type: 'chunk', bytes: chunk });
+      if (processingPause.getState().status !== 'running') return duplicates.waitForDuplicateProcessing(run);
+      return undefined;
+    },
+  });
   duplicates.assertNotCancelled(run);
   return lane.finish();
 }
