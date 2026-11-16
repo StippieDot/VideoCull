@@ -3,10 +3,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import PartialClipsView from '../../../src/components/PartialClipsView';
+import PartialClipsView, { mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
 import useStore from '../../../src/store';
 import type { PartialClip } from '../../../src/types';
-import { makeVideo } from '../../helpers/videoFactory';
+import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
 
 const SOURCE = '00000000000000aa';
 const CLIP = '00000000000000bb';
@@ -57,6 +57,34 @@ describe('partial clips list', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Not a match' })[0]);
     expect(useStore.getState().partialClips).toHaveLength(2);
     expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).toContain(`${SOURCE}|${CLIP}`);
+  });
+
+  test('one clip found in several copies of a video is one entry, and Not a match covers them all', async () => {
+    const COPY = '00000000000000dd';
+    useStore.setState({
+      videos: [...useStore.getState().videos, makeVideo(COPY, { filename: 'concert-copy.mp4', durationSecs: 600 })],
+      duplicateGroups: [makeDuplicateGroup({ id: 'g', videoIds: [SOURCE, COPY], suggestedKeeperId: SOURCE })],
+      partialClips: [clip({ aId: COPY }), clip()],
+    });
+    render(<PartialClipsView />);
+    // The keeper's pair leads; the copy is listed under it.
+    expect(screen.getByText('Contains 0:20 of concert.mp4, from 0:30 to 0:50 — sound and picture match')).toBeTruthy();
+    expect(screen.getByText('Also found in 1 other copy of these videos')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Not a match' })).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Not a match' }));
+    expect(useStore.getState().partialClips).toEqual([]);
+    expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).toEqual(expect.arrayContaining([`${SOURCE}|${CLIP}`, `${CLIP}|${COPY}`]));
+  });
+
+  test('pairs are merged only when both sides share their duplicate groups', () => {
+    const groups = [makeDuplicateGroup({ id: 'g', videoIds: ['a', 'a2'], suggestedKeeperId: 'a2' })];
+    const pair = (aId: string, bId: string, state: PartialClip['state'] = 'confirmed') => clip({ aId, bId, shorterId: bId, state });
+    const entries = mergeClipsByDuplicateGroup([pair('a', 'x'), pair('a2', 'x'), pair('a', 'y'), pair('b', 'x', 'unconfirmed')], groups);
+    expect(entries.map((entry) => [entry.primary.aId, entry.primary.bId, entry.others.length])).toEqual([
+      ['a2', 'x', 1],
+      ['a', 'y', 0],
+      ['b', 'x', 0],
+    ]);
   });
 
   test('marks a video from its row', async () => {

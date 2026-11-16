@@ -208,6 +208,39 @@ export function formatCodecLabel(codec: string | null | undefined): string {
   return CODEC_DISPLAY[codec.toLowerCase()] ?? codec.toUpperCase();
 }
 
+/**
+ * The resolution class the suggested keeper compares (8K, 5K, 4K, 1440, 1080, 720, else the shortest
+ * edge), so labels and the keeper agree on which copy has more picture.
+ */
+export function resolutionTier(width: number | null | undefined, height: number | null | undefined): number {
+  const w = Number(width);
+  const h = Number(height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 0;
+  const longestEdge = Math.max(w, h);
+  if (longestEdge >= 7680) return 8000;
+  if (longestEdge >= 5120) return 5000;
+  if (longestEdge >= 3840) return 4000;
+  if (longestEdge >= 2560) return 1440;
+  if (longestEdge >= 1920) return 1080;
+  if (longestEdge >= 1280) return 720;
+  return Math.min(w, h);
+}
+
+/**
+ * The resolution label of a video in a duplicate group. With black bars the picture inside them is what
+ * counts, so a copy whose picture is smaller than its frame reads "480p picture in 640p".
+ */
+export function formatPictureResolutionLabel(
+  width: number | null | undefined,
+  height: number | null | undefined,
+  pictureSize: { width: number; height: number } | null | undefined,
+): string {
+  const frame = formatResolutionLabel(width, height);
+  if (!pictureSize) return frame;
+  const picture = formatResolutionLabel(pictureSize.width, pictureSize.height);
+  return picture && picture !== frame ? `${picture} picture in ${frame}` : frame;
+}
+
 export function formatResolutionLabel(width: number | null | undefined, height: number | null | undefined): string {
   if (!width || !height) return '';
   const longestEdge = Math.max(width, height);

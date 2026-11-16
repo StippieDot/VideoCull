@@ -220,6 +220,13 @@ test('a copy with black bars counts with the picture inside them', () => {
   assert.equal(bigger.keeper.id, 'letterbox');
   const smaller = rankKeeperCandidates([{ ...original, width: 1920, height: 1080 }, letterbox], order, undefined, {}, { letterbox: { width: 1138, height: 480 } });
   assert.equal(smaller.reasons.letterbox, 'smaller picture inside black bars');
+  // Bars are measured to about 2 lines, so 375 against 380 lines is no difference: bitrate decides.
+  const measured = rankKeeperCandidates([original, letterbox], order, undefined, {}, {
+    original: { width: 854, height: 375 },
+    letterbox: { width: 1138, height: 380 },
+  });
+  assert.equal(measured.keeper.id, 'original');
+  assert.equal(measured.rule, 'videoBitrate');
 });
 
 test('keeper ordering does not assign a resolution tier to incomplete metadata', () => {

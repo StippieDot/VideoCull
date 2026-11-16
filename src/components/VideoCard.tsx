@@ -16,9 +16,11 @@ interface VideoCardProps {
   onPlay?: (video: Video, event: React.MouseEvent) => void;
   onToggleSelect?: (video: Video, event: React.MouseEvent) => void;
   onContextMenu?: (video: Video, event: React.MouseEvent) => void;
+  /** Replaces the resolution badge, for a duplicate group that knows the picture inside black bars. */
+  resolutionLabel?: string;
 }
 
-export default function VideoCard({ video, style, isSelected = false, showSelectionControls = false, onClick, onPlay, onToggleSelect, onContextMenu }: VideoCardProps) {
+export default function VideoCard({ video, style, isSelected = false, showSelectionControls = false, onClick, onPlay, onToggleSelect, onContextMenu, resolutionLabel: resolutionLabelOverride }: VideoCardProps) {
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -64,7 +66,7 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
 
   const isWeb = isWebSupported(video.path);
   const canPlayInReview = isWeb && (!features.compatibilityCheck || video.compatible !== false);
-  const resolutionLabel = formatResolutionLabel(video.width, video.height);
+  const resolutionLabel = resolutionLabelOverride ?? formatResolutionLabel(video.width, video.height);
   const codecLabel = formatCodecLabel(video.videoCodec);
   const fpsLabel = formatFps(video.fps);
 

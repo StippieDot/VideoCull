@@ -696,8 +696,8 @@ export interface VideoStore {
   /** Shows the result of Find partial clips; `run` describes it for storage when no duplicate run did. */
   applyPartialClips: (clips: PartialClip[], run?: { videos: Video[]; scope: 'all' | 'filtered'; settingsKey?: string }) => void;
   setPartialClipsMode: (mode: boolean) => void;
-  /** Marks the two videos as not a match and takes their entry off the partial clip list. */
-  dismissPartialClip: (aId: string, bId: string) => void;
+  /** Marks each pair as not a match and takes it off the partial clip list. */
+  dismissPartialClips: (pairs: Array<{ aId: string; bId: string }>) => void;
   removeIgnoredDuplicatePairs: (pairKeys: string[]) => void;
   clearIgnoredDuplicatePairs: () => void;
   setDuplicateProgress: (progress: DuplicateProgress | null) => void;

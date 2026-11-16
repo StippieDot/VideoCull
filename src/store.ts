@@ -12,7 +12,7 @@ import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrate
 import { checkSessionFolders, folderKey, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey } from './sessions';
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
-import { detectVideoCompatibility, folderInsideTest, formatRecentPath, isFolderInside, normalizeFolder } from './utils';
+import { resolutionTier, detectVideoCompatibility, folderInsideTest, formatRecentPath, isFolderInside, normalizeFolder } from './utils';
 import { getPreloadedColorTheme } from './theme';
 import { buildUndoEntry, editsFor, reviewFieldsOf, STATUS_LABELS, type ReviewEdit } from './undo-history';
 
@@ -408,20 +408,8 @@ function finiteNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function resolutionDisplayTier(video: Video): number {
-  const width = finiteNumber(video.width);
-  const height = finiteNumber(video.height);
-  if (width <= 0 || height <= 0) return 0;
-  const longestEdge = Math.max(width, height);
-  const shortestEdge = Math.min(width, height);
-
-  if (longestEdge >= 7680) return 8000;
-  if (longestEdge >= 5120) return 5000;
-  if (longestEdge >= 3840) return 4000;
-  if (longestEdge >= 2560) return 1440;
-  if (longestEdge >= 1920) return 1080;
-  if (longestEdge >= 1280) return 720;
-  return shortestEdge;
+function resolutionDisplayTier(video: Pick<Video, 'width' | 'height'>): number {
+  return resolutionTier(video.width, video.height);
 }
 
 function resolutionSortValue(video: Video) {
@@ -491,7 +479,11 @@ function keeperRuleScore(video: Video, rule: string, codecOrder: string[], healt
 const KEEPER_DURATION_MARGIN_SECS = 2;
 const KEEPER_DURATION_MARGIN_SHARE = 0.01;
 
-function keeperRuleMargin(rule: string, videos: Video[]): number {
+// SYNC NOTE: KEEPER_RESOLUTION_MARGIN_SHARE in electron/duplicate-utils.js.
+export const KEEPER_RESOLUTION_MARGIN_SHARE = 0.04;
+
+function keeperRuleMargin(rule: string, videos: Video[], best = 0): number {
+  if (rule === 'resolution') return best * KEEPER_RESOLUTION_MARGIN_SHARE;
   if (rule !== 'duration') return 0;
   const longest = Math.max(0, ...videos.map((video) => finiteNumber(video.durationSecs)));
   return Math.max(KEEPER_DURATION_MARGIN_SECS, longest * KEEPER_DURATION_MARGIN_SHARE);
@@ -528,7 +520,7 @@ function rankKeeperCandidates(videos: Video[], order: string[], codecOrder: stri
     if (candidates.length < 2) break;
     const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder, health, pictureSizes)]));
     const best = Math.max(...scores.values());
-    const margin = keeperRuleMargin(current, videos);
+    const margin = keeperRuleMargin(current, videos, best);
     const kept = candidates.filter((video) => (scores.get(video.id) ?? 0) >= best - margin);
     for (const video of candidates) {
       if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder, health, pictureSizes);
@@ -1860,13 +1852,15 @@ const useStore = create<VideoStore>((set, get) => ({
     duplicateRun: state.duplicateRun ?? (run?.settingsKey ? describeDuplicateRun(run.videos, run.settingsKey, run.scope) : null),
   })),
   setPartialClipsMode: (partialClipsMode) => set({ partialClipsMode }),
-  dismissPartialClip: (aId, bId) => {
+  dismissPartialClips: (pairs) => {
+    const keys = pairs.map(({ aId, bId }) => (aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`));
+    const dismissed = new Set(keys);
     set((state) => ({
-      partialClips: state.partialClips?.filter((clip) => !(
-        (clip.aId === aId && clip.bId === bId) || (clip.aId === bId && clip.bId === aId)
+      partialClips: state.partialClips?.filter((clip) => (
+        !dismissed.has(clip.aId < clip.bId ? `${clip.aId}|${clip.bId}` : `${clip.bId}|${clip.aId}`)
       )) ?? null,
     }));
-    get().addIgnoredDuplicatePairs([aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`]);
+    get().addIgnoredDuplicatePairs(keys);
   },
   addIgnoredDuplicatePairs: (pairKeys) => {
     const normalized = pairKeys

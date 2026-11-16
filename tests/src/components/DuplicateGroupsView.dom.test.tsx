@@ -272,6 +272,23 @@ describe('DuplicateGroupsView behavior', () => {
     });
   });
 
+  test('a copy with black bars shows the picture inside them, and the larger picture is marked best', async () => {
+    useStore.setState({
+      videos: [
+        makeVideo('orig', { width: 854, height: 480, duplicateGroupId: 'bars' }),
+        makeVideo('boxed', { width: 1138, height: 640, duplicateGroupId: 'bars' }),
+      ],
+      duplicateGroups: [makeDuplicateGroup({
+        id: 'bars', videoIds: ['orig', 'boxed'], suggestedKeeperId: 'orig',
+        pictureSizes: { boxed: { width: 1138, height: 480 } },
+      })],
+    });
+    render(<DuplicateGroupsView />);
+    const boxed = await screen.findByText('480p picture in 640p');
+    expect(boxed.className).toContain('equal');
+    expect(screen.getByText('480p').className).toContain('equal');
+  });
+
   test('labels low-confidence groups and lists them after the others', async () => {
     useStore.setState({
       videos: ['a', 'b', 'c', 'd'].map((id) => makeVideo(id, { duplicateGroupId: id < 'c' ? 'low' : 'normal' })),

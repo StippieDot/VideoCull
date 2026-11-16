@@ -131,3 +131,27 @@
   font-size: 13px;
   padding: 6px 0;
 }
+
+.partial-clip-copies {
+  border-top: 1px solid var(--border-color);
+  padding: 8px 14px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.partial-clip-copies > summary {
+  cursor: pointer;
+}
+
+.partial-clip-copies ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0 0 0 16px;
+}
+
+.partial-clip-copies li {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}

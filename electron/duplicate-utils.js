@@ -698,7 +698,13 @@ function keeperRuleScore(video, rule, codecOrder, health, pictureSizes = {}) {
 const KEEPER_DURATION_MARGIN_SECS = 2;
 const KEEPER_DURATION_MARGIN_SHARE = 0.01;
 
-function keeperRuleMargin(rule, videos) {
+// Black bars are measured on a 64-line grid, so the picture inside them is known to about 2 lines (3 %);
+// a smaller resolution difference is no difference. SYNC NOTE: the same share in src/store.ts and in
+// the best-resolution marking of src/components/DuplicateGroupsView.tsx.
+const KEEPER_RESOLUTION_MARGIN_SHARE = 0.04;
+
+function keeperRuleMargin(rule, videos, best = 0) {
+  if (rule === 'resolution') return best * KEEPER_RESOLUTION_MARGIN_SHARE;
   if (rule !== 'duration') return 0;
   const longest = Math.max(0, ...videos.map((video) => finiteNumber(video.durationSecs)));
   return Math.max(KEEPER_DURATION_MARGIN_SECS, longest * KEEPER_DURATION_MARGIN_SHARE);
@@ -742,7 +748,7 @@ function rankKeeperCandidates(videos, order, codecOrder = DEFAULT_DUPLICATE_SETT
     if (candidates.length < 2) break;
     const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder, health, pictureSizes)]));
     const best = Math.max(...scores.values());
-    const margin = keeperRuleMargin(current, videos);
+    const margin = keeperRuleMargin(current, videos, best);
     const kept = candidates.filter((video) => scores.get(video.id) >= best - margin);
     for (const video of candidates) {
       if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder, health, pictureSizes);

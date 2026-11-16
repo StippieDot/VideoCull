@@ -9,14 +9,15 @@ import {
 } from 'react';
 import { List } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
-import useStore from '../store';
+import useStore, { KEEPER_RESOLUTION_MARGIN_SHARE } from '../store';
 import useActiveValue from '../hooks/useActiveValue';
 import type { DuplicateGroup, DuplicateViewMode, Video } from '../types';
 import {
   formatDuration,
   formatFps,
-  formatResolutionLabel,
+  formatPictureResolutionLabel,
   formatSize,
+  resolutionTier,
 } from '../utils';
 import {
   beginDevInteraction,
@@ -88,6 +89,8 @@ type DuplicateRowItemProps = {
   suggestedKeeperId: string | null;
   manualSuggestedKeeperId: string | null | undefined;
   flags: MetricFlags;
+  /** The picture inside the video's black bars, when it has them. */
+  pictureSize: { width: number; height: number } | null;
   /** Why this video is not the suggested keeper; shown only while the keeper is not chosen by hand. */
   keeperReason: string | null;
   /** For the suggested keeper: which rule chose it. */
@@ -107,6 +110,7 @@ type DuplicateGalleryCardProps = {
   onToggleSelection: (video: Video) => void;
   onPlayVideo: (videoId: string, scopeIds: string[]) => void;
   onOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+  pictureSize: { width: number; height: number } | null;
   /** Reports the frame shape of a loaded thumbnail, which sets the row height. */
   onThumbnailAspect: (videoId: string, aspect: number) => void;
 };
@@ -147,13 +151,19 @@ function bitrateLabel(video: Video): string {
   return `${Math.round(bitrate / 1000).toLocaleString()} kbps`;
 }
 
-function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
+function computeBestFlags(videos: Video[], pictureSizes: DuplicateGroup['pictureSizes'] = {}): Map<string, MetricFlags> {
   const flags = new Map<string, MetricFlags>();
   for (const v of videos) flags.set(v.id, {});
   if (videos.length < 2) return flags;
 
+  // The keeper's resolution class, of the picture inside black bars when a video has them, so the
+  // best-marked resolution is the one the keeper rule prefers.
+  const pictureTier = (v: Video) => {
+    const picture = pictureSizes[v.id];
+    return picture ? resolutionTier(picture.width, picture.height) : resolutionTier(v.width, v.height);
+  };
   const qualityMetrics: { key: string; value: (v: Video) => number; higher: boolean }[] = [
-    { key: 'resolution', value: (v) => (v.width ?? 0) * (v.height ?? 0), higher: true },
+    { key: 'resolution', value: pictureTier, higher: true },
     { key: 'fps', value: (v) => v.fps ?? 0, higher: true },
     { key: 'bitrate', value: (v) => v.videoBitrate ?? v.totalBitrate ?? 0, higher: true },
     { key: 'duration', value: (v) => v.durationSecs ?? 0, higher: true },
@@ -162,11 +172,14 @@ function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
   for (const metric of qualityMetrics) {
     const values = videos.map((v) => metric.value(v));
     const best = metric.higher ? Math.max(...values) : Math.min(...values);
-    const allEqual = values.every((val) => val === best);
+    // Resolutions within the keeper's margin count as equal, as they do for the keeper.
+    const margin = metric.key === 'resolution' ? best * KEEPER_RESOLUTION_MARGIN_SHARE : 0;
+    const isBest = (value: number) => value >= best - margin;
+    const allEqual = values.every(isBest);
     for (let i = 0; i < videos.length; i += 1) {
       flags.get(videos[i].id)![metric.key] = allEqual
         ? 'equal'
-        : values[i] === best
+        : isBest(values[i])
           ? 'best'
           : 'worse';
     }
@@ -204,7 +217,14 @@ function buildDuplicateGroupViews(
     if (cached && haveSameVideoRefs(cached.videoRefs, groupVideos)) {
       view = cached.view.group === group
         ? cached.view
-        : { ...cached.view, group, groupSize: group.videoIds.length };
+        : {
+            ...cached.view,
+            group,
+            groupSize: group.videoIds.length,
+            bestFlags: cached.view.group.pictureSizes === group.pictureSizes
+              ? cached.view.bestFlags
+              : computeBestFlags(groupVideos, group.pictureSizes),
+          };
     } else {
       recomputedCount += 1;
       view = {
@@ -216,7 +236,7 @@ function buildDuplicateGroupViews(
           .map((video) => `${video.filename} ${video.path}`)
           .join('\n')
           .toLowerCase(),
-        bestFlags: computeBestFlags(groupVideos),
+        bestFlags: computeBestFlags(groupVideos, group.pictureSizes),
       };
     }
 
@@ -266,6 +286,7 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
   suggestedKeeperId,
   manualSuggestedKeeperId,
   flags,
+  pictureSize,
   keeperReason,
   keeperDecision,
   isSelected,
@@ -312,7 +333,7 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
           {parentPath(video.path)}
         </span>
         <span className="duplicate-meta-chips">
-          {chip('resolution', formatResolutionLabel(video.width, video.height))}
+          {chip('resolution', formatPictureResolutionLabel(video.width, video.height, pictureSize))}
           {chip('fps', formatFps(video.fps))}
           {chip('bitrate', bitrateLabel(video))}
           {chip('duration', formatDuration(video.durationSecs))}
@@ -349,6 +370,7 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   onToggleSelection,
   onPlayVideo,
   onOpenVideoContextMenu,
+  pictureSize,
 }: DuplicateGalleryCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -373,6 +395,7 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
         isSelected={isSelected}
         onToggleSelect={() => onToggleSelection(video)}
         onPlay={() => onPlayVideo(video.id, groupVideoIds)}
+        resolutionLabel={pictureSize ? formatPictureResolutionLabel(video.width, video.height, pictureSize) : undefined}
       />
     </div>
   );
@@ -512,6 +535,7 @@ function DuplicateVirtualRowRenderer({
             suggestedKeeperId={groupView.group.suggestedKeeperId}
             manualSuggestedKeeperId={groupView.group.manualSuggestedKeeperId}
             flags={groupView.bestFlags.get(video.id) ?? {}}
+            pictureSize={groupView.group.pictureSizes?.[video.id] ?? null}
             keeperReason={groupView.group.manualSuggestedKeeperId ? null : groupView.group.keeperReasons?.[video.id] ?? null}
             keeperDecision={groupView.group.manualSuggestedKeeperId ? null : keeperDecisionLabel(groupView.group)}
             isSelected={runtime.selectedIds.has(video.id)}
@@ -552,6 +576,7 @@ function DuplicateVirtualRowRenderer({
                   onToggleSelection={runtime.handleToggleSelection}
                   onPlayVideo={runtime.handlePlayVideo}
                   onOpenVideoContextMenu={runtime.handleOpenVideoContextMenu}
+                  pictureSize={groupView.group.pictureSizes?.[video.id] ?? null}
                 />
               </div>
             );

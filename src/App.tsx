@@ -9,7 +9,7 @@ import ReviewMode from './components/ReviewMode';
 import EmptyState from './components/EmptyState';
 import SettingsModal, { type SettingsTab } from './components/SettingsModal';
 import DuplicateGroupsView from './components/DuplicateGroupsView';
-import PartialClipsView from './components/PartialClipsView';
+import PartialClipsView, { mergeClipsByDuplicateGroup } from './components/PartialClipsView';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import DocumentationModal from './components/DocumentationModal';
 import StoreTransition from './components/StoreTransition';
@@ -463,10 +463,13 @@ export default function App() {
       if (result.status === 'ok') {
         const clips = result.clips ?? [];
         useStore.getState().applyPartialClips(clips, { videos: scopeVideos, scope, settingsKey: result.settingsKey });
-        const partial = clips.filter((clip) => clip.relation === 'partial').length;
+        // Counted as the list shows them: copies of the same videos are one entry.
+        const entries = mergeClipsByDuplicateGroup(clips, useStore.getState().duplicateGroups);
+        const partial = entries.filter((entry) => entry.primary.relation === 'partial').length;
+        const soundOnly = entries.length - partial;
         pushToast({
           title: partial > 0 ? 'Partial clips found' : 'No partial clips found',
-          detail: `${partial} ${partial === 1 ? 'video contains' : 'videos contain'} part of another; ${clips.length - partial} ${clips.length - partial === 1 ? 'pair shares' : 'pairs share'} only sound.`,
+          detail: `${partial} ${partial === 1 ? 'video contains' : 'videos contain'} part of another; ${soundOnly} ${soundOnly === 1 ? 'pair shares' : 'pairs share'} only sound.`,
           kind: partial > 0 ? 'success' : 'info',
         });
       } else if (result.status === 'cancelled') {
