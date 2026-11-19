@@ -598,6 +598,21 @@ async function buildFingerprintsForVideo(video, settings, run, executionOptions)
   );
 }
 
+/**
+ * Whether stored samples were taken at the times the video is sampled at now. A duration or frame rate
+ * read only later (after a failed metadata read) moves those times, and a copy sampled at the new ones
+ * would be compared on other frames. A sample read at a retry offset still counts.
+ */
+function sampledAtCurrentTimes(rows, video, settings) {
+  const expected = getSamplingTimestamps(video.durationSecs, settings.sampleCount, settings, video.fps);
+  return rows.every((row) => {
+    const planned = expected[Number(row.sample_index)];
+    if (planned === undefined) return false;
+    if (row.timestamp_secs == null) return true;
+    return SAMPLE_RETRY_OFFSETS_SECS.some((offset) => Math.abs(Math.max(0, planned + offset) - row.timestamp_secs) < 0.001);
+  });
+}
+
 async function backfillFingerprints(videos, duplicateState, settings, run, sendProgress, maxConcurrency = 2, executionOptions = {}, cacheAccess, cacheOptions) {
   const fingerprintKey = duplicateState.fingerprintKey;
   const missing = [];
@@ -605,9 +620,11 @@ async function backfillFingerprints(videos, duplicateState, settings, run, sendP
   const unreadableVideoIds = new Set(duplicateState.comparisonRows
     .filter((row) => row.sample_state === 'unreadable')
     .map((row) => row.video_id));
+  const rowsByVideo = groupBy(duplicateState.comparisonRows, (row) => row.video_id);
   for (const video of videos) {
     const complete = duplicateState.completeById.get(video.id)
-      && !(settings.retryFailedFingerprintExtraction && unreadableVideoIds.has(video.id));
+      && !(settings.retryFailedFingerprintExtraction && unreadableVideoIds.has(video.id))
+      && sampledAtCurrentTimes(rowsByVideo.get(video.id) ?? [], video, settings);
     const failedPreviously = !settings.retryFailedFingerprintExtraction && duplicateState.failedIds.has(video.id);
     if (!complete && !failedPreviously) missing.push(video);
     else if (!complete && failedPreviously) skippedFailed++;

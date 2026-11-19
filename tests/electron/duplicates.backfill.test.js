@@ -258,6 +258,29 @@ test('a video without a single readable sample is recorded as failed', async () 
   assert.deepEqual(failed, ['a']);
 });
 
+test('stored samples are read again when the video is now sampled at other times', async () => {
+  const { getSamplingTimestamps } = require('../../electron/duplicate-utils');
+  const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', sampleCount: 3 });
+  // Read before the frame rate was known, then at the frame-aligned times, one of them retried.
+  const withoutRate = getSamplingTimestamps(100, 3, settings, null);
+  const current = getSamplingTimestamps(100, 3, settings, 25);
+  assert.notDeepEqual(withoutRate, current);
+  for (const [times, expected] of [[withoutRate, ['a']], [[current[0], current[1] + 0.25, current[2]], []]]) {
+    const duplicates = loadDuplicatesWithFakeFfmpeg();
+    const saved = [];
+    const { duplicateState, backfill } = backfillSetup(duplicates, {
+      saveVideoFingerprints: async (_folder, _options, id) => { saved.push(id); },
+      markFingerprintFailure: async () => {},
+    }, [{ ...video('a'), fps: 25 }], { sampleCount: 3 });
+    duplicateState.completeById.set('a', true);
+    duplicateState.comparisonRows.push(...times.map((time, index) => ({ video_id: 'a', sample_index: index, timestamp_secs: time, phash_hex: '0123456789abcdef' })));
+
+    await backfill();
+
+    assert.deepEqual(saved, expected, `times ${times.join(', ')}`);
+  }
+});
+
 test('a video with an unreadable sample is read again only when retrying failed extractions', async () => {
   for (const [retryFailedFingerprintExtraction, expected] of [[false, []], [true, ['a']]]) {
     const duplicates = loadDuplicatesWithFakeFfmpeg();
