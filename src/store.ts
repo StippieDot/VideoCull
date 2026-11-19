@@ -1848,16 +1848,32 @@ const useStore = create<VideoStore>((set, get) => ({
     set({ ...buildVideoStateUpdate(state, videos, ['duplicate'], { duplicateGroups: groupsWithKeepers }), duplicateRun: run, partialClips });
     return 'ok';
   },
-  applyPartialClips: (partialClips, run) => set((state) => ({
-    partialClips,
-    partialClipsMode: true,
-    duplicateGroupsMode: true,
-    // Stored results are kept per duplicate run; a session without one gets a record for the clips.
-    // The clips' videos join the run's list, so a later change to one of their files drops its clips on restore.
-    duplicateRun: state.duplicateRun
-      ? { ...state.duplicateRun, videos: [...new Map([...state.duplicateRun.videos, ...(run ? describeDuplicateRun(run.videos, '', run.scope).videos : [])].map((video) => [video.id, video])).values()] }
-      : (run?.settingsKey ? describeDuplicateRun(run.videos, run.settingsKey, run.scope) : null),
-  })),
+  applyPartialClips: (partialClips, run) => {
+    const state = get();
+    // Groups found under other matching settings are outdated next to these clips, as clips are next to
+    // a newer duplicate run; keeping them would store both under the older settings, and restoring
+    // under the current ones would then discard the new clips with them.
+    if (state.duplicateRun && run?.settingsKey && run.settingsKey !== state.duplicateRun.settingsKey) {
+      set({
+        ...buildVideoStateUpdate(state, applyDuplicateGroupsToVideos(state.videos, []), ['duplicate'], { duplicateGroups: [] }),
+        partialClips,
+        partialClipsMode: true,
+        duplicateGroupsMode: true,
+        duplicateRun: describeDuplicateRun(run.videos, run.settingsKey, run.scope),
+      });
+      return;
+    }
+    set({
+      partialClips,
+      partialClipsMode: true,
+      duplicateGroupsMode: true,
+      // Stored results are kept per duplicate run; a session without one gets a record for the clips.
+      // The clips' videos join the run's list, so a later change to one of their files drops its clips on restore.
+      duplicateRun: state.duplicateRun
+        ? { ...state.duplicateRun, videos: [...new Map([...state.duplicateRun.videos, ...(run ? describeDuplicateRun(run.videos, '', run.scope).videos : [])].map((video) => [video.id, video])).values()] }
+        : (run?.settingsKey ? describeDuplicateRun(run.videos, run.settingsKey, run.scope) : null),
+    });
+  },
   setPartialClipsMode: (partialClipsMode) => set({ partialClipsMode }),
   dismissPartialClips: (pairs) => {
     const keys = pairs.map(({ aId, bId }) => (aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`));

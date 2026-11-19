@@ -79,6 +79,25 @@ describe('stored duplicate results in the store', () => {
     expect(api.loadDuplicateResults).not.toHaveBeenCalled();
   });
 
+  test('partial clips found under other matching settings replace the outdated groups and are stored under them', async () => {
+    const clip = {
+      aId: A, bId: C, relation: 'partial' as const, state: 'confirmed' as const, shorterId: C, coverage: 1, soundSimilarity: 96, pictureSimilarity: 99,
+      segments: [{ startA: 10, startB: 0, lengthSecs: 20, soundSimilarity: 96, pictureState: 'confirmed' as const, pictureSimilarity: 99 }],
+    };
+    const videos = useStore.getState().videos;
+    await useStore.getState().restoreDuplicateResults();
+    useStore.getState().applyPartialClips([clip], { videos, scope: 'all', settingsKey: 'key' });
+    expect(useStore.getState().duplicateGroups).toHaveLength(1);
+    expect(useStore.getState().duplicateRun?.settingsKey).toBe('key');
+
+    useStore.getState().applyPartialClips([clip], { videos, scope: 'all', settingsKey: 'newer' });
+    expect(useStore.getState().duplicateGroups).toEqual([]);
+    expect(useStore.getState().videos.every((video) => !video.duplicateGroupId)).toBe(true);
+    await vi.advanceTimersByTimeAsync(1500);
+    const stored = api.saveDuplicateResults.mock.lastCall![1] as StoredDuplicateResults;
+    expect(stored).toMatchObject({ settingsKey: 'newer', groups: [], partialClips: [clip] });
+  });
+
   test('a result from a run without run details is not stored', async () => {
     useStore.getState().applyDuplicateResult({ status: 'ok', groups: [], settingsKey: 'key' });
     await vi.advanceTimersByTimeAsync(1500);
