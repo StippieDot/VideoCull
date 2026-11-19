@@ -227,17 +227,19 @@ export function resolutionTier(width: number | null | undefined, height: number 
 }
 
 /**
- * Tooltip for the resolution of a video in a duplicate group whose picture inside black bars is smaller
- * than its frame, such as "480p picture inside black bars"; undefined when the two are the same.
+ * Tooltip for the resolution of a video in a duplicate group that has black bars, such as "1080p picture
+ * inside black bars (1080×1974 of a 1080×2340 frame)"; also when the bars leave the label unchanged, so
+ * what was cut off stays visible. Undefined without bars or frame size.
  */
 export function formatPictureSizeNote(
   width: number | null | undefined,
   height: number | null | undefined,
   pictureSize: { width: number; height: number } | null | undefined,
 ): string | undefined {
-  if (!pictureSize) return undefined;
+  if (!pictureSize || !width || !height) return undefined;
+  if (pictureSize.width === width && pictureSize.height === height) return undefined;
   const picture = formatResolutionLabel(pictureSize.width, pictureSize.height);
-  return picture && picture !== formatResolutionLabel(width, height) ? `${picture} picture inside black bars` : undefined;
+  return `${picture} picture inside black bars (${pictureSize.width}×${pictureSize.height} of a ${width}×${height} frame)`;
 }
 
 export function formatResolutionLabel(width: number | null | undefined, height: number | null | undefined): string {

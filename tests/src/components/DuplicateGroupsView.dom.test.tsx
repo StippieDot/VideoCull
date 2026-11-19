@@ -298,7 +298,7 @@ describe('DuplicateGroupsView behavior', () => {
       })],
     });
     render(<DuplicateGroupsView />);
-    const boxed = await screen.findByTitle('480p picture inside black bars');
+    const boxed = await screen.findByTitle('480p picture inside black bars (1138×480 of a 1138×640 frame)');
     expect(boxed.textContent).toBe('640p');
     expect(boxed.className).toContain('equal');
     expect(screen.getByText('480p').className).toContain('equal');
