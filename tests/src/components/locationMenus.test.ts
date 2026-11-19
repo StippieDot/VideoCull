@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { collapseSegments, hasSubfolders, listSubfolders, splitPath } from '../../../src/components/locationMenus';
+import { buildPartialClipsMenu, collapseSegments, hasSubfolders, listSubfolders, splitPath } from '../../../src/components/locationMenus';
 import { makeVideo } from '../../helpers/videoFactory';
 
 const inFolder = (id: string, folder: string) => makeVideo(id, {}, folder);
@@ -84,4 +84,11 @@ describe('subfolders', () => {
   test('matching ignores case and separator style', () => {
     expect(hasSubfolders([makeVideo('1', { path: 'c:/A/Day1/1.mp4' })], 'C:\\a')).toBe(true);
   });
+});
+
+test('the partial clips menu has no group or method items', () => {
+  const actions = { showDuplicateGroups: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn() } as unknown as Parameters<typeof buildPartialClipsMenu>[2];
+  const menu = buildPartialClipsMenu(1, 2, actions);
+  expect(menu).toMatchObject({ title: 'Partial clips', detail: '1 entry' });
+  expect(menu.items.flatMap((item) => (item.type === 'item' ? [item.label] : []))).toEqual(['Show Duplicate Groups (2)', 'Duplicate Settings', 'Back to Grid']);
 });

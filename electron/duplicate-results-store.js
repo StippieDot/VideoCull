@@ -13,7 +13,8 @@ const KEPT_SESSIONS = 10;
 // Generous for a large library, small enough that a broken renderer cannot fill the disk.
 const MAX_VIDEOS = 1_000_000;
 const MAX_GROUPS = 500_000;
-const MAX_PAIRS_PER_GROUP = 10_000;
+// Every pair of a group is stored, so this allows groups of about 1,400 copies.
+const MAX_PAIRS_PER_GROUP = 1_000_000;
 const MAX_PARTIAL_CLIPS = 500_000;
 const MAX_SEGMENTS_PER_CLIP = 1_000;
 

@@ -187,9 +187,11 @@ function verifyNearMiss(a, b, settings, sampleScore = pHashSampleScore) {
   const results = [];
   if (b.burst?.state === 'ok') results.push(verifyDirection(a.samples, b.burst, a.durationSecs, b.durationSecs, settings, sampleScore));
   if (a.burst?.state === 'ok') results.push(verifyDirection(b.samples, a.burst, b.durationSecs, a.durationSecs, settings, sampleScore));
-  const best = results.filter(Boolean).sort((x, y) => y.similarity - x.similarity)[0];
-  if (!best) return { outcome: 'unverifiable' };
   const needed = Math.max(2, minimumComparedSamples(settings, false));
+  // A direction that compared enough positions goes before a higher score on too few.
+  const best = results.filter(Boolean)
+    .sort((x, y) => (y.compared >= needed) - (x.compared >= needed) || y.similarity - x.similarity)[0];
+  if (!best) return { outcome: 'unverifiable' };
   const accepted = best.similarity >= settings.finalSimilarityThreshold && best.compared >= needed;
   return { outcome: accepted ? 'accepted' : 'rejected', ...best };
 }

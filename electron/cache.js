@@ -1037,6 +1037,10 @@ function saveVideoFingerprints(db, videoId, fingerprints, options = {}) {
   `);
   const write = db.transaction(() => {
     clear.run(videoId);
+    // Frames around the samples were read with the old fingerprint: a position that was unreadable then
+    // stays empty in them, so they are read again when a near miss needs them.
+    db.prepare('DELETE FROM video_bursts WHERE video_id = ?').run(videoId);
+    db.prepare('DELETE FROM video_gray_bursts WHERE video_id = ?').run(videoId);
     for (const fp of fingerprints) {
       insert.run(
         videoId,

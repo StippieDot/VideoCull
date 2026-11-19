@@ -248,7 +248,7 @@ function buildDuplicateGroupViews(
   return { views, cache: nextCache, recomputedCount };
 }
 
-function parentPath(filePath: string): string {
+export function parentPath(filePath: string): string {
   const lastSeparator = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
   return lastSeparator >= 0 ? filePath.slice(0, lastSeparator) : filePath;
 }
@@ -724,6 +724,8 @@ function DuplicateGroupsView() {
   const getMarkableDuplicateIds = useCallback((scopeGroups: DuplicateGroupView[]) => {
     const ids: string[] = [];
     for (const { group, videos: groupVideos } of scopeGroups) {
+      // With the suggested keeper already marked for deletion, marking the rest would delete every copy.
+      if (groupVideos.some((video) => video.id === group.suggestedKeeperId && video.status === 'delete')) continue;
       for (const video of groupVideos) {
         if (group.suggestedKeeperId === video.id) continue;
         if (isProtectedFromSuggestion(video)) continue;

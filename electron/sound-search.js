@@ -28,7 +28,8 @@ const EDGE_SIMILARITY = 0.8;
 const MIN_SEGMENT_WORDS = WINDOW_WORDS;
 // Segments covering this much of both videos make them duplicates, which the duplicate run handles.
 const FULL_COVERAGE = 0.95;
-const OFFSET_RANGE = 1 << 17;
+// Offsets between two tracks stay inside ± this many words (about 145 hours of sound).
+const OFFSET_RANGE = 1 << 22;
 
 function popcount(x) {
   let v = x - ((x >>> 1) & 0x55555555);
@@ -232,6 +233,17 @@ function refineEdges(a, b, segment) {
   return { start, end, atTrackEnd: end >= last };
 }
 
+/** Total length of `[start, end]` intervals, counting overlapping parts once. */
+function unionLength(intervals) {
+  let total = 0;
+  let reach = -Infinity;
+  for (const [start, end] of [...intervals].sort((x, y) => x[0] - y[0])) {
+    if (end > reach) total += end - Math.max(start, reach);
+    reach = Math.max(reach, end);
+  }
+  return total;
+}
+
 // A word starts at its frame and covers the frame plus the smoothing that follows it, so a stretch that
 // runs to the end of a track lasts this much past the start of its last word.
 const LAST_WORD_SPAN_SECS = (4096 + 4 * 1365) / 11025;
@@ -257,22 +269,27 @@ function findSharedSound(tracks, { skipPairKeys = new Set(), onProgress } = {}) 
         lengthSecs: atTrackEnd ? (end - 1 - start) / WORDS_PER_SECOND + LAST_WORD_SPAN_SECS : (end - start) / WORDS_PER_SECOND,
         similarity: similarityAt(a.words, b.words, start, offset, end - start, 1),
         words: end - start,
+        startWord: start,
+        offset,
       }))
       .filter((segment) => segment.words >= MIN_SEGMENT_WORDS)
       .sort((x, y) => x.startA - y.startA);
     if (segments.length === 0) continue;
     const covered = segments.reduce((sum, segment) => sum + segment.words, 0);
+    // Counted per video: a clip that occurs twice in a longer video covers the clip, not the video.
+    const coveredA = unionLength(segments.map((segment) => [segment.startWord, segment.startWord + segment.words]));
+    const coveredB = unionLength(segments.map((segment) => [segment.startWord + segment.offset, segment.startWord + segment.offset + segment.words]));
     relations.push({
       aId: a.id,
       bId: b.id,
       // With matching pictures such a pair is a duplicate, which the duplicate run reports; with other
       // pictures it is shared sound worth reporting. The caller decides after the picture check.
-      fullCoverage: covered >= FULL_COVERAGE * a.words.length && covered >= FULL_COVERAGE * b.words.length,
-      segments: segments.map(({ words: _words, ...segment }) => segment),
+      fullCoverage: coveredA >= FULL_COVERAGE * a.words.length && coveredB >= FULL_COVERAGE * b.words.length,
+      segments: segments.map(({ words: _words, startWord: _startWord, offset: _offset, ...segment }) => segment),
       soundSimilarity: segments.reduce((sum, segment) => sum + segment.similarity * segment.words, 0) / covered,
     });
   }
   return relations;
 }
 
-module.exports = { findSharedSound, pairKey };
+module.exports = { findSharedSound, pairKey, unionLength };

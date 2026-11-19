@@ -946,3 +946,16 @@ describe('gray frames in shared memory', () => {
     expect(rows[0].gray_bytes.buffer).toBe(shared);
   });
 });
+
+test('black bars are matched when the first sample could not be read', () => {
+  const settings = normalizeDuplicateSettings({ sampleCount: 3 });
+  const variant = (hex) => ({ hash: parsePHashWords(hex), flippedHash: parsePHashWords(hex) });
+  const PICTURE = ['00000000000000ff', '000000000000ff00', '0000000000ff0000'];
+  const BARRED = ['ffffffff00000000', 'ffff0000ffff0000', 'ff00ff00ff00ff00'];
+  const plain = PICTURE.map((hex, index) => ({ index, darkRatio: 0, lumaRange: 100, full: variant(hex), crop: null }));
+  const letterboxed = PICTURE.map((hex, index) => (index === 0
+    ? { index, unreadable: true, full: null, crop: null }
+    : { index, darkRatio: 0, lumaRange: 100, full: variant(BARRED[index]), crop: variant(hex) }));
+  assert.equal(scoreSamples(letterboxed, plain, settings, pHashSampleScore)?.similarity, 100);
+  assert.equal(scoreSamples(plain, letterboxed, settings, pHashSampleScore)?.similarity, 100);
+});

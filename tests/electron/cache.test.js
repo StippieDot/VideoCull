@@ -179,6 +179,10 @@ test('fingerprint reads ignore rows created for different extraction settings', 
 
     assert.equal(cache.getFingerprintCounts(db, ['a'], 1, { fingerprintKey: 'samples:3:even' }).get('a'), true);
     assert.equal(cache.getFingerprintCounts(db, ['a'], 1, { fingerprintKey: 'samples:5:center' }).get('a'), undefined);
+    // Frames read around the old samples go when the video is fingerprinted again.
+    cache.saveVideoBurst(db, 'a', 'burst-key', 'ok', '[]');
+    cache.saveVideoFingerprints(db, 'a', [fingerprint], { fingerprintKey: 'samples:3:even' });
+    assert.deepEqual(db.prepare('SELECT video_id FROM video_bursts').all(), []);
     assert.equal(cache.loadPHashRows(db, ['a'], 1, { fingerprintKey: 'samples:5:center' }).length, 0);
     assert.equal(cache.loadGraySampleRows(db, ['a'], 1, { fingerprintKey: 'samples:5:center' }).length, 0);
   } finally {

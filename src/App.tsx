@@ -469,7 +469,7 @@ export default function App() {
         const soundOnly = entries.length - partial;
         pushToast({
           title: partial > 0 ? 'Partial clips found' : 'No partial clips found',
-          detail: `${partial} ${partial === 1 ? 'video contains' : 'videos contain'} part of another; ${soundOnly} ${soundOnly === 1 ? 'pair shares' : 'pairs share'} only sound.`,
+          detail: `${partial} ${partial === 1 ? 'video contains' : 'videos contain'} part of another; ${soundOnly} other ${soundOnly === 1 ? 'pair shares' : 'pairs share'} sound.`,
           kind: partial > 0 ? 'success' : 'info',
         });
       } else if (result.status === 'cancelled') {

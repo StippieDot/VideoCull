@@ -3,6 +3,7 @@ import { Check, Play, Trash2 } from 'lucide-react';
 import useStore from '../store';
 import type { DuplicateGroup, PartialClip, PartialClipSegment, Video } from '../types';
 import { formatDuration, formatSize } from '../utils';
+import { parentPath } from './DuplicateGroupsView';
 import './DuplicateGroupsView.css';
 import './PartialClipsView.css';
 
@@ -47,6 +48,9 @@ function thumbSrc(video: Video): string | null {
   return video.osThumbnail ?? null;
 }
 
+// A position, unlike a duration, can be 0: the start of the video.
+const formatPosition = (seconds: number) => (seconds < 1 ? '0:00' : formatDuration(seconds));
+
 /** Segment positions in the longer video, where the time bar and the wording place them. */
 function inLonger(clip: PartialClip, segment: PartialClipSegment): { start: number; end: number } {
   const longerIsA = clip.shorterId !== clip.aId;
@@ -62,14 +66,14 @@ export function describePartialClip(clip: PartialClip, shorter: Video, longer: V
     }
     return clip.segments.map((segment) => {
       const { start, end } = inLonger(clip, segment);
-      return `Contains ${formatDuration(segment.lengthSecs)} of ${longer.filename}, from ${formatDuration(start)} to ${formatDuration(end)}`
+      return `Contains ${formatDuration(segment.lengthSecs)} of ${longer.filename}, from ${formatPosition(start)} to ${formatPosition(end)}`
         + (segment.pictureState === 'confirmed' ? ' — sound and picture match' : ' — same sound only');
     });
   }
   const ending = clip.state === 'differentPicture' ? 'pictures differ' : 'picture could not be checked';
   return clip.segments.map((segment) => {
     const { start, end } = inLonger(clip, segment);
-    return `Same sound as ${longer.filename} from ${formatDuration(start)} to ${formatDuration(end)}; ${ending}`;
+    return `Same sound as ${longer.filename} from ${formatPosition(start)} to ${formatPosition(end)}; ${ending}`;
   });
 }
 
@@ -93,7 +97,7 @@ function TimeBar({ clip, longer }: { clip: PartialClip; longer: Video }) {
             <span
               key={index}
               className={`partial-clip-segment ${segment.pictureState}`}
-              title={`${formatDuration(start)} – ${formatDuration(end)}`}
+              title={`${formatPosition(start)} – ${formatPosition(end)}`}
               style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0.5, ((end - start) / duration) * 100)}%` }}
             />
           );
@@ -117,6 +121,7 @@ function ClipVideoRow({ video, role, scopeIds }: { video: Video; role: string; s
           <strong title={video.path}>{video.filename}</strong>
           <span className="partial-clip-role">{role}</span>
         </div>
+        <span className="duplicate-row-path" title={video.path}>{parentPath(video.path)}</span>
         <span className="duplicate-meta-chips">
           <span className="meta-chip equal">{formatDuration(video.durationSecs)}</span>
           <span className="meta-chip equal">{formatSize(video.sizeBytes)}</span>
@@ -161,6 +166,24 @@ const ClipCard = memo(function ClipCard({ entry, videosById }: { entry: PartialC
   const longer = videosById.get(clip.shorterId === clip.aId ? clip.bId : clip.aId);
   if (!shorter || !longer) return null;
   const scopeIds = [shorter.id, longer.id];
+  const notAMatch = () => {
+    // Applies to the copies listed below too, so they do not come back through another copy.
+    const pairs = [clip, ...others];
+    const before = useStore.getState().partialClips ?? [];
+    dismissPartialClips(pairs);
+    useStore.getState().pushToast({
+      title: 'Marked as not a match',
+      detail: `${shorter.filename} and ${longer.filename} stay out of later searches.`,
+      kind: 'info',
+      durationMs: 8000,
+      actionLabel: 'Undo',
+      action: () => {
+        useStore.getState().removeIgnoredDuplicatePairs(pairs.map((pair) => (pair.aId < pair.bId ? `${pair.aId}|${pair.bId}` : `${pair.bId}|${pair.aId}`)));
+        // The entries return at their old place; anything dismissed since stays out.
+        useStore.setState((state) => ({ partialClips: before.filter((entry) => pairs.includes(entry) || state.partialClips?.includes(entry)) }));
+      },
+    });
+  };
   return (
     <article className={`partial-clip-card ${clip.relation}`}>
       <header className="partial-clip-header">
@@ -168,8 +191,7 @@ const ClipCard = memo(function ClipCard({ entry, videosById }: { entry: PartialC
           {describePartialClip(clip, shorter, longer).map((line) => <p key={line}>{line}</p>)}
           <span className="partial-clip-evidence">{evidenceLabel(clip)}</span>
         </div>
-        {/* Applies to the copies listed below too, so they do not come back through another copy. */}
-        <button className="duplicate-action-btn secondary" onClick={() => dismissPartialClips([clip, ...others])}>
+        <button className="duplicate-action-btn secondary" onClick={notAMatch} title="Hide this entry and keep it out of later searches">
           Not a match
         </button>
       </header>
@@ -227,7 +249,7 @@ function PartialClipsView() {
           <h2>Partial clips</h2>
           <span>
             {partialCount} {partialCount === 1 ? 'video contains' : 'videos contain'} part of another
-            {soundOnlyCount > 0 ? ` · ${soundOnlyCount} ${soundOnlyCount === 1 ? 'pair shares' : 'pairs share'} only sound` : ''}
+            {soundOnlyCount > 0 ? ` · ${soundOnlyCount} other ${soundOnlyCount === 1 ? 'pair shares' : 'pairs share'} sound` : ''}
           </span>
         </div>
       </div>

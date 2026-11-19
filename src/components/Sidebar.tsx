@@ -1,5 +1,6 @@
 import { describeUncheckedNearMisses, type DuplicateRunInfo } from '../duplicateResultsPersistence';
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { mergeClipsByDuplicateGroup } from './PartialClipsView';
 import type { ColorTheme, DuplicateSortField, RecentSession, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
 import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
@@ -106,6 +107,9 @@ function getRangeTrackStyle(min: number, max: number, selectedMin: number, selec
   return { '--range-start': start, '--range-end': end, '--range-fill-visible': end > start ? 1 : 0 } as CSSProperties;
 }
 
+// SYNC NOTE: the progress stages of electron/partial-clips.js.
+const PARTIAL_CLIP_STAGES = new Set(['Reading sound', 'Searching partial clips', 'Checking pictures']);
+
 function SidebarDuplicateSection({
   onFindDuplicates,
   onSwitchDuplicateMethod,
@@ -140,9 +144,14 @@ function SidebarDuplicateSection({
   const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const isGenerating = useStore((s) => s.isGenerating);
   const generationPhase = useStore((s) => s.genProgress.phase);
+  const duplicateGroups = useStore((s) => s.duplicateGroups);
+  // Counted as the list shows them: copies of the same videos are one entry.
+  const partialEntryCount = useMemo(() => mergeClipsByDuplicateGroup(partialClips ?? [], duplicateGroups).length, [partialClips, duplicateGroups]);
+  const findingPartialClips = useStore((s) => s.isFindingDuplicates && PARTIAL_CLIP_STAGES.has(s.duplicateProgress?.stage ?? ''));
 
   if (statsTotal <= 0) return null;
 
+  const findingLabel = findingPartialClips ? 'Finding partial clips...' : 'Finding duplicates...';
   const metadataRunning = isGenerating && generationPhase === 'metadata';
   const duplicateDisabled = isFindingDuplicates || metadataRunning || videoCount < 2;
   const duplicateDisabledTitle = metadataRunning
@@ -188,14 +197,18 @@ function SidebarDuplicateSection({
     return (
       <section className="sidebar-section sidebar-duplicate-mode-section">
         <h3 className="sidebar-section-title">
-          <CopyCheck size={14} /> Duplicates
+          <CopyCheck size={14} /> {partialClipsMode ? 'Partial clips' : 'Duplicates'}
         </h3>
 
         <div className="duplicate-mode-summary">
-          <strong>{duplicateGroupCount}</strong>
-          <span>{duplicateGroupCount === 1 ? 'group' : 'groups'} / {duplicateCount} videos</span>
+          <strong>{partialClipsMode ? partialEntryCount : duplicateGroupCount}</strong>
+          {partialClipsMode
+            ? <span>{partialEntryCount === 1 ? 'entry' : 'entries'}</span>
+            : <span>{duplicateGroupCount === 1 ? 'group' : 'groups'} / {duplicateCount} videos</span>}
         </div>
 
+        {/* The view, filter and sort controls act on duplicate groups only. */}
+        {!partialClipsMode && <>
         <div className="duplicate-sidebar-view-toggle" role="tablist" aria-label="Duplicate view mode">
           <button
             type="button"
@@ -286,6 +299,7 @@ function SidebarDuplicateSection({
             </div>
           </label>
         </div>
+        </>}
 
         {duplicateRun?.restored && (
           <p className="sidebar-duplicate-note">{describeRestoredRun(duplicateRun, videoCount)}</p>
@@ -293,14 +307,20 @@ function SidebarDuplicateSection({
         <UncheckedNearMisses run={duplicateRun} disabled={duplicateDisabled} onCheck={onCheckNearMisses} />
         {partialClips && (
           <button className="btn btn-outline sidebar-wide-action" onClick={() => setPartialClipsMode(!partialClipsMode)}>
-            {partialClipsMode ? `Duplicate Groups (${duplicateGroupCount})` : `Partial Clips (${partialClips.length})`}
+            {partialClipsMode ? `Duplicate Groups (${duplicateGroupCount})` : `Partial Clips (${partialEntryCount})`}
           </button>
         )}
         {partialClipsEnabled && (
-          <button className="btn btn-outline sidebar-wide-action" onClick={onFindPartialClips} disabled={duplicateDisabled} title="Reads the sound of every video once">
-            Find Partial Clips
+          <button
+            className={`btn ${partialClipsMode ? 'btn-primary' : 'btn-outline'} sidebar-wide-action`}
+            onClick={onFindPartialClips}
+            disabled={duplicateDisabled}
+            title={duplicateDisabled && !isFindingDuplicates ? duplicateDisabledTitle : 'Reads the sound of every video once'}
+          >
+            {findingPartialClips ? findingLabel : 'Find Partial Clips'}
           </button>
         )}
+        {!partialClipsMode && <>
         <button
           className="btn btn-primary sidebar-wide-action"
           onClick={onFindDuplicates}
@@ -308,17 +328,19 @@ function SidebarDuplicateSection({
           title={metadataRunning ? duplicateDisabledTitle : 'Run duplicate detection again'}
         >
           <RefreshCw size={14} />
-          {isFindingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Run Again'}
+          {isFindingDuplicates ? findingLabel : metadataRunning ? 'Waiting for metadata...' : 'Run Again'}
         </button>
 
+        {/* Switching the method restarts a duplicate run; it must not end a partial clip search unasked. */}
         <button
           className="btn btn-outline sidebar-wide-action"
           onClick={onSwitchDuplicateMethod}
-          disabled={duplicateDisabled && !isFindingDuplicates}
+          disabled={duplicateDisabled && (!isFindingDuplicates || findingPartialClips)}
           title={`Switch the duplicate method to ${DUPLICATE_METHOD_NAMES[otherMethod]} and run again`}
         >
           Run Again with {DUPLICATE_METHOD_NAMES[otherMethod]}
         </button>
+        </>}
 
         <button className="btn btn-outline sidebar-wide-action" onClick={() => setDuplicateGroupsMode(false)}>
           Back to Grid
@@ -342,7 +364,7 @@ function SidebarDuplicateSection({
         title={duplicateDisabledTitle}
       >
         <CopyCheck size={14} />
-        {isFindingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Find Duplicates'}
+        {isFindingDuplicates ? findingLabel : metadataRunning ? 'Waiting for metadata...' : 'Find Duplicates'}
       </button>
       {duplicateGroupCount > 0 && (
         <button
@@ -364,11 +386,16 @@ function SidebarDuplicateSection({
             setDuplicateGroupsMode(true);
           }}
         >
-          Partial Clips ({partialClips.length})
+          Partial Clips ({partialEntryCount})
         </button>
       )}
       {partialClipsEnabled && (
-        <button className="btn btn-outline sidebar-wide-action" onClick={onFindPartialClips} disabled={duplicateDisabled} title="Reads the sound of every video once">
+        <button
+          className="btn btn-outline sidebar-wide-action"
+          onClick={onFindPartialClips}
+          disabled={duplicateDisabled}
+          title={duplicateDisabled && !isFindingDuplicates ? duplicateDisabledTitle : 'Reads the sound of every video once'}
+        >
           Find Partial Clips
         </button>
       )}

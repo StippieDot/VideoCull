@@ -92,6 +92,16 @@ describe('timing verification of near misses', () => {
     expect(verifyNearMiss({ samples: partial, durationSecs: 100 }, withBurst, settings()).outcome).toBe('unverifiable');
   });
 
+  test('a direction that compared enough positions goes before a higher score on too few', () => {
+    const near = A.map((hex) => nearHex(hex, 2));
+    // Against b's frames all 3 positions compare (62 of 64 bits); b's own third sample is unreadable,
+    // so against a's frames only 2 compare, at 100 %.
+    const a = { samples: samples(A), burst: burst(A, [0, 0, 0]), durationSecs: 100 };
+    const b = { samples: samples([A[0], A[1], null]), burst: burst(near, [0, 0, 0]), durationSecs: 100 };
+    const result = verifyNearMiss(a, b, settings({ minComparedSamples: 3, finalSimilarityThreshold: 95 }));
+    expect(result).toMatchObject({ outcome: 'accepted', compared: 3 });
+  });
+
   test('without a usable burst a pair is pending until both bursts failed', () => {
     const failed = { state: 'failed', samples: [] };
     expect(verifyNearMiss({ samples: samples(A) }, { samples: samples(A) }, settings())).toEqual({ outcome: 'pending' });

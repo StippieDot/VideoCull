@@ -1747,7 +1747,8 @@ const useStore = create<VideoStore>((set, get) => ({
   setReviewScopeIds: (reviewScopeIds: string[] | null) => set({ reviewScopeIds: reviewScopeIds ? uniqueVideoIds(reviewScopeIds) : null }),
   setReviewAutoPlay: (reviewAutoPlay: boolean) => set({ reviewAutoPlay }),
   setActiveReviewVideoPath: (activeReviewVideoPath: string | null) => set({ activeReviewVideoPath }),
-  setDuplicateGroupsMode: (duplicateGroupsMode: boolean) => set({ duplicateGroupsMode }),
+  // Leaving for the grid also leaves the partial clips list, so Duplicate Groups opens the groups again.
+  setDuplicateGroupsMode: (duplicateGroupsMode: boolean) => set(duplicateGroupsMode ? { duplicateGroupsMode } : { duplicateGroupsMode, partialClipsMode: false }),
   setDuplicateGroups: (duplicateGroups) => {
     const stateBefore = get();
     const groupsWithKeepers = applyKeeperOrderToGroups(duplicateGroups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder, stateBefore.settings.duplicates.codecOrder);
@@ -1820,6 +1821,9 @@ const useStore = create<VideoStore>((set, get) => ({
         duplicateGroupsMode: groupsWithKeepers.length > 0,
       }),
       duplicateRun,
+      partialClipsMode: false,
+      // Clips found under other matching settings are not shown or stored as current.
+      partialClips: duplicateRun && stateBefore.duplicateRun?.settingsKey === duplicateRun.settingsKey ? stateBefore.partialClips : null,
     });
   },
   restoreDuplicateResults: async () => {
@@ -1849,7 +1853,10 @@ const useStore = create<VideoStore>((set, get) => ({
     partialClipsMode: true,
     duplicateGroupsMode: true,
     // Stored results are kept per duplicate run; a session without one gets a record for the clips.
-    duplicateRun: state.duplicateRun ?? (run?.settingsKey ? describeDuplicateRun(run.videos, run.settingsKey, run.scope) : null),
+    // The clips' videos join the run's list, so a later change to one of their files drops its clips on restore.
+    duplicateRun: state.duplicateRun
+      ? { ...state.duplicateRun, videos: [...new Map([...state.duplicateRun.videos, ...(run ? describeDuplicateRun(run.videos, '', run.scope).videos : [])].map((video) => [video.id, video])).values()] }
+      : (run?.settingsKey ? describeDuplicateRun(run.videos, run.settingsKey, run.scope) : null),
   })),
   setPartialClipsMode: (partialClipsMode) => set({ partialClipsMode }),
   dismissPartialClips: (pairs) => {

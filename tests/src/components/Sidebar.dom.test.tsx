@@ -366,6 +366,12 @@ describe('Sidebar recent folder behavior', () => {
     expect(onFindPartialClips).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByRole('button', { name: 'Partial Clips (0)' }));
     expect(useStore.getState()).toMatchObject({ partialClipsMode: true, duplicateGroupsMode: true });
+    // The group filters do nothing for partial clips, and leaving for the grid leaves the list too.
+    expect(screen.getByText('Partial clips')).toBeTruthy();
+    expect(screen.queryByText('Minimum similarity')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Run Again' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Back to Grid' }));
+    expect(useStore.getState()).toMatchObject({ partialClipsMode: false, duplicateGroupsMode: false });
   });
 
   test('opens documentation from the sidebar header button', async () => {

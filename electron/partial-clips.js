@@ -17,7 +17,7 @@ const {
 } = require('./audio-fingerprint');
 const { calculateDctPHash, flipGrayBytes, frameDarkRatio, parsePHashWords, pHashSimilarity, popcount32 } = require('./duplicate-utils');
 const { cropToPrimary, detectBorder, lumaRange } = require('./duplicate-frames');
-const { pairKey } = require('./sound-search');
+const { pairKey, unionLength } = require('./sound-search');
 
 // A long file read at disk speed keeps producing sound; this only catches a decoder that stopped.
 const SOUND_IDLE_TIMEOUT_MS = 120_000;
@@ -266,7 +266,9 @@ function describeRelation(found, shorter, segments) {
   const state = states.includes('confirmed') ? 'confirmed' : states.includes('differentPicture') ? 'differentPicture' : 'unconfirmed';
   const checked = segments.filter((segment) => segment.pictureSimilarity !== null);
   const shorterDuration = Number(shorter.durationSecs) || 0;
-  const covered = segments.reduce((sum, segment) => sum + segment.lengthSecs, 0);
+  // A stretch of the shorter video that occurs twice in the other one counts once.
+  const startShort = shorter.id === found.aId ? 'startA' : 'startB';
+  const covered = unionLength(segments.map((segment) => [segment[startShort], segment[startShort] + segment.lengthSecs]));
   return {
     aId: found.aId,
     bId: found.bId,

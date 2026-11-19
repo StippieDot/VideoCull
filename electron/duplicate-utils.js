@@ -535,9 +535,10 @@ const CROPPED_HYPOTHESES = [[true, false], [false, true], [true, true]];
 function scoreSamples(samplesA, samplesB, settings, sampleScore, options = {}) {
   let best = scoreSampleVariants(samplesA, samplesB, settings, sampleScore, options, false, false);
   if (!settings.matchBlackBars) return best;
-  // Bars are found per video, so the first sample tells whether the video has a cropped variant.
-  const hasCropA = Boolean(samplesA[0]?.crop);
-  const hasCropB = Boolean(samplesB[0]?.crop);
+  // Bars are found per video, so any readable sample tells whether the video has a cropped variant;
+  // an unreadable sample carries none, also when it is the first.
+  const hasCropA = samplesA.some((sample) => sample?.crop);
+  const hasCropB = samplesB.some((sample) => sample?.crop);
   if (!hasCropA && !hasCropB) return best;
   for (const [cropA, cropB] of CROPPED_HYPOTHESES) {
     if ((cropA && !hasCropA) || (cropB && !hasCropB)) continue;

@@ -1,5 +1,5 @@
 const { WORDS_PER_SECOND } = require('../../electron/audio-fingerprint');
-const { findSharedSound } = require('../../electron/sound-search');
+const { findSharedSound, unionLength } = require('../../electron/sound-search');
 
 function randomWords(count, seed) {
   let state = seed >>> 0;
@@ -69,6 +69,15 @@ describe('shared sound search', () => {
     const sound = randomWords(seconds(40), 10);
     const [relation] = findSharedSound([{ id: 'a', words: sound }, { id: 'b', words: reencoded(sound) }]);
     expect(relation.fullCoverage).toBe(true);
+  });
+
+  test('a clip that occurs twice in a longer video does not cover that video', () => {
+    const clip = randomWords(seconds(40), 21);
+    const longer = concat(reencoded(clip), randomWords(seconds(5), 22), reencoded(clip, 5));
+    const [relation] = findSharedSound([{ id: 'clip', words: clip }, { id: 'longer', words: longer }]);
+    expect(relation.segments).toHaveLength(2);
+    expect(relation.fullCoverage).toBe(false);
+    expect(unionLength([[0, 10], [5, 12], [20, 21]])).toBe(13);
   });
 
   test('stretches shorter than 10 seconds are not reported', () => {

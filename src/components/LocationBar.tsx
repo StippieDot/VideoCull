@@ -7,8 +7,10 @@ import AppMenu from './AppMenu';
 import { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail } from './contextMenuBuilders';
 import DuplicateStepper from './DuplicateStepper';
+import { mergeClipsByDuplicateGroup } from './PartialClipsView';
 import {
   buildDuplicatesMenu,
+  buildPartialClipsMenu,
   buildFolderMenu,
   buildParentsMenu,
   buildRootsMenu,
@@ -248,6 +250,7 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
       openDuplicateSettings: () => appRef.current.openDuplicateSettings(),
       backToGrid: () => store().setDuplicateGroupsMode(false),
       goToGroup: () => document.querySelector<HTMLInputElement>('.duplicate-stepper-input')?.focus(),
+      showDuplicateGroups: () => store().setPartialClipsMode(false),
     };
   }, [navigate]);
 }
@@ -333,6 +336,9 @@ function buildMenu(
   if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsideFolderFilter(state), control.parent, scope, actions);
   if (control.type !== 'segment' && control.type !== 'actions') return null;
   const { segment } = control;
+  if (segment.kind === 'duplicates' && state.partialClipsMode) {
+    return buildPartialClipsMenu(mergeClipsByDuplicateGroup(state.partialClips ?? [], state.duplicateGroups).length, state.duplicateGroups.length, actions);
+  }
   if (segment.kind === 'duplicates') return buildDuplicatesMenu(state.duplicateGroups, state.videos, DUPLICATE_METHOD_NAMES[otherDuplicateMethod(state)], actions);
   const canNarrowReview = !state.duplicateGroupsMode;
   if (segment.kind === 'video') {

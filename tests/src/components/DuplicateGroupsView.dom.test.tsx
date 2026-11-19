@@ -145,6 +145,20 @@ describe('DuplicateGroupsView behavior', () => {
     expect(__test__.hasActiveRowRuntime()).toBe(false);
   });
 
+  test('a group whose suggested keeper is marked for deletion is left out of the suggested deletions', async () => {
+    const groupId = 'group-1';
+    useStore.setState({
+      videos: [
+        makeVideo('a', { duplicateGroupId: groupId, path: 'D:\\Media\\a.mp4', status: 'delete' }),
+        makeVideo('b', { duplicateGroupId: groupId, path: 'D:\\Media\\b.mp4' }),
+      ],
+      duplicateGroups: [makeDuplicateGroup({ id: groupId, videoIds: ['a', 'b'], suggestedKeeperId: 'a' })],
+    });
+    render(<DuplicateGroupsView />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Select suggested deletions' }));
+    expect(screen.queryByRole('button', { name: /Mark selected as Delete \(/i })).toBeNull();
+  });
+
   test('selects suggested deletions and marks the non-keeper videos for deletion', async () => {
     const groupId = 'group-1';
     const keeper = makeVideo('a', { duplicateGroupId: groupId, path: 'D:\\Media\\a.mp4' });

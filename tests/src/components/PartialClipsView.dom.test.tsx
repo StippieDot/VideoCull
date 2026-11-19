@@ -60,6 +60,11 @@ describe('partial clips list', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Not a match' })[0]);
     expect(useStore.getState().partialClips).toHaveLength(2);
     expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).toContain(`${SOURCE}|${CLIP}`);
+
+    // Undo brings the entry back at its place.
+    useStore.getState().toasts[useStore.getState().toasts.length - 1]?.action?.();
+    expect(useStore.getState().partialClips?.map((entry) => `${entry.aId}|${entry.bId}`)).toEqual([`${SOURCE}|${CLIP}`, `${SOURCE}|${OTHER}`, `${OTHER}|${CLIP}`]);
+    expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).not.toContain(`${SOURCE}|${CLIP}`);
   });
 
   test('one clip found in several copies of a video is one entry, and Not a match covers them all', async () => {
@@ -95,6 +100,13 @@ describe('partial clips list', () => {
     render(<PartialClipsView />);
     await userEvent.click(screen.getByRole('button', { name: 'Mark delete: highlight.mp4' }));
     expect(useStore.getState().videos.find((video) => video.id === CLIP)?.status).toBe('delete');
+  });
+
+  test('a stretch from the start of the longer video starts at 0:00', () => {
+    const segment = { startA: 0, startB: 0, lengthSecs: 32, soundSimilarity: 99, pictureState: 'differentPicture' as const, pictureSimilarity: 48 };
+    useStore.setState({ partialClips: [clip({ relation: 'audioOnly', state: 'differentPicture', segments: [segment] })] });
+    render(<PartialClipsView />);
+    expect(screen.getByText(/Same sound as concert.mp4 from 0:00 to 0:32; pictures differ/)).toBeTruthy();
   });
 
   test('an empty result says so', () => {
