@@ -99,7 +99,7 @@ test('the outline check fails a sample whose pHash stays below its limit', () =>
 
 test('default settings follow the simplified VDF-style model', () => {
   const settings = normalizeDuplicateSettings({});
-  assert.equal(settings.finalSimilarityThreshold, 95);
+  assert.equal(settings.finalSimilarityThreshold, 90);
   assert.equal(settings.sampleCount, 3);
   assert.equal(settings.comparisonMode, 'phash');
   assert.equal(settings.durationTolerancePercent, 20);
@@ -115,8 +115,9 @@ test('similarity threshold accepts any value from 0 to 100 percent', () => {
   assert.equal(shared(120), 100);
 });
 
-test('by default each method has its own value: pHash 95, Visual similarity 90', () => {
-  assert.equal(normalizeDuplicateSettings({}).finalSimilarityThreshold, 95);
+test('by default both methods share one value of 90', () => {
+  assert.equal(normalizeDuplicateSettings({}).separateSimilarityThresholds, false);
+  assert.equal(normalizeDuplicateSettings({}).finalSimilarityThreshold, 90);
   assert.equal(normalizeDuplicateSettings({ comparisonMode: 'visual' }).finalSimilarityThreshold, 90);
 });
 
@@ -922,11 +923,11 @@ test('every duplicate setting is listed as matching or not matching, once', () =
 test('the stored-results key changes with matching settings only', () => {
   const base = getDuplicateResultsSettingsKey({});
   assert.equal(getDuplicateResultsSettingsKey({ keeperOrder: ['size'], ignoredDuplicatePairs: ['0123456789abcdef|fedcba9876543210'] }), base);
-  assert.notEqual(getDuplicateResultsSettingsKey({ phashSimilarityThreshold: 90 }), base);
+  assert.notEqual(getDuplicateResultsSettingsKey({ finalSimilarityThreshold: 95 }), base);
   assert.notEqual(getDuplicateResultsSettingsKey({ sampleCount: 5 }), base);
   assert.notEqual(getDuplicateResultsSettingsKey({ skipBlankFrames: false }), base);
   // Separate thresholds count by the value they resolve to.
-  assert.equal(getDuplicateResultsSettingsKey({ separateSimilarityThresholds: true, phashSimilarityThreshold: 95 }), base);
+  assert.equal(getDuplicateResultsSettingsKey({ separateSimilarityThresholds: true, phashSimilarityThreshold: 90 }), base);
 });
 
 describe('gray frames in shared memory', () => {

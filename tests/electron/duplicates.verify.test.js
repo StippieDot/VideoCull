@@ -72,7 +72,7 @@ function rows(id, seed) {
   }));
 }
 
-const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', sampleCount: 2 });
+const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', sampleCount: 2, finalSimilarityThreshold: 95 });
 
 function verify(duplicates, cacheAccess, nearMisses, videos, allRows, options = {}) {
   return duplicates.__test__.verifyNearMisses({

@@ -140,6 +140,11 @@ describe('migrateSettings', () => {
     expect(migrated.duplicates?.comparisonMode).toBe('visual');
   });
 
+  test('new installs share one Similarity value of 90 for both methods', () => {
+    expect(DEFAULT_DUPLICATE_SETTINGS).toMatchObject({ separateSimilarityThresholds: false, finalSimilarityThreshold: 90, phashSimilarityThreshold: 90, visualSimilarityThreshold: 90 });
+    expect(migrateSettings({}).duplicates).toMatchObject({ separateSimilarityThresholds: false, finalSimilarityThreshold: 90 });
+  });
+
   test('gives existing installs a separate Visual value of 90 once, keeping the pHash value', () => {
     const shared = migrateSettings({ duplicates: { finalSimilarityThreshold: 92, visualSimilarityThreshold: 97 } }).duplicates;
     expect(shared).toMatchObject({ separateSimilarityThresholds: true, phashSimilarityThreshold: 92, visualSimilarityThreshold: 90, visualCorrelationDefaultApplied: true });
@@ -159,6 +164,7 @@ describe('migrateSettings', () => {
       duplicates: {
         comparisonMode: 'broken',
         sampleCount: 6,
+        visualCorrelationDefaultApplied: true,
         keeperOrder: ['fps', 'invalid-rule'],
         ignoredDuplicatePairs: ['ABCDEFABCDEFABCD|0011223344556677', 'bad', 'abcdefabcdefabcd|0011223344556677'],
       },
@@ -208,6 +214,6 @@ describe('duplicate keeper defaults match the backend copy', () => {
     expect(backend.DEFAULT_DUPLICATE_SETTINGS.keeperOrder).toEqual(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
     expect(backend.DEFAULT_DUPLICATE_SETTINGS.codecOrder).toEqual(DEFAULT_DUPLICATE_SETTINGS.codecOrder);
     expect(backend.normalizeDuplicateSettings({ keeperOrder: ['codec'], codecOrder: ['vp9'] }))
-      .toMatchObject(migrateSettings({ duplicates: { keeperOrder: ['codec'], codecOrder: ['vp9'] } }).duplicates ?? {});
+      .toMatchObject(migrateSettings({ duplicates: { keeperOrder: ['codec'], codecOrder: ['vp9'], visualCorrelationDefaultApplied: true } }).duplicates ?? {});
   });
 });

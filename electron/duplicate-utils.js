@@ -16,11 +16,11 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   samplingWindow: 'even',
   customStartPercent: 0,
   customEndPercent: 100,
-  finalSimilarityThreshold: 95,
-  separateSimilarityThresholds: true,
-  phashSimilarityThreshold: 95,
-  // Visual similarity scores by correlation: at 90 with the outline check, every hand-checked copy of a
-  // real library was found and no different video was grouped.
+  // One value for both methods. Visual similarity scores by correlation: at 90 with the outline check,
+  // every hand-checked copy of a real library was found and no different video was grouped.
+  finalSimilarityThreshold: 90,
+  separateSimilarityThresholds: false,
+  phashSimilarityThreshold: 90,
   visualSimilarityThreshold: 90,
   phashFirstSampleOnly: false,
   durationTolerancePercent: 20,
