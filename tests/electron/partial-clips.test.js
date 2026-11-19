@@ -1,5 +1,9 @@
 const childProcess = require('node:child_process');
 const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createPictureCheckStore } = require('../../electron/picture-check-store');
 const { flipGrayBytes } = require('../../electron/duplicate-utils');
 const { WORDS_PER_SECOND, wordsToBuffer } = require('../../electron/audio-fingerprint');
 
@@ -126,6 +130,45 @@ describe('finding partial clips', () => {
     expect(result.clips).toHaveLength(1);
     expect(result.clips[0]).toMatchObject({ aId: 'src', bId: 'clip', shorterId: 'clip' });
     expect(Math.round(result.clips[0].segments[0].startA)).toBe(40);
+  });
+
+  test('picture verdicts are kept, so a second run reads no frames until a file changes', async () => {
+    const spawns = [];
+    const { duplicates, partialClips } = loadModules((child, args) => {
+      spawns.push(args);
+      const count = Number(args[args.indexOf('-frames:v') + 1]) || 1;
+      const seconds = Number(args[args.indexOf('-ss') + 1]);
+      const stacked = Buffer.alloc(FRAME_BYTES, 128);
+      const { primary } = picture(1 + (Math.round(seconds) % 7));
+      for (let row = 0; row < 32; row++) primary.copy(stacked, row * 64, row * 32, row * 32 + 32);
+      child.stdout.emit('data', Buffer.concat(Array.from({ length: count }, () => stacked)));
+      child.emit('close', 0, null);
+    });
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'picture-checks-'));
+    const writeJsonFile = async (name, data, root) => fs.promises.writeFile(path.join(root, name), JSON.stringify(data));
+    const source = words(120, 1);
+    const cache = storedSound({ src: source, clip: source.slice(Math.round(40 * WORDS_PER_SECOND), Math.round(70 * WORDS_PER_SECOND)) });
+    const find = (videos) => partialClips.findPartialClips({
+      videos,
+      settings: { compareFlipped: false },
+      cacheAccess: cache,
+      cacheOptions: {},
+      // A new store each time reads what the run before saved.
+      pictureChecks: createPictureCheckStore({ rootDir, writeJsonFile }),
+      run: duplicates.createDuplicateRun(),
+    });
+    try {
+      const first = await find([{ ...video('src', 120), date: 1 }, { ...video('clip', 30), date: 1 }]);
+      const firstSpawns = spawns.length;
+      expect(firstSpawns).toBeGreaterThan(0);
+      const second = await find([{ ...video('src', 120), date: 1 }, { ...video('clip', 30), date: 1 }]);
+      expect(spawns.length).toBe(firstSpawns);
+      expect(second.clips).toEqual(first.clips);
+      await find([{ ...video('src', 120), date: 1 }, { ...video('clip', 30), date: 2 }]);
+      expect(spawns.length).toBeGreaterThan(firstSpawns);
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
   });
 
   test('pairs to skip are not searched, and a cancelled run stops', async () => {

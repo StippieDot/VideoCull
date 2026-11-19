@@ -22,6 +22,7 @@ const {
 const { getDuplicateResultsSettingsKey, normalizeDuplicateSettings } = require('./duplicate-utils');
 const { findPartialClips, skipPairKeysFor } = require('./partial-clips');
 const { createDuplicateResultsStore } = require('./duplicate-results-store');
+const { createPictureCheckStore } = require('./picture-check-store');
 const { processingPause } = require('./processing-pause');
 const { createRendererSaveFlush } = require('./renderer-save-flush');
 const { createPowerManager } = require('./power-manager');
@@ -2657,6 +2658,7 @@ ipcMain.handle('find-partial-clips', (_event, videos, options = {}) => powerMana
       skipPairKeys,
       cacheAccess: cacheService,
       cacheOptions,
+      pictureChecks: getPictureCheckStore(),
       maxConcurrency: getConcurrentLimit(appConfig),
       executionOptions: { cpuThreadsLimited: appConfig.cpuThreadsLimited },
       run,
@@ -2794,6 +2796,16 @@ function getDuplicateResultsStore() {
   return duplicateResultsStore;
 }
 
+let pictureCheckStore = null;
+function getPictureCheckStore() {
+  pictureCheckStore ??= createPictureCheckStore({
+    rootDir: app.getPath('userData'),
+    writeJsonFile,
+    onError: (error) => log.warn('[find-partial-clips] Picture checks not kept:', error?.message || error),
+  });
+  return pictureCheckStore;
+}
+
 /** A session as the renderer names it, accepted only for folders that are loaded now. */
 function validDuplicateResultsSession(session) {
   if (!session || typeof session !== 'object') return null;
@@ -2858,6 +2870,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   clearDuplicateSessionCache();
   // Stored files name their session only by a hash, so the ones for this folder cannot be picked out.
   await getDuplicateResultsStore().clearAll().catch((error) => log.warn('[clear-cache] Could not clear duplicate results:', error?.message || error));
+  await getPictureCheckStore().clear().catch((error) => log.warn('[clear-cache] Could not clear picture checks:', error?.message || error));
 
   const cacheOptions = await getCacheOptions();
   const knownCacheFolders = await getKnownCacheFolders();

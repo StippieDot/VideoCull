@@ -1,7 +1,9 @@
 // Partial clip detection: finds videos that contain a stretch of another video. The sound of every video
 // is read once and kept (audio-fingerprint.js); shared stretches are found by sound (sound-search.js in
 // partial-clips-worker.js) and each one is then checked with pictures, because two videos can share a
-// soundtrack and nothing else. Runs only when asked, never as part of a duplicate run.
+// soundtrack and nothing else; those verdicts are kept too (picture-check-store.js). Runs only when
+// asked, never as part of a duplicate run.
+const os = require('os');
 const path = require('path');
 const { Worker } = require('worker_threads');
 const mediaProcess = require('./media-process');
@@ -17,7 +19,8 @@ const {
 } = require('./audio-fingerprint');
 const { calculateDctPHash, flipGrayBytes, frameDarkRatio, parsePHashWords, pHashSimilarity, popcount32 } = require('./duplicate-utils');
 const { cropToPrimary, detectBorder, lumaRange } = require('./duplicate-frames');
-const { pairKey, unionLength } = require('./sound-search');
+const { buildIndex, pairKey, relationsFromWindows, unionLength } = require('./sound-search');
+const { pictureCheckKey } = require('./picture-check-store');
 
 // A long file read at disk speed keeps producing sound; this only catches a decoder that stopped.
 const SOUND_IDLE_TIMEOUT_MS = 120_000;
@@ -155,42 +158,79 @@ async function readSound(videos, settings, run, sendProgress, maxConcurrency, ex
   return { sound, read: missing.length };
 }
 
-function runSearchWorker(tracks, skipPairKeys, run, sendProgress) {
+/** One shard of the sound search in a worker; resolves with its matching windows. */
+function runSearchShard(workerData, run, onProgress) {
   return new Promise((resolve, reject) => {
-    progress(sendProgress, 'Searching partial clips', 0, tracks.length);
     const pauseHandle = processingPause.createWorkerPauseHandle();
-    // Copies, so the words stay usable here; the worker gets its own.
-    const buffers = tracks.map((track) => track.words.slice().buffer);
     const worker = new Worker(path.join(__dirname, 'partial-clips-worker.js'), {
-      workerData: {
-        tracks: tracks.map((track, i) => ({ id: track.id, words: buffers[i] })),
-        skipPairKeys: [...skipPairKeys],
-        pauseSignal: pauseHandle.buffer,
-      },
-      transferList: buffers,
+      workerData: { ...workerData, pauseSignal: pauseHandle.buffer },
     });
-    run.worker = worker;
     let settled = false;
-    const finish = (error, relations) => {
+    const finish = (error, pairs) => {
       if (settled) return;
       settled = true;
-      run.worker = null;
       pauseHandle.release();
       if (error) reject(error);
-      else resolve(relations);
+      else resolve(pairs);
     };
+    run.searchWorkers.add(worker);
     worker.on('message', (message) => {
-      if (message.type === 'progress') progress(sendProgress, 'Searching partial clips', message.current, message.total);
+      if (message.type === 'progress') onProgress(message.done);
       else if (message.type === 'paused') pauseHandle.markPaused();
-      else if (message.type === 'done') finish(null, message.relations);
+      else if (message.type === 'done') finish(null, message.pairs);
       else if (message.type === 'error') finish(new Error(message.message));
     });
     worker.on('error', (err) => finish(run.cancelled ? new duplicates.DuplicateCancelledError() : err));
     worker.on('exit', (code) => {
+      run.searchWorkers.delete(worker);
       if (run.cancelled) finish(new duplicates.DuplicateCancelledError());
       else if (code !== 0) finish(new Error(`Partial clip worker exited with ${code}`));
     });
   });
+}
+
+/**
+ * The shared-sound search, split over `workerCount` workers that read one copy of the words and the
+ * index in shared memory. Each shard searches every n-th video; together they find the same pairs as
+ * one search.
+ */
+async function searchSharedSound(tracks, skipPairKeys, workerCount, run, sendProgress) {
+  const words = new Uint32Array(new SharedArrayBuffer(tracks.reduce((sum, track) => sum + track.words.length, 0) * 4));
+  const layout = [];
+  let start = 0;
+  const shared = tracks.map((track) => {
+    words.set(track.words, start);
+    layout.push({ start, length: track.words.length });
+    start += track.words.length;
+    return { id: track.id, words: words.subarray(start - track.words.length, start) };
+  });
+  const index = buildIndex(shared, { shared: true });
+  const shardCount = Math.max(1, Math.min(Math.floor(workerCount) || 1, tracks.length));
+  const doneByShard = new Array(shardCount).fill(0);
+  const report = () => progress(sendProgress, 'Searching partial clips', doneByShard.reduce((sum, done) => sum + done, 0), tracks.length);
+  report();
+  // Cancelling the run ends every shard.
+  run.searchWorkers = new Set();
+  run.worker = { terminate: () => { for (const worker of run.searchWorkers) worker.terminate(); } };
+  try {
+    const shards = await Promise.all(doneByShard.map((_, i) => runSearchShard(
+      { words: words.buffer, layout, index, shard: [i, shardCount] },
+      run,
+      (done) => {
+        doneByShard[i] = done;
+        report();
+      },
+    ).then((pairs) => {
+      doneByShard[i] = Math.ceil((tracks.length - i) / shardCount);
+      report();
+      return pairs;
+    })));
+    return relationsFromWindows(shared, shards, skipPairKeys);
+  } finally {
+    // After a failed shard the others are stopped too.
+    run.worker.terminate();
+    run.worker = null;
+  }
 }
 
 /**
@@ -236,8 +276,10 @@ function judgeSegmentPictures(checks, { compareFlipped = false } = {}) {
   return { state: pictureSimilarity >= PICTURE_CONFIRM_SIMILARITY ? 'confirmed' : 'differentPicture', pictureSimilarity, checks: usable.length };
 }
 
+/** The picture verdict of one stretch; `readAll` is false when a frame could not be read. */
 async function checkSegmentPictures(shorter, other, segment, settings, run, executionOptions) {
   const checks = [];
+  let readAll = true;
   for (const position of CHECK_POSITIONS) {
     await duplicates.waitForDuplicateProcessing(run);
     const time = Math.min(
@@ -252,10 +294,25 @@ async function checkSegmentPictures(shorter, other, segment, settings, run, exec
     } catch (err) {
       // A frame that cannot be read only makes this check unusable.
       rethrowIfStopped(err, run);
+      readAll = false;
     }
     checks.push({ frame, burst });
   }
-  return judgeSegmentPictures(checks, { compareFlipped: settings.compareFlipped });
+  return { ...judgeSegmentPictures(checks, { compareFlipped: settings.compareFlipped }), readAll };
+}
+
+/** Like `checkSegmentPictures`, with verdicts from earlier runs reused and new complete ones kept. */
+async function storedSegmentPictures(pictureChecks, shorter, other, segment, settings, run, executionOptions) {
+  const key = pictureCheckKey(shorter, other, segment, settings.compareFlipped);
+  const stored = pictureChecks?.get(key);
+  if (stored) {
+    pictureChecks.set(key, stored);
+    return stored;
+  }
+  const picture = await checkSegmentPictures(shorter, other, segment, settings, run, executionOptions);
+  // A read that failed (a slow network drive, a file being written) may work next time.
+  if (picture.readAll) pictureChecks?.set(key, picture);
+  return picture;
 }
 
 const round = (value) => Math.round(value * 10) / 10;
@@ -284,42 +341,56 @@ function describeRelation(found, shorter, segments) {
   };
 }
 
-async function checkRelations(found, byId, settings, run, sendProgress, maxConcurrency, executionOptions) {
+async function checkRelations(found, byId, settings, run, sendProgress, maxConcurrency, executionOptions, pictureChecks) {
   const clips = [];
   let checked = 0;
   let next = 0;
   progress(sendProgress, 'Checking pictures', 0, found.length);
+  await pictureChecks?.load();
+  // Saved along the way like fingerprints, so a cancelled or crashed run keeps what it checked.
+  const checkpointEveryMs = settings.checkpointIntervalMinutes > 0
+    ? Math.max(15000, settings.checkpointIntervalMinutes * 60 * 1000)
+    : Number.POSITIVE_INFINITY;
+  let lastCheckpoint = Date.now();
   const laneCount = Math.max(1, Math.min(Math.floor(maxConcurrency) || 1, found.length));
-  await Promise.all(Array.from({ length: found.length > 0 ? laneCount : 0 }, async () => {
-    while (next < found.length) {
-      const relation = found[next++];
-      const a = byId.get(relation.aId);
-      const b = byId.get(relation.bId);
-      const aShorter = (Number(a.durationSecs) || Infinity) <= (Number(b.durationSecs) || Infinity);
-      const [shorter, other] = aShorter ? [a, b] : [b, a];
-      const segments = [];
-      for (const segment of relation.segments) {
-        const picture = await checkSegmentPictures(shorter, other, {
-          startShort: aShorter ? segment.startA : segment.startB,
-          startOther: aShorter ? segment.startB : segment.startA,
-          lengthSecs: segment.lengthSecs,
-        }, settings, run, executionOptions);
-        segments.push({
-          startA: round(segment.startA),
-          startB: round(segment.startB),
-          lengthSecs: round(segment.lengthSecs),
-          soundSimilarity: round(segment.similarity * 100),
-          pictureState: picture.state,
-          pictureSimilarity: picture.pictureSimilarity,
-        });
+  try {
+    await Promise.all(Array.from({ length: found.length > 0 ? laneCount : 0 }, async () => {
+      while (next < found.length) {
+        const relation = found[next++];
+        const a = byId.get(relation.aId);
+        const b = byId.get(relation.bId);
+        const aShorter = (Number(a.durationSecs) || Infinity) <= (Number(b.durationSecs) || Infinity);
+        const [shorter, other] = aShorter ? [a, b] : [b, a];
+        const segments = [];
+        for (const segment of relation.segments) {
+          const picture = await storedSegmentPictures(pictureChecks, shorter, other, {
+            startShort: aShorter ? segment.startA : segment.startB,
+            startOther: aShorter ? segment.startB : segment.startA,
+            lengthSecs: segment.lengthSecs,
+          }, settings, run, executionOptions);
+          segments.push({
+            startA: round(segment.startA),
+            startB: round(segment.startB),
+            lengthSecs: round(segment.lengthSecs),
+            soundSimilarity: round(segment.similarity * 100),
+            pictureState: picture.state,
+            pictureSimilarity: picture.pictureSimilarity,
+          });
+        }
+        const clip = describeRelation(relation, shorter, segments);
+        // The same footage and sound throughout is a duplicate, which the duplicate run reports.
+        if (!(relation.fullCoverage && clip.state === 'confirmed')) clips.push(clip);
+        checked++;
+        progress(sendProgress, 'Checking pictures', checked, found.length);
+        if (Date.now() - lastCheckpoint >= checkpointEveryMs) {
+          lastCheckpoint = Date.now();
+          await pictureChecks?.save();
+        }
       }
-      const clip = describeRelation(relation, shorter, segments);
-      // The same footage and sound throughout is a duplicate, which the duplicate run reports.
-      if (!(relation.fullCoverage && clip.state === 'confirmed')) clips.push(clip);
-      checked++;
-      progress(sendProgress, 'Checking pictures', checked, found.length);
-    }
-  }));
+    }));
+  } finally {
+    await pictureChecks?.save();
+  }
   return clips;
 }
 
@@ -331,7 +402,7 @@ function longerDuration(clip, byId) {
  * Finds partial clips among `videos`. `skipPairKeys` holds pairs that are already duplicates or were
  * marked as not a match. Progress stages: Reading sound, Searching partial clips, Checking pictures.
  */
-async function findPartialClips({ videos, settings, skipPairKeys = new Set(), cacheAccess, cacheOptions, maxConcurrency = 2, executionOptions = {}, run, sendProgress }) {
+async function findPartialClips({ videos, settings, skipPairKeys = new Set(), cacheAccess, cacheOptions, pictureChecks = null, maxConcurrency = 2, executionOptions = {}, run, sendProgress }) {
   const safeVideos = Array.isArray(videos) ? videos.filter((video) => video?.id && video?.path) : [];
   const byId = new Map(safeVideos.map((video) => [video.id, video]));
   const timings = {};
@@ -353,12 +424,14 @@ async function findPartialClips({ videos, settings, skipPairKeys = new Set(), ca
   }
 
   started = Date.now();
-  const found = tracks.length >= 2 ? await runSearchWorker(tracks, skipPairKeys, run, sendProgress) : [];
+  // Pure computation, so as many workers as the processing setting allows, but not more than cores.
+  const searchWorkers = Math.min(maxConcurrency, os.cpus().length || 1);
+  const found = tracks.length >= 2 ? await searchSharedSound(tracks, skipPairKeys, searchWorkers, run, sendProgress) : [];
   timings.searchMs = Date.now() - started;
   duplicates.assertNotCancelled(run);
 
   started = Date.now();
-  const clips = await checkRelations(found, byId, settings, run, sendProgress, maxConcurrency, executionOptions);
+  const clips = await checkRelations(found, byId, settings, run, sendProgress, maxConcurrency, executionOptions, pictureChecks);
   timings.picturesMs = Date.now() - started;
   duplicates.assertNotCancelled(run);
 

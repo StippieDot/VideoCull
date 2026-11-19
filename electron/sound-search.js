@@ -28,8 +28,6 @@ const EDGE_SIMILARITY = 0.8;
 const MIN_SEGMENT_WORDS = WINDOW_WORDS;
 // Segments covering this much of both videos make them duplicates, which the duplicate run handles.
 const FULL_COVERAGE = 0.95;
-// Offsets between two tracks stay inside ± this many words (about 145 hours of sound).
-const OFFSET_RANGE = 1 << 22;
 
 function popcount(x) {
   let v = x - ((x >>> 1) & 0x55555555);
@@ -41,19 +39,25 @@ function pairKey(aId, bId) {
   return aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`;
 }
 
+const bucketHash = (bits) => {
+  const shift = 32 - bits;
+  return (word) => Math.imul(word, 0x9e3779b1) >>> shift;
+};
+
 /**
  * Every 4th word of every track, bucketed by a hash of the word. Holds only track and position (8 bytes
- * per entry); a lookup confirms the word against the track itself.
+ * per entry); a lookup confirms the word against the track itself. With `shared` the arrays live in
+ * shared memory, so search workers can use one index (see `searchIndex`).
  */
-function buildIndex(tracks) {
+function buildIndex(tracks, { shared = false } = {}) {
+  const allocate = (length) => (shared ? new Uint32Array(new SharedArrayBuffer(length * 4)) : new Uint32Array(length));
   let total = 0;
   for (const track of tracks) total += Math.ceil(track.words.length / INDEX_STEP);
   const bits = Math.max(10, Math.min(24, Math.ceil(Math.log2(Math.max(1, total / 4)))));
   const bucketCount = 1 << bits;
-  const shift = 32 - bits;
-  const bucketOf = (word) => Math.imul(word, 0x9e3779b1) >>> shift;
+  const bucketOf = bucketHash(bits);
 
-  const starts = new Uint32Array(bucketCount + 1);
+  const starts = allocate(bucketCount + 1);
   let indexed = 0;
   for (const track of tracks) {
     for (let p = 0; p < track.words.length; p += INDEX_STEP) {
@@ -64,8 +68,8 @@ function buildIndex(tracks) {
   }
   for (let b = 0; b < bucketCount; b++) starts[b + 1] += starts[b];
   const fill = starts.slice(0, bucketCount);
-  const entryTrack = new Uint32Array(indexed);
-  const entryPosition = new Uint32Array(indexed);
+  const entryTrack = allocate(indexed);
+  const entryPosition = allocate(indexed);
   tracks.forEach((track, t) => {
     for (let p = 0; p < track.words.length; p += INDEX_STEP) {
       const word = track.words[p];
@@ -88,12 +92,17 @@ function buildIndex(tracks) {
     }
     for (const [word, count] of counts) if (count > limit) common.add(word);
   }
+  return { bits, starts, entryTrack, entryPosition, common: [...common] };
+}
 
+/** Lookups in an index from `buildIndex`, also one passed to a worker. */
+function searchIndex(tracks, { bits, starts, entryTrack, entryPosition, common }) {
+  const bucketOf = bucketHash(bits);
+  const commonWords = new Set(common);
   return {
-    common,
     /** Calls `visit(track, position)` for every indexed occurrence of `word`. */
     forEach(word, visit) {
-      if (word === 0 || common.has(word)) return;
+      if (word === 0 || commonWords.has(word)) return;
       const bucket = bucketOf(word);
       for (let e = starts[bucket]; e < starts[bucket + 1]; e++) {
         const t = entryTrack[e];
@@ -128,31 +137,52 @@ function similarityAt(a, b, startA, offset, length, minimumPairs) {
 }
 
 /** Offsets in other tracks that collect enough votes for the window of track `a` starting at `start`. */
+// Votes are kept per track, keyed by offset: small integer keys, which a Map handles far faster than one
+// key combining track and offset. Per track the offsets are visited in first-vote order, so ties go to
+// the same offset as with a single map.
 function candidateOffsets(tracks, index, a, start) {
-  const votes = new Map();
+  const votesByTrack = new Map();
   const words = tracks[a].words;
   for (let i = start; i < start + WINDOW_WORDS; i++) {
     index.forEach(words[i], (t, position) => {
       if (t === a) return;
-      const key = t * 2 * OFFSET_RANGE + (position - i + OFFSET_RANGE);
-      votes.set(key, (votes.get(key) ?? 0) + 1);
+      let votes = votesByTrack.get(t);
+      if (!votes) {
+        votes = new Map();
+        votesByTrack.set(t, votes);
+      }
+      const offset = position - i;
+      votes.set(offset, (votes.get(offset) ?? 0) + 1);
     });
   }
-  const bestByTrack = new Map();
-  for (const key of votes.keys()) {
-    let total = 0;
-    for (let d = -VOTE_SPREAD; d <= VOTE_SPREAD; d++) total += votes.get(key + d) ?? 0;
-    const t = Math.floor(key / (2 * OFFSET_RANGE));
-    const offset = (key % (2 * OFFSET_RANGE)) - OFFSET_RANGE;
-    if (total >= MIN_VOTES && total > (bestByTrack.get(t)?.votes ?? 0)) bestByTrack.set(t, { votes: total, offset });
+  const candidates = [];
+  for (const [t, votes] of votesByTrack) {
+    let best = 0;
+    let bestOffset = 0;
+    for (const offset of votes.keys()) {
+      let total = 0;
+      for (let d = -VOTE_SPREAD; d <= VOTE_SPREAD; d++) total += votes.get(offset + d) ?? 0;
+      if (total >= MIN_VOTES && total > best) {
+        best = total;
+        bestOffset = offset;
+      }
+    }
+    if (best > 0) candidates.push({ t, offset: bestOffset });
   }
-  return [...bestByTrack.entries()].map(([t, { offset }]) => ({ t, offset }));
+  return candidates;
 }
 
-/** Matching windows of every pair, oriented from the lower to the higher track index. */
-function matchingWindows(tracks, index, onProgress) {
+/**
+ * Matching windows of every pair, oriented from the lower to the higher track index, as
+ * `[{ lo, hi, windows }]`. With `shard: [i, n]` only the windows of every n-th track from i are searched;
+ * the windows of all n shards together are those of one full search.
+ */
+function matchingWindows(tracks, index, { onProgress, shard = [0, 1] } = {}) {
+  const [first, step] = shard;
   const byPair = new Map();
-  tracks.forEach((track, a) => {
+  let done = 0;
+  for (let a = first; a < tracks.length; a += step) {
+    const track = tracks[a];
     for (let start = 0; start + WINDOW_WORDS <= track.words.length; start += WINDOW_STEP) {
       if (!usableWindow(track.words, start)) continue;
       for (const { t, offset } of candidateOffsets(tracks, index, a, start)) {
@@ -172,8 +202,8 @@ function matchingWindows(tracks, index, onProgress) {
         byPair.get(key).windows.push(window);
       }
     }
-    onProgress?.(a + 1, tracks.length);
-  });
+    onProgress?.(++done);
+  }
   return [...byPair.values()];
 }
 
@@ -249,15 +279,22 @@ function unionLength(intervals) {
 const LAST_WORD_SPAN_SECS = (4096 + 4 * 1365) / 11025;
 
 /**
- * `tracks`: `{ id, words }` of videos whose sound is usable. Returns the pairs that share sound, each
- * with its segments in seconds (start in a, start in b, length) and their average bit similarity.
- * Pairs in `skipPairKeys` (duplicates, pairs marked as not a match) are left out; `fullCoverage` marks
- * pairs whose segments cover almost all of both videos.
+ * The pairs that share sound, from the matching windows of every shard (`matchingWindows`), each with
+ * its segments in seconds (start in a, start in b, length) and their average bit similarity. Pairs in
+ * `skipPairKeys` (duplicates, pairs marked as not a match) are left out; `fullCoverage` marks pairs whose
+ * segments cover almost all of both videos.
  */
-function findSharedSound(tracks, { skipPairKeys = new Set(), onProgress } = {}) {
-  const index = buildIndex(tracks);
+function relationsFromWindows(tracks, shardPairs, skipPairKeys = new Set()) {
+  const byPair = new Map();
+  for (const pairs of shardPairs) {
+    for (const { lo, hi, windows } of pairs) {
+      const key = lo * tracks.length + hi;
+      if (byPair.has(key)) byPair.get(key).windows.push(...windows);
+      else byPair.set(key, { lo, hi, windows: [...windows] });
+    }
+  }
   const relations = [];
-  for (const { lo, hi, windows } of matchingWindows(tracks, index, onProgress)) {
+  for (const { lo, hi, windows } of [...byPair.values()].sort((x, y) => x.lo - y.lo || x.hi - y.hi)) {
     const a = tracks[lo];
     const b = tracks[hi];
     if (skipPairKeys.has(pairKey(a.id, b.id))) continue;
@@ -292,4 +329,10 @@ function findSharedSound(tracks, { skipPairKeys = new Set(), onProgress } = {}) 
   return relations;
 }
 
-module.exports = { findSharedSound, pairKey, unionLength };
+/** `tracks`: `{ id, words }` of videos whose sound is usable. The whole search on this thread. */
+function findSharedSound(tracks, { skipPairKeys = new Set(), onProgress } = {}) {
+  const index = searchIndex(tracks, buildIndex(tracks));
+  return relationsFromWindows(tracks, [matchingWindows(tracks, index, { onProgress })], skipPairKeys);
+}
+
+module.exports = { buildIndex, findSharedSound, matchingWindows, pairKey, relationsFromWindows, searchIndex, unionLength };

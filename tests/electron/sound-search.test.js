@@ -1,5 +1,5 @@
 const { WORDS_PER_SECOND } = require('../../electron/audio-fingerprint');
-const { findSharedSound, unionLength } = require('../../electron/sound-search');
+const { buildIndex, findSharedSound, matchingWindows, relationsFromWindows, searchIndex, unionLength } = require('../../electron/sound-search');
 
 function randomWords(count, seed) {
   let state = seed >>> 0;
@@ -78,6 +78,21 @@ describe('shared sound search', () => {
     expect(relation.segments).toHaveLength(2);
     expect(relation.fullCoverage).toBe(false);
     expect(unionLength([[0, 10], [5, 12], [20, 21]])).toBe(13);
+  });
+
+  test('a search split into shards over a shared index finds what one search finds', () => {
+    const source = randomWords(seconds(200), 31);
+    const tracks = [
+      { id: 's', words: source },
+      { id: 'c1', words: reencoded(source.subarray(seconds(20), seconds(60))) },
+      { id: 'c2', words: concat(source.subarray(seconds(100), seconds(130)), randomWords(seconds(20), 32)) },
+      { id: 'u', words: randomWords(seconds(80), 33) },
+      { id: 'c3', words: reencoded(source.subarray(seconds(150), seconds(190)), 7) },
+    ];
+    const index = searchIndex(tracks, buildIndex(tracks, { shared: true }));
+    const sharded = relationsFromWindows(tracks, [0, 1, 2].map((i) => matchingWindows(tracks, index, { shard: [i, 3] })));
+    expect(sharded.length).toBe(3);
+    expect(sharded).toEqual(findSharedSound(tracks));
   });
 
   test('stretches shorter than 10 seconds are not reported', () => {

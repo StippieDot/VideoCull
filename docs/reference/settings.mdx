@@ -158,7 +158,7 @@ Processing settings affect future scans, thumbnail runs, and metadata work. They
 | --- | --- | --- |
 | Thumbnails per video | Chooses `1`, `2`, `4`, `6`, or `9` frames per video. | `6` is a good default. Raise it only when the strip is not giving enough context. |
 | Skip intro blackframes (delay) | Delays the first thumbnail to avoid fade-ins or blank starts. | Keep the default `3s` unless your clips start cleanly or need a longer skip. |
-| Parallel FFmpeg processes | Caps how many FFmpeg jobs run at once, or uses auto mode. | Leave it on `Auto` unless the machine becomes unresponsive. |
+| Parallel FFmpeg processes | Caps how many FFmpeg jobs run at once, or uses auto mode. The sound search of Find Partial Clips uses as many processor cores, up to the number the computer has. | Leave it on `Auto` unless the machine becomes unresponsive. |
 | Limit each FFmpeg process to 1 CPU thread | Uses more small FFmpeg processes instead of fewer multi-threaded ones. | Leave it on. The app marks it as recommended for a reason. |
 | Enable hardware acceleration (beta) | Tries to route decoding through the GPU. It is off by default. Duplicate fingerprints always use the CPU. | Leave it off unless CPU decode is the bottleneck and your footage behaves well with it. |
 | Keep the PC awake while processing | Stops the computer from going to sleep on its own while folders are scanned, video info and thumbnails are generated, or duplicates are fingerprinted. Choosing Sleep yourself still works, the screen can still turn off, and paused processing does not keep the PC awake. | Leave it on, especially for long runs on large folders. |

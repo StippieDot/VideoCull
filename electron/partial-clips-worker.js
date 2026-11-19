@@ -1,6 +1,7 @@
-// Runs the shared-sound search off the main thread, with the same pause signal as the duplicate workers.
+// Runs one shard of the shared-sound search off the main thread, with the same pause signal as the
+// duplicate workers. The words and the index are in shared memory, so every shard reads the same copy.
 const { parentPort, workerData } = require('worker_threads');
-const { findSharedSound } = require('./sound-search');
+const { matchingWindows, searchIndex } = require('./sound-search');
 
 const pauseView = workerData.pauseSignal ? new Int32Array(workerData.pauseSignal) : null;
 
@@ -13,15 +14,16 @@ function pauseCheckpoint() {
 }
 
 try {
-  const tracks = workerData.tracks.map((track) => ({ id: track.id, words: new Uint32Array(track.words) }));
-  const relations = findSharedSound(tracks, {
-    skipPairKeys: new Set(workerData.skipPairKeys ?? []),
-    onProgress: (current, total) => {
+  const words = new Uint32Array(workerData.words);
+  const tracks = workerData.layout.map(({ start, length }) => ({ words: words.subarray(start, start + length) }));
+  const pairs = matchingWindows(tracks, searchIndex(tracks, workerData.index), {
+    shard: workerData.shard,
+    onProgress: (done) => {
       pauseCheckpoint();
-      if (current % 50 === 0 || current === total) parentPort.postMessage({ type: 'progress', current, total });
+      if (done % 50 === 0) parentPort.postMessage({ type: 'progress', done });
     },
   });
-  parentPort.postMessage({ type: 'done', relations });
+  parentPort.postMessage({ type: 'done', pairs });
 } catch (err) {
   parentPort.postMessage({ type: 'error', message: err?.message || String(err) });
 }
