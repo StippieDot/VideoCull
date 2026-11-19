@@ -86,7 +86,11 @@ function compareVisuals() {
     buckets.set(key, list);
   }
 
-  const sampleScore = graySampleScore(settings);
+  // Candidates are found by correlation alone; the outline check only decides a match. A copy that
+  // starts a moment later fails it at the plain sample times and must stay a near miss, so the timing
+  // check can align it and decide with the outline check on aligned frames.
+  const sampleScore = graySampleScore(settings, { outlineCheck: false });
+  const decidingScore = settings.visualOutlineCheck === 'off' ? null : graySampleScore(settings);
   const pairs = [];
   let compared = 0;
   let lastProgressAt = 0;
@@ -102,12 +106,15 @@ function compareVisuals() {
   let nearMissCount = 0;
   const comparePair = (a, b) => {
     if (!durationsWithinTolerance(a, b, settings)) return;
-    const result = scoreSamples(a.samples, b.samples, settings, sampleScore, { stopBelowThreshold: true, floor });
-    if (!result) return;
-    if (result.similarity < settings.finalSimilarityThreshold) {
-      if (!verify || result.similarity < floor || result.compared < 2) return;
+    const candidate = scoreSamples(a.samples, b.samples, settings, sampleScore, { stopBelowThreshold: true, floor });
+    if (!candidate) return;
+    const matches = (scored) => scored !== null && scored.similarity >= settings.finalSimilarityThreshold;
+    const result = decidingScore && matches(candidate) ? scoreSamples(a.samples, b.samples, settings, decidingScore) : candidate;
+    if (!matches(result)) {
+      // Below the threshold, or turned down by the outline check: a near miss, ranked by its correlation.
+      if (!verify || candidate.similarity < floor || candidate.compared < 2) return;
       nearMissCount++;
-      nearMisses.push({ aId: a.id, bId: b.id, similarity: result.similarity });
+      nearMisses.push({ aId: a.id, bId: b.id, similarity: candidate.similarity });
       // Trimmed in steps so the list never holds more than twice the limit.
       if (nearMisses.length >= PENDING_LIST_LIMIT * 2) nearMisses = keepBestNearMisses(nearMisses);
       return;

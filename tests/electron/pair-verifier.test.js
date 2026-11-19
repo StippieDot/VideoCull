@@ -219,9 +219,9 @@ describe('near-miss selection and budget', () => {
 
   test('the band starts the chosen number of points below the similarity value', () => {
     expect(nearMissFloor(settings())).toBe(75);
-    expect(nearMissFloor(settings({ nearMissRange: 10, similarityThreshold: 90 }))).toBe(80);
-    // Visual similarity never looks further than 5 points down.
-    expect(nearMissFloor(settings({ comparisonMode: 'visual', nearMissRange: 20 }))).toBe(90);
+    expect(nearMissFloor(settings({ nearMissRange: 10, phashSimilarityThreshold: 90 }))).toBe(80);
+    // Visual similarity (90 by default) never looks further than 10 points down.
+    expect(nearMissFloor(settings({ comparisonMode: 'visual', nearMissRange: 20 }))).toBe(80);
     expect(burstKind(settings({ comparisonMode: 'visual' }))).toBe('gray');
     expect(burstKind(settings())).toBe('hash');
     expect(settings({ nearMissRange: 17 }).nearMissRange).toBe(20);

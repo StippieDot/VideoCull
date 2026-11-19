@@ -140,6 +140,15 @@ describe('migrateSettings', () => {
     expect(migrated.duplicates?.comparisonMode).toBe('visual');
   });
 
+  test('gives existing installs a separate Visual value of 90 once, keeping the pHash value', () => {
+    const shared = migrateSettings({ duplicates: { finalSimilarityThreshold: 92, visualSimilarityThreshold: 97 } }).duplicates;
+    expect(shared).toMatchObject({ separateSimilarityThresholds: true, phashSimilarityThreshold: 92, visualSimilarityThreshold: 90, visualCorrelationDefaultApplied: true });
+    const separate = migrateSettings({ duplicates: { separateSimilarityThresholds: true, phashSimilarityThreshold: 88, visualSimilarityThreshold: 97 } }).duplicates;
+    expect(separate).toMatchObject({ phashSimilarityThreshold: 88, visualSimilarityThreshold: 90 });
+    const chosenLater = migrateSettings({ duplicates: { separateSimilarityThresholds: false, visualSimilarityThreshold: 93, visualCorrelationDefaultApplied: true } }).duplicates;
+    expect(chosenLater).toMatchObject({ separateSimilarityThresholds: false, visualSimilarityThreshold: 93 });
+  });
+
   test('switches existing installs to average sample scoring once', () => {
     expect(migrateSettings({ duplicates: { requireEverySample: true } }).duplicates?.requireEverySample).toBe(false);
     expect(migrateSettings({ duplicates: { requireEverySample: true, averageSamplesDefaultApplied: true } }).duplicates?.requireEverySample).toBe(true);

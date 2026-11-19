@@ -24,9 +24,10 @@ const BURST_BUDGET_SHARE = 0.1;
 const PENDING_LIST_LIMIT = 50_000;
 // More near misses than this per video: the band is not selective for this library.
 const MANY_NEAR_MISSES_PER_VIDEO = 5;
-// Visual scores of unrelated pictures run high (76-83 %), so its band never reaches further than this
-// below the threshold. Measured on the collection at 95 and 90: no unrelated pair was accepted.
-const VISUAL_NEAR_MISS_RANGE = 5;
+// The Visual band never reaches further than this below the threshold. Correlations of unrelated
+// pictures reach 85 for about 17 in a million pairs of a real library, so the band stays small; copies
+// that start 0.7 s later scored 93 and reached 98 once aligned.
+const VISUAL_NEAR_MISS_RANGE = 10;
 // (crop A, crop B); (full, full) first so it wins a tie.
 const HYPOTHESES = [[false, false], [true, false], [false, true], [true, true]];
 

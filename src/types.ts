@@ -274,6 +274,8 @@ export interface DuplicateSettings {
   /** 'auto': pairs up to nearMissRange points below the similarity value are double-checked (pHash). */
   verifyNearMatches: 'auto' | 'off';
   nearMissRange: 5 | 10 | 15 | 20 | 25 | 30;
+  /** Visual similarity: the pHash similarity each compared sample also needs, or 'off'. */
+  visualOutlineCheck: 'off' | 70 | 75 | 80 | 85 | 90;
   /** 'sound': the sidebar offers Find partial clips, which reads the sound of every video once. */
   partialClips: 'off' | 'sound';
   maxSamplingDuration: number;
@@ -282,6 +284,7 @@ export interface DuplicateSettings {
   ignoredDuplicatePairs: string[];
   phashDefaultApplied?: boolean;
   averageSamplesDefaultApplied?: boolean;
+  visualCorrelationDefaultApplied?: boolean;
 }
 
 /** An accepted pair inside a duplicate group, with the score and evidence the group used. */

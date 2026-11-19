@@ -15,7 +15,7 @@ const {
   movementClass,
   matchConfidence,
   minimumComparedSamples,
-  rawGraySimilarity,
+  grayCorrelation,
   average,
   combineSampleScores,
   normalizeDuplicateSettings,
@@ -64,9 +64,37 @@ test('pHash parsing and bit count work', () => {
   assert.equal(pHashSimilarity('ffff000000000000', 'ffff000000000000'), 100);
 });
 
-test('raw grayscale similarity averages pixel differences', () => {
-  assert.equal(rawGraySimilarity(Buffer.from([0, 255]), Buffer.from([0, 255])), 100);
-  assert.ok(rawGraySimilarity(Buffer.from([0, 255]), Buffer.from([255, 0])) < 1);
+test('gray correlation scores where light and dark lie, not how bright the frames are', () => {
+  const frame = (fn) => Buffer.from(Array.from({ length: 1024 }, (_, i) => fn(i % 32, Math.floor(i / 32))));
+  const scene = frame((x, y) => (x * 7 + y * 3) % 200);
+  assert.equal(grayCorrelation(scene, scene), 100);
+  assert.equal(grayCorrelation(Buffer.from([0, 255]), Buffer.from([255, 0])), 0, 'inverted pictures count as 0');
+  // A dimmed, lower-contrast copy is still the same picture.
+  assert.ok(grayCorrelation(scene, frame((x, y) => Math.round(((x * 7 + y * 3) % 200) / 4) + 5)) > 99);
+  // Two different dim scenes differ by a few levels everywhere: a match by brightness, not by correlation.
+  const dimA = frame((x) => 10 + (x < 16 ? 8 : 0));
+  const dimB = frame((x, y) => 10 + (y < 16 ? 8 : 0));
+  assert.ok(grayCorrelation(dimA, dimB) < 10);
+  assert.equal(grayCorrelation(frame(() => 128), scene), null, 'a flat frame is no evidence');
+});
+
+test('the outline check fails a sample whose pHash stays below its limit', () => {
+  const frame = (fn) => Buffer.from(Array.from({ length: 1024 }, (_, i) => fn(i % 32, Math.floor(i / 32))));
+  const a = { bytes: frame((x, y) => ((x < 16) !== (y < 16) ? 200 : 20)) };
+  // Correlates partly with A (one corner changed) but has other outlines.
+  const b = { bytes: frame((x, y) => ((x < 16) !== (y < 16) || (x >= 16 && y >= 24) ? 200 : 20)) };
+  const on = graySampleScore(normalizeDuplicateSettings({ comparisonMode: 'visual' }));
+  const off = graySampleScore(normalizeDuplicateSettings({ comparisonMode: 'visual', visualOutlineCheck: 'off' }));
+  const strict = graySampleScore(normalizeDuplicateSettings({ comparisonMode: 'visual', visualOutlineCheck: 90 }));
+  assert.ok(off(a, b, false) > 0);
+  const outline = pHashSimilarity(calculateDctPHash(a.bytes), calculateDctPHash(b.bytes));
+  assert.ok(outline < 90, 'the test frames must fail the strict limit');
+  assert.equal(on(a, b, false), outline >= 75 ? off(a, b, false) : 0);
+  assert.equal(strict(a, b, false), 0);
+  assert.equal(on(a, a, false), 100, 'a copy passes');
+  assert.equal(normalizeDuplicateSettings({}).visualOutlineCheck, 75);
+  assert.equal(normalizeDuplicateSettings({ visualOutlineCheck: 'off' }).visualOutlineCheck, 'off');
+  assert.equal(normalizeDuplicateSettings({ visualOutlineCheck: 72 }).visualOutlineCheck, 75);
 });
 
 test('default settings follow the simplified VDF-style model', () => {
@@ -81,9 +109,15 @@ test('default settings follow the simplified VDF-style model', () => {
 });
 
 test('similarity threshold accepts any value from 0 to 100 percent', () => {
-  assert.equal(normalizeDuplicateSettings({ finalSimilarityThreshold: 10 }).finalSimilarityThreshold, 10);
-  assert.equal(normalizeDuplicateSettings({ finalSimilarityThreshold: -5 }).finalSimilarityThreshold, 0);
-  assert.equal(normalizeDuplicateSettings({ finalSimilarityThreshold: 120 }).finalSimilarityThreshold, 100);
+  const shared = (value) => normalizeDuplicateSettings({ separateSimilarityThresholds: false, finalSimilarityThreshold: value }).finalSimilarityThreshold;
+  assert.equal(shared(10), 10);
+  assert.equal(shared(-5), 0);
+  assert.equal(shared(120), 100);
+});
+
+test('by default each method has its own value: pHash 95, Visual similarity 90', () => {
+  assert.equal(normalizeDuplicateSettings({}).finalSimilarityThreshold, 95);
+  assert.equal(normalizeDuplicateSettings({ comparisonMode: 'visual' }).finalSimilarityThreshold, 90);
 });
 
 test('separate similarity values apply the one for the chosen method', () => {
@@ -106,7 +140,7 @@ test('duration tolerance uses the shorter video as the percentage base', () => {
 });
 
 test('users can choose comparison method and similarity directly', () => {
-  const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', finalSimilarityThreshold: 92 });
+  const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', separateSimilarityThresholds: false, finalSimilarityThreshold: 92 });
   assert.equal(settings.comparisonMode, 'phash');
   assert.equal(settings.finalSimilarityThreshold, 92);
 });
@@ -354,9 +388,9 @@ function previousVisualScore(samplesA, samplesB, settings, enforceThreshold) {
     const sampleA = samplesA[i];
     const sampleB = samplesB[i];
     if (previousIsDark(sampleA) || previousIsDark(sampleB)) continue;
-    const normalScore = rawGraySimilarity(sampleA.bytes, sampleB.bytes, settings);
+    const normalScore = grayCorrelation(sampleA.bytes, sampleB.bytes, settings);
     const flippedScore = settings.compareFlipped
-      ? rawGraySimilarity(flipGrayBytes(sampleA.bytes, 4, 4), sampleB.bytes, settings)
+      ? grayCorrelation(flipGrayBytes(sampleA.bytes, 4, 4), sampleB.bytes, settings)
       : normalScore;
     const bestScore = Math.max(normalScore, flippedScore);
     if (settings.requireEverySample && bestScore < settings.finalSimilarityThreshold) return null;
@@ -888,7 +922,7 @@ test('every duplicate setting is listed as matching or not matching, once', () =
 test('the stored-results key changes with matching settings only', () => {
   const base = getDuplicateResultsSettingsKey({});
   assert.equal(getDuplicateResultsSettingsKey({ keeperOrder: ['size'], ignoredDuplicatePairs: ['0123456789abcdef|fedcba9876543210'] }), base);
-  assert.notEqual(getDuplicateResultsSettingsKey({ finalSimilarityThreshold: 90 }), base);
+  assert.notEqual(getDuplicateResultsSettingsKey({ phashSimilarityThreshold: 90 }), base);
   assert.notEqual(getDuplicateResultsSettingsKey({ sampleCount: 5 }), base);
   assert.notEqual(getDuplicateResultsSettingsKey({ skipBlankFrames: false }), base);
   // Separate thresholds count by the value they resolve to.
@@ -896,7 +930,7 @@ test('the stored-results key changes with matching settings only', () => {
 });
 
 describe('gray frames in shared memory', () => {
-  const { flipGrayBytes, graySampleScore, normalizeDuplicateSettings, packGrayRows, rawGraySimilarity } = require('../../electron/duplicate-utils');
+  const { flipGrayBytes, graySampleScore, normalizeDuplicateSettings, packGrayRows, grayCorrelation } = require('../../electron/duplicate-utils');
 
   function randomFrame(seed) {
     let state = seed >>> 0;
@@ -915,7 +949,7 @@ describe('gray frames in shared memory', () => {
         for (let seed = 1; seed <= 20; seed++) {
           const a = randomFrame(seed);
           const b = seed % 2 ? flipGrayBytes(a) : randomFrame(seed + 100);
-          expect(rawGraySimilarity(a, b, options, true)).toBe(rawGraySimilarity(flipGrayBytes(a), b, options));
+          expect(grayCorrelation(a, b, options, true)).toBe(grayCorrelation(flipGrayBytes(a), b, options));
         }
       }
     }

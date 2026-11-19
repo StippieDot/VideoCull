@@ -17,9 +17,11 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   customStartPercent: 0,
   customEndPercent: 100,
   finalSimilarityThreshold: 95,
-  separateSimilarityThresholds: false,
+  separateSimilarityThresholds: true,
   phashSimilarityThreshold: 95,
-  visualSimilarityThreshold: 95,
+  // Visual similarity scores by correlation: at 90 with the outline check, every hand-checked copy of a
+  // real library was found and no different video was grouped.
+  visualSimilarityThreshold: 90,
   phashFirstSampleOnly: false,
   durationTolerancePercent: 20,
   requireEverySample: false,
@@ -34,6 +36,10 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   // Points below the similarity value within which a pair is double-checked. 20 catches the measured
   // half-second shifts (77–79 % at 95) and admitted 40 pairs among 14,500 videos on a real library.
   nearMissRange: 20,
+  // Visual similarity: a sample also needs this pHash similarity, or 'off'. Measured on 33 hand-judged
+  // pairs of a real library: every copy reached 75; 12 of 15 clips of the same scene at another moment
+  // stayed below it.
+  visualOutlineCheck: 75,
   // 'sound': Find partial clips reads the sound of every video once; started by hand only.
   partialClips: 'off',
   maxSamplingDuration: 0,
@@ -42,11 +48,13 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   ignoredDuplicatePairs: [],
   phashDefaultApplied: true,
   averageSamplesDefaultApplied: true,
+  visualCorrelationDefaultApplied: true,
 };
 
 const SAMPLE_COUNT_OPTIONS = new Set([1, 2, 3, 4, 5, 7, 9]);
 const COMPARISON_MODES = new Set(['phash', 'visual']);
 const NEAR_MISS_RANGES = new Set([5, 10, 15, 20, 25, 30]);
+const OUTLINE_CHECK_LIMITS = new Set([70, 75, 80, 85, 90]);
 const KEEPER_RULES = new Set(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
 const CODEC_FAMILIES = new Set(DEFAULT_DUPLICATE_SETTINGS.codecOrder);
 
@@ -60,7 +68,9 @@ function normalizeDuplicateSettings(input = {}) {
   const similarityThreshold = input.similarityThreshold ?? input.finalSimilarityThreshold ?? DEFAULT_DUPLICATE_SETTINGS.finalSimilarityThreshold;
   const phashSimilarityThreshold = clamp(input.phashSimilarityThreshold ?? DEFAULT_DUPLICATE_SETTINGS.phashSimilarityThreshold, 0, 100);
   const visualSimilarityThreshold = clamp(input.visualSimilarityThreshold ?? DEFAULT_DUPLICATE_SETTINGS.visualSimilarityThreshold, 0, 100);
-  const separateSimilarityThresholds = input.separateSimilarityThresholds === true;
+  const separateSimilarityThresholds = input.separateSimilarityThresholds === undefined
+    ? DEFAULT_DUPLICATE_SETTINGS.separateSimilarityThresholds
+    : input.separateSimilarityThresholds === true;
   const modeSimilarityThreshold = comparisonMode === 'visual' ? visualSimilarityThreshold : phashSimilarityThreshold;
   return {
     ...DEFAULT_DUPLICATE_SETTINGS,
@@ -80,6 +90,9 @@ function normalizeDuplicateSettings(input = {}) {
     verifyNearMatches: input.verifyNearMatches === 'off' ? 'off' : 'auto',
     partialClips: input.partialClips === 'sound' ? 'sound' : 'off',
     nearMissRange: NEAR_MISS_RANGES.has(Number(input.nearMissRange)) ? Number(input.nearMissRange) : DEFAULT_DUPLICATE_SETTINGS.nearMissRange,
+    visualOutlineCheck: input.visualOutlineCheck === 'off'
+      ? 'off'
+      : OUTLINE_CHECK_LIMITS.has(Number(input.visualOutlineCheck)) ? Number(input.visualOutlineCheck) : DEFAULT_DUPLICATE_SETTINGS.visualOutlineCheck,
     durationTolerancePercent: clamp(input.durationTolerancePercent ?? DEFAULT_DUPLICATE_SETTINGS.durationTolerancePercent, 0, 100),
     checkpointIntervalMinutes: clamp(input.checkpointIntervalMinutes ?? DEFAULT_DUPLICATE_SETTINGS.checkpointIntervalMinutes, 0, 60),
     ignoredDuplicatePairs: normalizeIgnoredDuplicatePairs(input.ignoredDuplicatePairs),
@@ -202,7 +215,8 @@ function getDuplicateBurstKey(input = {}) {
 
 // Raise when a change to the comparison or grouping code can change which pairs match, so stored
 // results made by the previous code are discarded.
-const DUPLICATE_ALGORITHM_VERSION = 1;
+// v2: Visual similarity scores by correlation instead of brightness difference.
+const DUPLICATE_ALGORITHM_VERSION = 2;
 
 // Every duplicate setting is in exactly one of these lists (a test checks it), so a new setting cannot
 // be forgotten. Matching settings change which pairs match; the others only change what is done with
@@ -212,6 +226,7 @@ const MATCHING_SETTING_KEYS = [
   'finalSimilarityThreshold', 'phashFirstSampleOnly', 'durationTolerancePercent', 'requireEverySample',
   'ignoreBlackPixels', 'ignoreWhitePixels', 'compareFlipped', 'matchBlackBars', 'skipBlankFrames',
   'matchPartlyUnreadable', 'minComparedSamples', 'maxSamplingDuration', 'verifyNearMatches', 'nearMissRange',
+  'visualOutlineCheck',
 ];
 const NON_MATCHING_SETTING_KEYS = [
   'enabled', 'runAfterScan', 'defaultScope', 'protectKeep', 'protectSkipped', 'keeperOrder', 'codecOrder',
@@ -222,7 +237,7 @@ const NON_MATCHING_SETTING_KEYS = [
   'partialClips',
   // Applied to stored results when they are loaded: an ignored pair is removed and its group rebuilt.
   'ignoredDuplicatePairs',
-  'phashDefaultApplied', 'averageSamplesDefaultApplied',
+  'phashDefaultApplied', 'averageSamplesDefaultApplied', 'visualCorrelationDefaultApplied',
 ];
 
 /** Identity of everything that decides which pairs match; stored results with another key are discarded. */
@@ -304,29 +319,73 @@ function pHashSimilarity(hashA, hashB) {
 
 const GRAY_FRAME_SIZE = 32;
 
+// Sum and sum of squares of each frame, which mirroring does not change. Keyed by the frame's own buffer,
+// so a sample keeps no extra fields and a frame is summed once per process.
+const frameSums = new WeakMap();
+
+function sumsOf(bytes) {
+  let sums = frameSums.get(bytes);
+  if (!sums) {
+    let sum = 0;
+    let squares = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      sum += bytes[i];
+      squares += bytes[i] * bytes[i];
+    }
+    sums = { sum, squares };
+    frameSums.set(bytes, sums);
+  }
+  return sums;
+}
+
 /**
- * Mean absolute difference of two gray frames as a similarity. `mirrorA` compares the mirrored picture
- * of A by reading its columns right to left: the same arithmetic as comparing flipGrayBytes(A), without
- * a mirrored copy of every frame.
+ * Correlation of two gray frames as a percentage: whether light and dark lie in the same places, not
+ * how bright the frames are. Two different dim scenes differ by only a few levels everywhere, which a
+ * brightness difference scored as 95–98 % on a real library; their correlation is 0–66 %, while copies,
+ * also dimmed ones, stay at 97–100 %. Negative correlation counts as 0. Null when a frame has (almost) no
+ * contrast, which is no evidence either way. `mirrorA` compares the mirrored picture of A by reading its
+ * columns right to left, without a mirrored copy of every frame.
  */
-function rawGraySimilarity(bytesA, bytesB, options = {}, mirrorA = false) {
+function grayCorrelation(bytesA, bytesB, options = {}, mirrorA = false) {
   if (!bytesA || !bytesB || bytesA.length !== bytesB.length || bytesA.length === 0) return 0;
-  if (mirrorA && bytesA.length !== GRAY_FRAME_SIZE * GRAY_FRAME_SIZE) return rawGraySimilarity(flipGrayBytes(bytesA), bytesB, options);
-  let total = 0;
-  let count = 0;
+  if (mirrorA && bytesA.length !== GRAY_FRAME_SIZE * GRAY_FRAME_SIZE) return grayCorrelation(flipGrayBytes(bytesA), bytesB, options);
   const ignoreBlack = Boolean(options.ignoreBlackPixels);
   const ignoreWhite = Boolean(options.ignoreWhitePixels);
+  const skipsPixels = ignoreBlack || ignoreWhite;
+  let count = 0;
+  let sumA = 0;
+  let sumB = 0;
+  let squaresA = 0;
+  let squaresB = 0;
+  let products = 0;
   for (let i = 0; i < bytesA.length; i++) {
     const column = i % GRAY_FRAME_SIZE;
     const a = mirrorA ? bytesA[i - column + (GRAY_FRAME_SIZE - 1 - column)] : bytesA[i];
     const b = bytesB[i];
-    if (ignoreBlack && a <= 5 && b <= 5) continue;
-    if (ignoreWhite && a >= 250 && b >= 250) continue;
-    total += Math.abs(a - b);
-    count++;
+    if (skipsPixels) {
+      if (ignoreBlack && a <= 5 && b <= 5) continue;
+      if (ignoreWhite && a >= 250 && b >= 250) continue;
+      sumA += a;
+      sumB += b;
+      squaresA += a * a;
+      squaresB += b * b;
+      count++;
+    }
+    products += a * b;
   }
-  if (count === 0) return 100;
-  return Math.max(0, 100 - (total / count / 255) * 100);
+  if (!skipsPixels) {
+    // Without skipped pixels the frame sums are the same for every pair, so they are computed once.
+    ({ sum: sumA, squares: squaresA } = sumsOf(bytesA));
+    ({ sum: sumB, squares: squaresB } = sumsOf(bytesB));
+    count = bytesA.length;
+  }
+  const spreadA = count * squaresA - sumA * sumA;
+  const spreadB = count * squaresB - sumB * sumB;
+  // Below a standard deviation of one gray level the frame is flat.
+  if (count === 0 || spreadA < count * count || spreadB < count * count) return null;
+  const correlation = (count * products - sumA * sumB) / Math.sqrt(spreadA * spreadB);
+  // Rounded to millionths, so identical frames score exactly 100 despite floating-point error.
+  return Math.max(0, Math.min(100, Math.round(correlation * 1e8) / 1e6));
 }
 
 /**
@@ -493,10 +552,38 @@ function pHashSampleScore(variantA, variantB, flipped) {
   return pHashSimilarity(flipped ? variantA.flippedHash : variantA.hash, variantB.hash);
 }
 
-function graySampleScore(settings) {
+// pHash of a frame and of its mirror image, worked out when first needed, kept per frame buffer.
+const outlineHashes = new WeakMap();
+
+function outlineHash(bytes, mirrored) {
+  let hashes = outlineHashes.get(bytes);
+  if (!hashes) {
+    hashes = {};
+    outlineHashes.set(bytes, hashes);
+  }
+  const key = mirrored ? 'mirrored' : 'normal';
+  hashes[key] ??= parsePHashWords(calculateDctPHash(mirrored ? flipGrayBytes(bytes) : bytes));
+  return hashes[key];
+}
+
+// From this correlation up a sample is a copy without the outline check. On a real library, clips of
+// the same scene at another moment never correlated above 96.6, even aligned in time, while dark or
+// re-encoded copies whose pHash fell to 47–72 correlated at 98–99 and would otherwise be lost.
+const OUTLINE_CHECK_BELOW = 97;
+
+/**
+ * Visual score of one sample: the correlation, or 0 when the outline check is on, the correlation is
+ * below OUTLINE_CHECK_BELOW and the pHash of the two frames stays below its limit. Correlation cannot
+ * tell a copy from the same scene filmed a moment earlier or later; the outline check keeps most of
+ * those apart.
+ */
+function graySampleScore(settings, { outlineCheck = true } = {}) {
+  const outlineLimit = !outlineCheck || settings.visualOutlineCheck === 'off' ? null : Number(settings.visualOutlineCheck);
   return (variantA, variantB, flipped) => {
     if (!variantA.bytes || !variantB.bytes) return null;
-    return rawGraySimilarity(variantA.bytes, variantB.bytes, settings, flipped);
+    const score = grayCorrelation(variantA.bytes, variantB.bytes, settings, flipped);
+    if (!score || score >= OUTLINE_CHECK_BELOW || outlineLimit === null || variantA.bytes.length !== GRAY_FRAME_SIZE * GRAY_FRAME_SIZE) return score;
+    return pHashSimilarity(outlineHash(variantA.bytes, flipped), outlineHash(variantB.bytes, false)) >= outlineLimit ? score : 0;
   };
 }
 
@@ -791,7 +878,7 @@ module.exports = {
   movementClass,
   matchConfidence,
   minimumComparedSamples,
-  rawGraySimilarity,
+  grayCorrelation,
   packGrayRows,
   frameDarkRatio,
   average,

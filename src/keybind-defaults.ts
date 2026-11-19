@@ -70,9 +70,9 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   customStartPercent: 0,
   customEndPercent: 100,
   finalSimilarityThreshold: 95,
-  separateSimilarityThresholds: false,
+  separateSimilarityThresholds: true,
   phashSimilarityThreshold: 95,
-  visualSimilarityThreshold: 95,
+  visualSimilarityThreshold: 90,
   phashFirstSampleOnly: false,
   durationTolerancePercent: 20,
   requireEverySample: false,
@@ -85,6 +85,7 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   minComparedSamples: 'auto',
   verifyNearMatches: 'auto',
   nearMissRange: 20,
+  visualOutlineCheck: 75,
   partialClips: 'off',
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
@@ -92,6 +93,7 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   ignoredDuplicatePairs: [],
   phashDefaultApplied: true,
   averageSamplesDefaultApplied: true,
+  visualCorrelationDefaultApplied: true,
 };
 
 const KEEPER_RULES = new Set(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
@@ -206,6 +208,17 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     if ((result.duplicates as Record<string, unknown>).averageSamplesDefaultApplied !== true) {
       migratedDuplicates.requireEverySample = false;
       migratedDuplicates.averageSamplesDefaultApplied = true;
+    }
+    // Visual similarity now scores by correlation, where 90 is the recommended value; a Visual value
+    // set before measured brightness and means something else. Give existing installs their own Visual
+    // value once, keeping the value pHash used.
+    if ((result.duplicates as Record<string, unknown>).visualCorrelationDefaultApplied !== true) {
+      if ((result.duplicates as Record<string, unknown>).separateSimilarityThresholds !== true) {
+        migratedDuplicates.phashSimilarityThreshold = Number(migratedDuplicates.similarityThreshold ?? migratedDuplicates.finalSimilarityThreshold);
+      }
+      migratedDuplicates.separateSimilarityThresholds = true;
+      migratedDuplicates.visualSimilarityThreshold = DEFAULT_DUPLICATE_SETTINGS.visualSimilarityThreshold;
+      migratedDuplicates.visualCorrelationDefaultApplied = true;
     }
     if (!['phash', 'visual'].includes(String(migratedDuplicates.comparisonMode))) {
       migratedDuplicates.comparisonMode = DEFAULT_DUPLICATE_SETTINGS.comparisonMode;

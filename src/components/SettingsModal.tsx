@@ -171,9 +171,10 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
     }));
   };
 
-  // Visual scores run higher for unrelated footage than pHash scores, so it needs the earlier warning.
+  // Visual scores run higher for related but different footage than pHash scores, so it needs the
+  // earlier warning: below 90, clips of the same scene and different videos start to match.
   const isLowSimilarity = (mode: AppSettings['duplicates']['comparisonMode'], value: number) => (
-    mode === 'visual' ? value <= 90 : value < 80
+    mode === 'visual' ? value < 90 : value < 80
   );
 
   const renderSimilarityInput = (
@@ -204,7 +205,7 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
       : [[d.comparisonMode, d.finalSimilarityThreshold]];
     const parts = checks
       .filter(([mode, value]) => isLowSimilarity(mode, value))
-      .map(([mode]) => (mode === 'visual' ? 'visual at 90% or lower' : 'pHash below 80%'));
+      .map(([mode]) => (mode === 'visual' ? 'visual below 90%' : 'pHash below 80%'));
     return parts.length > 0 ? `Unrelated videos start to match with ${parts.join(' and ')}.` : null;
   })();
 
@@ -214,6 +215,9 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
     : localSettings.duplicates.comparisonMode === 'phash' && localSettings.duplicates.phashFirstSampleOnly
       ? 'Not available with First sample scoring.'
       : null;
+
+  const outlineCheckApplies = localSettings.duplicates.comparisonMode === 'visual';
+  const outlineCheckOff = localSettings.duplicates.visualOutlineCheck === 'off';
 
   // One select over two stored flags: first-sample-only (pHash) wins over every-sample.
   const sampleScoring = localSettings.duplicates.phashFirstSampleOnly
@@ -730,6 +734,34 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           )}
                         </SettingRow>
                         <SettingRow
+                          label="Outline check"
+                          help={!outlineCheckApplies
+                            ? 'Used by Visual similarity. pHash already compares outlines.'
+                            : 'Also compares the outlines in each frame, so clips filmed in the same place a moment earlier or later are not reported as copies.'}
+                          details={outlineCheckApplies && outlineCheckOff && (
+                            <span className="help-text duplicates-similarity-warning duplicates-outline-warning">
+                              Clips of the same scene at another moment can show up as duplicates.
+                              <button className="btn-check-updates" type="button" onClick={() => handleDuplicateChange('visualOutlineCheck', 75)}>
+                                Use 75% (recommended)
+                              </button>
+                            </span>
+                          )}
+                        >
+                          {(id) => (
+                            <select
+                              id={id}
+                              value={String(localSettings.duplicates.visualOutlineCheck)}
+                              disabled={!outlineCheckApplies}
+                              onChange={(e) => handleDuplicateChange('visualOutlineCheck', e.target.value === 'off' ? 'off' : Number(e.target.value))}
+                            >
+                              <option value="off">Off</option>
+                              {[70, 75, 80, 85, 90].map((limit) => (
+                                <option key={limit} value={limit}>At least {limit}%{limit === 75 ? ' (recommended)' : ''}</option>
+                              ))}
+                            </select>
+                          )}
+                        </SettingRow>
+                        <SettingRow
                           label="Samples"
                           help={<>
                             {sampleScoring === 'weakest' && 'Strictest: a match is scored by its weakest sample.'}
@@ -769,7 +801,7 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                         />
                         <SettingRow
                           label="Double-check near misses"
-                          help={nearMissUnavailableReason ?? 'Looks again at pairs just below your similarity value, with frames around each sample, to find copies that start a moment earlier or later. A wider range finds more and reads more frames. Visual similarity uses at most 5 points.'}
+                          help={nearMissUnavailableReason ?? 'Looks again at pairs just below your similarity value, with frames around each sample, to find copies that start a moment earlier or later. A wider range finds more and reads more frames. Visual similarity uses at most 10 points.'}
                         >
                           {(id) => (
                             <select

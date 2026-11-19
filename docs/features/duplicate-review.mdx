@@ -25,7 +25,7 @@ Exact-file checks are part of the run. The selected comparison method controls t
 | Method | Best use | Tradeoff |
 | --- | --- | --- |
 | pHash (default) | Most libraries; strict image-signature comparison with few false positives | Can miss transformations that visual similarity still recognizes. |
-| Visual similarity | Alternate encodes, resized copies, and near-identical footage | Broader matching can produce more false positives. |
+| Visual similarity | Alternate encodes, resized, dimmed or recoloured copies, and near-identical footage. It compares where light and dark lie in each frame, not how bright the frames are, so dark scenes are not matched just for being dark. | Broader matching. Clips of the same scene filmed a moment apart can look alike; the **Outline check**, on at 75% by default, keeps most of them apart. |
 
 The methods can find different results. Run them separately when coverage matters more than processing time: in duplicate groups, **Run Again with Visual Similarity** (or **with pHash**) in the sidebar, also in the **Duplicates** menu in the title bar, switches to the other method, saves it as your setting and runs detection again. **Undo** in the notice that follows switches back.
 

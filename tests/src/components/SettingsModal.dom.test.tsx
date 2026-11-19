@@ -231,6 +231,31 @@ describe('SettingsModal integration behavior', () => {
     expect(useStore.getState().settings.duplicates.keeperOrder).toEqual(['health', 'resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec', 'audio']);
   });
 
+  test('the outline check applies to Visual similarity, recommends 75% and offers it back when turned off', async () => {
+    render(<SettingsModal initialTab="duplicates" />);
+
+    const outline = screen.getByRole('combobox', { name: /outline check/i }) as HTMLSelectElement;
+    expect(outline.value).toBe('75');
+    expect(outline.disabled).toBe(true);
+    expect(screen.getByText(/pHash already compares outlines/i)).toBeTruthy();
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /comparison method/i }), 'visual');
+    expect(outline.disabled).toBe(false);
+    expect(screen.getByRole('option', { name: 'At least 75% (recommended)' })).toBeTruthy();
+
+    await userEvent.selectOptions(outline, 'off');
+    expect(screen.getByText(/same scene at another moment can show up as duplicates/i)).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: /use 75% \(recommended\)/i }));
+    expect(outline.value).toBe('75');
+    expect(screen.queryByText(/same scene at another moment can show up as duplicates/i)).toBeNull();
+
+    await userEvent.selectOptions(outline, '85');
+    await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
+    await waitFor(() => {
+      expect(useStore.getState().settings.duplicates.visualOutlineCheck).toBe(85);
+    });
+  });
+
   test('lists the tabs by task and groups each tab into titled sections', async () => {
     render(<SettingsModal initialTab="general" />);
 
