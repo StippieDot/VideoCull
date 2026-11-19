@@ -257,8 +257,14 @@ function createDuplicateResultsStore({ rootDir, writeJsonFile }) {
     async remove(session) {
       await fs.rm(path.join(folder, sessionFileName(session)), { force: true });
     },
-    async clearAll() {
-      await fs.rm(folder, { recursive: true, force: true });
+    /**
+     * Removes the stored results of these folders as one session, for every scope and subfolder choice.
+     * Other sessions keep theirs: on restore each of their videos is checked against its file.
+     * @param {string[]} folders
+     */
+    async removeFolders(folders) {
+      await Promise.all([true, false].flatMap((includeSubfolders) => /** @type {const} */ (['all', 'filtered'])
+        .map((scope) => fs.rm(path.join(folder, sessionFileName({ folders, includeSubfolders, scope })), { force: true }))));
     },
   };
 }

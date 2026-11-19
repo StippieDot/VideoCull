@@ -101,6 +101,23 @@ test('a corrupt file is ignored and removed', async () => {
   }
 });
 
+test('removing the results of loaded folders keeps those of other sessions', async () => {
+  const { rootDir, store } = await tempStore();
+  try {
+    const loaded = { folders: ['E:\\Clips', 'D:\\Videos'], includeSubfolders: false, scope: 'filtered' };
+    const other = { folders: ['D:\\Videos'], includeSubfolders: true, scope: 'all' };
+    await store.save(loaded, results({ scope: 'filtered' }));
+    await store.save({ ...loaded, scope: 'all' }, results());
+    await store.save(other, results());
+    await store.removeFolders(['D:\\Videos', 'E:\\Clips']);
+    assert.equal(await store.load(loaded), null);
+    assert.equal(await store.load({ ...loaded, scope: 'all' }), null);
+    assert.ok(await store.load(other));
+  } finally {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test('only the ten most recent sessions are kept', async () => {
   const { rootDir, store } = await tempStore();
   try {

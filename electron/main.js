@@ -2868,8 +2868,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   cancelActiveDuplicateRun();
   scanGeneration += 1;
   clearDuplicateSessionCache();
-  // Stored files name their session only by a hash, so the ones for this folder cannot be picked out.
-  await getDuplicateResultsStore().clearAll().catch((error) => log.warn('[clear-cache] Could not clear duplicate results:', error?.message || error));
+  await getDuplicateResultsStore().removeFolders([...currentScanDirs]).catch((error) => log.warn('[clear-cache] Could not clear duplicate results:', error?.message || error));
   await getPictureCheckStore().clear().catch((error) => log.warn('[clear-cache] Could not clear picture checks:', error?.message || error));
 
   const cacheOptions = await getCacheOptions();
