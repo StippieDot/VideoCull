@@ -171,6 +171,34 @@ describe('finding partial clips', () => {
     }
   });
 
+  test('the same sound throughout with other pictures in one stretch is still listed', async () => {
+    // 'swap' holds the second half of 'src' and then its first half; its first-half pictures differ.
+    const { duplicates, partialClips } = loadModules((child, args) => {
+      const count = Number(args[args.indexOf('-frames:v') + 1]) || 1;
+      const seconds = Number(args[args.indexOf('-ss') + 1]);
+      const swapped = args.some((arg) => String(arg).includes('swap'));
+      const sourceSeconds = swapped ? (seconds < 40 ? seconds + 40 : seconds - 40) : seconds;
+      // A scene changes every 10 seconds, between check times, so a burst starting 0.4 s early still sees it.
+      const scene = Math.floor((sourceSeconds + 5) / 10) + (swapped && seconds >= 40 ? 50 : 0);
+      const stacked = Buffer.alloc(FRAME_BYTES, 128);
+      const { primary } = picture(1 + scene);
+      for (let row = 0; row < 32; row++) primary.copy(stacked, row * 64, row * 32, row * 32 + 32);
+      child.stdout.emit('data', Buffer.concat(Array.from({ length: count }, () => stacked)));
+      child.emit('close', 0, null);
+    });
+    const source = words(80, 7);
+    const swap = Uint32Array.from([...source.subarray(Math.round(40 * WORDS_PER_SECOND)), ...source.subarray(0, Math.round(40 * WORDS_PER_SECOND))]);
+    const result = await partialClips.findPartialClips({
+      videos: [video('src', 80), video('swap', 80)],
+      settings: { compareFlipped: false },
+      cacheAccess: storedSound({ src: source, swap }),
+      cacheOptions: {},
+      run: duplicates.createDuplicateRun(),
+    });
+    expect(result.clips).toHaveLength(1);
+    expect(result.clips[0].segments.map((segment) => segment.pictureState)).toEqual(['differentPicture', 'confirmed']);
+  });
+
   test('pairs to skip are not searched, and a cancelled run stops', async () => {
     const { duplicates, partialClips } = loadModules((child) => child.emit('close', 0, null));
     const source = words(60, 2);

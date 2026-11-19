@@ -378,8 +378,10 @@ async function checkRelations(found, byId, settings, run, sendProgress, maxConcu
           });
         }
         const clip = describeRelation(relation, shorter, segments);
-        // The same footage and sound throughout is a duplicate, which the duplicate run reports.
-        if (!(relation.fullCoverage && clip.state === 'confirmed')) clips.push(clip);
+        // The same footage and sound throughout is a duplicate, which the duplicate run reports. One stretch
+        // with other pictures makes the pair something the duplicate run does not find, so it stays.
+        const sameThroughout = segments.every((segment) => segment.pictureState === 'confirmed');
+        if (!(relation.fullCoverage && sameThroughout)) clips.push(clip);
         checked++;
         progress(sendProgress, 'Checking pictures', checked, found.length);
         if (Date.now() - lastCheckpoint >= checkpointEveryMs) {
