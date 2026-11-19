@@ -25,8 +25,6 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   phashFirstSampleOnly: false,
   durationTolerancePercent: 20,
   requireEverySample: false,
-  ignoreBlackPixels: false,
-  ignoreWhitePixels: false,
   compareFlipped: false,
   matchBlackBars: true,
   skipBlankFrames: true,
@@ -224,7 +222,7 @@ const DUPLICATE_ALGORITHM_VERSION = 2;
 const MATCHING_SETTING_KEYS = [
   'comparisonMode', 'sampleCount', 'samplingWindow', 'customStartPercent', 'customEndPercent',
   'finalSimilarityThreshold', 'phashFirstSampleOnly', 'durationTolerancePercent', 'requireEverySample',
-  'ignoreBlackPixels', 'ignoreWhitePixels', 'compareFlipped', 'matchBlackBars', 'skipBlankFrames',
+  'compareFlipped', 'matchBlackBars', 'skipBlankFrames',
   'matchPartlyUnreadable', 'minComparedSamples', 'maxSamplingDuration', 'verifyNearMatches', 'nearMissRange',
   'visualOutlineCheck',
 ];
@@ -346,43 +344,22 @@ function sumsOf(bytes) {
  * contrast, which is no evidence either way. `mirrorA` compares the mirrored picture of A by reading its
  * columns right to left, without a mirrored copy of every frame.
  */
-function grayCorrelation(bytesA, bytesB, options = {}, mirrorA = false) {
+function grayCorrelation(bytesA, bytesB, mirrorA = false) {
   if (!bytesA || !bytesB || bytesA.length !== bytesB.length || bytesA.length === 0) return 0;
-  if (mirrorA && bytesA.length !== GRAY_FRAME_SIZE * GRAY_FRAME_SIZE) return grayCorrelation(flipGrayBytes(bytesA), bytesB, options);
-  const ignoreBlack = Boolean(options.ignoreBlackPixels);
-  const ignoreWhite = Boolean(options.ignoreWhitePixels);
-  const skipsPixels = ignoreBlack || ignoreWhite;
-  let count = 0;
-  let sumA = 0;
-  let sumB = 0;
-  let squaresA = 0;
-  let squaresB = 0;
+  if (mirrorA && bytesA.length !== GRAY_FRAME_SIZE * GRAY_FRAME_SIZE) return grayCorrelation(flipGrayBytes(bytesA), bytesB);
   let products = 0;
   for (let i = 0; i < bytesA.length; i++) {
     const column = i % GRAY_FRAME_SIZE;
     const a = mirrorA ? bytesA[i - column + (GRAY_FRAME_SIZE - 1 - column)] : bytesA[i];
-    const b = bytesB[i];
-    if (skipsPixels) {
-      if (ignoreBlack && a <= 5 && b <= 5) continue;
-      if (ignoreWhite && a >= 250 && b >= 250) continue;
-      sumA += a;
-      sumB += b;
-      squaresA += a * a;
-      squaresB += b * b;
-      count++;
-    }
-    products += a * b;
+    products += a * bytesB[i];
   }
-  if (!skipsPixels) {
-    // Without skipped pixels the frame sums are the same for every pair, so they are computed once.
-    ({ sum: sumA, squares: squaresA } = sumsOf(bytesA));
-    ({ sum: sumB, squares: squaresB } = sumsOf(bytesB));
-    count = bytesA.length;
-  }
+  const { sum: sumA, squares: squaresA } = sumsOf(bytesA);
+  const { sum: sumB, squares: squaresB } = sumsOf(bytesB);
+  const count = bytesA.length;
   const spreadA = count * squaresA - sumA * sumA;
   const spreadB = count * squaresB - sumB * sumB;
   // Below a standard deviation of one gray level the frame is flat.
-  if (count === 0 || spreadA < count * count || spreadB < count * count) return null;
+  if (spreadA < count * count || spreadB < count * count) return null;
   const correlation = (count * products - sumA * sumB) / Math.sqrt(spreadA * spreadB);
   // Rounded to millionths, so identical frames score exactly 100 despite floating-point error.
   return Math.max(0, Math.min(100, Math.round(correlation * 1e8) / 1e6));
@@ -581,7 +558,7 @@ function graySampleScore(settings, { outlineCheck = true } = {}) {
   const outlineLimit = !outlineCheck || settings.visualOutlineCheck === 'off' ? null : Number(settings.visualOutlineCheck);
   return (variantA, variantB, flipped) => {
     if (!variantA.bytes || !variantB.bytes) return null;
-    const score = grayCorrelation(variantA.bytes, variantB.bytes, settings, flipped);
+    const score = grayCorrelation(variantA.bytes, variantB.bytes, flipped);
     if (!score || score >= OUTLINE_CHECK_BELOW || outlineLimit === null || variantA.bytes.length !== GRAY_FRAME_SIZE * GRAY_FRAME_SIZE) return score;
     return pHashSimilarity(outlineHash(variantA.bytes, flipped), outlineHash(variantB.bytes, false)) >= outlineLimit ? score : 0;
   };

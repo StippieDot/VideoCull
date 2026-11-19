@@ -389,9 +389,9 @@ function previousVisualScore(samplesA, samplesB, settings, enforceThreshold) {
     const sampleA = samplesA[i];
     const sampleB = samplesB[i];
     if (previousIsDark(sampleA) || previousIsDark(sampleB)) continue;
-    const normalScore = grayCorrelation(sampleA.bytes, sampleB.bytes, settings);
+    const normalScore = grayCorrelation(sampleA.bytes, sampleB.bytes);
     const flippedScore = settings.compareFlipped
-      ? grayCorrelation(flipGrayBytes(sampleA.bytes, 4, 4), sampleB.bytes, settings)
+      ? grayCorrelation(flipGrayBytes(sampleA.bytes, 4, 4), sampleB.bytes)
       : normalScore;
     const bestScore = Math.max(normalScore, flippedScore);
     if (settings.requireEverySample && bestScore < settings.finalSimilarityThreshold) return null;
@@ -414,8 +414,6 @@ function settingCombinations() {
           compareFlipped: Boolean(flags & 1),
           requireEverySample: Boolean(flags & 2),
           phashFirstSampleOnly: Boolean(flags & 4),
-          ignoreBlackPixels: Boolean(flags & 4),
-          ignoreWhitePixels: Boolean(flags & 1),
         }));
       }
     }
@@ -937,22 +935,15 @@ describe('gray frames in shared memory', () => {
     let state = seed >>> 0;
     return Buffer.from(Array.from({ length: 1024 }, () => {
       state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-      // Many pure blacks and whites, so the ignore options matter.
-      const value = state >>> 24;
-      return value < 20 ? 0 : value > 235 ? 255 : value;
+      return state >>> 24;
     }));
   }
 
   test('the mirrored comparison reads the frame backwards with the same result as a mirrored copy', () => {
-    for (const ignoreBlackPixels of [false, true]) {
-      for (const ignoreWhitePixels of [false, true]) {
-        const options = { ignoreBlackPixels, ignoreWhitePixels };
-        for (let seed = 1; seed <= 20; seed++) {
-          const a = randomFrame(seed);
-          const b = seed % 2 ? flipGrayBytes(a) : randomFrame(seed + 100);
-          expect(grayCorrelation(a, b, options, true)).toBe(grayCorrelation(flipGrayBytes(a), b, options));
-        }
-      }
+    for (let seed = 1; seed <= 20; seed++) {
+      const a = randomFrame(seed);
+      const b = seed % 2 ? flipGrayBytes(a) : randomFrame(seed + 100);
+      expect(grayCorrelation(a, b, true)).toBe(grayCorrelation(flipGrayBytes(a), b));
     }
     const score = graySampleScore(normalizeDuplicateSettings({ comparisonMode: 'visual' }));
     const variant = { bytes: randomFrame(5) };

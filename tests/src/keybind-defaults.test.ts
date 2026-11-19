@@ -187,6 +187,8 @@ describe('migrateSettings', () => {
         profile: 'legacy',
         durationToleranceMinSecs: 2,
         durationToleranceMaxSecs: 10,
+        ignoreBlackPixels: true,
+        ignoreWhitePixels: true,
       },
       appMode: 'legacy',
       hasSeenAppModeIntro: true,
@@ -200,6 +202,8 @@ describe('migrateSettings', () => {
     expect('profile' in (migrated.duplicates ?? {})).toBe(false);
     expect('durationToleranceMinSecs' in (migrated.duplicates ?? {})).toBe(false);
     expect('durationToleranceMaxSecs' in (migrated.duplicates ?? {})).toBe(false);
+    expect('ignoreBlackPixels' in (migrated.duplicates ?? {})).toBe(false);
+    expect('ignoreWhitePixels' in (migrated.duplicates ?? {})).toBe(false);
     expect('appMode' in migrated).toBe(false);
     expect('hasSeenAppModeIntro' in migrated).toBe(false);
     expect('keyToggleAppMode' in migrated).toBe(false);

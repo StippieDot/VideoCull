@@ -1042,18 +1042,6 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           )}
                         </SettingRow>
                         <SwitchRow
-                          label="Ignore black pixels"
-                          help="Helps with fades and black frames."
-                          checked={localSettings.duplicates.ignoreBlackPixels}
-                          onChange={(checked) => handleDuplicateChange('ignoreBlackPixels', checked)}
-                        />
-                        <SwitchRow
-                          label="Ignore white pixels"
-                          help="Helps with bright flashes and white frames."
-                          checked={localSettings.duplicates.ignoreWhitePixels}
-                          onChange={(checked) => handleDuplicateChange('ignoreWhitePixels', checked)}
-                        />
-                        <SwitchRow
                           label="Compare flipped videos"
                           help="Also matches mirrored copies."
                           checked={localSettings.duplicates.compareFlipped}

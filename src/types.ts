@@ -264,8 +264,6 @@ export interface DuplicateSettings {
   phashFirstSampleOnly: boolean;
   durationTolerancePercent: number;
   requireEverySample: boolean;
-  ignoreBlackPixels: boolean;
-  ignoreWhitePixels: boolean;
   compareFlipped: boolean;
   matchBlackBars: boolean;
   skipBlankFrames: boolean;

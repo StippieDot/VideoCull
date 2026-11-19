@@ -76,8 +76,6 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   phashFirstSampleOnly: false,
   durationTolerancePercent: 20,
   requireEverySample: false,
-  ignoreBlackPixels: false,
-  ignoreWhitePixels: false,
   compareFlipped: false,
   matchBlackBars: true,
   skipBlankFrames: true,
@@ -240,6 +238,8 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     delete migratedDuplicates.profile;
     delete migratedDuplicates.durationToleranceMinSecs;
     delete migratedDuplicates.durationToleranceMaxSecs;
+    delete migratedDuplicates.ignoreBlackPixels;
+    delete migratedDuplicates.ignoreWhitePixels;
     result.duplicates = migratedDuplicates;
   }
 
