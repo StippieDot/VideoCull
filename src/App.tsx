@@ -9,6 +9,7 @@ import ReviewMode from './components/ReviewMode';
 import EmptyState from './components/EmptyState';
 import SettingsModal, { type SettingsTab } from './components/SettingsModal';
 import DuplicateGroupsView from './components/DuplicateGroupsView';
+import PartialClipsView, { mergeClipsByDuplicateGroup } from './components/PartialClipsView';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import DocumentationModal from './components/DocumentationModal';
 import StoreTransition from './components/StoreTransition';
@@ -28,6 +29,7 @@ import { applyDocumentTheme } from './theme';
 import './App.css';
 import { openVideoExternally, revealInExplorer } from './appCommands';
 import { sameSessionFolders } from './sessions';
+import { describeUncheckedNearMisses } from './duplicateResultsPersistence';
 
 const CURRENT_METADATA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
@@ -110,6 +112,7 @@ export default function App() {
   const globalMuteEnabled = useStore((s) => s.settings.features.globalMute);
   const globalMuteKeybind = useStore((s) => s.settings.keyGlobalMute);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
+  const partialClipsMode = useStore((s) => s.partialClipsMode);
   const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const isGenerating = useStore((s) => s.isGenerating);
   const genProgress = useStore((s) => s.genProgress);
@@ -379,7 +382,7 @@ export default function App() {
   }, [pushToast]);
 
   /** `restart` starts over while a run is going; the main process cancels the earlier run. */
-  const handleFindDuplicates = useCallback(async ({ restart = false }: { restart?: boolean } = {}) => {
+  const handleFindDuplicates = useCallback(async ({ restart = false, checkAllNearMisses = false }: { restart?: boolean; checkAllNearMisses?: boolean } = {}) => {
     const state = useStore.getState();
     // Read at call time: a method switch updates the settings just before calling this.
     const duplicateSettings = state.settings.duplicates;
@@ -406,19 +409,21 @@ export default function App() {
     setIsFindingDuplicates(true);
     setDuplicateProgress({ stage: 'Preparing', current: 0, total: scopeVideos.length });
     try {
-      const result = await window.electronAPI.findDuplicates(scopeVideos, { settings: duplicateSettings });
+      const result = await window.electronAPI.findDuplicates(scopeVideos, { settings: duplicateSettings, checkAllNearMisses });
       if (duplicateRunId !== duplicateRunIdRef.current) return;
       if (result.status === 'ok') {
         const activeIds = new Set(useStore.getState().videos.map((video) => video.id));
         const resultIds = result.videos?.map((video) => video.id) ?? [];
         if (resultIds.some((id) => !activeIds.has(id))) return;
-        applyDuplicateResult(result);
+        applyDuplicateResult(result, { videos: scopeVideos, scope: duplicateSettings.defaultScope === 'filtered' ? 'filtered' : 'all' });
         useStore.getState().setLastDuplicateMethod(duplicateSettings.comparisonMode);
         const count = result.stats?.duplicateVideoCount ?? 0;
+        const pending = result.stats?.verification?.pending ?? 0;
         pushToast({
           title: count > 0 ? 'Duplicates found' : 'No duplicates found',
-          detail: count > 0 ? `${result.stats?.groupCount ?? 0} duplicate groups detected.` : 'No mostly identical videos matched.',
+          detail: `${count > 0 ? `${result.stats?.groupCount ?? 0} duplicate groups detected.` : 'No mostly identical videos matched.'}${pending > 0 ? ` ${describeUncheckedNearMisses(pending)}.` : ''}`,
           kind: count > 0 ? 'success' : 'info',
+          ...(pending > 0 ? { actionLabel: 'Check them', action: () => void findDuplicatesRef.current({ restart: true, checkAllNearMisses: true }) } : {}),
         });
       } else if (result.status === 'cancelled') {
         pushToast({ title: 'Duplicate detection cancelled', kind: 'info' });
@@ -431,6 +436,52 @@ export default function App() {
       }
     }
   }, [applyDuplicateResult, genProgress.phase, isFindingDuplicates, isGenerating, pushToast, setDuplicateProgress, setIsFindingDuplicates]);
+  /** Find partial clips: same scope, progress and cancel as a duplicate run; pairs already grouped are skipped. */
+  const handleFindPartialClips = useCallback(async () => {
+    const state = useStore.getState();
+    const duplicateSettings = state.settings.duplicates;
+    if (!window.electronAPI?.findPartialClips || state.videos.length < 2 || isFindingDuplicates || duplicateSettings.partialClips === 'off') return;
+    if (isMetadataRunning(isGenerating, genProgress.phase)) {
+      pushToast({ title: 'Metadata still updating', detail: 'Partial clips can be found when metadata is done.', kind: 'info', dedupeKey: 'duplicates-wait-metadata' });
+      return;
+    }
+    const scope = duplicateSettings.defaultScope === 'filtered' ? 'filtered' : 'all';
+    const scopeVideos = scope === 'filtered' ? state.filteredVideos : state.videos;
+    if (scopeVideos.length < 2) {
+      pushToast({ title: 'Not enough videos', detail: 'Finding partial clips needs at least two videos in scope.', kind: 'warning' });
+      return;
+    }
+    const skipPairKeys = state.duplicateGroups.flatMap((group) => group.videoIds.flatMap((aId, i) => (
+      group.videoIds.slice(i + 1).map((bId) => (aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`))
+    )));
+    const runId = ++duplicateRunIdRef.current;
+    setIsFindingDuplicates(true);
+    setDuplicateProgress({ stage: 'Reading sound', current: 0, total: scopeVideos.length });
+    try {
+      const result = await window.electronAPI.findPartialClips(scopeVideos, { settings: duplicateSettings, skipPairKeys });
+      if (runId !== duplicateRunIdRef.current) return;
+      if (result.status === 'ok') {
+        const clips = result.clips ?? [];
+        useStore.getState().applyPartialClips(clips, { videos: scopeVideos, scope, settingsKey: result.settingsKey });
+        // Counted as the list shows them: copies of the same videos are one entry.
+        const entries = mergeClipsByDuplicateGroup(clips, useStore.getState().duplicateGroups);
+        const partial = entries.filter((entry) => entry.primary.relation === 'partial').length;
+        const soundOnly = entries.length - partial;
+        pushToast({
+          title: partial > 0 ? 'Partial clips found' : 'No partial clips found',
+          detail: `${partial} ${partial === 1 ? 'video contains' : 'videos contain'} part of another; ${soundOnly} other ${soundOnly === 1 ? 'pair shares' : 'pairs share'} sound.`,
+          kind: partial > 0 ? 'success' : 'info',
+        });
+      } else if (result.status === 'cancelled') {
+        pushToast({ title: 'Finding partial clips cancelled', detail: 'The sound read so far is kept for the next time.', kind: 'info' });
+      } else {
+        pushToast({ title: 'Finding partial clips failed', detail: result.error ?? 'Unexpected error.', kind: 'error' });
+      }
+    } finally {
+      if (runId === duplicateRunIdRef.current) setIsFindingDuplicates(false);
+    }
+  }, [genProgress.phase, isFindingDuplicates, isGenerating, pushToast, setDuplicateProgress, setIsFindingDuplicates]);
+
   const findDuplicatesRef = useRef(handleFindDuplicates);
   findDuplicatesRef.current = handleFindDuplicates;
 
@@ -563,6 +614,19 @@ export default function App() {
           durationMs: 8000,
         });
       }
+      // Stored duplicate groups come back once the session's videos are known. Not when part of it could
+      // not be read: its videos would look deleted and their groups would be pruned for good.
+      if (skippedDirectoryCount === 0 && skippedFileCount === 0 && scanId === scanIdRef.current) {
+        void useStore.getState().restoreDuplicateResults().then((status) => {
+          if (status !== 'outdated') return;
+          pushToast({
+            title: 'Saved duplicate results cleared',
+            detail: 'Duplicate settings changed since they were found. Run duplicate detection again.',
+            kind: 'info',
+            dedupeKey: 'duplicate-results-outdated',
+          });
+        });
+      }
       const needsThumbnails = (v: typeof allVideos[number]) => (
         !hasRecentMetadataFailure(v) &&
         (!v.thumbnails || v.thumbnails.length < expectedThumbCount(v))
@@ -656,7 +720,7 @@ export default function App() {
             setDuplicateProgress({ stage: 'Preparing', current: 0, total: currentVideos.length });
             const result = await window.electronAPI.findDuplicates(currentVideos, { settings: duplicateConfig });
             if (scanId === scanIdRef.current && duplicateRunId === duplicateRunIdRef.current && result.status === 'ok') {
-              applyDuplicateResult(result);
+              applyDuplicateResult(result, { videos: currentVideos, scope: 'all' });
               useStore.getState().setLastDuplicateMethod(duplicateConfig.comparisonMode);
             }
             if (duplicateRunId === duplicateRunIdRef.current) {
@@ -1385,6 +1449,8 @@ export default function App() {
             onCloseSession={() => void handleCloseSession()}
             onFindDuplicates={() => void handleFindDuplicates()}
             onSwitchDuplicateMethod={handleSwitchDuplicateMethod}
+            onCheckNearMisses={() => void handleFindDuplicates({ checkAllNearMisses: true })}
+            onFindPartialClips={() => void handleFindPartialClips()}
             onOpenDuplicateSettings={() => openSettings('duplicates')}
             onRequestPermanentDelete={requestPermanentDelete}
             globalMute={globalMute}
@@ -1418,7 +1484,7 @@ export default function App() {
                 }}
                 aria-hidden={reviewMode}
               >
-                <DuplicateGroupsView />
+                {partialClipsMode ? <PartialClipsView /> : <DuplicateGroupsView />}
               </div>
             </Profiler>
           )}

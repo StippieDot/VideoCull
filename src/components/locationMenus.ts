@@ -262,6 +262,7 @@ export interface LocationActions {
   openRecent: (folders: string[]) => void;
   /** Focuses the group number beside the duplicates part, to type a group to go to. */
   goToGroup: () => void;
+  showDuplicateGroups: () => void;
 }
 
 export interface FolderMenuContext {
@@ -375,6 +376,21 @@ export function reclaimableBytes(groups: DuplicateGroup[], videosById: Map<strin
     }
   }
   return total;
+}
+
+/** The partial clips list has no groups to step through and no comparison method to switch. */
+export function buildPartialClipsMenu(entryCount: number, groupCount: number, actions: LocationActions): LocationMenu {
+  return {
+    kind: 'duplicates',
+    title: 'Partial clips',
+    detail: `${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}`,
+    items: [
+      { type: 'item', key: 'groups', label: `Show Duplicate Groups (${groupCount})`, icon: ListOrdered, onSelect: actions.showDuplicateGroups },
+      { type: 'item', key: 'settings', label: 'Duplicate Settings', icon: Settings, onSelect: actions.openDuplicateSettings },
+      SEPARATOR('sep-back'),
+      { type: 'item', key: 'back', label: 'Back to Grid', icon: ArrowLeft, onSelect: actions.backToGrid },
+    ],
+  };
 }
 
 /** `otherMethod` names the comparison method the groups were not found with, to run again with it. */

@@ -1,4 +1,6 @@
 // ── Video Status ────────────────────────────────────────────────────
+import type { DuplicateRunInfo } from './duplicateResultsPersistence';
+
 export type VideoStatus = 'pending' | 'keep' | 'delete' | 'skipped';
 
 export type VideoReviewChanges = Partial<Pick<Video, 'status' | 'rating' | 'favorite' | 'bookmarks'>>;
@@ -262,15 +264,40 @@ export interface DuplicateSettings {
   phashFirstSampleOnly: boolean;
   durationTolerancePercent: number;
   requireEverySample: boolean;
-  ignoreBlackPixels: boolean;
-  ignoreWhitePixels: boolean;
   compareFlipped: boolean;
+  matchBlackBars: boolean;
+  skipBlankFrames: boolean;
+  matchPartlyUnreadable: boolean;
+  minComparedSamples: 'auto' | 1 | 2 | 3;
+  /** 'auto': pairs up to nearMissRange points below the similarity value are double-checked (pHash). */
+  verifyNearMatches: 'auto' | 'off';
+  nearMissRange: 5 | 10 | 15 | 20 | 25 | 30;
+  /** Visual similarity: the pHash similarity each compared sample also needs, or 'off'. */
+  visualOutlineCheck: 'off' | 70 | 75 | 80 | 85 | 90;
+  /** 'sound': the sidebar offers Find partial clips, which reads the sound of every video once. */
+  partialClips: 'off' | 'sound';
   maxSamplingDuration: number;
   retryFailedFingerprintExtraction: boolean;
   checkpointIntervalMinutes: number;
   ignoredDuplicatePairs: string[];
   phashDefaultApplied?: boolean;
   averageSamplesDefaultApplied?: boolean;
+  visualCorrelationDefaultApplied?: boolean;
+}
+
+/** An accepted pair inside a duplicate group, with the score and evidence the group used. */
+export interface DuplicateGroupPair {
+  aId: string;
+  bId: string;
+  similarity: number;
+  matchType: 'exact' | 'phash' | 'visual';
+  comparedSamples?: number | null;
+  confidence?: 'normal' | 'low';
+  static?: boolean;
+  borderAdjusted?: boolean;
+  flipped?: boolean;
+  partialFingerprint?: boolean;
+  timingAdjusted?: boolean;
 }
 
 export interface DuplicateGroup {
@@ -284,10 +311,70 @@ export interface DuplicateGroup {
   manualSuggestedKeeperId?: string | null;
   reason: string;
   exactVideoIds?: string[];
+  /** A matched pair in the group shows (nearly) the same picture at every sample in both videos. */
+  static?: boolean;
+  /** Fewest samples compared in any similarity match of the group; null for exact-only groups. */
+  comparedSamples?: number | null;
+  /** 'low' when a match was decided by one sample or a static pair. */
+  confidence?: 'normal' | 'low';
+  /** 'exact' for byte-identical files only; 'sameSpan' when similarity matches are part of the group. */
+  relation?: 'exact' | 'sameSpan';
+  /** Samples per video in the run that found the group. */
+  sampleCount?: number;
+  /** A match only reached the threshold with a video cut to the picture inside its black bars. */
+  borderAdjusted?: boolean;
+  /** A match used the mirrored picture. */
+  flipped?: boolean;
+  /** A video was compared without the samples that could not be read. */
+  partialFingerprint?: boolean;
+  /** A match was only found after the sample times were corrected for a copy that starts a moment earlier or later. */
+  timingAdjusted?: boolean;
+  /** How far the members' lengths differ, when it is more than 1 second and 1 percent. */
+  durationDifferenceSecs?: number | null;
+  /** The keeper rule that decided, or 'path' when nothing else did. */
+  keeperRule?: string | null;
+  /** The deciding rule only separates copies whose picture does not differ (size, codec, path). */
+  keeperTieBreak?: boolean;
+  /** Per member other than the suggested keeper: why it was not suggested. */
+  keeperReasons?: Record<string, string>;
+  /** Per member with fingerprint data: sample positions it could not read (empty when all were read). */
+  unreadableSamples?: Record<string, Array<{ index: number; percent: number | null }>>;
+  /** Per member with black bars: the picture inside them, which the resolution rule compares. */
+  pictureSizes?: Record<string, { width: number; height: number }>;
+  /** The accepted pairs between members; a group is rebuilt from these when members or pairs go away. */
+  pairs?: DuplicateGroupPair[];
 }
 
+/** The session stored duplicate results belong to: its folders, subfolder choice and run scope. */
+export interface DuplicateResultsSession {
+  folders: string[];
+  includeSubfolders: boolean;
+  scope: 'all' | 'filtered';
+}
+
+/** What is kept of a duplicate run between sessions: IDs, scores and choices, never paths. */
+export interface StoredDuplicateResults {
+  version: 1;
+  createdAt: number;
+  settingsKey: string;
+  scope: 'all' | 'filtered';
+  /** Every video that took part, with the size and modification time it had. */
+  videos: Array<{ id: string; sizeBytes: number; date: number }>;
+  groups: Array<Pick<DuplicateGroup, 'id' | 'videoIds' | 'manualSuggestedKeeperId' | 'sampleCount' | 'matchType' | 'unreadableSamples' | 'pictureSizes'> & {
+    pairs: DuplicateGroupPair[];
+  }>;
+  /** The last Find partial clips of the session, when one ran. */
+  partialClips?: PartialClip[];
+}
+
+export type LoadedDuplicateResults =
+  | { status: 'ok'; results: StoredDuplicateResults }
+  | { status: 'outdated' }
+  | { status: 'none' };
+
 export interface DuplicateProgress {
-  stage: 'Preparing' | 'Building fingerprints' | 'Checking exact matches' | 'Comparing pHashes' | 'Finding candidates' | 'Confirming visual matches' | 'Building groups' | 'Done' | 'Cancelled' | 'Error';
+  stage: 'Preparing' | 'Building fingerprints' | 'Checking exact matches' | 'Comparing pHashes' | 'Verifying matches' | 'Finding candidates' | 'Confirming visual matches' | 'Building groups'
+    | 'Reading sound' | 'Searching partial clips' | 'Checking pictures' | 'Done' | 'Cancelled' | 'Error';
   current: number;
   total: number;
   message?: string;
@@ -295,6 +382,8 @@ export interface DuplicateProgress {
 
 export interface DuplicateResult {
   status: 'ok' | 'cancelled' | 'error';
+  /** Identity of the matching settings of the run; stored results with another key are discarded. */
+  settingsKey?: string;
   groups?: DuplicateGroup[];
   videos?: Array<Pick<Video, 'id' | 'duplicateGroupId' | 'duplicateSimilarity' | 'duplicateMatchType' | 'duplicateSuggestedKeeper' | 'duplicateExact' | 'duplicateGroupSize' | 'duplicateMatchReason'>>;
   stats?: {
@@ -302,8 +391,63 @@ export interface DuplicateResult {
     duplicateVideoCount: number;
     exactGroupCount: number;
     similarityGroupCount: number;
+    /** Near misses double-checked with frames around the sample times; absent when that is off. */
+    verification?: DuplicateVerificationStats;
   };
   error?: string;
+}
+
+/** One shared stretch of a partial clip: where it starts in each video, and what pictures showed. */
+export interface PartialClipSegment {
+  startA: number;
+  startB: number;
+  lengthSecs: number;
+  soundSimilarity: number;
+  pictureState: 'confirmed' | 'differentPicture' | 'unconfirmed';
+  pictureSimilarity: number | null;
+}
+
+/**
+ * Two videos that share stretches. 'partial': sound and pictures match, so one contains part of the
+ * other. 'audioOnly': only the sound matches; the pictures differ or could not be checked.
+ */
+export interface PartialClip {
+  aId: string;
+  bId: string;
+  relation: 'partial' | 'audioOnly';
+  state: 'confirmed' | 'differentPicture' | 'unconfirmed';
+  shorterId: string;
+  segments: PartialClipSegment[];
+  /** Share of the shorter video the stretches cover. */
+  coverage: number | null;
+  soundSimilarity: number;
+  pictureSimilarity: number | null;
+}
+
+export interface PartialClipResult {
+  status: 'ok' | 'cancelled' | 'error';
+  clips?: PartialClip[];
+  settingsKey?: string;
+  stats?: {
+    videos: number;
+    soundRead: number;
+    candidates: number;
+    partial: number;
+    audioOnly: number;
+  } | null;
+  error?: string;
+}
+
+export interface DuplicateVerificationStats {
+  candidates: number;
+  accepted: number;
+  rejected: number;
+  unverifiable: number;
+  /** Not checked yet; a later run, or Check remaining near misses, checks them. */
+  pending: number;
+  complete: boolean;
+  /** More near misses than five per video: many videos in this library resemble each other. */
+  manyNearMisses: boolean;
 }
 
 // ── Undo Entry ─────────────────────────────────────────────────────
@@ -447,6 +591,12 @@ export interface VideoStore {
   gridVideoJump: { videoId: string; id: number } | null;
   duplicateGroupsMode: boolean;
   duplicateGroups: DuplicateGroup[];
+  /** Where the groups on screen came from; null when there is no result to store. */
+  duplicateRun: DuplicateRunInfo | null;
+  /** Result of the last Find partial clips in this session; null before one ran. */
+  partialClips: PartialClip[] | null;
+  /** The duplicate view shows the partial clips instead of the groups. */
+  partialClipsMode: boolean;
   duplicateProgress: DuplicateProgress | null;
   isFindingDuplicates: boolean;
   duplicateViewMode: DuplicateViewMode;
@@ -539,8 +689,16 @@ export interface VideoStore {
   setDuplicateGroupsMode: (val: boolean) => void;
   setDuplicateGroups: (groups: DuplicateGroup[]) => void;
   setManualDuplicateKeeper: (groupId: string, videoId: string | null) => void;
-  applyDuplicateResult: (result: DuplicateResult) => void;
+  /** `run` names the videos that took part and the scope, so the result can be stored. */
+  applyDuplicateResult: (result: DuplicateResult, run?: { videos: Video[]; scope: DuplicateScope }) => void;
+  /** Brings back the stored groups of the open session after its scan. */
+  restoreDuplicateResults: () => Promise<LoadedDuplicateResults['status'] | 'skipped'>;
   addIgnoredDuplicatePairs: (pairKeys: string[]) => void;
+  /** Shows the result of Find partial clips; `run` describes it for storage when no duplicate run did. */
+  applyPartialClips: (clips: PartialClip[], run?: { videos: Video[]; scope: 'all' | 'filtered'; settingsKey?: string }) => void;
+  setPartialClipsMode: (mode: boolean) => void;
+  /** Marks each pair as not a match and takes it off the partial clip list. */
+  dismissPartialClips: (pairs: Array<{ aId: string; bId: string }>) => void;
   removeIgnoredDuplicatePairs: (pairKeys: string[]) => void;
   clearIgnoredDuplicatePairs: () => void;
   setDuplicateProgress: (progress: DuplicateProgress | null) => void;
@@ -756,7 +914,9 @@ export interface ElectronAPI {
   onProcessingPauseState: (callback: (data: ProcessingPauseState) => void) => () => void;
   onThumbProgress: (callback: (data: ThumbProgress) => void) => () => void;
   onThumbReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;
-  findDuplicates: (videos: Video[], options?: { settings?: Partial<DuplicateSettings> }) => Promise<DuplicateResult>;
+  findDuplicates: (videos: Video[], options?: { settings?: Partial<DuplicateSettings>; checkAllNearMisses?: boolean }) => Promise<DuplicateResult>;
+  /** Pairs in `skipPairKeys` (already duplicates) are not searched. Uses the duplicate run's progress and cancel. */
+  findPartialClips: (videos: Video[], options?: { settings?: Partial<DuplicateSettings>; skipPairKeys?: string[] }) => Promise<PartialClipResult>;
   cancelDuplicateDetection: () => Promise<boolean>;
   onDuplicateProgress: (callback: (data: DuplicateProgress) => void) => () => void;
   onMenuAction: (callback: (action: MenuAction) => void) => () => void;
@@ -764,6 +924,9 @@ export interface ElectronAPI {
   saveCacheAtomic: (dirPath: string, videos: Video[]) => Promise<boolean>;
   saveReviewState: (dirPath: string, updates: VideoReviewUpdate[]) => Promise<boolean>;
   clearCache: (dirPath: string) => Promise<boolean>;
+  saveDuplicateResults: (session: DuplicateResultsSession, results: StoredDuplicateResults) => Promise<boolean>;
+  loadDuplicateResults: (session: DuplicateResultsSession) => Promise<LoadedDuplicateResults>;
+  clearDuplicateResults: (session: DuplicateResultsSession) => Promise<boolean>;
   batchDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
   permanentlyDelete: (filePaths: string[]) => Promise<DeleteResult[]>;
   exportReport: (videos: Video[], dirPaths: string[]) => Promise<'saved' | 'cancelled' | 'error'>;

@@ -337,6 +337,13 @@ input[type="range"] {
   color: color-mix(in srgb, var(--color-skip) 65%, var(--text-secondary));
 }
 
+.duplicates-outline-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .duplicates-inline-value span {
   color: var(--text-secondary);
   font-size: 14px;

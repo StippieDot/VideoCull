@@ -65,12 +65,20 @@ describe('linked folders and files', () => {
     assert.match(body, /&& stillLeadsToScannedFile\(filePath\)/);
   });
 
+  const comparableVideosBody = () => mainSource.match(/async function comparableVideos[\s\S]*?\n\}/)?.[0] ?? '';
+
+  test('duplicate detection and partial clips take their videos through the same check', () => {
+    for (const channel of ['find-duplicates', 'find-partial-clips']) {
+      assert.match(handlerBody(channel), /const safeVideos = await comparableVideos\(videos\);/);
+    }
+  });
+
   test('duplicate detection skips a linked video whose link no longer leads to the scanned file', () => {
-    assert.match(handlerBody('find-duplicates'), /if \(!await stillLeadsToScannedFile\(video\.path\)\) continue;/);
+    assert.match(comparableVideosBody(), /if \(!await stillLeadsToScannedFile\(video\.path\)\) continue;/);
   });
 
   test('duplicate detection compares each real file once', () => {
-    assert.match(handlerBody('find-duplicates'), /if \(seenRealPaths\.has\(realKey\)\) continue;/);
+    assert.match(comparableVideosBody(), /if \(seenRealPaths\.has\(realKey\)\) continue;/);
   });
 
   test('empty-folder cleanup stays inside the loaded folders and skips links', () => {

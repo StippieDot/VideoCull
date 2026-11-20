@@ -17,7 +17,7 @@ function runWorker(workerData) {
 }
 
 test('dark visual samples are skipped when enough usable samples remain', async () => {
-  const bright = Buffer.alloc(4, 120);
+  const bright = Buffer.from([20, 200, 60, 140]);
   const result = await runWorker({
     videos: [
       { id: 'a', durationSecs: 100 },
@@ -44,7 +44,7 @@ test('dark visual samples are skipped when enough usable samples remain', async 
 });
 
 test('visual match fails when dark-sample filtering leaves fewer than two usable samples', async () => {
-  const bright = Buffer.alloc(4, 120);
+  const bright = Buffer.from([20, 200, 60, 140]);
   const result = await runWorker({
     videos: [
       { id: 'a', durationSecs: 100 },
@@ -71,7 +71,7 @@ test('visual match fails when dark-sample filtering leaves fewer than two usable
 });
 
 test('known-duration videos are not compared with unknown-duration videos below bucket threshold', async () => {
-  const bright = Buffer.alloc(4, 120);
+  const bright = Buffer.from([20, 200, 60, 140]);
   const result = await runWorker({
     videos: [
       { id: 'known', durationSecs: 100 },
@@ -97,7 +97,7 @@ test('known-duration videos are not compared with unknown-duration videos below 
 });
 
 test('bucketed visual progress total reflects only eligible candidate pairs', async () => {
-  const bright = Buffer.alloc(4, 120);
+  const bright = Buffer.from([20, 200, 60, 140]);
   const videos = Array.from({ length: 5001 }, (_, index) => ({
     id: `v${index}`,
     durationSecs: index < 2 ? 100 : 1000 + index,

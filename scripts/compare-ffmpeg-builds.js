@@ -13,7 +13,6 @@ const path = require('node:path');
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.mov', '.avi', '.wmv', '.webm', '.m4v', '.mpg', '.mpeg', '.ts', '.mts', '.m2ts', '.flv', '.3gp']);
 const METADATA_FIELDS = ['duration', 'creationTime', 'videoCodec', 'audioCodec', 'videoBitrate', 'audioBitrate', 'totalBitrate', 'containerFormat', 'width', 'height', 'fps'];
-const GRAY_FRAME_BYTES = 32 * 32;
 
 function listVideos(inputs) {
   const videos = [];
@@ -48,6 +47,7 @@ async function measure(videos) {
   const { ffmpegPath } = require('../electron/media-tools');
   const processor = require('../electron/processor');
   const { __test__: duplicates } = require('../electron/duplicates');
+  const { STACKED_FRAME_BYTES, splitStackedFrame } = require('../electron/duplicate-frames');
   const { getSamplingTimestamps, calculateDctPHash, normalizeDuplicateSettings } = require('../electron/duplicate-utils');
   const settings = normalizeDuplicateSettings({});
   const thumbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'videocull-compare-'));
@@ -71,8 +71,8 @@ async function measure(videos) {
       const timestamps = getSamplingTimestamps(duration, settings.sampleCount, settings);
       try {
         const raw = await runToBuffer(ffmpegPath, duplicates.buildGrayFramesExtractionArgs(video, timestamps, {}));
-        if (raw.length < timestamps.length * GRAY_FRAME_BYTES) throw new Error(`only ${raw.length} bytes of frames`);
-        result.phashes = timestamps.map((_, i) => calculateDctPHash(raw.subarray(i * GRAY_FRAME_BYTES, (i + 1) * GRAY_FRAME_BYTES)));
+        if (raw.length < timestamps.length * STACKED_FRAME_BYTES) throw new Error(`only ${raw.length} bytes of frames`);
+        result.phashes = timestamps.map((_, i) => calculateDctPHash(splitStackedFrame(raw.subarray(i * STACKED_FRAME_BYTES, (i + 1) * STACKED_FRAME_BYTES)).primary));
       } catch (error) {
         result.fingerprintError = firstLine(error);
       }

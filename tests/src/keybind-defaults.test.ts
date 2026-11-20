@@ -140,6 +140,20 @@ describe('migrateSettings', () => {
     expect(migrated.duplicates?.comparisonMode).toBe('visual');
   });
 
+  test('new installs share one Similarity value of 90 for both methods', () => {
+    expect(DEFAULT_DUPLICATE_SETTINGS).toMatchObject({ separateSimilarityThresholds: false, finalSimilarityThreshold: 90, phashSimilarityThreshold: 90, visualSimilarityThreshold: 90 });
+    expect(migrateSettings({}).duplicates).toMatchObject({ separateSimilarityThresholds: false, finalSimilarityThreshold: 90 });
+  });
+
+  test('gives existing installs a separate Visual value of 90 once, keeping the pHash value', () => {
+    const shared = migrateSettings({ duplicates: { finalSimilarityThreshold: 92, visualSimilarityThreshold: 97 } }).duplicates;
+    expect(shared).toMatchObject({ separateSimilarityThresholds: true, phashSimilarityThreshold: 92, visualSimilarityThreshold: 90, visualCorrelationDefaultApplied: true });
+    const separate = migrateSettings({ duplicates: { separateSimilarityThresholds: true, phashSimilarityThreshold: 88, visualSimilarityThreshold: 97 } }).duplicates;
+    expect(separate).toMatchObject({ phashSimilarityThreshold: 88, visualSimilarityThreshold: 90 });
+    const chosenLater = migrateSettings({ duplicates: { separateSimilarityThresholds: false, visualSimilarityThreshold: 93, visualCorrelationDefaultApplied: true } }).duplicates;
+    expect(chosenLater).toMatchObject({ separateSimilarityThresholds: false, visualSimilarityThreshold: 93 });
+  });
+
   test('switches existing installs to average sample scoring once', () => {
     expect(migrateSettings({ duplicates: { requireEverySample: true } }).duplicates?.requireEverySample).toBe(false);
     expect(migrateSettings({ duplicates: { requireEverySample: true, averageSamplesDefaultApplied: true } }).duplicates?.requireEverySample).toBe(true);
@@ -150,6 +164,7 @@ describe('migrateSettings', () => {
       duplicates: {
         comparisonMode: 'broken',
         sampleCount: 6,
+        visualCorrelationDefaultApplied: true,
         keeperOrder: ['fps', 'invalid-rule'],
         ignoredDuplicatePairs: ['ABCDEFABCDEFABCD|0011223344556677', 'bad', 'abcdefabcdefabcd|0011223344556677'],
       },
@@ -159,7 +174,7 @@ describe('migrateSettings', () => {
       ...DEFAULT_DUPLICATE_SETTINGS,
       comparisonMode: DEFAULT_DUPLICATE_SETTINGS.comparisonMode,
       sampleCount: DEFAULT_DUPLICATE_SETTINGS.sampleCount,
-      keeperOrder: ['fps', 'resolution', 'videoBitrate', 'duration', 'size', 'codec'],
+      keeperOrder: ['health', 'fps', 'resolution', 'videoBitrate', 'duration', 'size', 'codec', 'audio'],
       ignoredDuplicatePairs: ['abcdefabcdefabcd|0011223344556677'],
     });
   });
@@ -172,6 +187,8 @@ describe('migrateSettings', () => {
         profile: 'legacy',
         durationToleranceMinSecs: 2,
         durationToleranceMaxSecs: 10,
+        ignoreBlackPixels: true,
+        ignoreWhitePixels: true,
       },
       appMode: 'legacy',
       hasSeenAppModeIntro: true,
@@ -185,6 +202,8 @@ describe('migrateSettings', () => {
     expect('profile' in (migrated.duplicates ?? {})).toBe(false);
     expect('durationToleranceMinSecs' in (migrated.duplicates ?? {})).toBe(false);
     expect('durationToleranceMaxSecs' in (migrated.duplicates ?? {})).toBe(false);
+    expect('ignoreBlackPixels' in (migrated.duplicates ?? {})).toBe(false);
+    expect('ignoreWhitePixels' in (migrated.duplicates ?? {})).toBe(false);
     expect('appMode' in migrated).toBe(false);
     expect('hasSeenAppModeIntro' in migrated).toBe(false);
     expect('keyToggleAppMode' in migrated).toBe(false);
@@ -199,6 +218,6 @@ describe('duplicate keeper defaults match the backend copy', () => {
     expect(backend.DEFAULT_DUPLICATE_SETTINGS.keeperOrder).toEqual(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
     expect(backend.DEFAULT_DUPLICATE_SETTINGS.codecOrder).toEqual(DEFAULT_DUPLICATE_SETTINGS.codecOrder);
     expect(backend.normalizeDuplicateSettings({ keeperOrder: ['codec'], codecOrder: ['vp9'] }))
-      .toMatchObject(migrateSettings({ duplicates: { keeperOrder: ['codec'], codecOrder: ['vp9'] } }).duplicates ?? {});
+      .toMatchObject(migrateSettings({ duplicates: { keeperOrder: ['codec'], codecOrder: ['vp9'], visualCorrelationDefaultApplied: true } }).duplicates ?? {});
   });
 });

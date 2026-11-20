@@ -53,6 +53,55 @@ describe('runProcess', () => {
     assert.equal(stdout.toString(), 'hello');
   });
 
+  test('streams stdout of any size to a callback without keeping it', async () => {
+    let bytes = 0;
+    const stdout = await runProcess(node, ['-e', 'for (let i = 0; i < 64; i++) process.stdout.write(Buffer.alloc(65536, 1))'], createRunToken(), {
+      maxStdoutBytes: 1024,
+      timeoutMs: 5000,
+      onStdout: (chunk) => { bytes += chunk.length; },
+    });
+    assert.equal(bytes, 64 * 65536);
+    assert.equal(stdout.length, 0);
+  });
+
+  test('a streaming run that produces nothing for the timeout fails with ETIMEDOUT', async () => {
+    await assert.rejects(
+      runProcess(node, ['-e', 'process.stdout.write("a"); setTimeout(() => {}, 5000)'], createRunToken(), {
+        timeoutMs: 300,
+        onStdout: () => {},
+      }),
+      (error) => error.code === 'ETIMEDOUT',
+    );
+  });
+
+  test('a promise from the stdout callback holds the output, and the timeout waits meanwhile', async () => {
+    let chunks = 0;
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    const finished = runProcess(node, ['-e', 'for (let i = 0; i < 32; i++) process.stdout.write(Buffer.alloc(65536, 1))'], createRunToken(), {
+      timeoutMs: 200,
+      onStdout: () => {
+        chunks++;
+        return chunks === 1 ? held : undefined;
+      },
+    });
+    // Longer than the timeout: a held stream is paused, not hung.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(chunks, 1);
+    release();
+    await finished;
+    assert.ok(chunks > 1);
+  });
+
+  test('a rejected promise from the stdout callback ends the process with its error', async () => {
+    await assert.rejects(
+      runProcess(node, ['-e', 'process.stdout.write("a"); setTimeout(() => {}, 5000)'], createRunToken(), {
+        onStdout: () => Promise.reject(new Error('Cancelled while paused')),
+      }),
+      /Cancelled while paused/,
+    );
+  });
+
   test('rejects with the exit code and stderr tail', async () => {
     await assert.rejects(
       runProcess(node, ['-e', 'process.stderr.write("broken input"); process.exit(3)'], createRunToken()),

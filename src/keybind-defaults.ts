@@ -55,7 +55,7 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
 
 // SYNC NOTE: These defaults are duplicated in electron/duplicate-utils.js (DEFAULT_DUPLICATE_SETTINGS).
 // The backend copy is used during duplicate detection. Keep both in sync when changing defaults.
-// The compareKeeperCandidates / chooseSuggestedKeeperId functions in src/store.ts mirror the backend versions.
+// The rankKeeperCandidates / chooseSuggestedKeeperId functions in src/store.ts mirror the backend versions.
 export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   enabled: true,
   runAfterScan: false,
@@ -64,37 +64,59 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   defaultScope: 'all',
   protectKeep: true,
   protectSkipped: false,
-  keeperOrder: ['resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec'],
+  keeperOrder: ['health', 'resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec', 'audio'],
   codecOrder: ['av1', 'hevc', 'vp9', 'h264', 'vp8', 'mpeg4', 'mpeg2video', 'vc1'],
   samplingWindow: 'even',
   customStartPercent: 0,
   customEndPercent: 100,
-  finalSimilarityThreshold: 95,
+  finalSimilarityThreshold: 90,
   separateSimilarityThresholds: false,
-  phashSimilarityThreshold: 95,
-  visualSimilarityThreshold: 95,
+  phashSimilarityThreshold: 90,
+  visualSimilarityThreshold: 90,
   phashFirstSampleOnly: false,
   durationTolerancePercent: 20,
   requireEverySample: false,
-  ignoreBlackPixels: false,
-  ignoreWhitePixels: false,
   compareFlipped: false,
+  matchBlackBars: true,
+  skipBlankFrames: true,
+  matchPartlyUnreadable: true,
+  minComparedSamples: 'auto',
+  verifyNearMatches: 'auto',
+  nearMissRange: 20,
+  visualOutlineCheck: 75,
+  partialClips: 'off',
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,
   ignoredDuplicatePairs: [],
   phashDefaultApplied: true,
   averageSamplesDefaultApplied: true,
+  visualCorrelationDefaultApplied: true,
 };
 
 const KEEPER_RULES = new Set(DEFAULT_DUPLICATE_SETTINGS.keeperOrder);
+
+/** Names of the suggested-keeper rules, shared by the settings screen and the duplicate view. */
+export const KEEPER_RULE_LABELS: Record<string, { title: string; description: string }> = {
+  health: { title: 'Readable everywhere', description: 'Prefer a copy that could be read wherever another copy could.' },
+  audio: { title: 'Has sound', description: 'Prefer a copy with an audio track.' },
+  resolution: { title: 'Resolution', description: 'Prefer the highest displayed resolution.' },
+  videoBitrate: { title: 'Video bitrate', description: 'Prefer the cleaner encode.' },
+  duration: { title: 'Duration', description: 'Prefer the longest version.' },
+  fps: { title: 'FPS', description: 'Prefer smoother playback.' },
+  size: { title: 'File size', description: 'Prefer the largest file.' },
+  codec: { title: 'Codec', description: 'Prefer the codec ranked higher in the codec preference.' },
+};
 const CODEC_FAMILIES = new Set(DEFAULT_DUPLICATE_SETTINGS.codecOrder);
 
 function normalizeKeeperOrder(value: unknown): string[] {
   if (!Array.isArray(value)) return DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
   const normalized = value.filter((rule): rule is string => typeof rule === 'string' && KEEPER_RULES.has(rule));
   for (const rule of DEFAULT_DUPLICATE_SETTINGS.keeperOrder) {
-    if (!normalized.includes(rule)) normalized.push(rule);
+    if (normalized.includes(rule)) continue;
+    // Missing rules join where the default has them: health first, the others (audio last) at the end.
+    if (rule === 'health') normalized.unshift(rule);
+    else normalized.push(rule);
   }
   return normalized.length > 0 ? normalized : DEFAULT_DUPLICATE_SETTINGS.keeperOrder;
 }
@@ -185,6 +207,17 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
       migratedDuplicates.requireEverySample = false;
       migratedDuplicates.averageSamplesDefaultApplied = true;
     }
+    // Visual similarity now scores by correlation, where 90 is the recommended value; a Visual value
+    // set before measured brightness and means something else. Give existing installs their own Visual
+    // value once, keeping the value pHash used.
+    if ((result.duplicates as Record<string, unknown>).visualCorrelationDefaultApplied !== true) {
+      if ((result.duplicates as Record<string, unknown>).separateSimilarityThresholds !== true) {
+        migratedDuplicates.phashSimilarityThreshold = Number(migratedDuplicates.similarityThreshold ?? migratedDuplicates.finalSimilarityThreshold);
+      }
+      migratedDuplicates.separateSimilarityThresholds = true;
+      migratedDuplicates.visualSimilarityThreshold = DEFAULT_DUPLICATE_SETTINGS.visualSimilarityThreshold;
+      migratedDuplicates.visualCorrelationDefaultApplied = true;
+    }
     if (!['phash', 'visual'].includes(String(migratedDuplicates.comparisonMode))) {
       migratedDuplicates.comparisonMode = DEFAULT_DUPLICATE_SETTINGS.comparisonMode;
     }
@@ -205,6 +238,8 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
     delete migratedDuplicates.profile;
     delete migratedDuplicates.durationToleranceMinSecs;
     delete migratedDuplicates.durationToleranceMaxSecs;
+    delete migratedDuplicates.ignoreBlackPixels;
+    delete migratedDuplicates.ignoreWhitePixels;
     result.duplicates = migratedDuplicates;
   }
 

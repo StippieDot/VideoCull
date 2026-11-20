@@ -186,3 +186,19 @@ test('pHash first-sample mode scores only the first sample where neither frame i
   const mismatch = await runWorker({ videos, phashRows: rows('0000ffffffffffff'), settings });
   assert.equal(mismatch.pairs.length, 0, 'the first usable sample decides');
 });
+
+test('a pair is static only when both videos barely move', async () => {
+  const still = ['ff00ff00ff00ff00', 'ff00ff00ff00ff01', 'ff00ff00ff00ff03'];
+  const moving = ['ff00ff00ff00ff00', '00ff00ff00ff00ff', 'ff00ff00ff00ff03'];
+  const rows = (videoId, hashes) => hashes.map((hash, index) => ({
+    video_id: videoId, sample_index: index, phash_hex: hash, flipped_phash_hex: hash, frame_dark_ratio: 0, luma_range: 100,
+  }));
+  const result = await runWorker({
+    videos: ['a', 'b', 'c', 'd'].map((id) => ({ id, durationSecs: 60 })),
+    phashRows: [...rows('a', still), ...rows('b', still), ...rows('c', moving), ...rows('d', moving)],
+    settings: { sampleCount: 3, finalSimilarityThreshold: 95 },
+  });
+  const flags = Object.fromEntries(result.pairs.map((pair) => [`${pair.aId}${pair.bId}`, pair.static]));
+  assert.equal(flags.ab, true);
+  assert.equal(flags.cd, false);
+});

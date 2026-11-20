@@ -208,6 +208,40 @@ export function formatCodecLabel(codec: string | null | undefined): string {
   return CODEC_DISPLAY[codec.toLowerCase()] ?? codec.toUpperCase();
 }
 
+/**
+ * The resolution class the suggested keeper compares (8K, 5K, 4K, 1440, 1080, 720, else the shortest
+ * edge), so labels and the keeper agree on which copy has more picture.
+ */
+export function resolutionTier(width: number | null | undefined, height: number | null | undefined): number {
+  const w = Number(width);
+  const h = Number(height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 0;
+  const longestEdge = Math.max(w, h);
+  if (longestEdge >= 7680) return 8000;
+  if (longestEdge >= 5120) return 5000;
+  if (longestEdge >= 3840) return 4000;
+  if (longestEdge >= 2560) return 1440;
+  if (longestEdge >= 1920) return 1080;
+  if (longestEdge >= 1280) return 720;
+  return Math.min(w, h);
+}
+
+/**
+ * Tooltip for the resolution of a video in a duplicate group that has black bars, such as "1080p picture
+ * inside black bars (1080×1974 of a 1080×2340 frame)"; also when the bars leave the label unchanged, so
+ * what was cut off stays visible. Undefined without bars or frame size.
+ */
+export function formatPictureSizeNote(
+  width: number | null | undefined,
+  height: number | null | undefined,
+  pictureSize: { width: number; height: number } | null | undefined,
+): string | undefined {
+  if (!pictureSize || !width || !height) return undefined;
+  if (pictureSize.width === width && pictureSize.height === height) return undefined;
+  const picture = formatResolutionLabel(pictureSize.width, pictureSize.height);
+  return `${picture} picture inside black bars (${pictureSize.width}×${pictureSize.height} of a ${width}×${height} frame)`;
+}
+
 export function formatResolutionLabel(width: number | null | undefined, height: number | null | undefined): string {
   if (!width || !height) return '';
   const longestEdge = Math.max(width, height);

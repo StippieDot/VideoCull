@@ -72,7 +72,7 @@ test('duplicate header menu hides manual keeper clear action when not applicable
     similarity: 100,
     matchType: 'exact',
     suggestedKeeperId: 'a',
-    reason: 'Exact file match',
+    reason: 'Identical files',
     manualSuggestedKeeperId: null,
   } satisfies DuplicateGroup;
 

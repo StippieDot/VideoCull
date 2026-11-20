@@ -16,9 +16,11 @@ interface VideoCardProps {
   onPlay?: (video: Video, event: React.MouseEvent) => void;
   onToggleSelect?: (video: Video, event: React.MouseEvent) => void;
   onContextMenu?: (video: Video, event: React.MouseEvent) => void;
+  /** Tooltip of the resolution badge, for a duplicate group that knows the picture inside black bars. */
+  resolutionTitle?: string;
 }
 
-export default function VideoCard({ video, style, isSelected = false, showSelectionControls = false, onClick, onPlay, onToggleSelect, onContextMenu }: VideoCardProps) {
+export default function VideoCard({ video, style, isSelected = false, showSelectionControls = false, onClick, onPlay, onToggleSelect, onContextMenu, resolutionTitle }: VideoCardProps) {
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -164,7 +166,7 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
         </div>
         {features.codecBadges && (resolutionLabel || codecLabel || fpsLabel) && (
           <div className="card-badges">
-            {resolutionLabel && <span className="card-badge">{resolutionLabel}</span>}
+            {resolutionLabel && <span className="card-badge" title={resolutionTitle}>{resolutionLabel}</span>}
             {codecLabel && <span className="card-badge">{codecLabel}</span>}
             {fpsLabel && <span className="card-badge">{fpsLabel}</span>}
             {video.duplicateGroupId && <span className="card-badge">Dup{video.duplicateSimilarity != null ? ` ${Math.floor(video.duplicateSimilarity)}%` : ''}</span>}

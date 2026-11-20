@@ -47,12 +47,15 @@ function toFfmpegInputPath(filePath) {
  * @param {string} binaryPath
  * @param {string[]} args
  * @param {MediaRunToken} token
- * @param {{ timeoutMs?: number, maxStdoutBytes?: number }} [options]
- *   Without maxStdoutBytes stdout is ignored.
- * @returns {Promise<Buffer>} stdout
+ * @param {{ timeoutMs?: number, maxStdoutBytes?: number, onStdout?: (chunk: Buffer) => void | Promise<void> }} [options]
+ *   Without maxStdoutBytes stdout is ignored. With onStdout every chunk goes to the callback and none is
+ *   kept, so output of any size can be processed; the timeout then counts from the last chunk, since a
+ *   long file read at disk speed is busy, not hung. When onStdout returns a promise, reading stops
+ *   until it settles (a pause), and a rejection ends the process.
+ * @returns {Promise<Buffer>} stdout (empty with onStdout)
  */
 function runProcess(binaryPath, args, token, options = {}) {
-  const { timeoutMs = 0, maxStdoutBytes = 0 } = options;
+  const { timeoutMs = 0, maxStdoutBytes = 0, onStdout } = options;
   return new Promise((resolve, reject) => {
     if (token.cancelled) {
       reject(new Error('Cancelled'));
@@ -73,11 +76,39 @@ function runProcess(binaryPath, args, token, options = {}) {
       failure = error;
       try { child.kill('SIGKILL'); } catch { /* already exited */ }
     };
-    const timer = timeoutMs > 0
-      ? setTimeout(() => fail(Object.assign(new Error(`${name} timed out after ${timeoutMs} ms`), { code: 'ETIMEDOUT' })), timeoutMs)
-      : null;
+    const timeOut = () => fail(Object.assign(new Error(`${name} timed out after ${timeoutMs} ms`), { code: 'ETIMEDOUT' }));
+    let timer = timeoutMs > 0 ? setTimeout(timeOut, timeoutMs) : null;
 
     child.stdout.on('data', (/** @type {Buffer} */ chunk) => {
+      if (onStdout) {
+        if (failure) return;
+        if (timer) {
+          clearTimeout(timer);
+          timer = setTimeout(timeOut, timeoutMs);
+        }
+        let result;
+        try {
+          result = onStdout(chunk);
+        } catch (error) {
+          fail(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
+        // A promise holds the output, and with it the process, until it settles: the process blocks
+        // on its full pipe and does no work. The timeout does not run meanwhile.
+        if (result && typeof result.then === 'function') {
+          child.stdout.pause();
+          if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
+          result.then(() => {
+            if (failure) return;
+            if (timeoutMs > 0) timer = setTimeout(timeOut, timeoutMs);
+            child.stdout.resume();
+          }, (error) => fail(error instanceof Error ? error : new Error(String(error))));
+        }
+        return;
+      }
       if (!maxStdoutBytes) return;
       stdoutBytes += chunk.length;
       if (stdoutBytes > maxStdoutBytes) {
@@ -143,7 +174,7 @@ async function probe(filePath, token) {
 /**
  * @param {string[]} args
  * @param {MediaRunToken} token
- * @param {{ timeoutMs?: number, maxStdoutBytes?: number }} [options]
+ * @param {{ timeoutMs?: number, maxStdoutBytes?: number, onStdout?: (chunk: Buffer) => void | Promise<void> }} [options]
  */
 async function runFfmpeg(args, token, options = {}) {
   return runProcess(ffmpegPath, args, token, options);

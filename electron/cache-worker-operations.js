@@ -128,10 +128,7 @@ async function executeCacheOperation(operation, args) {
         return {
           videoIds,
           signatureRows: cache.loadSignatureRows(db, videoIds),
-          completeEntries: Array.from(cache.getFingerprintCounts(db, videoIds, settings.sampleCount, {
-            requireFlipped: settings.compareFlipped,
-            fingerprintKey,
-          })),
+          completeEntries: Array.from(cache.getFingerprintCounts(db, videoIds, settings.sampleCount, { fingerprintKey })),
           failedIds: cache.loadFingerprintFailureIds(db, videoIds, { fingerprintKey }),
           mode: settings.comparisonMode,
           comparisonRows: settings.comparisonMode === 'phash'
@@ -150,6 +147,18 @@ async function executeCacheOperation(operation, args) {
     case 'markFingerprintFailure':
       return run(folderPath, cacheOptions, (db) => (
         cache.markFingerprintFailure(db, args.videoId, { fingerprintKey: args.fingerprintKey })
+      ));
+    case 'loadAudioFingerprints':
+      return run(folderPath, cacheOptions, (db) => cache.loadAudioFingerprints(db, args.videoIds, args.audioKey));
+    case 'saveAudioFingerprint':
+      return run(folderPath, cacheOptions, (db) => (
+        cache.saveAudioFingerprint(db, args.videoId, args.audioKey, args.state, args.words)
+      ));
+    case 'loadVideoBursts':
+      return run(folderPath, cacheOptions, (db) => cache.loadVideoBursts(db, args.videoIds, args.burstKey, args.kind));
+    case 'saveVideoBurst':
+      return run(folderPath, cacheOptions, (db) => (
+        cache.saveVideoBurst(db, args.videoId, args.burstKey, args.state, args.framesJson, args.kind)
       ));
     default:
       throw new Error(`Unknown cache operation: ${operation}`);

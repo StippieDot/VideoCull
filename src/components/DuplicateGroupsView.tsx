@@ -9,14 +9,16 @@ import {
 } from 'react';
 import { List } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
-import useStore from '../store';
+import useStore, { KEEPER_RESOLUTION_MARGIN_SHARE } from '../store';
 import useActiveValue from '../hooks/useActiveValue';
 import type { DuplicateGroup, DuplicateViewMode, Video } from '../types';
 import {
   formatDuration,
   formatFps,
+  formatPictureSizeNote,
   formatResolutionLabel,
   formatSize,
+  resolutionTier,
 } from '../utils';
 import {
   beginDevInteraction,
@@ -45,6 +47,8 @@ import {
 import { Ban, Check, CheckCircle2, Play, SkipForward, Trash2 } from 'lucide-react';
 import './DuplicateGroupsView.css';
 import { openVideoExternally, revealInExplorer } from '../appCommands';
+import { KEEPER_RULE_LABELS } from '../keybind-defaults';
+import { rebuildDuplicateGroups } from '../duplicateGroupRebuild';
 
 type MetricState = 'best' | 'equal' | 'worse';
 type MetricFlags = Record<string, MetricState>;
@@ -86,6 +90,12 @@ type DuplicateRowItemProps = {
   suggestedKeeperId: string | null;
   manualSuggestedKeeperId: string | null | undefined;
   flags: MetricFlags;
+  /** The picture inside the video's black bars, when it has them. */
+  pictureSize: { width: number; height: number } | null;
+  /** Why this video is not the suggested keeper; shown only while the keeper is not chosen by hand. */
+  keeperReason: string | null;
+  /** For the suggested keeper: which rule chose it. */
+  keeperDecision: string | null;
   isSelected: boolean;
   isLastInGroup: boolean;
   onToggleSelection: (video: Video) => void;
@@ -101,6 +111,7 @@ type DuplicateGalleryCardProps = {
   onToggleSelection: (video: Video) => void;
   onPlayVideo: (videoId: string, scopeIds: string[]) => void;
   onOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
+  pictureSize: { width: number; height: number } | null;
   /** Reports the frame shape of a loaded thumbnail, which sets the row height. */
   onThumbnailAspect: (videoId: string, aspect: number) => void;
 };
@@ -141,13 +152,19 @@ function bitrateLabel(video: Video): string {
   return `${Math.round(bitrate / 1000).toLocaleString()} kbps`;
 }
 
-function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
+function computeBestFlags(videos: Video[], pictureSizes: DuplicateGroup['pictureSizes'] = {}): Map<string, MetricFlags> {
   const flags = new Map<string, MetricFlags>();
   for (const v of videos) flags.set(v.id, {});
   if (videos.length < 2) return flags;
 
+  // The keeper's resolution class, of the picture inside black bars when a video has them, so the
+  // best-marked resolution is the one the keeper rule prefers.
+  const pictureTier = (v: Video) => {
+    const picture = pictureSizes[v.id];
+    return picture ? resolutionTier(picture.width, picture.height) : resolutionTier(v.width, v.height);
+  };
   const qualityMetrics: { key: string; value: (v: Video) => number; higher: boolean }[] = [
-    { key: 'resolution', value: (v) => (v.width ?? 0) * (v.height ?? 0), higher: true },
+    { key: 'resolution', value: pictureTier, higher: true },
     { key: 'fps', value: (v) => v.fps ?? 0, higher: true },
     { key: 'bitrate', value: (v) => v.videoBitrate ?? v.totalBitrate ?? 0, higher: true },
     { key: 'duration', value: (v) => v.durationSecs ?? 0, higher: true },
@@ -156,11 +173,14 @@ function computeBestFlags(videos: Video[]): Map<string, MetricFlags> {
   for (const metric of qualityMetrics) {
     const values = videos.map((v) => metric.value(v));
     const best = metric.higher ? Math.max(...values) : Math.min(...values);
-    const allEqual = values.every((val) => val === best);
+    // Resolutions within the keeper's margin count as equal, as they do for the keeper.
+    const margin = metric.key === 'resolution' ? best * KEEPER_RESOLUTION_MARGIN_SHARE : 0;
+    const isBest = (value: number) => value >= best - margin;
+    const allEqual = values.every(isBest);
     for (let i = 0; i < videos.length; i += 1) {
       flags.get(videos[i].id)![metric.key] = allEqual
         ? 'equal'
-        : values[i] === best
+        : isBest(values[i])
           ? 'best'
           : 'worse';
     }
@@ -198,7 +218,14 @@ function buildDuplicateGroupViews(
     if (cached && haveSameVideoRefs(cached.videoRefs, groupVideos)) {
       view = cached.view.group === group
         ? cached.view
-        : { ...cached.view, group, groupSize: group.videoIds.length };
+        : {
+            ...cached.view,
+            group,
+            groupSize: group.videoIds.length,
+            bestFlags: cached.view.group.pictureSizes === group.pictureSizes
+              ? cached.view.bestFlags
+              : computeBestFlags(groupVideos, group.pictureSizes),
+          };
     } else {
       recomputedCount += 1;
       view = {
@@ -210,7 +237,7 @@ function buildDuplicateGroupViews(
           .map((video) => `${video.filename} ${video.path}`)
           .join('\n')
           .toLowerCase(),
-        bestFlags: computeBestFlags(groupVideos),
+        bestFlags: computeBestFlags(groupVideos, group.pictureSizes),
       };
     }
 
@@ -221,7 +248,7 @@ function buildDuplicateGroupViews(
   return { views, cache: nextCache, recomputedCount };
 }
 
-function parentPath(filePath: string): string {
+export function parentPath(filePath: string): string {
   const lastSeparator = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
   return lastSeparator >= 0 ? filePath.slice(0, lastSeparator) : filePath;
 }
@@ -260,6 +287,9 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
   suggestedKeeperId,
   manualSuggestedKeeperId,
   flags,
+  pictureSize,
+  keeperReason,
+  keeperDecision,
   isSelected,
   isLastInGroup,
   onToggleSelection,
@@ -268,10 +298,10 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
 }: DuplicateRowItemProps) {
   const statusBadge = statusBadgeContent(video);
   const thumbnailSrc = thumbSrc(video);
-  const chip = (key: string, label: string) => {
+  const chip = (key: string, label: string, title?: string) => {
     const state = flags[key] ?? 'equal';
     return (
-      <span key={key} className={`meta-chip ${state}`}>
+      <span key={key} className={`meta-chip ${state}`} title={title}>
         {label}
       </span>
     );
@@ -304,15 +334,16 @@ const DuplicateRowItem = memo(function DuplicateRowItem({
           {parentPath(video.path)}
         </span>
         <span className="duplicate-meta-chips">
-          {chip('resolution', formatResolutionLabel(video.width, video.height))}
+          {chip('resolution', formatResolutionLabel(video.width, video.height), formatPictureSizeNote(video.width, video.height, pictureSize))}
           {chip('fps', formatFps(video.fps))}
           {chip('bitrate', bitrateLabel(video))}
           {chip('duration', formatDuration(video.durationSecs))}
           {chip('size', formatSize(video.sizeBytes))}
         </span>
+        {keeperReason && <span className="duplicate-row-reason">Not suggested: {keeperReason}</span>}
       </div>
       {suggestedKeeperId === video.id && (
-        <span className="duplicate-keeper-badge">
+        <span className="duplicate-keeper-badge" title={keeperDecision ?? undefined}>
           <CheckCircle2 size={13} />
           {manualSuggestedKeeperId === video.id ? 'Selected keeper' : 'Suggested keeper'}
         </span>
@@ -340,6 +371,7 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   onToggleSelection,
   onPlayVideo,
   onOpenVideoContextMenu,
+  pictureSize,
 }: DuplicateGalleryCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -364,10 +396,34 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
         isSelected={isSelected}
         onToggleSelect={() => onToggleSelection(video)}
         onPlay={() => onPlayVideo(video.id, groupVideoIds)}
+        resolutionTitle={formatPictureSizeNote(video.width, video.height, pictureSize)}
       />
     </div>
   );
 });
+
+function keeperDecisionLabel(group: DuplicateGroup): string | null {
+  if (!group.keeperRule) return null;
+  if (group.keeperRule === 'path') return 'No difference found; chosen by file name';
+  const rule = KEEPER_RULE_LABELS[group.keeperRule]?.title ?? group.keeperRule;
+  return group.keeperTieBreak ? `Decided by ${rule} (tie-break)` : `Decided by ${rule}`;
+}
+
+/** Warnings that ask for a look before deleting, and plain facts about how the group matched. */
+function groupEvidenceNotes(group: DuplicateGroup): { warnings: string[]; notes: string[] } {
+  const warnings: string[] = [];
+  if (group.confidence === 'low') {
+    if (group.comparedSamples === 1) warnings.push('Single-frame match — check before deleting');
+    if (group.static) warnings.push('Little movement — check before deleting');
+  }
+  const notes: string[] = [];
+  if (group.borderAdjusted) notes.push('Black bars ignored');
+  if (group.flipped) notes.push('Mirrored');
+  if (group.partialFingerprint) notes.push('Partly unreadable');
+  if (group.timingAdjusted) notes.push('Starts a moment earlier or later');
+  if (group.durationDifferenceSecs) notes.push(`Lengths differ by ${group.durationDifferenceSecs.toFixed(1)} s`);
+  return { warnings, notes };
+}
 
 const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
   groupView,
@@ -380,6 +436,7 @@ const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
   onSelectSuggestedDeletions: (groupView: DuplicateGroupView) => void;
   onOpenGroupContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }) {
+  const { warnings, notes } = groupEvidenceNotes(groupView.group);
   return (
     <div className="duplicate-group-panel duplicate-group-panel-header">
       <div
@@ -399,9 +456,16 @@ const DuplicateGroupHeaderPanel = memo(function DuplicateGroupHeaderPanel({
           >
             {groupView.group.similarity.toFixed(1)}%
           </strong>
-          <em>{groupView.groupSize} videos</em>
-          <em>{formatSize(groupView.totalSize)}</em>
-          <em>{groupView.group.reason}</em>
+          <em className="duplicate-group-fact">{groupView.groupSize} videos</em>
+          <em className="duplicate-group-fact">{formatSize(groupView.totalSize)}</em>
+          {warnings.map((warning) => (
+            <span key={warning} className="duplicate-match-badge low-confidence">{warning}</span>
+          ))}
+          {/* Only the description gives way when the header is narrow; the full text is in the tooltip. */}
+          <span className="duplicate-group-notes" title={[groupView.group.reason, ...notes].join(' · ')}>
+            <em>{groupView.group.reason}</em>
+            {notes.map((note) => <em key={note}>{note}</em>)}
+          </span>
         </div>
         <div className="duplicate-group-actions">
           <button
@@ -472,6 +536,9 @@ function DuplicateVirtualRowRenderer({
             suggestedKeeperId={groupView.group.suggestedKeeperId}
             manualSuggestedKeeperId={groupView.group.manualSuggestedKeeperId}
             flags={groupView.bestFlags.get(video.id) ?? {}}
+            pictureSize={groupView.group.pictureSizes?.[video.id] ?? null}
+            keeperReason={groupView.group.manualSuggestedKeeperId ? null : groupView.group.keeperReasons?.[video.id] ?? null}
+            keeperDecision={groupView.group.manualSuggestedKeeperId ? null : keeperDecisionLabel(groupView.group)}
             isSelected={runtime.selectedIds.has(video.id)}
             isLastInGroup={row.isLastInGroup}
             onToggleSelection={runtime.handleToggleSelection}
@@ -510,6 +577,7 @@ function DuplicateVirtualRowRenderer({
                   onToggleSelection={runtime.handleToggleSelection}
                   onPlayVideo={runtime.handlePlayVideo}
                   onOpenVideoContextMenu={runtime.handleOpenVideoContextMenu}
+                  pictureSize={groupView.group.pictureSizes?.[video.id] ?? null}
                 />
               </div>
             );
@@ -580,7 +648,10 @@ function DuplicateGroupsView() {
       return searchText.includes(pathQuery);
     });
 
+    const isLow = (view: DuplicateGroupView) => (view.group.confidence === 'low' ? 1 : 0);
     const sorted = [...filtered].sort((a, b) => {
+      // Matches that need a check stay after the others in either sort order.
+      if (isLow(a) !== isLow(b)) return isLow(a) - isLow(b);
       let diff = 0;
       if (duplicateSortBy === 'similarity') diff = a.group.similarity - b.group.similarity;
       else if (duplicateSortBy === 'groupSize') diff = a.groupSize - b.groupSize;
@@ -653,6 +724,8 @@ function DuplicateGroupsView() {
   const getMarkableDuplicateIds = useCallback((scopeGroups: DuplicateGroupView[]) => {
     const ids: string[] = [];
     for (const { group, videos: groupVideos } of scopeGroups) {
+      // With the suggested keeper already marked for deletion, marking the rest would delete every copy.
+      if (groupVideos.some((video) => video.id === group.suggestedKeeperId && video.status === 'delete')) continue;
       for (const video of groupVideos) {
         if (group.suggestedKeeperId === video.id) continue;
         if (isProtectedFromSuggestion(video)) continue;
@@ -767,17 +840,26 @@ function DuplicateGroupsView() {
     groupsToHide: DuplicateGroup[],
     selectionIdsToRemove: string[],
     title: string,
-    detail: string
+    detail: string,
+    // Groups rebuilt without the ignored pairs; they take the place of the hidden groups.
+    replacementGroups: DuplicateGroup[] = []
   ) => {
     if (nextIgnoredPairKeys.length === 0) return;
     const hiddenGroupIds = new Set(groupsToHide.map((group) => group.id));
+    const replacementIds = new Set(replacementGroups.map((group) => group.id));
     const removedGroups =
       hiddenGroupIds.size > 0
         ? groups.filter((group) => hiddenGroupIds.has(group.id))
         : [];
     addIgnoredDuplicatePairs(nextIgnoredPairKeys);
     if (hiddenGroupIds.size > 0) {
-      setDuplicateGroups(groups.filter((group) => !hiddenGroupIds.has(group.id)));
+      let replaced = false;
+      setDuplicateGroups(groups.flatMap((group) => {
+        if (!hiddenGroupIds.has(group.id)) return [group];
+        if (replaced) return [];
+        replaced = true;
+        return replacementGroups;
+      }));
     }
     if (selectionIdsToRemove.length > 0) {
       const idsToRemove = new Set(selectionIdsToRemove);
@@ -795,10 +877,10 @@ function DuplicateGroupsView() {
       action: () => {
         removeIgnoredDuplicatePairs(nextIgnoredPairKeys);
         if (removedGroups.length > 0) {
-          const currentGroups = useStore.getState().duplicateGroups;
+          const currentGroups = useStore.getState().duplicateGroups.filter((group) => !replacementIds.has(group.id));
           const currentIds = new Set(currentGroups.map((group) => group.id));
           const toRestore = removedGroups.filter((group) => !currentIds.has(group.id));
-          if (toRestore.length > 0) {
+          if (toRestore.length > 0 || replacementIds.size > 0) {
             setDuplicateGroups([...currentGroups, ...toRestore]);
           }
         }
@@ -824,15 +906,32 @@ function DuplicateGroupsView() {
 
   const dismissSelectedPair = () => {
     if (!selectedPair) return;
-    const hideCurrentGroup = selectedPair.group.videoIds.length === 2 ? [selectedPair.group] : [];
+    const { group } = selectedPair;
+    const pairKey = duplicatePairKey(selectedPair.ids[0], selectedPair.ids[1]);
+    if (group.videoIds.length === 2 || !group.pairs) {
+      const hideCurrentGroup = group.videoIds.length === 2 ? [group] : [];
+      ignorePairsWithUndo(
+        [pairKey],
+        hideCurrentGroup,
+        selectedPair.ids,
+        'Pair marked as not a match',
+        hideCurrentGroup.length > 0
+          ? 'This pair will be ignored in future duplicate runs.'
+          : 'This pair is saved as ignored. Run duplicate detection again to rebuild this group.'
+      );
+      return;
+    }
+    // The group keeps its other matches: rebuilt without this pair it may stay whole or split.
+    const rebuilt = rebuildDuplicateGroups([group], { ignoredPairKeys: new Set([pairKey]) }, videosById);
     ignorePairsWithUndo(
-      [duplicatePairKey(selectedPair.ids[0], selectedPair.ids[1])],
-      hideCurrentGroup,
+      [pairKey],
+      [group],
       selectedPair.ids,
       'Pair marked as not a match',
-      hideCurrentGroup.length > 0
-        ? 'This pair will be ignored in future duplicate runs.'
-        : 'This pair is saved as ignored. Run duplicate detection again to rebuild this group.'
+      rebuilt.length === 1
+        ? 'This pair will be ignored in future duplicate runs. The rest of the group still matches.'
+        : 'This pair will be ignored in future duplicate runs. The group was rebuilt from its remaining matches.',
+      rebuilt
     );
   };
 
@@ -844,18 +943,11 @@ function DuplicateGroupsView() {
       .map((id) => duplicatePairKey(videoId, id));
     if (pairKeys.length === 0) return;
 
-    const updatedVideoIds = group.videoIds.filter((id) => id !== videoId);
     const originalGroupIndex = groups.findIndex((entry) => entry.id === group.id);
-    const nextGroups = groups.flatMap((entry) => {
-      if (entry.id !== group.id) return [entry];
-      if (updatedVideoIds.length < 2) return [];
-      return [{
-        ...entry,
-        videoIds: updatedVideoIds,
-        exactVideoIds: entry.exactVideoIds?.filter((id) => id !== videoId),
-        manualSuggestedKeeperId: entry.manualSuggestedKeeperId === videoId ? null : entry.manualSuggestedKeeperId,
-      }];
-    });
+    // Without the video, the rest is rebuilt from the matches that remain between them.
+    const rebuilt = rebuildDuplicateGroups([group], { removedVideoIds: new Set([videoId]) }, videosById);
+    const rebuiltIds = new Set(rebuilt.map((entry) => entry.id));
+    const nextGroups = groups.flatMap((entry) => (entry.id === group.id ? rebuilt : [entry]));
 
     addIgnoredDuplicatePairs(pairKeys);
     setDuplicateGroups(nextGroups);
@@ -878,7 +970,7 @@ function DuplicateGroupsView() {
       action: () => {
         removeIgnoredDuplicatePairs(pairKeys);
         const currentGroups = useStore.getState().duplicateGroups;
-        const withoutGroup = currentGroups.filter((entry) => entry.id !== group.id);
+        const withoutGroup = currentGroups.filter((entry) => entry.id !== group.id && !rebuiltIds.has(entry.id));
         const restoredGroups = [...withoutGroup];
         const insertIndex = originalGroupIndex >= 0
           ? Math.min(originalGroupIndex, restoredGroups.length)

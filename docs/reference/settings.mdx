@@ -102,8 +102,12 @@ Duplicate detection is best treated as a suggestion engine, not an auto-delete s
 | Enable duplicate detection | Turns on duplicate finding and stores duplicate cache data. | Leave it on if duplicates are a normal part of your workflow. |
 | Run after each scan | Starts duplicate detection after scanning. | Leave this off unless duplicates are the main job. |
 | Comparison method | Switches between `pHash` and `Visual similarity`. | Start with `pHash`, the default, which produces few false positives. Try visual similarity when known alternate encodes are missed. |
-| Similarity | Sets the minimum score needed to group videos as duplicates. A group's displayed score is its weakest match, so every result meets this value. | Start around `90-95%`. Raise it when results are noisy. Lower it when real duplicates are being missed. Any value from `0%` to `100%` works, but unrelated videos start to match below `80%` with pHash and at `90%` or lower with visual similarity. Turn on **Separate value per method** to keep one value for pHash and another for visual similarity. |
+| Similarity | Sets the minimum score needed to group videos as duplicates. A group's displayed score is its weakest match, so every result meets this value. | New installs use one value, `90%`, for both methods; turn on **Separate value per method** to keep one value for pHash and another for visual similarity. Raise it when results are noisy. Lower it when real duplicates are being missed. Any value from `0%` to `100%` works, but unrelated videos start to match below `80%` with pHash and below `90%` with visual similarity. |
+| Outline check | Visual similarity only: a sampled frame also needs this pHash similarity, so clips filmed in the same place a moment earlier or later are not reported as copies. Frames that match at 97% or more pass without it, and a copy that starts a moment later is checked after its timing is lined up. | Keep **At least 75% (recommended)**. It is what lets visual similarity use `90%` without grouping different videos. Turn it off only when it keeps apart copies you know are the same. |
 | Samples | Controls how many sampled frames are compared and how they are scored: by their average, by the weakest sample so every sample must match, or with pHash by the first sample where neither frame is dark. | Keep 3 samples scored by average. Choose **Weakest sample** when results are noisy, or **First sample (pHash)** to find more duplicates at the cost of more false positives. |
+| Ignore black bars | Also matches copies that only differ by black bars above, below or beside the picture, such as a letterboxed copy of a full-frame video. It can add matches but never removes one. | Leave it on. Turn it off only when it groups videos you consider different. |
+| Partial clips | **By sound** shows **Find Partial Clips** in the sidebar, which finds videos that contain part of another video. It reads the sound of every video once and keeps it, about 115 KB per hour of sound; each match is checked with pictures. | Turn it on when your library has excerpts, trimmed versions or compilations of other videos. |
+| Double-check near misses | Compares pairs that score up to the chosen number of points below your similarity value again, with frames around each sample, and matches copies that start a moment earlier or later. A pair still has to reach your similarity value. Needs at least 2 samples and does not work with First sample scoring. Visual similarity looks at most 10 points down. The extra frames are read for at most 200 videos per run and kept for later runs. | Keep **Up to 20 points below**. Choose 25 when you use 5 or more samples and still miss shifted copies; turn it off to skip the extra reading. |
 | Default scope | Chooses between all loaded videos or the current filtered view. | Use the filtered view when you want tighter, more deliberate duplicate passes. |
 | Protect marked keep videos | Stops already-kept videos from becoming delete suggestions. | Leave it on. |
 | Protect skipped videos | Leaves skipped videos out of automatic delete suggestions. | Leave it off when Skip means undecided and should still compete. Turn it on when skipped clips must never be suggested for deletion. |
@@ -112,12 +116,16 @@ Duplicate detection is best treated as a suggestion engine, not an auto-delete s
 
 Suggested keeper priority decides which file is preferred inside a duplicate group.
 
+- Readable everywhere: a copy that could not be read at a sampled moment another copy of the group could read is not preferred.
 - Resolution
 - Video bitrate
 - Duration
 - FPS
 - File size
-- Codec, ranked by the codec preference list under it, collapsed until you open it (AV1, H.265 / HEVC, VP9, H.264, VP8, MPEG-4, MPEG-2, WMV / VC-1 by default). Codecs not in the list tie and the next rule decides. Codec is last by default; move it above Video bitrate and File size if you want a more efficient codec to win over a higher bitrate or larger file.
+- Codec, ranked by the codec preference list under it, collapsed until you open it (AV1, H.265 / HEVC, VP9, H.264, VP8, MPEG-4, MPEG-2, WMV / VC-1 by default). Codecs not in the list tie and the next rule decides. Codec comes after File size by default; move it above Video bitrate and File size if you want a more efficient codec to win over a higher bitrate or larger file.
+- Has sound: a copy with an audio track is preferred. A video whose details have not been read yet counts as having sound. It is last by default; move it up if a copy without sound should never be suggested.
+
+Duration ignores differences of up to 2 seconds or 1 percent of the longest copy.
 
 Higher items decide first. Reset the order unless you have a strong reason to prefer a different kind of source file.
 
@@ -136,8 +144,9 @@ Pairs marked **Not a match** stay hidden in future duplicate runs.
 | Duration tolerance | Limits how much two durations may differ and still be compared. | Raise it only when alternate encodes differ slightly in runtime. |
 | Max sampling duration | Caps how much of a long video is sampled. `0` means full length. | Leave it at the default unless very long videos make runs too expensive. |
 | Checkpoint interval | Controls how often long runs save progress. | Change it only for very large duplicate passes. |
-| Ignore black pixels | Helps with fades, black frames, and letterboxing. | Use it when dark frames create false mismatches. |
-| Ignore white pixels | Helps with bright flashes and white frames. | Use it only when bright frames are obviously skewing results. |
+| Skip blank frames | Ignores sampled frames that are a single flat colour, such as a black screen, a grey card or a fade, which would match any other blank frame. Frames that are mostly black are always ignored. A pair whose remaining frames are too few is not matched. | Leave it on. |
+| Match partly unreadable videos | Compares a video on the samples that could be read when some sampled positions could not be decoded, so a damaged or cut-off copy can still match a good file. | Leave it on. |
+| Samples needed for a match | How many samples must be compared before two videos can match. **Automatic** needs 2, or 1 with one sample or first-sample scoring. A match decided by one sample is marked for checking. | Leave it on Automatic. Choose 1 only to find damaged copies when you use many samples, and check those matches before deleting. |
 | Compare flipped videos | Also checks horizontally mirrored copies. | Turn it on only when mirrored duplicates are a real possibility. |
 | Retry failed fingerprints | Retries videos that failed before. | Turn it on when a previous run hit processing failures. |
 
@@ -149,7 +158,7 @@ Processing settings affect future scans, thumbnail runs, and metadata work. They
 | --- | --- | --- |
 | Thumbnails per video | Chooses `1`, `2`, `4`, `6`, or `9` frames per video. | `6` is a good default. Raise it only when the strip is not giving enough context. |
 | Skip intro blackframes (delay) | Delays the first thumbnail to avoid fade-ins or blank starts. | Keep the default `3s` unless your clips start cleanly or need a longer skip. |
-| Parallel FFmpeg processes | Caps how many FFmpeg jobs run at once, or uses auto mode. | Leave it on `Auto` unless the machine becomes unresponsive. |
+| Parallel FFmpeg processes | Caps how many FFmpeg jobs run at once, or uses auto mode. The sound search of Find Partial Clips uses as many processor cores, up to the number the computer has. | Leave it on `Auto` unless the machine becomes unresponsive. |
 | Limit each FFmpeg process to 1 CPU thread | Uses more small FFmpeg processes instead of fewer multi-threaded ones. | Leave it on. The app marks it as recommended for a reason. |
 | Enable hardware acceleration (beta) | Tries to route decoding through the GPU. It is off by default. Duplicate fingerprints always use the CPU. | Leave it off unless CPU decode is the bottleneck and your footage behaves well with it. |
 | Keep the PC awake while processing | Stops the computer from going to sleep on its own while folders are scanned, video info and thumbnails are generated, or duplicates are fingerprinted. Choosing Sleep yourself still works, the screen can still turn off, and paused processing does not keep the PC awake. | Leave it on, especially for long runs on large folders. |

@@ -19,6 +19,10 @@ const {
   rememberDuplicateSignatures,
   DuplicateCancelledError,
 } = require('./duplicates');
+const { getDuplicateResultsSettingsKey, normalizeDuplicateSettings } = require('./duplicate-utils');
+const { findPartialClips, skipPairKeysFor } = require('./partial-clips');
+const { createDuplicateResultsStore } = require('./duplicate-results-store');
+const { createPictureCheckStore } = require('./picture-check-store');
 const { processingPause } = require('./processing-pause');
 const { createRendererSaveFlush } = require('./renderer-save-flush');
 const { createPowerManager } = require('./power-manager');
@@ -2534,15 +2538,8 @@ ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) =>
   return !thumbnailPersistenceFailed;
 })));
 
-ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager.trackWork(async () => {
-  if (activeDuplicateRun) {
-    activeDuplicateRun.cancel();
-    activeDuplicateRun = null;
-  }
-  if (!Array.isArray(videos) || currentScanDirs.size === 0) {
-    return { status: 'error', error: 'No loaded videos to compare.' };
-  }
-
+/** The renderer's videos that may be compared: scanned, inside the session, each file once. */
+async function comparableVideos(videos) {
   const safeVideos = [];
   // One file reached by two paths must never be paired with itself.
   const seenRealPaths = new Set();
@@ -2557,6 +2554,19 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
     seenRealPaths.add(realKey);
     safeVideos.push(video);
   }
+  return safeVideos;
+}
+
+ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager.trackWork(async () => {
+  if (activeDuplicateRun) {
+    activeDuplicateRun.cancel();
+    activeDuplicateRun = null;
+  }
+  if (!Array.isArray(videos) || currentScanDirs.size === 0) {
+    return { status: 'error', error: 'No loaded videos to compare.' };
+  }
+
+  const safeVideos = await comparableVideos(videos);
   if (safeVideos.length < 2) {
     return { status: 'ok', groups: [], videos: [], stats: { groupCount: 0, duplicateVideoCount: 0, exactGroupCount: 0, similarityGroupCount: 0 } };
   }
@@ -2589,6 +2599,8 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
       executionOptions: duplicateExecutionOptions,
       run,
       sendProgress: (payload) => sendToRenderer('duplicate-progress', payload),
+      // "Check remaining near misses": no limit on how many videos get a burst this run.
+      checkAllNearMisses: options?.checkAllNearMisses === true,
     });
     if (activeDuplicateRun === run) activeDuplicateRun = null;
     sendToRenderer('duplicate-progress', { stage: 'Done', current: result.stats.duplicateVideoCount, total: result.stats.duplicateVideoCount });
@@ -2611,6 +2623,59 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
       status: 'error',
       error: err?.message || String(err),
     });
+    return { status: 'error', error: err.message || String(err) };
+  }
+}));
+
+const PAIR_KEY_PATTERN = /^[0-9a-f]{16}\|[0-9a-f]{16}$/;
+const MAX_SKIPPED_PAIRS = 1_000_000;
+
+// Shares the duplicate run's slot, progress channel and cancel action: starting one stops the other.
+ipcMain.handle('find-partial-clips', (_event, videos, options = {}) => powerManager.trackWork(async () => {
+  if (activeDuplicateRun) {
+    activeDuplicateRun.cancel();
+    activeDuplicateRun = null;
+  }
+  if (!Array.isArray(videos) || currentScanDirs.size === 0) {
+    return { status: 'error', error: 'No loaded videos to compare.' };
+  }
+  const safeVideos = await comparableVideos(videos);
+  if (safeVideos.length < 2) return { status: 'ok', clips: [], stats: null };
+
+  const cacheOptions = await getCacheOptions();
+  const appConfig = await readJsonFile(CONFIG_FILE, {});
+  const settings = normalizeDuplicateSettings({ ...appConfig.duplicates, ...(options?.settings ?? {}) });
+  const skipPairKeys = skipPairKeysFor([], settings.ignoredDuplicatePairs);
+  const requestedSkips = Array.isArray(options?.skipPairKeys) ? options.skipPairKeys.slice(0, MAX_SKIPPED_PAIRS) : [];
+  for (const key of requestedSkips) if (typeof key === 'string' && PAIR_KEY_PATTERN.test(key)) skipPairKeys.add(key);
+
+  const run = createDuplicateRun();
+  activeDuplicateRun = run;
+  try {
+    const result = await findPartialClips({
+      videos: safeVideos,
+      settings,
+      skipPairKeys,
+      cacheAccess: cacheService,
+      cacheOptions,
+      pictureChecks: getPictureCheckStore(),
+      maxConcurrency: getConcurrentLimit(appConfig),
+      executionOptions: { cpuThreadsLimited: appConfig.cpuThreadsLimited },
+      run,
+      sendProgress: (payload) => sendToRenderer('duplicate-progress', payload),
+    });
+    if (activeDuplicateRun === run) activeDuplicateRun = null;
+    sendToRenderer('duplicate-progress', { stage: 'Done', current: result.clips.length, total: result.clips.length });
+    log.info('[find-partial-clips] Done', result.stats);
+    return { status: 'ok', settingsKey: getDuplicateResultsSettingsKey(settings), ...result };
+  } catch (err) {
+    if (activeDuplicateRun === run) activeDuplicateRun = null;
+    if (err instanceof DuplicateCancelledError || run.cancelled) {
+      sendToRenderer('duplicate-progress', { stage: 'Cancelled', current: 0, total: 0 });
+      return { status: 'cancelled' };
+    }
+    log.warn('[find-partial-clips] Failed:', err);
+    sendToRenderer('duplicate-progress', { stage: 'Error', current: 0, total: 0, message: err.message });
     return { status: 'error', error: err.message || String(err) };
   }
 }));
@@ -2723,6 +2788,71 @@ ipcMain.handle('save-cache-atomic', (_event, dirPath, videos) => {
   }));
 });
 
+let duplicateResultsStore = null;
+
+function getDuplicateResultsStore() {
+  // Created on first use: the profile decides the data folder only after start-up.
+  duplicateResultsStore ??= createDuplicateResultsStore({ rootDir: app.getPath('userData'), writeJsonFile });
+  return duplicateResultsStore;
+}
+
+let pictureCheckStore = null;
+function getPictureCheckStore() {
+  pictureCheckStore ??= createPictureCheckStore({
+    rootDir: app.getPath('userData'),
+    writeJsonFile,
+    onError: (error) => log.warn('[find-partial-clips] Picture checks not kept:', error?.message || error),
+  });
+  return pictureCheckStore;
+}
+
+/** A session as the renderer names it, accepted only for folders that are loaded now. */
+function validDuplicateResultsSession(session) {
+  if (!session || typeof session !== 'object') return null;
+  const { folders, includeSubfolders, scope } = session;
+  if (!Array.isArray(folders) || folders.length === 0) return null;
+  if (!folders.every((folder) => typeof folder === 'string' && currentScanDirs.has(folder))) return null;
+  if (typeof includeSubfolders !== 'boolean' || (scope !== 'all' && scope !== 'filtered')) return null;
+  return { folders: [...folders], includeSubfolders, scope };
+}
+
+ipcMain.handle('save-duplicate-results', async (_event, session, results) => {
+  const validSession = validDuplicateResultsSession(session);
+  if (!validSession) return false;
+  try {
+    return await getDuplicateResultsStore().save(validSession, results);
+  } catch (error) {
+    log.warn('[duplicate-results] Could not save:', error?.message || error);
+    return false;
+  }
+});
+
+ipcMain.handle('load-duplicate-results', async (_event, session) => {
+  const validSession = validDuplicateResultsSession(session);
+  if (!validSession) return { status: 'none' };
+  try {
+    const results = await getDuplicateResultsStore().load(validSession);
+    if (!results) return { status: 'none' };
+    const appConfig = await readJsonFile(CONFIG_FILE, {});
+    if (results.settingsKey !== getDuplicateResultsSettingsKey(appConfig.duplicates ?? {})) {
+      // A matching setting or the engine changed since: these pairs might no longer match.
+      await getDuplicateResultsStore().remove(validSession);
+      return { status: 'outdated' };
+    }
+    return { status: 'ok', results };
+  } catch (error) {
+    log.warn('[duplicate-results] Could not load:', error?.message || error);
+    return { status: 'none' };
+  }
+});
+
+ipcMain.handle('clear-duplicate-results', async (_event, session) => {
+  const validSession = validDuplicateResultsSession(session);
+  if (!validSession) return false;
+  await getDuplicateResultsStore().remove(validSession).catch(() => {});
+  return true;
+});
+
 ipcMain.handle('clear-cache', async (event, dirPath) => {
   log.warn(`[clear-cache] called for: ${dirPath}`);
   log.warn(`[clear-cache] stack:\n${new Error().stack}`);
@@ -2738,6 +2868,8 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   cancelActiveDuplicateRun();
   scanGeneration += 1;
   clearDuplicateSessionCache();
+  await getDuplicateResultsStore().removeFolders([...currentScanDirs]).catch((error) => log.warn('[clear-cache] Could not clear duplicate results:', error?.message || error));
+  await getPictureCheckStore().clear().catch((error) => log.warn('[clear-cache] Could not clear picture checks:', error?.message || error));
 
   const cacheOptions = await getCacheOptions();
   const knownCacheFolders = await getKnownCacheFolders();

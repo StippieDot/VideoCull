@@ -7,8 +7,10 @@ import AppMenu from './AppMenu';
 import { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail } from './contextMenuBuilders';
 import DuplicateStepper from './DuplicateStepper';
+import { mergeClipsByDuplicateGroup } from './PartialClipsView';
 import {
   buildDuplicatesMenu,
+  buildPartialClipsMenu,
   buildFolderMenu,
   buildParentsMenu,
   buildRootsMenu,
@@ -93,6 +95,7 @@ function ReviewCount() {
 function useLocation(): Location | null {
   const reviewMode = useStore((s) => s.reviewMode);
   const duplicateGroupsMode = useStore((s) => s.duplicateGroupsMode);
+  const partialClipsMode = useStore((s) => s.partialClipsMode);
   const reviewPath = useStore((s) => s.activeReviewVideoPath);
   const filter = useStore((s) => s.folderFilter);
   const filterPath = filter?.path ?? null;
@@ -103,7 +106,7 @@ function useLocation(): Location | null {
     if (directories.length === 0) return null;
     // Playing a video from a duplicate group keeps the duplicate list open underneath, so Review goes first.
     if (!(reviewMode && reviewPath) && duplicateGroupsMode) {
-      return { segments: [{ kind: 'duplicates', label: 'Duplicates', path: 'duplicates' }], browsable: false, filter: null, hiddenAbove: null };
+      return { segments: [{ kind: 'duplicates', label: partialClipsMode ? 'Partial clips' : 'Duplicates', path: 'duplicates' }], browsable: false, filter: null, hiddenAbove: null };
     }
     if (reviewMode && reviewPath) {
       const parts = splitPath(reviewPath);
@@ -132,7 +135,7 @@ function useLocation(): Location | null {
       browsable: true,
       filter,
     };
-  }, [directories, duplicateGroupsMode, gridTopFolder, filter, filterPath, reviewMode, reviewPath]);
+  }, [directories, duplicateGroupsMode, partialClipsMode, gridTopFolder, filter, filterPath, reviewMode, reviewPath]);
 }
 
 function buildControls(location: Location, hasRoots: boolean, lastHasSubfolders: boolean, hiddenCount: number): Control[] {
@@ -247,6 +250,7 @@ function useLocationActions(app: LocationBarAppActions, navigate: (filter: Folde
       openDuplicateSettings: () => appRef.current.openDuplicateSettings(),
       backToGrid: () => store().setDuplicateGroupsMode(false),
       goToGroup: () => document.querySelector<HTMLInputElement>('.duplicate-stepper-input')?.focus(),
+      showDuplicateGroups: () => store().setPartialClipsMode(false),
     };
   }, [navigate]);
 }
@@ -332,6 +336,9 @@ function buildMenu(
   if (control.type === 'subfolders') return buildSubfolderMenu(videosOutsideFolderFilter(state), control.parent, scope, actions);
   if (control.type !== 'segment' && control.type !== 'actions') return null;
   const { segment } = control;
+  if (segment.kind === 'duplicates' && state.partialClipsMode) {
+    return buildPartialClipsMenu(mergeClipsByDuplicateGroup(state.partialClips ?? [], state.duplicateGroups).length, state.duplicateGroups.length, actions);
+  }
   if (segment.kind === 'duplicates') return buildDuplicatesMenu(state.duplicateGroups, state.videos, DUPLICATE_METHOD_NAMES[otherDuplicateMethod(state)], actions);
   const canNarrowReview = !state.duplicateGroupsMode;
   if (segment.kind === 'video') {

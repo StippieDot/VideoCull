@@ -47,7 +47,7 @@ test('duplicate cache state is reused within the library session', async () => {
   }
 });
 
-test('enabling flipped comparison reloads duplicate session data', async () => {
+test('enabling flipped comparison reuses duplicate session data', async () => {
   const videos = [video('a')];
   const baseSettings = normalizeDuplicateSettings({
     comparisonMode: 'phash',
@@ -56,7 +56,7 @@ test('enabling flipped comparison reloads duplicate session data', async () => {
   });
   let opens = 0;
   const cacheAccess = {
-    loadDuplicateFolderState: async (_folderPath, _cacheOptions, _videoIds, settings) => {
+    loadDuplicateFolderState: async () => {
       opens++;
       return {
         videoIds: ['a'],
@@ -68,7 +68,7 @@ test('enabling flipped comparison reloads duplicate session data', async () => {
           video_id: 'a',
           sample_index: 0,
           phash_hex: 'abc',
-          flipped_phash_hex: settings.compareFlipped ? 'def' : null,
+          flipped_phash_hex: 'def',
         }],
       };
     },
@@ -80,7 +80,8 @@ test('enabling flipped comparison reloads duplicate session data', async () => {
     const flippedSettings = { ...baseSettings, compareFlipped: true };
     await __test__.loadDuplicateCacheState(videos, flippedSettings, { cancelled: false }, cacheAccess, {});
     await __test__.loadDuplicateCacheState(videos, flippedSettings, { cancelled: false }, cacheAccess, {});
-    assert.equal(opens, 2);
+    // The mirrored hash is always stored, so the setting is not part of the cached data's identity.
+    assert.equal(opens, 1);
   } finally {
     clearDuplicateSessionCache();
   }
@@ -153,6 +154,148 @@ test('daisy-chain cleanup uses recomputed similarity for retained group scores',
   assert.equal(groups[0].averageSimilarity, 95.3);
 });
 
+test('a video that matches most of a group joins it even when it misses the group representative', () => {
+  const videos = ['r', 'a', 'b', 'c', 'x', 'y'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const pair = (aId, bId, similarity) => ({ aId, bId, similarity, matchType: 'phash' });
+  const matchedPairs = [
+    // 'r' is in the strongest pair and becomes the representative.
+    pair('r', 'a', 99), pair('r', 'b', 98), pair('r', 'c', 98),
+    pair('a', 'b', 97), pair('a', 'c', 97), pair('b', 'c', 97),
+    // 'x' matches three of the four members, 'y' only one.
+    pair('x', 'a', 96), pair('x', 'b', 96), pair('x', 'c', 96),
+    pair('y', 'a', 96),
+  ];
+
+  const groups = __test__.buildGroups([], matchedPairs, videosById, settings);
+
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].videoIds.toSorted(), ['a', 'b', 'c', 'r', 'x']);
+});
+
+test('a smaller group that matches most of a larger one joins it despite the representative', () => {
+  const videos = ['r', 'a', 'b', 'c', 'x', 'y'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const pair = (aId, bId, similarity) => ({ aId, bId, similarity, matchType: 'phash' });
+  const matchedPairs = [
+    pair('r', 'a', 99), pair('r', 'b', 99), pair('r', 'c', 99),
+    pair('a', 'b', 99), pair('a', 'c', 99), pair('b', 'c', 99),
+    // 'x' and 'y' pair up first (98) and then cannot merge: neither matches the representative 'r'.
+    pair('x', 'y', 98),
+    pair('x', 'a', 96), pair('x', 'b', 96), pair('x', 'c', 96),
+    pair('y', 'a', 96), pair('y', 'b', 96),
+  ];
+
+  const groups = __test__.buildGroups([], matchedPairs, videosById, settings);
+
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].videoIds.toSorted(), ['a', 'b', 'c', 'r', 'x', 'y']);
+});
+
+test('a group does not join a larger one when one of its videos matches too few members', () => {
+  const videos = ['r', 'a', 'b', 'c', 'x', 'y'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const pair = (aId, bId, similarity) => ({ aId, bId, similarity, matchType: 'phash' });
+  const matchedPairs = [
+    pair('r', 'a', 99), pair('r', 'b', 99), pair('r', 'c', 99),
+    pair('a', 'b', 99), pair('a', 'c', 99), pair('b', 'c', 99),
+    pair('x', 'y', 98),
+    pair('x', 'a', 96), pair('x', 'b', 96), pair('x', 'c', 96),
+    pair('y', 'a', 96),
+  ];
+
+  const groups = __test__.buildGroups([], matchedPairs, videosById, settings);
+
+  assert.deepEqual(groups.map((group) => group.videoIds.toSorted()).toSorted(), [['a', 'b', 'c', 'r'], ['x', 'y']]);
+});
+
+test('a group with a pair of static videos is marked static', () => {
+  const videos = ['a', 'b', 'c', 'd'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const groups = __test__.buildGroups([], [
+    { aId: 'a', bId: 'b', similarity: 100, matchType: 'phash', static: true },
+    { aId: 'c', bId: 'd', similarity: 99, matchType: 'phash', static: false },
+  ], videosById, settings);
+
+  assert.deepEqual(groups.map((group) => [group.videoIds.toSorted().join(''), group.static]), [['ab', true], ['cd', false]]);
+});
+
+test('a single-sample match alone does not join a video to a group of three or more', () => {
+  const videos = ['a', 'b', 'c', 'x'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const pair = (aId, bId, similarity, comparedSamples = 3) => ({
+    aId, bId, similarity, matchType: 'phash', comparedSamples, confidence: comparedSamples === 1 ? 'low' : 'normal',
+  });
+  const core = [pair('a', 'b', 99), pair('a', 'c', 99), pair('b', 'c', 99)];
+
+  // 'x' reaches two members, each on one sample only: nothing else links 'x', so it stays out.
+  const weak = __test__.buildGroups([], [...core, pair('x', 'a', 100, 1), pair('x', 'b', 100, 1)], videosById, settings);
+  assert.deepEqual(weak.map((group) => group.videoIds.toSorted()), [['a', 'b', 'c']]);
+  assert.deepEqual([weak[0].comparedSamples, weak[0].confidence], [3, 'normal']);
+
+  // With normal links as well, the single-sample link is supported and 'x' joins.
+  const supported = __test__.buildGroups([], [...core, pair('x', 'a', 100, 1), pair('x', 'b', 97), pair('x', 'c', 97)], videosById, settings);
+  assert.deepEqual(supported.map((group) => group.videoIds.toSorted()), [['a', 'b', 'c', 'x']]);
+  assert.deepEqual([supported[0].comparedSamples, supported[0].confidence], [1, 'low']);
+});
+
+test('a two-video group may rest on one sample and is marked low confidence', () => {
+  const videos = ['a', 'b'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const [group] = __test__.buildGroups([], [{ aId: 'a', bId: 'b', similarity: 100, matchType: 'phash', comparedSamples: 1, confidence: 'low' }], videosById, settings);
+  assert.deepEqual([group.videoIds.toSorted(), group.comparedSamples, group.confidence], [['a', 'b'], 1, 'low']);
+  const [exactOnly] = __test__.buildGroups([['a', 'b']], [], videosById, settings);
+  assert.deepEqual([exactOnly.comparedSamples, exactOnly.confidence], [null, 'normal']);
+});
+
+test('groups state their relation, evidence and flags', () => {
+  const videos = ['a', 'b', 'c', 'd', 'e'].map(video);
+  videos[4].durationSecs = 130;
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash', sampleCount: 3 });
+  const pair = (aId, bId, extra = {}) => ({
+    aId, bId, similarity: 98, matchType: 'phash', comparedSamples: 3, confidence: 'normal', ...extra,
+  });
+  const groups = __test__.buildGroups([['a', 'b']], [
+    pair('a', 'c', { comparedSamples: 2, borderAdjusted: true }),
+    pair('b', 'c', { flipped: true }),
+    pair('d', 'e', { partialFingerprint: true }),
+  ], videosById, settings);
+  const byMembers = Object.fromEntries(groups.map((group) => [group.videoIds.toSorted().join(''), group]));
+
+  const mixed = byMembers.abc;
+  assert.deepEqual(
+    [mixed.relation, mixed.reason, mixed.comparedSamples, mixed.sampleCount, mixed.borderAdjusted, mixed.flipped, mixed.partialFingerprint, mixed.durationDifferenceSecs],
+    ['sameSpan', 'Identical files and same content at 2 of 3 sampled moments', 2, 3, true, true, false, null],
+  );
+  const direct = byMembers.de;
+  assert.deepEqual(
+    [direct.relation, direct.reason, direct.partialFingerprint, direct.borderAdjusted, direct.durationDifferenceSecs],
+    ['sameSpan', 'Same content at 3 of 3 sampled moments', true, false, 30],
+  );
+
+  const [exact] = __test__.buildGroups([['a', 'b']], [], videosById, settings);
+  assert.deepEqual([exact.relation, exact.reason, exact.comparedSamples, exact.confidence], ['exact', 'Identical files', null, 'normal']);
+});
+
+test('groups carry each member\'s unreadable positions and the keeper avoids a damaged copy', () => {
+  const videos = ['a', 'b'].map(video);
+  const videosById = new Map(videos.map((item) => [item.id, item]));
+  const settings = normalizeDuplicateSettings({ finalSimilarityThreshold: 95, comparisonMode: 'phash' });
+  const [group] = __test__.buildGroups([], [{ aId: 'a', bId: 'b', similarity: 98, matchType: 'phash', comparedSamples: 2 }], videosById, settings, {
+    unreadableSamplesByVideo: new Map([['a', [{ index: 2, percent: 75 }]], ['b', []]]),
+  });
+  assert.deepEqual(group.unreadableSamples, { a: [{ index: 2, percent: 75 }], b: [] });
+  assert.equal(group.suggestedKeeperId, 'b');
+  assert.equal(group.keeperRule, 'health');
+});
+
 test('group score is the weakest matched pair so it never exceeds any member pair', () => {
   const videos = ['a', 'b', 'c'].map(video);
   const videosById = new Map(videos.map((item) => [item.id, item]));
@@ -182,6 +325,8 @@ test('multi-frame extraction args reuse one ffmpeg command for all timestamps', 
   assert.ok(args.includes('pipe:1'));
   assert.ok(args.some((value) => typeof value === 'string' && value.includes('setsar=1')));
   assert.ok(args.some((value) => typeof value === 'string' && value.includes('concat=n=3:v=1:a=0[out]')));
+  // Without passthrough FFmpeg drops frames that share a timestamp and returns at most 3.
+  assert.equal(args[args.indexOf('-fps_mode') + 1], 'passthrough');
 });
 
 test('multi-frame extraction args can disable ffmpeg thread limiting', () => {
@@ -192,20 +337,43 @@ test('multi-frame extraction args can disable ffmpeg thread limiting', () => {
   assert.equal(args.includes('-threads'), false);
 });
 
-test('fingerprint building skips flipped hashes unless compareFlipped is enabled', () => {
-  const grayFrame = Buffer.alloc(32 * 32, 128);
-  const timestamps = [12.5];
+test('fingerprint building always stores the mirrored hash', () => {
+  const primary = Buffer.from(Array.from({ length: 32 * 32 }, (_, index) => (index % 32) * 8));
+  const [fingerprint] = __test__.buildFingerprintsFromGrayFrames([{ primary, analysis: Buffer.alloc(64 * 64, 128) }], [12.5]);
 
-  const withoutFlipped = __test__.buildFingerprintsFromGrayFrames([grayFrame], timestamps, {
-    compareFlipped: false,
-  });
-  assert.equal(withoutFlipped[0].flippedPHashHex, null);
+  assert.match(fingerprint.flippedPHashHex, /^[0-9a-f]{16}$/);
+  assert.notEqual(fingerprint.flippedPHashHex, fingerprint.phashHex);
+});
 
-  const withFlipped = __test__.buildFingerprintsFromGrayFrames([grayFrame], timestamps, {
-    compareFlipped: true,
-  });
-  assert.equal(typeof withFlipped[0].flippedPHashHex, 'string');
-  assert.ok(withFlipped[0].flippedPHashHex.length > 0);
+test('fingerprints carry the luma range and, for a video with black bars, the picture inside them', () => {
+  const letterboxed = (seed) => {
+    const analysis = Buffer.alloc(64 * 64);
+    for (let y = 8; y < 56; y++) {
+      for (let x = 0; x < 64; x++) analysis[y * 64 + x] = 40 + ((x * 3 + y * 5 + seed) % 200);
+    }
+    return { primary: Buffer.from(Array.from({ length: 32 * 32 }, (_, index) => (index * seed) % 256)), analysis };
+  };
+  const plain = { primary: Buffer.alloc(32 * 32, 90), analysis: Buffer.alloc(64 * 64, 90) };
+
+  const barred = __test__.buildFingerprintsFromGrayFrames([letterboxed(3), null, letterboxed(7)], [10, 20, 30]);
+  assert.deepEqual(barred.map((fingerprint) => fingerprint.borderLtrb), ['0,8,0,8', undefined, '0,8,0,8']);
+  assert.match(barred[0].cropPHashHex, /^[0-9a-f]{16}$/);
+  assert.match(barred[0].cropFlippedPHashHex, /^[0-9a-f]{16}$/);
+  assert.equal(barred[0].cropGrayBytes.length, 32 * 32);
+  // The cropped frame holds picture only: nothing of the bars is left in it.
+  assert.ok(barred[0].cropGrayBytes.every((value) => value >= 40));
+  assert.equal(barred[0].lumaRange, 255);
+  assert.equal(barred[1].sampleState, 'unreadable');
+
+  const [unbarred] = __test__.buildFingerprintsFromGrayFrames([plain, plain], [10, 20]);
+  assert.deepEqual(
+    { border: unbarred.borderLtrb, hash: unbarred.cropPHashHex, bytes: unbarred.cropGrayBytes, range: unbarred.lumaRange },
+    { border: null, hash: null, bytes: null, range: 0 },
+  );
+
+  // One frame is not enough to believe a border when the video has several samples.
+  const [single] = __test__.buildFingerprintsFromGrayFrames([letterboxed(3), null], [10, 20]);
+  assert.equal(single.borderLtrb, null);
 });
 
 test('single-frame fallback is enabled for incomplete-output and concat failures', () => {

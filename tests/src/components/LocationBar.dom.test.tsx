@@ -27,7 +27,7 @@ function actionsMock(): LocationActions {
   return {
     reviewFolder: vi.fn(), reviewOnlyFolder: vi.fn(), filterToPath: vi.fn(), setIncludeSubfolders: vi.fn(), regenerateThumbnails: vi.fn(),
     reveal: vi.fn(), copyPath: vi.fn(), playExternally: vi.fn(), openFolderSearch: vi.fn(), showFolderInGrid: vi.fn(),
-    findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn(), goToGroup: vi.fn(), openRecent: vi.fn(), switchDuplicateMethod: vi.fn(),
+    findDuplicates: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn(), goToGroup: vi.fn(), showDuplicateGroups: vi.fn(), openRecent: vi.fn(), switchDuplicateMethod: vi.fn(),
   };
 }
 

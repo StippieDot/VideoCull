@@ -314,9 +314,45 @@ const SCHEMA = `
     gray_bytes       BLOB NOT NULL,
     frame_dark_ratio REAL,
     fingerprint_key  TEXT,
+    sample_state     TEXT,
+    luma_range       INTEGER,
+    border_ltrb      TEXT,
+    crop_phash_hex   TEXT,
+    crop_flipped_phash_hex TEXT,
+    crop_gray_bytes  BLOB,
     created_at       INTEGER,
     updated_at       INTEGER,
     PRIMARY KEY (video_id, sample_index)
+  );
+
+  -- Frames around each sample time, read to double-check near misses. state 'failed' records a video
+  -- that gave no frames, so it is not read again until failed extractions are retried.
+  CREATE TABLE IF NOT EXISTS video_bursts (
+    video_id    TEXT PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+    burst_key   TEXT NOT NULL,
+    state       TEXT NOT NULL,
+    frames_json TEXT,
+    created_at  INTEGER
+  );
+
+  -- The sound of each video as words, for finding partial clips. state is ok, noAudio, silent,
+  -- repetitive or failed; only ok rows hold words.
+  CREATE TABLE IF NOT EXISTS video_audio_fingerprints (
+    video_id   TEXT PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+    audio_key  TEXT NOT NULL,
+    state      TEXT NOT NULL,
+    words      BLOB,
+    word_count INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER
+  );
+
+  -- The same for Visual similarity: the gray frames around each sample time.
+  CREATE TABLE IF NOT EXISTS video_gray_bursts (
+    video_id    TEXT PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+    burst_key   TEXT NOT NULL,
+    state       TEXT NOT NULL,
+    frames_json TEXT,
+    created_at  INTEGER
   );
 
   CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
@@ -361,6 +397,16 @@ const VIDEO_SCHEMA_COLUMNS = {
 const FINGERPRINT_SCHEMA_COLUMNS = {
   flipped_phash_hex: 'TEXT',
   fingerprint_key: 'TEXT',
+  // NULL for a decoded sample, 'unreadable' for a position FFmpeg returned no frame for.
+  sample_state: 'TEXT',
+  // Highest minus lowest luma of the compared frame.
+  luma_range: 'INTEGER',
+  // Black bars found for the video as "left,top,right,bottom" in 64ths, with the hashes and frame of
+  // the picture inside them. NULL when the video has no bars.
+  border_ltrb: 'TEXT',
+  crop_phash_hex: 'TEXT',
+  crop_flipped_phash_hex: 'TEXT',
+  crop_gray_bytes: 'BLOB',
 };
 
 // ── DB lifecycle ──────────────────────────────────────────────────────────
@@ -659,11 +705,20 @@ function createVideoBatchWriter(db, videos, options = {}) {
     'INSERT INTO thumbnails (video_id, idx, file_path) VALUES (?, ?, ?)'
   );
   const deleteFingerprints = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
+  const deleteBursts = db.prepare('DELETE FROM video_bursts WHERE video_id = ?');
+  const deleteGrayBursts = db.prepare('DELETE FROM video_gray_bursts WHERE video_id = ?');
+  const deleteAudio = db.prepare('DELETE FROM video_audio_fingerprints WHERE video_id = ?');
 
   const write = db.transaction((vids) => {
     for (const v of vids) {
       resolvePathConflict(v);
-      if (changedFingerprintIds.has(v.id)) deleteFingerprints.run(v.id);
+      // Everything read from the file goes when the file changed; the video row itself stays.
+      if (changedFingerprintIds.has(v.id)) {
+        deleteFingerprints.run(v.id);
+        deleteBursts.run(v.id);
+        deleteGrayBursts.run(v.id);
+        deleteAudio.run(v.id);
+      }
       upsertVideo.run(
         v.id, v.filename, v.path, v.sizeBytes,
         v.date ?? null, v.metadataDate ?? null,
@@ -955,9 +1010,7 @@ function getFingerprintCounts(db, videoIds, sampleCount, options = {}) {
     const placeholders = chunk.map(() => '?').join(',');
     const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const batch = db.prepare(`
-      SELECT video_id,
-             COUNT(*) AS sample_count,
-             SUM(CASE WHEN flipped_phash_hex IS NOT NULL AND flipped_phash_hex <> '' THEN 1 ELSE 0 END) AS flipped_count
+      SELECT video_id, COUNT(*) AS sample_count
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
         ${fingerprintFilter}
@@ -967,9 +1020,7 @@ function getFingerprintCounts(db, videoIds, sampleCount, options = {}) {
   }
   const result = new Map();
   for (const row of rows) {
-    const enoughSamples = Number(row.sample_count) >= sampleCount;
-    const enoughFlipped = !options.requireFlipped || Number(row.flipped_count) >= sampleCount;
-    result.set(row.video_id, enoughSamples && enoughFlipped);
+    result.set(row.video_id, Number(row.sample_count) >= sampleCount);
   }
   return result;
 }
@@ -980,11 +1031,16 @@ function saveVideoFingerprints(db, videoId, fingerprints, options = {}) {
   const clear = db.prepare('DELETE FROM video_fingerprints WHERE video_id = ?');
   const insert = db.prepare(`
     INSERT INTO video_fingerprints
-      (video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio, fingerprint_key, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, gray_bytes, frame_dark_ratio, fingerprint_key, sample_state,
+       luma_range, border_ltrb, crop_phash_hex, crop_flipped_phash_hex, crop_gray_bytes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const write = db.transaction(() => {
     clear.run(videoId);
+    // Frames around the samples were read with the old fingerprint: a position that was unreadable then
+    // stays empty in them, so they are read again when a near miss needs them.
+    db.prepare('DELETE FROM video_bursts WHERE video_id = ?').run(videoId);
+    db.prepare('DELETE FROM video_gray_bursts WHERE video_id = ?').run(videoId);
     for (const fp of fingerprints) {
       insert.run(
         videoId,
@@ -995,6 +1051,12 @@ function saveVideoFingerprints(db, videoId, fingerprints, options = {}) {
         fp.grayBytes,
         fp.frameDarkRatio ?? null,
         options.fingerprintKey ?? null,
+        fp.sampleState ?? null,
+        fp.lumaRange ?? null,
+        fp.borderLtrb ?? null,
+        fp.cropPHashHex ?? null,
+        fp.cropFlippedPHashHex ?? null,
+        fp.cropGrayBytes ?? null,
         now,
         now
       );
@@ -1008,6 +1070,56 @@ function markFingerprintFailure(db, videoId, options = {}) {
   if (!videoId) return;
   db.prepare('UPDATE videos SET fingerprint_failed_at = ?, fingerprint_failure_key = ? WHERE id = ?')
     .run(Date.now(), options.fingerprintKey ?? null, videoId);
+}
+
+const BURST_TABLES = { hash: 'video_bursts', gray: 'video_gray_bursts' };
+
+function burstTable(kind) {
+  const table = BURST_TABLES[kind ?? 'hash'];
+  if (!table) throw new Error(`Unknown burst kind: ${kind}`);
+  return table;
+}
+
+/** Stored bursts of `kind` ('hash' or 'gray') under `burstKey`, as `{ video_id, state, frames_json }` rows. */
+function loadVideoBursts(db, videoIds, burstKey, kind = 'hash') {
+  if (!videoIds.length) return [];
+  return batchSelectIn(
+    db,
+    `SELECT video_id, burst_key, state, frames_json FROM ${burstTable(kind)} WHERE video_id IN (__IN__)`,
+    videoIds,
+  ).filter((row) => row.burst_key === burstKey);
+}
+
+function saveVideoBurst(db, videoId, burstKey, state, framesJson, kind = 'hash') {
+  if (!videoId || !burstKey || (state !== 'ok' && state !== 'failed')) return;
+  db.prepare(`
+    INSERT INTO ${burstTable(kind)} (video_id, burst_key, state, frames_json, created_at) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(video_id) DO UPDATE SET
+      burst_key = excluded.burst_key, state = excluded.state, frames_json = excluded.frames_json, created_at = excluded.created_at
+  `).run(videoId, burstKey, state, state === 'ok' ? framesJson : null, Date.now());
+}
+
+const AUDIO_STATES = new Set(['ok', 'noAudio', 'silent', 'repetitive', 'failed']);
+
+/** Stored sound fingerprints under `audioKey`, as `{ video_id, state, words, word_count }` rows. */
+function loadAudioFingerprints(db, videoIds, audioKey) {
+  if (!videoIds.length) return [];
+  return batchSelectIn(
+    db,
+    'SELECT video_id, audio_key, state, words, word_count FROM video_audio_fingerprints WHERE video_id IN (__IN__)',
+    videoIds,
+  ).filter((row) => row.audio_key === audioKey);
+}
+
+function saveAudioFingerprint(db, videoId, audioKey, state, words) {
+  if (!videoId || !audioKey || !AUDIO_STATES.has(state)) return;
+  const stored = state === 'ok' && words ? Buffer.from(words) : null;
+  db.prepare(`
+    INSERT INTO video_audio_fingerprints (video_id, audio_key, state, words, word_count, created_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(video_id) DO UPDATE SET
+      audio_key = excluded.audio_key, state = excluded.state, words = excluded.words,
+      word_count = excluded.word_count, created_at = excluded.created_at
+  `).run(videoId, audioKey, state, stored, stored ? Math.floor(stored.length / 4) : 0, Date.now());
 }
 
 function loadFingerprintFailureIds(db, videoIds, options = {}) {
@@ -1083,7 +1195,8 @@ function loadPHashRows(db, videoIds, sampleCount, options = {}) {
     const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const startedAt = performance.now();
     const batch = db.prepare(`
-      SELECT video_id, sample_index, phash_hex, flipped_phash_hex, frame_dark_ratio
+      SELECT video_id, sample_index, timestamp_secs, phash_hex, flipped_phash_hex, frame_dark_ratio, sample_state, luma_range,
+             border_ltrb, crop_phash_hex, crop_flipped_phash_hex
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
         ${fingerprintFilter}
@@ -1109,7 +1222,8 @@ function loadGraySampleRows(db, videoIds, sampleCount, options = {}) {
     const fingerprintFilter = options.fingerprintKey ? 'AND fingerprint_key = ?' : '';
     const startedAt = performance.now();
     const batch = db.prepare(`
-      SELECT video_id, sample_index, gray_bytes, frame_dark_ratio
+      SELECT video_id, sample_index, timestamp_secs, phash_hex, gray_bytes, frame_dark_ratio, sample_state, luma_range,
+             border_ltrb, crop_gray_bytes
       FROM video_fingerprints
       WHERE video_id IN (${placeholders})
         ${fingerprintFilter}
@@ -1286,6 +1400,10 @@ module.exports = {
   getFingerprintCounts,
   saveVideoFingerprints,
   markFingerprintFailure,
+  loadVideoBursts,
+  saveVideoBurst,
+  loadAudioFingerprints,
+  saveAudioFingerprint,
   loadFingerprintFailureIds,
   markMetadataFailure,
   loadRecentMetadataFailureIds,

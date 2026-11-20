@@ -1,0 +1,435 @@
+// Runs duplicate detection without the app window on a folder of videos, using the real FFmpeg and an
+// in-memory cache, so results can be compared before and after a change to the duplicate engine.
+//
+//   node scripts/duplicate-collection-check.js <folder> [--mode phash|visual] [--samples <n>] [--set <key>=<value>]... [--recursive] [--partial] [--snapshot <file>]
+//   node scripts/duplicate-collection-check.js --diff <before.json> <after.json>
+//
+// When <folder> holds a manifest.json written by scripts/duplicate-test-media/build.js, every file is
+// compared with its expected relation. --snapshot writes the found groups; --diff lists the groups
+// that were added or removed between two snapshots. --set passes any duplicate setting, such as
+// --set minComparedSamples=1 or --set skipBlankFrames=false. --recursive includes subfolders. --partial
+// also runs partial clip detection after the duplicate run and compares it with the manifest.
+const { execFileSync } = require('node:child_process');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const { fingerprintToRow } = require('../electron/duplicate-utils');
+
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v', '.wmv', '.mpg', '.ts']);
+
+/**
+ * Stands in for the folder databases: the four operations a duplicate run needs, kept in memory.
+ */
+function createMemoryCache() {
+  const fingerprints = new Map();
+  const failures = new Map();
+  const signatures = new Map();
+  const bursts = new Map();
+  const audio = new Map();
+  return {
+    audio,
+    async loadDuplicateFolderState(_folder, _options, videoIds, settings) {
+      const completeEntries = [];
+      const failedIds = [];
+      const comparisonRows = [];
+      for (const videoId of videoIds) {
+        const stored = fingerprints.get(videoId);
+        if (stored?.key === settings.fingerprintKey) {
+          completeEntries.push([videoId, true]);
+          comparisonRows.push(...stored.rows);
+        }
+        if (failures.get(videoId) === settings.fingerprintKey) failedIds.push(videoId);
+      }
+      return {
+        videoIds,
+        signatureRows: videoIds.map((videoId) => signatures.get(videoId)).filter(Boolean),
+        completeEntries,
+        failedIds,
+        mode: settings.comparisonMode,
+        comparisonRows,
+      };
+    },
+    async updateVideoSignatures(_folder, _options, videoId, update) {
+      const previous = signatures.get(videoId) ?? { id: videoId };
+      signatures.set(videoId, {
+        ...previous,
+        file_signature_quick: update.quick ?? previous.file_signature_quick ?? null,
+        file_signature_full: update.full ?? previous.file_signature_full ?? null,
+      });
+    },
+    async saveVideoFingerprints(_folder, _options, videoId, rows, key) {
+      failures.delete(videoId);
+      fingerprints.set(videoId, {
+        key,
+        rows: rows.map((row) => fingerprintToRow(videoId, row)),
+      });
+    },
+    async markFingerprintFailure(_folder, _options, videoId, key) {
+      failures.set(videoId, key);
+    },
+    async loadAudioFingerprints(_folder, _options, videoIds, audioKey) {
+      return videoIds.map((videoId) => audio.get(videoId)).filter((row) => row?.audio_key === audioKey);
+    },
+    async saveAudioFingerprint(_folder, _options, videoId, audioKey, state, words) {
+      const stored = state === 'ok' && words ? Buffer.from(words) : null;
+      audio.set(videoId, { video_id: videoId, audio_key: audioKey, state, words: stored, word_count: stored ? stored.length / 4 : 0 });
+    },
+    async loadVideoBursts(_folder, _options, videoIds, burstKey, kind = 'hash') {
+      return videoIds
+        .map((videoId) => bursts.get(`${kind}|${videoId}`))
+        .filter((row) => row?.burst_key === burstKey);
+    },
+    async saveVideoBurst(_folder, _options, videoId, burstKey, state, framesJson, kind = 'hash') {
+      bursts.set(`${kind}|${videoId}`, { video_id: videoId, burst_key: burstKey, state, frames_json: framesJson });
+    },
+  };
+}
+
+/** Video files in the folder, as paths relative to it; with `recursive` also those in subfolders. */
+function listVideos(folder, recursive = false) {
+  const found = [];
+  const visit = (relative) => {
+    for (const entry of fs.readdirSync(path.join(folder, relative), { withFileTypes: true })) {
+      const entryPath = path.join(relative, entry.name);
+      if (entry.isDirectory() && recursive) visit(entryPath);
+      else if (entry.isFile() && VIDEO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) found.push(entryPath);
+    }
+  };
+  visit('');
+  return found.sort();
+}
+
+function probeVideo(ffprobePath, folder, filename) {
+  const filePath = path.join(folder, filename);
+  const stat = fs.statSync(filePath);
+  let info = {};
+  try {
+    info = JSON.parse(execFileSync(ffprobePath, ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', filePath], {
+      windowsHide: true,
+      maxBuffer: 1 << 24,
+    }).toString());
+  } catch {
+    // An unreadable file still takes part, as it would in the app; it simply has no metadata.
+  }
+  const videoStream = (info.streams ?? []).find((stream) => stream.codec_type === 'video');
+  const audioStream = (info.streams ?? []).find((stream) => stream.codec_type === 'audio');
+  const frameRate = String(videoStream?.avg_frame_rate ?? '').split('/');
+  return {
+    // Same identity rule as the scanner: path and size.
+    id: crypto.createHash('md5').update(`${filePath}:${stat.size}`).digest('hex').slice(0, 16),
+    filename: path.basename(filename),
+    path: filePath,
+    sizeBytes: stat.size,
+    date: stat.mtimeMs,
+    durationSecs: Number(info.format?.duration) || 0,
+    width: videoStream?.width ?? null,
+    height: videoStream?.height ?? null,
+    // Rounded to 0.01 as the app stores it.
+    fps: Math.round((Number(frameRate[0]) / Number(frameRate[1])) * 100) / 100 || null,
+    videoCodec: videoStream?.codec_name ?? null,
+    audioCodec: audioStream?.codec_name ?? null,
+    // Any version marks a successful probe, which the keeper's sound rule requires.
+    metadataVersion: info.format ? 1 : null,
+    // Same fields the keeper rules read in the app.
+    videoBitrate: Number(videoStream?.bit_rate) || null,
+    totalBitrate: Number(info.format?.bit_rate) || null,
+  };
+}
+
+/**
+ * Compares found groups with a manifest. `groupOf` maps a filename to its group, or undefined.
+ * A file is expected in its seed's group when its relation to the seed is `exact` or `sameSpan`.
+ */
+function compareWithManifest(manifest, groupOf) {
+  const referenceBySeed = new Map();
+  for (const entry of manifest.files) {
+    if (!referenceBySeed.has(entry.seed)) referenceBySeed.set(entry.seed, entry.file);
+  }
+  const together = (a, b) => {
+    const group = groupOf(a);
+    return group !== undefined && group === groupOf(b);
+  };
+  const rows = [];
+  for (const entry of manifest.files) {
+    const reference = referenceBySeed.get(entry.seed);
+    if (reference === entry.file) continue;
+    // 'check': a relation nobody has confirmed yet, shown but not judged.
+    const expected = entry.expect === 'check' ? null : entry.expect === 'exact' || entry.expect === 'sameSpan';
+    const found = together(entry.file, reference);
+    rows.push({
+      kind: entry.expect,
+      a: entry.file,
+      b: reference,
+      expected,
+      found,
+      needs: entry.needs ?? null,
+      similarity: found ? groupOf(entry.file).similarity : null,
+    });
+  }
+  for (const pair of manifest.negatives ?? []) {
+    const found = together(pair.a, pair.b);
+    rows.push({ kind: 'none', a: pair.a, b: pair.b, expected: false, found, needs: null, similarity: found ? groupOf(pair.a).similarity : null });
+  }
+  for (const pair of manifest.measuredOnly ?? []) {
+    const found = together(pair.a, pair.b);
+    rows.push({ kind: 'measured', a: pair.a, b: pair.b, expected: null, found, needs: null, similarity: found ? groupOf(pair.a).similarity : null });
+  }
+  const judged = rows.filter((row) => row.expected !== null);
+  return {
+    rows,
+    summary: {
+      found: judged.filter((row) => row.expected && row.found).length,
+      missed: judged.filter((row) => row.expected && !row.found).length,
+      wrong: judged.filter((row) => !row.expected && row.found).length,
+      correctlyApart: judged.filter((row) => !row.expected && !row.found).length,
+    },
+  };
+}
+
+/**
+ * Compares found partial clips with a manifest: every file whose expect is `partial` must come out as a
+ * partial clip of its seed's reference file with each listed segment (start in both, length) within
+ * 1 second. A negative pair reported as a partial clip is wrong; one reported as shared sound is shown.
+ * Clips whose manifest note says they share only pictures need the picture search and are shown, not
+ * judged.
+ */
+function comparePartialWithManifest(manifest, clipBetween) {
+  const referenceBySeed = new Map();
+  for (const entry of manifest.files) {
+    if (!referenceBySeed.has(entry.seed)) referenceBySeed.set(entry.seed, entry.file);
+  }
+  const close = (a, b) => Math.abs(a - b) <= 1;
+  const rows = [];
+  for (const entry of manifest.files) {
+    if (entry.expect !== 'partial') continue;
+    const reference = referenceBySeed.get(entry.seed);
+    const found = clipBetween(entry.file, reference);
+    const segmentsMatch = Boolean(found) && found.relation === 'partial' && entry.segments.every((expected) => found.segments.some((segment) => (
+      close(segment.startClip, expected.clipStart) && close(segment.startSource, expected.sourceStart) && close(segment.lengthSecs, expected.length)
+    )));
+    rows.push({
+      kind: 'partial',
+      a: entry.file,
+      b: reference,
+      expected: /visual evidence only/.test(entry.note ?? '') ? null : true,
+      found: segmentsMatch,
+      detail: found ? describeClip(found) : '-',
+    });
+  }
+  for (const pair of manifest.negatives ?? []) {
+    const found = clipBetween(pair.a, pair.b);
+    rows.push({ kind: 'none', a: pair.a, b: pair.b, expected: false, found: found?.relation === 'partial', detail: found ? describeClip(found) : '-' });
+  }
+  const judged = rows.filter((row) => row.expected !== null);
+  return {
+    rows,
+    summary: {
+      found: judged.filter((row) => row.expected && row.found).length,
+      missed: judged.filter((row) => row.expected && !row.found).length,
+      wrong: judged.filter((row) => !row.expected && row.found).length,
+    },
+  };
+}
+
+function describeClip(clip) {
+  const segments = clip.segments
+    .map((segment) => `${segment.startClip.toFixed(1)} in ${segment.startSource.toFixed(1)}, ${segment.lengthSecs.toFixed(1)} s`)
+    .join('; ');
+  return `${clip.relation}/${clip.state} sound ${clip.soundSimilarity} picture ${clip.pictureSimilarity ?? '-'} [${segments}]`;
+}
+
+async function runPartialCheck(folder, videos, duplicateGroups, cacheAccess, overrides) {
+  const duplicates = require('../electron/duplicates');
+  const { findPartialClips, skipPairKeysFor } = require('../electron/partial-clips');
+  const { normalizeDuplicateSettings } = require('../electron/duplicate-utils');
+  const settings = normalizeDuplicateSettings(overrides);
+  const byId = new Map(videos.map((video) => [video.id, video]));
+  const startedAt = Date.now();
+  const result = await findPartialClips({
+    videos,
+    settings,
+    skipPairKeys: skipPairKeysFor(duplicateGroups, settings.ignoredDuplicatePairs),
+    cacheAccess,
+    cacheOptions: {},
+    maxConcurrency: 4,
+    executionOptions: {},
+    run: duplicates.createDuplicateRun(),
+  });
+  const { stats } = result;
+  console.log(`\npartial clips: ${stats.partial} partial, ${stats.audioOnly} shared sound, from ${stats.candidates} candidates, ${Date.now() - startedAt} ms`);
+  console.log(`  reading sound ${stats.soundMs} ms (${stats.soundRead} read), searching ${stats.searchMs} ms, checking pictures ${stats.picturesMs} ms`);
+  console.log(`  sound stored: ${stats.soundBytes} bytes for ${stats.soundSeconds} s; states ${JSON.stringify(stats.soundStates)}`);
+
+  const clipByFiles = new Map();
+  for (const clip of result.clips) {
+    const a = byId.get(clip.aId).filename;
+    const b = byId.get(clip.bId).filename;
+    clipByFiles.set(`${a}|${b}`, { ...clip, aFile: a });
+    clipByFiles.set(`${b}|${a}`, { ...clip, aFile: a });
+  }
+  // In clip/source orientation: segment starts in `clipFile` and in `sourceFile`.
+  const clipBetween = (clipFile, sourceFile) => {
+    const clip = clipByFiles.get(`${clipFile}|${sourceFile}`);
+    if (!clip) return null;
+    const clipIsA = clip.aFile === clipFile;
+    return {
+      ...clip,
+      segments: clip.segments.map((segment) => ({
+        ...segment,
+        startClip: clipIsA ? segment.startA : segment.startB,
+        startSource: clipIsA ? segment.startB : segment.startA,
+      })),
+    };
+  };
+  const manifestPath = path.join(folder, 'manifest.json');
+  if (!fs.existsSync(manifestPath)) return;
+  const { rows, summary } = comparePartialWithManifest(JSON.parse(fs.readFileSync(manifestPath, 'utf8')), clipBetween);
+  console.log('\nverdict   expect    pair: what was found');
+  for (const row of rows) {
+    const verdict = row.expected === null ? 'info' : row.expected === row.found ? 'ok' : row.expected ? 'MISSED' : 'WRONG';
+    console.log(`${verdict.padEnd(8)}  ${row.kind.padEnd(8)}  ${row.a} / ${row.b}: ${row.detail}`);
+  }
+  console.log(`\npartial: found ${summary.found}, missed ${summary.missed}, wrong ${summary.wrong}`);
+}
+
+function toSnapshot(groups, videosById, folder) {
+  return groups
+    .map((group) => ({
+      similarity: group.similarity,
+      matchType: group.matchType,
+      ...(group.static ? { static: true } : {}),
+      ...(group.confidence === 'low' ? { confidence: 'low', comparedSamples: group.comparedSamples } : {}),
+      files: group.videoIds.map((videoId) => path.relative(folder, videosById.get(videoId).path)).sort(),
+      keeper: group.suggestedKeeperId ? path.relative(folder, videosById.get(group.suggestedKeeperId).path) : null,
+    }))
+    .sort((a, b) => a.files.join('|').localeCompare(b.files.join('|')));
+}
+
+function diffSnapshots(before, after) {
+  const key = (group) => group.files.join('|');
+  const beforeKeys = new Set(before.map(key));
+  const afterKeys = new Set(after.map(key));
+  return {
+    added: after.filter((group) => !beforeKeys.has(key(group))),
+    removed: before.filter((group) => !afterKeys.has(key(group))),
+  };
+}
+
+function option(args, name) {
+  const index = args.indexOf(name);
+  return index === -1 ? undefined : args[index + 1];
+}
+
+/** Every `--set key=value`; values are read as JSON where they parse, otherwise kept as text. */
+function settingOverrides(args) {
+  const overrides = {};
+  args.forEach((arg, index) => {
+    if (arg !== '--set') return;
+    const [key, ...rest] = String(args[index + 1] ?? '').split('=');
+    if (!key || rest.length === 0) throw new Error(`--set needs key=value, got "${args[index + 1]}"`);
+    const value = rest.join('=');
+    try {
+      overrides[key] = JSON.parse(value);
+    } catch {
+      overrides[key] = value;
+    }
+  });
+  return overrides;
+}
+
+async function runCheck(folder, mode, snapshotFile, sampleCount, overrides = {}, recursive = false, partial = false) {
+  const { ffprobePath } = require('../electron/media-tools');
+  const duplicates = require('../electron/duplicates');
+  const filenames = listVideos(folder, recursive);
+  const videos = filenames.map((filename) => probeVideo(ffprobePath, folder, filename));
+  const videosById = new Map(videos.map((video) => [video.id, video]));
+
+  const stageStartedAt = new Map();
+  const cacheAccess = createMemoryCache();
+  // The engine logs every step; keep this script's own output readable.
+  const realLog = console.log;
+  console.log = () => {};
+  const startedAt = Date.now();
+  let result;
+  try {
+    result = await duplicates.findDuplicates({
+      videos,
+      settings: { comparisonMode: mode, ...(sampleCount ? { sampleCount } : {}), ...overrides },
+      cacheAccess,
+      cacheOptions: {},
+      maxConcurrency: 4,
+      executionOptions: {},
+      run: duplicates.createDuplicateRun(),
+      sendProgress: (update) => {
+        if (update?.stage && !stageStartedAt.has(update.stage)) stageStartedAt.set(update.stage, Date.now());
+      },
+    });
+  } finally {
+    console.log = realLog;
+  }
+  const finishedAt = Date.now();
+
+  console.log(`${videos.length} videos, ${result.groups.length} groups, method ${mode}, ${finishedAt - startedAt} ms`);
+  const stages = [...stageStartedAt.entries()];
+  stages.forEach(([stage, time], index) => {
+    console.log(`  ${stage.padEnd(28)} ${(stages[index + 1]?.[1] ?? finishedAt) - time} ms`);
+  });
+  const verification = result.stats?.verification;
+  if (verification) {
+    console.log(`near misses: ${verification.candidates} checked, ${verification.accepted} accepted, ${verification.rejected} rejected, `
+      + `${verification.unverifiable} unverifiable, ${verification.pending} pending${verification.manyNearMisses ? ' (many)' : ''}`);
+  }
+
+  const manifestPath = path.join(folder, 'manifest.json');
+  if (fs.existsSync(manifestPath)) {
+    const groupByFile = new Map();
+    for (const group of result.groups) {
+      for (const videoId of group.videoIds) groupByFile.set(videosById.get(videoId).filename, group);
+    }
+    const { rows, summary } = compareWithManifest(JSON.parse(fs.readFileSync(manifestPath, 'utf8')), (file) => groupByFile.get(file));
+    console.log('\nverdict   expect    similarity  pair');
+    for (const row of rows) {
+      const verdict = row.expected === null ? 'info' : row.expected === row.found ? 'ok' : row.expected ? 'MISSED' : 'WRONG';
+      const note = row.needs ? `  (needs ${row.needs})` : '';
+      console.log(`${verdict.padEnd(8)}  ${row.kind.padEnd(8)}  ${String(row.similarity ?? '-').padStart(10)}  ${row.a} / ${row.b}${note}`);
+    }
+    console.log(`\nfound ${summary.found}, missed ${summary.missed}, wrong ${summary.wrong}, correctly apart ${summary.correctlyApart}`);
+  }
+
+  if (partial) await runPartialCheck(folder, videos, result.groups, cacheAccess, { comparisonMode: mode, ...overrides });
+
+  if (snapshotFile) {
+    fs.writeFileSync(snapshotFile, `${JSON.stringify(toSnapshot(result.groups, videosById, folder), null, 2)}\n`);
+    console.log(`\nSnapshot written to ${snapshotFile}`);
+  }
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const diffIndex = args.indexOf('--diff');
+  if (diffIndex !== -1) {
+    const [before, after] = [args[diffIndex + 1], args[diffIndex + 2]].map((file) => JSON.parse(fs.readFileSync(file, 'utf8')));
+    const { added, removed } = diffSnapshots(before, after);
+    for (const group of added) console.log(`added    ${group.similarity}  ${group.files.join(' | ')}`);
+    for (const group of removed) console.log(`removed  ${group.similarity}  ${group.files.join(' | ')}`);
+    console.log(`${added.length} added, ${removed.length} removed`);
+    return;
+  }
+  const folder = args.find((arg, index) => !arg.startsWith('--') && !['--mode', '--snapshot', '--samples', '--set'].includes(args[index - 1]));
+  if (!folder) {
+    console.error('Usage: node scripts/duplicate-collection-check.js <folder> [--mode phash|visual] [--samples <n>] [--set <key>=<value>]... [--snapshot <file>]');
+    process.exitCode = 1;
+    return;
+  }
+  await runCheck(path.resolve(folder), option(args, '--mode') === 'visual' ? 'visual' : 'phash', option(args, '--snapshot'), Number(option(args, '--samples')) || undefined, settingOverrides(args), args.includes('--recursive'), args.includes('--partial'));
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { compareWithManifest, comparePartialWithManifest, createMemoryCache, diffSnapshots, listVideos, probeVideo, settingOverrides };

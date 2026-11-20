@@ -145,6 +145,20 @@ describe('DuplicateGroupsView behavior', () => {
     expect(__test__.hasActiveRowRuntime()).toBe(false);
   });
 
+  test('a group whose suggested keeper is marked for deletion is left out of the suggested deletions', async () => {
+    const groupId = 'group-1';
+    useStore.setState({
+      videos: [
+        makeVideo('a', { duplicateGroupId: groupId, path: 'D:\\Media\\a.mp4', status: 'delete' }),
+        makeVideo('b', { duplicateGroupId: groupId, path: 'D:\\Media\\b.mp4' }),
+      ],
+      duplicateGroups: [makeDuplicateGroup({ id: groupId, videoIds: ['a', 'b'], suggestedKeeperId: 'a' })],
+    });
+    render(<DuplicateGroupsView />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Select suggested deletions' }));
+    expect(screen.queryByRole('button', { name: /Mark selected as Delete \(/i })).toBeNull();
+  });
+
   test('selects suggested deletions and marks the non-keeper videos for deletion', async () => {
     const groupId = 'group-1';
     const keeper = makeVideo('a', { duplicateGroupId: groupId, path: 'D:\\Media\\a.mp4' });
@@ -270,6 +284,73 @@ describe('DuplicateGroupsView behavior', () => {
       expect(screen.queryByRole('button', { name: 'Clear selected' })).toBeNull();
       expect(screen.getByRole('button', { name: 'Mark selected as Delete' })).toHaveProperty('disabled', true);
     });
+  });
+
+  test('a copy with black bars shows the picture inside them, and the larger picture is marked best', async () => {
+    useStore.setState({
+      videos: [
+        makeVideo('orig', { width: 854, height: 480, duplicateGroupId: 'bars' }),
+        makeVideo('boxed', { width: 1138, height: 640, duplicateGroupId: 'bars' }),
+      ],
+      duplicateGroups: [makeDuplicateGroup({
+        id: 'bars', videoIds: ['orig', 'boxed'], suggestedKeeperId: 'orig',
+        pictureSizes: { boxed: { width: 1138, height: 480 } },
+      })],
+    });
+    render(<DuplicateGroupsView />);
+    const boxed = await screen.findByTitle('480p picture inside black bars (1138×480 of a 1138×640 frame)');
+    expect(boxed.textContent).toBe('640p');
+    expect(boxed.className).toContain('equal');
+    expect(screen.getByText('480p').className).toContain('equal');
+  });
+
+  test('labels low-confidence groups and lists them after the others', async () => {
+    useStore.setState({
+      videos: ['a', 'b', 'c', 'd'].map((id) => makeVideo(id, { duplicateGroupId: id < 'c' ? 'low' : 'normal' })),
+      duplicateGroups: [
+        makeDuplicateGroup({
+          id: 'low', videoIds: ['a', 'b'], similarity: 100, reason: 'Same content at 1 of 3 sampled moments',
+          confidence: 'low', comparedSamples: 1, partialFingerprint: true,
+        }),
+        makeDuplicateGroup({
+          id: 'normal', videoIds: ['c', 'd'], similarity: 96, reason: 'Same content at 3 of 3 sampled moments', suggestedKeeperId: 'c',
+          confidence: 'normal', comparedSamples: 3, durationDifferenceSecs: 2.5, timingAdjusted: true,
+        }),
+      ],
+    });
+
+    render(<DuplicateGroupsView />);
+
+    const warning = await screen.findByText('Single-frame match — check before deleting');
+    expect(screen.getByText('Partly unreadable')).toBeTruthy();
+    expect(screen.getByText('Lengths differ by 2.5 s')).toBeTruthy();
+    expect(screen.getByText('Starts a moment earlier or later')).toBeTruthy();
+    expect(screen.queryByText('Little movement — check before deleting')).toBeNull();
+    // Sorted by similarity, highest first, the 100% group would lead; needing a check puts it last.
+    const normalReason = screen.getByText('Same content at 3 of 3 sampled moments');
+    expect(normalReason.compareDocumentPosition(warning) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('says why each other copy is not the suggested keeper until a keeper is chosen by hand', async () => {
+    const group = makeDuplicateGroup({
+      id: 'g', videoIds: ['a', 'b'], suggestedKeeperId: 'a',
+      keeperRule: 'videoBitrate', keeperTieBreak: false, keeperReasons: { b: 'lower bitrate' },
+    });
+    useStore.setState({
+      videos: ['a', 'b'].map((id) => makeVideo(id, { duplicateGroupId: 'g', videoBitrate: id === 'a' ? 4000 : 1000 })),
+      duplicateGroups: [group],
+    });
+
+    const { unmount } = render(<DuplicateGroupsView />);
+
+    expect(await screen.findByText('Not suggested: lower bitrate')).toBeTruthy();
+    expect(screen.getByText('Suggested keeper').closest('span')?.getAttribute('title')).toBe('Decided by Video bitrate');
+    unmount();
+
+    useStore.setState({ duplicateGroups: [{ ...group, manualSuggestedKeeperId: 'b', suggestedKeeperId: 'b' }] });
+    render(<DuplicateGroupsView />);
+    expect(await screen.findByText('Selected keeper')).toBeTruthy();
+    expect(screen.queryByText(/Not suggested/)).toBeNull();
   });
 
   test('dismisses a duplicate group from the current duplicate review', async () => {
