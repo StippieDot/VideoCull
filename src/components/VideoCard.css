@@ -230,6 +230,22 @@
   text-transform: uppercase;
 }
 
+/* Best and worse values within a duplicate group, as the list view marks them. */
+.card-meta .metric-best,
+.card-badge.metric-best {
+  color: var(--color-keep);
+  font-weight: 700;
+}
+
+.card-badge.metric-best {
+  border-color: rgba(71, 176, 120, 0.4);
+}
+
+.card-meta .metric-worse,
+.card-badge.metric-worse {
+  opacity: 0.6;
+}
+
 .card-stars {
   display: flex;
   gap: 1px;

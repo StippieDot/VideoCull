@@ -58,6 +58,7 @@ const electronAPI = {
 
   // Duplicate detection
   findDuplicates: (videos, options) => ipcRenderer.invoke('find-duplicates', videos, options),
+  findPartialClips: (videos, options) => ipcRenderer.invoke('find-partial-clips', videos, options),
   cancelDuplicateDetection: () => ipcRenderer.invoke('cancel-duplicate-detection'),
   onDuplicateProgress: (callback) => subscribe('duplicate-progress', callback),
 
@@ -66,6 +67,9 @@ const electronAPI = {
   saveCacheAtomic: (dirPath, videos) => ipcRenderer.invoke('save-cache-atomic', dirPath, videos),
   saveReviewState: (dirPath, updates) => ipcRenderer.invoke('save-review-state', dirPath, updates),
   clearCache: (dirPath) => ipcRenderer.invoke('clear-cache', dirPath),
+  saveDuplicateResults: (session, results) => ipcRenderer.invoke('save-duplicate-results', session, results),
+  loadDuplicateResults: (session) => ipcRenderer.invoke('load-duplicate-results', session),
+  clearDuplicateResults: (session) => ipcRenderer.invoke('clear-duplicate-results', session),
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
   getAutoConcurrency: (config) => ipcRenderer.invoke('get-auto-concurrency', config),

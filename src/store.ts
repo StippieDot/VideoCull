@@ -1,3 +1,5 @@
+import { rebuildDuplicateGroups } from './duplicateGroupRebuild';
+import { describeDuplicateRun, restoreStoredResults, toStoredResults } from './duplicateResultsPersistence';
 import { create } from 'zustand';
 import type {
   AppSettings, DuplicateComparisonMode, DuplicateGroup,
@@ -10,7 +12,7 @@ import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrate
 import { checkSessionFolders, folderKey, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey } from './sessions';
 import { recordDevPerf } from './perf-dev';
 import { changeAffectsCurrentView, patchFilteredVideosPreservingOrder, type InvalidationField } from './store-invalidation';
-import { detectVideoCompatibility, folderInsideTest, formatRecentPath, isFolderInside, normalizeFolder } from './utils';
+import { resolutionTier, detectVideoCompatibility, folderInsideTest, formatRecentPath, isFolderInside, normalizeFolder } from './utils';
 import { getPreloadedColorTheme } from './theme';
 import { buildUndoEntry, editsFor, reviewFieldsOf, STATUS_LABELS, type ReviewEdit } from './undo-history';
 
@@ -406,20 +408,8 @@ function finiteNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function resolutionDisplayTier(video: Video): number {
-  const width = finiteNumber(video.width);
-  const height = finiteNumber(video.height);
-  if (width <= 0 || height <= 0) return 0;
-  const longestEdge = Math.max(width, height);
-  const shortestEdge = Math.min(width, height);
-
-  if (longestEdge >= 7680) return 8000;
-  if (longestEdge >= 5120) return 5000;
-  if (longestEdge >= 3840) return 4000;
-  if (longestEdge >= 2560) return 1440;
-  if (longestEdge >= 1920) return 1080;
-  if (longestEdge >= 1280) return 720;
-  return shortestEdge;
+function resolutionDisplayTier(video: Pick<Video, 'width' | 'height'>): number {
+  return resolutionTier(video.width, video.height);
 }
 
 function resolutionSortValue(video: Video) {
@@ -433,8 +423,7 @@ function resolutionSortValue(video: Video) {
   };
 }
 
-// SYNC NOTE: This function mirrors compareKeeperCandidates in electron/duplicate-utils.js.
-// The renderer copy exists for instant keeper re-computation when settings change.
+// The renderer copy of the keeper ranking exists for instant re-computation when settings change.
 // ffprobe names other than the family keys in codecOrder. SYNC NOTE: mirrors electron/duplicate-utils.js.
 const CODEC_ALIASES: Record<string, string> = { h265: 'hevc', wmv1: 'vc1', wmv2: 'vc1', wmv3: 'vc1' };
 
@@ -444,22 +433,114 @@ function codecPreferenceScore(video: Video, codecOrder: string[]): number {
   return index === -1 ? 0 : codecOrder.length - index;
 }
 
-function compareKeeperCandidates(a: Video, b: Video, order: string[], codecOrder: string[]): number {
-  for (const rule of order) {
-    let diff = 0;
-    if (rule === 'resolution') diff = resolutionDisplayTier(a) - resolutionDisplayTier(b);
-    else if (rule === 'videoBitrate') diff = finiteNumber(a.videoBitrate ?? a.totalBitrate) - finiteNumber(b.videoBitrate ?? b.totalBitrate);
-    else if (rule === 'duration') diff = finiteNumber(a.durationSecs) - finiteNumber(b.durationSecs);
-    else if (rule === 'fps') diff = finiteNumber(a.fps) - finiteNumber(b.fps);
-    else if (rule === 'size') diff = finiteNumber(a.sizeBytes) - finiteNumber(b.sizeBytes);
-    else if (rule === 'codec') diff = codecPreferenceScore(a, codecOrder) - codecPreferenceScore(b, codecOrder);
-    if (Number.isFinite(diff) && diff !== 0) return diff;
-  }
-  return String(b.path ?? '').localeCompare(String(a.path ?? ''));
+type UnreadableSamples = Record<string, Array<{ index: number; percent: number | null }>>;
+type PictureSizes = Record<string, { width: number; height: number }>;
+
+function hasProbedMetadata(video: Video): boolean {
+  return video.metadataVersion != null && !video.metadataFailedAt;
 }
 
-function chooseSuggestedKeeperId(videos: Video[], order: string[], codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder): string | null {
-  return [...videos].sort((a, b) => -compareKeeperCandidates(a, b, order, codecOrder))[0]?.id ?? null;
+function confirmedUnreadablePositions(videos: Video[], unreadableSamples: UnreadableSamples = {}) {
+  const result = new Map<string, Array<{ index: number; percent: number | null }>>();
+  for (const video of videos) {
+    const own = unreadableSamples[video.id];
+    if (!own) continue;
+    const confirmed = own.filter((sample) => videos.some((other) => {
+      const otherUnreadable = unreadableSamples[other.id];
+      return other.id !== video.id && otherUnreadable && !otherUnreadable.some((item) => item.index === sample.index);
+    }));
+    if (confirmed.length > 0) result.set(video.id, confirmed);
+  }
+  return result;
+}
+
+function formatPositions(samples: Array<{ index: number; percent: number | null }>): string {
+  const labels = samples.map((sample) => (sample.percent == null ? `sample ${sample.index + 1}` : `${sample.percent} %`));
+  return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0] ?? '';
+}
+
+type KeeperRanking = { keeper: Video; rule: string; tieBreak: boolean; reasons: Record<string, string> };
+
+// Higher is better for every rule.
+function keeperRuleScore(video: Video, rule: string, codecOrder: string[], health: Map<string, unknown[]>, pictureSizes: PictureSizes = {}): number {
+  if (rule === 'health') return -(health.get(video.id)?.length ?? 0);
+  // Unknown metadata ties with the best, so an unprobed video is never demoted for missing sound.
+  if (rule === 'audio') return !hasProbedMetadata(video) || video.audioCodec ? 1 : 0;
+  // Extra black around a picture is not more picture: a member with bars counts with the picture inside them.
+  if (rule === 'resolution') return resolutionDisplayTier({ ...video, ...pictureSizes[video.id] });
+  if (rule === 'videoBitrate') return finiteNumber(video.videoBitrate ?? video.totalBitrate);
+  if (rule === 'duration') return finiteNumber(video.durationSecs);
+  if (rule === 'fps') return finiteNumber(video.fps);
+  if (rule === 'size') return finiteNumber(video.sizeBytes);
+  if (rule === 'codec') return codecPreferenceScore(video, codecOrder);
+  return 0;
+}
+
+const KEEPER_DURATION_MARGIN_SECS = 2;
+const KEEPER_DURATION_MARGIN_SHARE = 0.01;
+
+// SYNC NOTE: KEEPER_RESOLUTION_MARGIN_SHARE in electron/duplicate-utils.js.
+export const KEEPER_RESOLUTION_MARGIN_SHARE = 0.04;
+
+function keeperRuleMargin(rule: string, videos: Video[], best = 0): number {
+  if (rule === 'resolution') return best * KEEPER_RESOLUTION_MARGIN_SHARE;
+  if (rule !== 'duration') return 0;
+  const longest = Math.max(0, ...videos.map((video) => finiteNumber(video.durationSecs)));
+  return Math.max(KEEPER_DURATION_MARGIN_SECS, longest * KEEPER_DURATION_MARGIN_SHARE);
+}
+
+const KEEPER_TIE_BREAK_RULES = new Set(['size', 'codec', 'path']);
+
+function formatSeconds(seconds: number): string {
+  return seconds >= 10 ? String(Math.round(seconds)) : String(Math.round(seconds * 10) / 10);
+}
+
+function keeperReason(rule: string, video: Video, best: number, codecOrder: string[], health: Map<string, Array<{ index: number; percent: number | null }>>, pictureSizes: PictureSizes = {}): string {
+  const score = keeperRuleScore(video, rule, codecOrder, health, pictureSizes);
+  if (rule === 'health') return `could not be read at ${formatPositions(health.get(video.id) ?? [])}`;
+  if (rule === 'audio') return 'has no audio track';
+  if (rule === 'resolution') return pictureSizes[video.id] ? 'smaller picture inside black bars' : 'lower resolution';
+  if (rule === 'videoBitrate') return 'lower bitrate';
+  if (rule === 'duration') return `shorter by ${formatSeconds(best - score)} s`;
+  if (rule === 'fps') return score > 0 ? `${score} fps instead of ${best}` : 'unknown frame rate';
+  if (rule === 'size') return 'smaller file';
+  if (rule === 'codec') return 'less preferred codec';
+  return 'no difference found; chosen by file name';
+}
+
+// SYNC NOTE: This function mirrors rankKeeperCandidates in electron/duplicate-utils.js; the parity
+// test in tests/src/store.test.ts runs both on the same groups.
+function rankKeeperCandidates(videos: Video[], order: string[], codecOrder: string[], unreadableSamples: UnreadableSamples = {}, pictureSizes: PictureSizes = {}): KeeperRanking | null {
+  if (videos.length === 0) return null;
+  const health = confirmedUnreadablePositions(videos, unreadableSamples);
+  let candidates = [...videos];
+  const reasons: Record<string, string> = {};
+  let rule = 'path';
+  for (const current of order) {
+    if (candidates.length < 2) break;
+    const scores = new Map(candidates.map((video) => [video.id, keeperRuleScore(video, current, codecOrder, health, pictureSizes)]));
+    const best = Math.max(...scores.values());
+    const margin = keeperRuleMargin(current, videos, best);
+    const kept = candidates.filter((video) => (scores.get(video.id) ?? 0) >= best - margin);
+    for (const video of candidates) {
+      if (!kept.includes(video)) reasons[video.id] = keeperReason(current, video, best, codecOrder, health, pictureSizes);
+    }
+    if (kept.length === 1) rule = current;
+    candidates = kept;
+  }
+  candidates.sort((a, b) => String(a.path ?? '').localeCompare(String(b.path ?? '')));
+  for (const video of candidates.slice(1)) reasons[video.id] = keeperReason('path', video, 0, codecOrder, health);
+  return { keeper: candidates[0]!, rule, tieBreak: KEEPER_TIE_BREAK_RULES.has(rule), reasons };
+}
+
+function chooseSuggestedKeeperId(
+  videos: Video[],
+  order: string[],
+  codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder,
+  unreadableSamples: UnreadableSamples = {},
+  pictureSizes: PictureSizes = {},
+): string | null {
+  return rankKeeperCandidates(videos, order, codecOrder, unreadableSamples, pictureSizes)?.keeper.id ?? null;
 }
 
 function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], order: string[], codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder): DuplicateGroup[] {
@@ -472,10 +553,14 @@ function applyKeeperOrderToGroups(groups: DuplicateGroup[], videos: Video[], ord
     const manualSuggestedKeeperId = group.manualSuggestedKeeperId && group.videoIds.includes(group.manualSuggestedKeeperId)
       ? group.manualSuggestedKeeperId
       : null;
+    const ranking = rankKeeperCandidates(groupVideos, order, codecOrder, group.unreadableSamples, group.pictureSizes);
     return {
       ...group,
       manualSuggestedKeeperId,
-      suggestedKeeperId: manualSuggestedKeeperId ?? chooseSuggestedKeeperId(groupVideos, order, codecOrder),
+      suggestedKeeperId: manualSuggestedKeeperId ?? ranking?.keeper.id ?? null,
+      keeperRule: ranking?.rule,
+      keeperTieBreak: ranking?.tieBreak,
+      keeperReasons: ranking?.reasons,
     };
   });
 }
@@ -1099,6 +1184,9 @@ const useStore = create<VideoStore>((set, get) => ({
   gridVideoJump: null,
   duplicateGroupsMode: false,
   duplicateGroups: [],
+  duplicateRun: null,
+  partialClips: null,
+  partialClipsMode: false,
   duplicateProgress: null,
   isFindingDuplicates: false,
   duplicateViewMode: 'rows',
@@ -1106,6 +1194,8 @@ const useStore = create<VideoStore>((set, get) => ({
   duplicateMinSimilarity: 0,
   duplicateSortBy: 'similarity',
   duplicateSortOrder: 'desc',
+  partialClipSortBy: 'sharedLength',
+  partialClipSortOrder: 'desc',
   duplicateScrollTop: 0,
   reviewPosition: null,
   duplicatePosition: null,
@@ -1190,12 +1280,17 @@ const useStore = create<VideoStore>((set, get) => ({
       activeReviewVideoPath: null,
       duplicateGroupsMode: false,
       duplicateGroups: [],
+      duplicateRun: null,
+      partialClips: null,
+      partialClipsMode: false,
       duplicateProgress: null,
       duplicateFilter: false,
       duplicatePathFilter: '',
       duplicateMinSimilarity: 0,
       duplicateSortBy: 'similarity',
       duplicateSortOrder: 'desc',
+      partialClipSortBy: 'sharedLength',
+      partialClipSortOrder: 'desc',
       undoStack: [],
       redoStack: [],
       gridSelectionIds: new Set(),
@@ -1228,12 +1323,17 @@ const useStore = create<VideoStore>((set, get) => ({
       activeReviewVideoPath: null,
       duplicateGroupsMode: false,
       duplicateGroups: [],
+      duplicateRun: null,
+      partialClips: null,
+      partialClipsMode: false,
       duplicateProgress: null,
       duplicateFilter: false,
       duplicatePathFilter: '',
       duplicateMinSimilarity: 0,
       duplicateSortBy: 'similarity',
       duplicateSortOrder: 'desc',
+      partialClipSortBy: 'sharedLength',
+      partialClipSortOrder: 'desc',
       undoStack: [],
       redoStack: [],
       gridSelectionIds: new Set(),
@@ -1376,6 +1476,9 @@ const useStore = create<VideoStore>((set, get) => ({
       sidebarAggregates: computeSidebarAggregates(nextVideos),
       ...(shouldClearDuplicates ? {
         duplicateGroups: [],
+        duplicateRun: null,
+        partialClips: null,
+        partialClipsMode: false,
         duplicateGroupsMode: false,
         duplicateFilter: false,
         reviewMode: false,
@@ -1650,7 +1753,8 @@ const useStore = create<VideoStore>((set, get) => ({
   setReviewScopeIds: (reviewScopeIds: string[] | null) => set({ reviewScopeIds: reviewScopeIds ? uniqueVideoIds(reviewScopeIds) : null }),
   setReviewAutoPlay: (reviewAutoPlay: boolean) => set({ reviewAutoPlay }),
   setActiveReviewVideoPath: (activeReviewVideoPath: string | null) => set({ activeReviewVideoPath }),
-  setDuplicateGroupsMode: (duplicateGroupsMode: boolean) => set({ duplicateGroupsMode }),
+  // Leaving for the grid also leaves the partial clips list, so Duplicate Groups opens the groups again.
+  setDuplicateGroupsMode: (duplicateGroupsMode: boolean) => set(duplicateGroupsMode ? { duplicateGroupsMode } : { duplicateGroupsMode, partialClipsMode: false }),
   setDuplicateGroups: (duplicateGroups) => {
     const stateBefore = get();
     const groupsWithKeepers = applyKeeperOrderToGroups(duplicateGroups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder, stateBefore.settings.duplicates.codecOrder);
@@ -1671,7 +1775,9 @@ const useStore = create<VideoStore>((set, get) => ({
     const suggestedKeeperId = manualSuggestedKeeperId ?? chooseSuggestedKeeperId(
       stateBefore.videos.filter((video) => groupVideoIds.has(video.id)),
       stateBefore.settings.duplicates.keeperOrder,
-      stateBefore.settings.duplicates.codecOrder
+      stateBefore.settings.duplicates.codecOrder,
+      group.unreadableSamples,
+      group.pictureSizes,
     );
     if (
       group.manualSuggestedKeeperId === manualSuggestedKeeperId &&
@@ -1704,18 +1810,100 @@ const useStore = create<VideoStore>((set, get) => ({
       : stateBefore.filteredVideos;
     set({ duplicateGroups, videos, filteredVideos });
   },
-  applyDuplicateResult: (result) => {
+  applyDuplicateResult: (result, run) => {
     const stateBefore = get();
+    const duplicateRun = run && result.settingsKey
+      ? { ...describeDuplicateRun(run.videos, result.settingsKey, run.scope), verification: result.stats?.verification }
+      : null;
     const groupsWithKeepers = result.groups
       ? applyKeeperOrderToGroups(result.groups, stateBefore.videos, stateBefore.settings.duplicates.keeperOrder, stateBefore.settings.duplicates.codecOrder)
       : [];
     const videos = result.groups
       ? applyDuplicateGroupsToVideos(stateBefore.videos, groupsWithKeepers)
       : applyDuplicateGroupsToVideos(stateBefore.videos, []);
-    set(buildVideoStateUpdate(stateBefore, videos, ['duplicate'], {
-      duplicateGroups: groupsWithKeepers,
-      duplicateGroupsMode: groupsWithKeepers.length > 0,
+    // Clips found under other matching settings are not shown or stored as current.
+    const partialClips = duplicateRun && stateBefore.duplicateRun?.settingsKey === duplicateRun.settingsKey ? stateBefore.partialClips : null;
+    // A narrower run must not drop the snapshots of kept clips' videos, or a later change to one of
+    // their files would go unnoticed on restore and bring back a stale clip.
+    const clipVideoIds = new Set((partialClips ?? []).flatMap((clip) => [clip.aId, clip.bId]));
+    const keptSnapshots = (stateBefore.duplicateRun?.videos ?? []).filter((video) => clipVideoIds.has(video.id));
+    set({
+      ...buildVideoStateUpdate(stateBefore, videos, ['duplicate'], {
+        duplicateGroups: groupsWithKeepers,
+        duplicateGroupsMode: groupsWithKeepers.length > 0,
+      }),
+      duplicateRun: duplicateRun && keptSnapshots.length > 0
+        // The new run's snapshot wins for a video in both.
+        ? { ...duplicateRun, videos: [...new Map([...keptSnapshots, ...duplicateRun.videos].map((video) => [video.id, video])).values()] }
+        : duplicateRun,
+      partialClipsMode: false,
+      partialClips,
+    });
+  },
+  restoreDuplicateResults: async () => {
+    const before = get();
+    if (!window.electronAPI?.loadDuplicateResults || before.directories.length === 0 || before.duplicateGroups.length > 0) {
+      return 'skipped';
+    }
+    const session = {
+      folders: [...before.directories],
+      includeSubfolders: before.includeSubfolders,
+      scope: before.settings.duplicates.defaultScope === 'filtered' ? 'filtered' as const : 'all' as const,
+    };
+    const loaded = await window.electronAPI.loadDuplicateResults(session);
+    if (loaded.status !== 'ok') return loaded.status;
+    const state = get();
+    // A run, another folder or a new session while the file was read wins over the stored result.
+    // A partial-clips run leaves duplicateGroups empty, so also compare the run and clips by reference.
+    if (
+      state.duplicateGroups.length > 0
+      || state.duplicateRun !== before.duplicateRun
+      || state.partialClips !== before.partialClips
+      || state.directories.join('\n') !== session.folders.join('\n')
+    ) return 'skipped';
+    const { groups, partialClips, run } = restoreStoredResults(loaded.results, state.videos, state.settings.duplicates.ignoredDuplicatePairs ?? []);
+    const groupsWithKeepers = applyKeeperOrderToGroups(groups, state.videos, state.settings.duplicates.keeperOrder, state.settings.duplicates.codecOrder);
+    const videos = applyDuplicateGroupsToVideos(state.videos, groupsWithKeepers);
+    // The grid stays in front; the sidebar offers the restored groups with their date.
+    set({ ...buildVideoStateUpdate(state, videos, ['duplicate'], { duplicateGroups: groupsWithKeepers }), duplicateRun: run, partialClips });
+    return 'ok';
+  },
+  applyPartialClips: (partialClips, run) => {
+    const state = get();
+    // Groups found under other matching settings are outdated next to these clips, as clips are next to
+    // a newer duplicate run; keeping them would store both under the older settings, and restoring
+    // under the current ones would then discard the new clips with them.
+    if (state.duplicateRun && run?.settingsKey && run.settingsKey !== state.duplicateRun.settingsKey) {
+      set({
+        ...buildVideoStateUpdate(state, applyDuplicateGroupsToVideos(state.videos, []), ['duplicate'], { duplicateGroups: [] }),
+        partialClips,
+        partialClipsMode: true,
+        duplicateGroupsMode: true,
+        duplicateRun: describeDuplicateRun(run.videos, run.settingsKey, run.scope),
+      });
+      return;
+    }
+    set({
+      partialClips,
+      partialClipsMode: true,
+      duplicateGroupsMode: true,
+      // Stored results are kept per duplicate run; a session without one gets a record for the clips.
+      // The clips' videos join the run's list, so a later change to one of their files drops its clips on restore.
+      duplicateRun: state.duplicateRun
+        ? { ...state.duplicateRun, videos: [...new Map([...state.duplicateRun.videos, ...(run ? describeDuplicateRun(run.videos, '', run.scope).videos : [])].map((video) => [video.id, video])).values()] }
+        : (run?.settingsKey ? describeDuplicateRun(run.videos, run.settingsKey, run.scope) : null),
+    });
+  },
+  setPartialClipsMode: (partialClipsMode) => set({ partialClipsMode }),
+  dismissPartialClips: (pairs) => {
+    const keys = pairs.map(({ aId, bId }) => (aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`));
+    const dismissed = new Set(keys);
+    set((state) => ({
+      partialClips: state.partialClips?.filter((clip) => (
+        !dismissed.has(clip.aId < clip.bId ? `${clip.aId}|${clip.bId}` : `${clip.bId}|${clip.aId}`)
+      )) ?? null,
     }));
+    get().addIgnoredDuplicatePairs(keys);
   },
   addIgnoredDuplicatePairs: (pairKeys) => {
     const normalized = pairKeys
@@ -1784,6 +1972,11 @@ const useStore = create<VideoStore>((set, get) => ({
     duplicateSortOrder: state.duplicateSortBy === duplicateSortBy ? state.duplicateSortOrder : 'desc',
   })),
   setDuplicateSortOrder: (duplicateSortOrder) => set({ duplicateSortOrder }),
+  setPartialClipSortBy: (partialClipSortBy) => set((state) => ({
+    partialClipSortBy,
+    partialClipSortOrder: state.partialClipSortBy === partialClipSortBy ? state.partialClipSortOrder : 'desc',
+  })),
+  setPartialClipSortOrder: (partialClipSortOrder) => set({ partialClipSortOrder }),
   setDuplicateScrollTop: (duplicateScrollTop) => set({ duplicateScrollTop: Math.max(0, duplicateScrollTop) }),
   setReviewPosition: (reviewPosition) => {
     const current = get().reviewPosition;
@@ -1802,6 +1995,8 @@ const useStore = create<VideoStore>((set, get) => ({
     duplicateMinSimilarity: 0,
     duplicateSortBy: 'similarity',
     duplicateSortOrder: 'desc',
+    partialClipSortBy: 'sharedLength',
+    partialClipSortOrder: 'desc',
   }),
   setGridSelectionIds: (gridSelectionIds) => set((state) => ({
     gridSelectionIds: typeof gridSelectionIds === 'function'
@@ -1860,25 +2055,19 @@ const useStore = create<VideoStore>((set, get) => ({
         ? nextReviewScopeIds.indexOf(activeReviewVideoId)
         : Math.min(stateBefore.reviewIndex, Math.max(0, videos.length - 1)));
 
-    // Prune deleted video IDs from duplicate groups and drop groups with < 2 members.
+    // Rebuild duplicate groups from their remaining pairs: a deleted member also takes away the
+    // matches that only it linked, and groups left with fewer than two members disappear.
     const deletedVideoIds = new Set(
       stateBefore.videos.filter((v) => pathSet.has(v.path)).map((v) => v.id)
     );
     const prevGroups = stateBefore.duplicateGroups;
     const prunedGroups = deletedVideoIds.size > 0
       ? applyKeeperOrderToGroups(
-        prevGroups
-          .map((group) => ({
-            ...group,
-            videoIds: group.videoIds.filter((id) => !deletedVideoIds.has(id)),
-            suggestedKeeperId: group.suggestedKeeperId && deletedVideoIds.has(group.suggestedKeeperId)
-              ? null
-              : group.suggestedKeeperId,
-            manualSuggestedKeeperId: group.manualSuggestedKeeperId && deletedVideoIds.has(group.manualSuggestedKeeperId)
-              ? null
-              : group.manualSuggestedKeeperId,
-          }))
-          .filter((group) => group.videoIds.length >= 2),
+        rebuildDuplicateGroups(
+          prevGroups,
+          { removedVideoIds: deletedVideoIds },
+          new Map(videos.map((video) => [video.id, video])),
+        ),
         videos,
         stateBefore.settings.duplicates.keeperOrder,
         stateBefore.settings.duplicates.codecOrder
@@ -1902,7 +2091,11 @@ const useStore = create<VideoStore>((set, get) => ({
       gridSelectionAnchorId: nextGridSelectionAnchorId,
       ...(groupsChanged ? {
         duplicateGroups: prunedGroups,
-        ...(prunedGroups.length === 0 ? { duplicateGroupsMode: false } : {}),
+        ...(prunedGroups.length === 0 && !stateBefore.partialClipsMode ? { duplicateGroupsMode: false } : {}),
+      } : {}),
+      // A partial clip needs both of its videos.
+      ...(deletedVideoIds.size > 0 && stateBefore.partialClips ? {
+        partialClips: stateBefore.partialClips.filter((clip) => !deletedVideoIds.has(clip.aId) && !deletedVideoIds.has(clip.bId)),
       } : {}),
     });
   },
@@ -2177,6 +2370,7 @@ export const __test__ = {
   normalizeDuplicatePairKey,
   applyDuplicateGroupsToVideos,
   chooseSuggestedKeeperId,
+  rankKeeperCandidates,
   applyKeeperOrderToGroups,
   getReviewScopeIdsForVideo,
   getVideoByReviewIndex,
@@ -2200,6 +2394,29 @@ export function hasActiveFilters(state: VideoStore): boolean {
     || state.minDurationFilter > 0
     || state.maxDurationFilter !== null;
 }
+
+// Stored duplicate results follow the groups on screen: after a run, a deletion, Not a match or a
+// manual keeper, and after a restore (which writes its pruning back). Debounced, since a review
+// changes groups in quick succession. A session whose last group is gone loses its file.
+const DUPLICATE_RESULTS_SAVE_DELAY_MS = 1500;
+let duplicateResultsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+useStore.subscribe((state, previous) => {
+  if (state.duplicateGroups === previous.duplicateGroups && state.duplicateRun === previous.duplicateRun
+    && state.partialClips === previous.partialClips) return;
+  if (!state.duplicateRun || typeof window === 'undefined' || !window.electronAPI?.saveDuplicateResults) return;
+  if (duplicateResultsSaveTimer) clearTimeout(duplicateResultsSaveTimer);
+  duplicateResultsSaveTimer = setTimeout(() => {
+    duplicateResultsSaveTimer = null;
+    const latest = useStore.getState();
+    const run = latest.duplicateRun;
+    if (!run || latest.directories.length === 0 || !window.electronAPI?.saveDuplicateResults) return;
+    const session = { folders: [...latest.directories], includeSubfolders: latest.includeSubfolders, scope: run.scope };
+    const write = latest.duplicateGroups.length > 0 || (latest.partialClips?.length ?? 0) > 0
+      ? window.electronAPI.saveDuplicateResults(session, toStoredResults(run, latest.duplicateGroups, latest.partialClips))
+      : window.electronAPI.clearDuplicateResults(session);
+    write.catch((error) => console.warn('[duplicates] Could not store results:', error));
+  }, DUPLICATE_RESULTS_SAVE_DELAY_MS);
+});
 
 export default useStore;
 

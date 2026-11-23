@@ -60,6 +60,8 @@ function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}) {
       onCloseSession={vi.fn()}
       onFindDuplicates={vi.fn()}
       onSwitchDuplicateMethod={vi.fn()}
+      onCheckNearMisses={vi.fn()}
+      onFindPartialClips={vi.fn()}
       onOpenDuplicateSettings={vi.fn()}
       onOpenDocumentation={vi.fn()}
       onRequestPermanentDelete={vi.fn().mockResolvedValue(false)}
@@ -314,6 +316,108 @@ describe('Sidebar recent folder behavior', () => {
     renderSidebar({ onSwitchDuplicateMethod });
     await userEvent.click(screen.getByRole('button', { name: 'Run Again with pHash' }));
     expect(onSwitchDuplicateMethod).toHaveBeenCalledTimes(1);
+  });
+
+  test('while partial clips are searched, only their button says so', () => {
+    const videos = [makeVideo('a'), makeVideo('b')];
+    useStore.setState({
+      directory: 'D:\Media',
+      directories: ['D:\Media'],
+      videos,
+      filteredVideos: videos,
+      stats: { ...useStore.getState().stats, total: 2, pending: 2 },
+      settings: { ...useStore.getState().settings, duplicates: { ...useStore.getState().settings.duplicates, partialClips: 'sound' } },
+      duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })],
+      duplicateGroupsMode: true,
+      isFindingDuplicates: true,
+      duplicateProgress: { stage: 'Reading sound', current: 1, total: 2 } as never,
+    });
+    renderSidebar();
+    expect(screen.getAllByText('Finding partial clips...')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Run Again' })).toHaveProperty('disabled', true);
+  });
+
+  test('unchecked near misses are named, with the action that checks them', async () => {
+    const onCheckNearMisses = vi.fn();
+    const videos = [makeVideo('a'), makeVideo('b')];
+    const verification = { candidates: 4, accepted: 1, rejected: 0, unverifiable: 0, pending: 3, unlisted: 0, complete: false, manyNearMisses: false };
+    useStore.setState({
+      directory: 'D:\Media',
+      directories: ['D:\Media'],
+      videos,
+      filteredVideos: videos,
+      stats: { ...useStore.getState().stats, total: 2, pending: 2 },
+      duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })],
+      duplicateGroupsMode: true,
+      duplicateRun: { createdAt: 1, settingsKey: 'k', scope: 'all', videos: [], restored: false, addedSince: 0, verification },
+    });
+    const { rerender } = renderSidebar({ onCheckNearMisses });
+    expect(screen.getByText('3 near misses not yet checked')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Check remaining near misses' }));
+    expect(onCheckNearMisses).toHaveBeenCalledTimes(1);
+
+    useStore.setState({ duplicateRun: { ...useStore.getState().duplicateRun!, verification: { ...verification, pending: 0, complete: true } } });
+    rerender(<></>);
+    renderSidebar();
+    expect(screen.queryByText(/not yet checked/)).toBeNull();
+  });
+
+  test('near misses beyond the list a run keeps are named without an action that cannot reach them', () => {
+    const videos = [makeVideo('a'), makeVideo('b')];
+    const verification = { candidates: 50_004, accepted: 0, rejected: 50_000, unverifiable: 0, pending: 0, unlisted: 4, complete: false, manyNearMisses: true };
+    useStore.setState({
+      directory: 'D:\Media',
+      directories: ['D:\Media'],
+      videos,
+      filteredVideos: videos,
+      stats: { ...useStore.getState().stats, total: 2, pending: 2 },
+      duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })],
+      duplicateGroupsMode: true,
+      duplicateRun: { createdAt: 1, settingsKey: 'k', scope: 'all', videos: [], restored: false, addedSince: 0, verification },
+    });
+    renderSidebar();
+    expect(screen.getByText(/4 weaker near misses are beyond what one run checks/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check remaining near misses' })).toBeNull();
+  });
+
+  test('Find Partial Clips is offered only when the setting is on, and its list opens from the sidebar', async () => {
+    const onFindPartialClips = vi.fn();
+    const videos = [makeVideo('a'), makeVideo('b')];
+    useStore.setState({
+      directory: 'D:\\Media',
+      directories: ['D:\\Media'],
+      videos,
+      filteredVideos: videos,
+      stats: { ...useStore.getState().stats, total: 2, pending: 2 },
+    });
+    const { unmount } = renderSidebar({ onFindPartialClips });
+    expect(screen.queryByRole('button', { name: 'Find Partial Clips' })).toBeNull();
+    unmount();
+
+    useStore.setState({
+      settings: { ...useStore.getState().settings, duplicates: { ...useStore.getState().settings.duplicates, partialClips: 'sound' } },
+      partialClips: [],
+    });
+    renderSidebar({ onFindPartialClips });
+    await userEvent.click(screen.getByRole('button', { name: 'Find Partial Clips' }));
+    expect(onFindPartialClips).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Partial Clips (0)' }));
+    expect(useStore.getState()).toMatchObject({ partialClipsMode: true, duplicateGroupsMode: true });
+    // The similarity filter is for groups; partial clips sort by their own fields.
+    expect(screen.getByRole('button', { name: /Partial clips/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByText('Minimum similarity')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Run Again' })).toBeNull();
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'coverage');
+    expect(useStore.getState().partialClipSortBy).toBe('coverage');
+    await userEvent.click(screen.getByRole('button', { name: 'Reset duplicate filters' }));
+    expect(useStore.getState().partialClipSortBy).toBe('sharedLength');
+    // The switch goes back to the groups, and leaving for the grid leaves the list too.
+    await userEvent.click(screen.getByRole('button', { name: /Groups/ }));
+    expect(useStore.getState().partialClipsMode).toBe(false);
+    expect(screen.getByText('Minimum similarity')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: /Partial clips/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Back to Grid' }));
+    expect(useStore.getState()).toMatchObject({ partialClipsMode: false, duplicateGroupsMode: false });
   });
 
   test('opens documentation from the sidebar header button', async () => {

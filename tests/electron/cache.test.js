@@ -179,8 +179,62 @@ test('fingerprint reads ignore rows created for different extraction settings', 
 
     assert.equal(cache.getFingerprintCounts(db, ['a'], 1, { fingerprintKey: 'samples:3:even' }).get('a'), true);
     assert.equal(cache.getFingerprintCounts(db, ['a'], 1, { fingerprintKey: 'samples:5:center' }).get('a'), undefined);
+    // Frames read around the old samples go when the video is fingerprinted again.
+    cache.saveVideoBurst(db, 'a', 'burst-key', 'ok', '[]');
+    cache.saveVideoFingerprints(db, 'a', [fingerprint], { fingerprintKey: 'samples:3:even' });
+    assert.deepEqual(db.prepare('SELECT video_id FROM video_bursts').all(), []);
     assert.equal(cache.loadPHashRows(db, ['a'], 1, { fingerprintKey: 'samples:5:center' }).length, 0);
     assert.equal(cache.loadGraySampleRows(db, ['a'], 1, { fingerprintKey: 'samples:5:center' }).length, 0);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('an unreadable sample is stored with its marker and completes the fingerprint', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    insertVideo(db, 'a', path.join(folderPath, 'a.mp4'));
+    cache.saveVideoFingerprints(db, 'a', [
+      {
+        sampleIndex: 0, timestampSecs: 10, phashHex: 'ffff000000000000', flippedPHashHex: 'ffff000000000001', grayBytes: Buffer.from([1]), frameDarkRatio: 0.1,
+        lumaRange: 200, borderLtrb: '0,8,0,8', cropPHashHex: 'aaaa000000000000', cropFlippedPHashHex: 'bbbb000000000000', cropGrayBytes: Buffer.from([2, 3]),
+      },
+      { sampleIndex: 1, timestampSecs: 20, phashHex: '', flippedPHashHex: null, grayBytes: Buffer.alloc(0), frameDarkRatio: null, sampleState: 'unreadable' },
+    ], { fingerprintKey: 'key' });
+
+    assert.equal(cache.getFingerprintCounts(db, ['a'], 2, { fingerprintKey: 'key' }).get('a'), true);
+    assert.deepEqual(cache.loadPHashRows(db, ['a'], 2, { fingerprintKey: 'key' }).map((row) => row.sample_state), [null, 'unreadable']);
+    assert.deepEqual(cache.loadGraySampleRows(db, ['a'], 2, { fingerprintKey: 'key' }).map((row) => row.sample_state), [null, 'unreadable']);
+    assert.equal(cache.loadPHashRows(db, ['a'], 2, { fingerprintKey: 'key' })[0].crop_phash_hex, 'aaaa000000000000');
+    assert.deepEqual(cache.loadGraySampleRows(db, ['a'], 2, { fingerprintKey: 'key' })[0].crop_gray_bytes, Buffer.from([2, 3]));
+    const stored = db.prepare('SELECT luma_range, border_ltrb, crop_phash_hex, crop_flipped_phash_hex, crop_gray_bytes FROM video_fingerprints ORDER BY sample_index').all();
+    assert.deepEqual(stored[0], {
+      luma_range: 200, border_ltrb: '0,8,0,8', crop_phash_hex: 'aaaa000000000000', crop_flipped_phash_hex: 'bbbb000000000000', crop_gray_bytes: Buffer.from([2, 3]),
+    });
+    assert.deepEqual(stored[1], { luma_range: null, border_ltrb: null, crop_phash_hex: null, crop_flipped_phash_hex: null, crop_gray_bytes: null });
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('a fingerprint table from an earlier version gains the newer columns', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    db.exec('ALTER TABLE video_fingerprints DROP COLUMN sample_state');
+    db.exec('ALTER TABLE video_fingerprints DROP COLUMN crop_gray_bytes');
+    cache.closeDb();
+    const reopened = cache.openDb(folderPath, { mode: 'centralised', centralCachePath: tempRoot });
+    const columns = reopened.prepare('PRAGMA table_info(video_fingerprints)').all().map((row) => row.name);
+    assert.ok(columns.includes('sample_state'));
+    assert.ok(columns.includes('crop_gray_bytes'));
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });
@@ -272,6 +326,8 @@ test('cache saves invalidate duplicate data when the same video id refers to a c
     cache.saveCache(db, [syncVideo, chunkedVideo]);
     for (const video of [syncVideo, chunkedVideo]) {
       insertFingerprint(db, video.id, 0);
+      cache.saveVideoBurst(db, video.id, 'burst-key', 'ok', '[]');
+      cache.saveAudioFingerprint(db, video.id, 'audio-key', 'ok', Buffer.alloc(8, 1));
       cache.updateVideoSignatures(db, video.id, { quick: `${video.id}-quick` });
       cache.markFingerprintFailure(db, video.id, { fingerprintKey: 'settings-a' });
     }
@@ -280,6 +336,8 @@ test('cache saves invalidate duplicate data when the same video id refers to a c
     await cache.saveCacheChunked(db, [{ ...chunkedVideo, date: 201 }]);
 
     assert.deepEqual(db.prepare('SELECT video_id FROM video_fingerprints').all(), []);
+    assert.deepEqual(db.prepare('SELECT video_id FROM video_bursts').all(), []);
+    assert.deepEqual(db.prepare('SELECT video_id FROM video_audio_fingerprints').all(), []);
     assert.deepEqual(
       db.prepare(`
         SELECT id, file_signature_quick, signature_updated_at, fingerprint_failed_at, fingerprint_failure_key
@@ -290,6 +348,59 @@ test('cache saves invalidate duplicate data when the same video id refers to a c
         { id: 'sync-id', file_signature_quick: null, signature_updated_at: null, fingerprint_failed_at: null, fingerprint_failure_key: null },
       ],
     );
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('sound fingerprints are stored per video with their state and read back under their key', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    cache.saveCache(db, ['a', 'b'].map((id) => buildCachedVideo(id, path.join(folderPath, `${id}.mp4`))));
+    cache.saveAudioFingerprint(db, 'a', 'key-1', 'ok', Uint8Array.from([1, 0, 0, 0, 2, 0, 0, 0]));
+    // Only ok rows keep words.
+    cache.saveAudioFingerprint(db, 'b', 'key-1', 'silent', Buffer.alloc(4));
+    cache.saveAudioFingerprint(db, 'b', 'key-1', 'unknown-state', null);
+
+    const rows = cache.loadAudioFingerprints(db, ['a', 'b'], 'key-1');
+    assert.deepEqual(rows.map(({ video_id, state, word_count }) => ({ video_id, state, word_count })), [
+      { video_id: 'a', state: 'ok', word_count: 2 },
+      { video_id: 'b', state: 'silent', word_count: 0 },
+    ]);
+    assert.equal(rows[0].words.readUInt32LE(4), 2);
+    assert.equal(rows[1].words, null);
+    assert.deepEqual(cache.loadAudioFingerprints(db, ['a'], 'key-2'), []);
+  } finally {
+    cache.closeDb();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('bursts are stored per video and read back only under their key', async (t) => {
+  const setup = await openTempCacheDb(t);
+  if (!setup) return;
+  const { tempRoot, folderPath, db } = setup;
+
+  try {
+    const videos = ['a', 'b'].map((id) => buildCachedVideo(id, path.join(folderPath, `${id}.mp4`)));
+    cache.saveCache(db, videos);
+    cache.saveVideoBurst(db, 'a', 'key-1', 'ok', '[[[0,"00ff","ff00",null,null]]]');
+    cache.saveVideoBurst(db, 'b', 'key-1', 'failed', 'ignored');
+    // A later burst for the same video replaces the earlier one.
+    cache.saveVideoBurst(db, 'a', 'key-1', 'ok', '[null]');
+
+    assert.deepEqual(
+      cache.loadVideoBursts(db, ['a', 'b'], 'key-1').map(({ video_id, state, frames_json }) => ({ video_id, state, frames_json })),
+      [{ video_id: 'a', state: 'ok', frames_json: '[null]' }, { video_id: 'b', state: 'failed', frames_json: null }],
+    );
+    assert.deepEqual(cache.loadVideoBursts(db, ['a', 'b'], 'key-2'), []);
+
+    cache.deleteVideosByIds(db, ['a']);
+    assert.deepEqual(cache.loadVideoBursts(db, ['a'], 'key-1'), []);
   } finally {
     cache.closeDb();
     await fs.rm(tempRoot, { recursive: true, force: true });

@@ -1020,29 +1020,105 @@
   gap: 12px;
 }
 
-.duplicate-mode-summary {
+.duplicate-sidebar-title-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
+  gap: 8px;
 }
 
-.duplicate-mode-summary strong {
+.duplicate-sidebar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  /* Lines the arrow up with the content below rather than with the button's hover box. */
+  margin-left: -6px;
+  padding: 0 8px 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  transition: var(--transition);
+}
+
+.duplicate-sidebar-back:hover {
   color: var(--text-primary);
-  font-size: 22px;
-  line-height: 1;
+  background: var(--bg-surface-hover);
+}
+
+.duplicate-sidebar-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--bg-surface-hover);
+  color: var(--text-tertiary);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
-.duplicate-mode-summary span {
+.duplicate-sidebar-view-toggle button.active .duplicate-sidebar-count {
+  color: var(--accent);
+}
+
+/* The run buttons, last in the section: the list comes first, running again is a later step. */
+.duplicate-sidebar-actions {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.duplicate-sidebar-actions .sidebar-wide-action {
+  margin-top: 0;
+}
+
+.duplicate-mode-summary {
+  display: grid;
+  gap: 8px;
+}
+
+/* Tiles in the style of the Status counts, so both views read the same way. */
+.duplicate-summary-stats {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-app);
+}
+
+.duplicate-summary-stat {
   min-width: 0;
+  padding: 8px 6px;
+  border-radius: 6px;
+  background: var(--bg-surface);
+  text-align: center;
+}
+
+.duplicate-summary-stat .stat-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.duplicate-summary-stat .stat-label {
+  white-space: nowrap;
+}
+
+.duplicate-summary-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -2px 0 0;
+  padding-left: 4px;
   color: var(--text-tertiary);
   font-size: 12px;
-  text-align: right;
 }
 
 .duplicate-sidebar-view-toggle {
@@ -1081,13 +1157,11 @@
   background: var(--accent-dim);
 }
 
+/* Flat, like the grid's filters: one heading, sentence-case labels, no box inside the section. */
 .duplicate-sidebar-controls {
   display: grid;
-  gap: 10px;
-  padding: 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-subtle);
+  gap: 12px;
+  padding-top: 4px;
 }
 
 .duplicate-sidebar-heading-row {
@@ -1095,26 +1169,27 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-height: 20px;
 }
 
-.duplicate-sidebar-field {
-  display: grid;
-  gap: 5px;
-}
-
-.duplicate-sidebar-field > span {
+.duplicate-sidebar-search {
+  position: relative;
+  display: flex;
+  align-items: center;
   color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
-.duplicate-sidebar-field input[type="text"] {
+.duplicate-sidebar-search svg {
+  position: absolute;
+  left: 10px;
+  pointer-events: none;
+}
+
+.duplicate-sidebar-search input {
   width: 100%;
   min-height: 32px;
   box-sizing: border-box;
-  padding: 0 9px;
+  padding: 0 9px 0 30px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
@@ -1122,28 +1197,35 @@
   font-size: 12px;
 }
 
-.duplicate-sidebar-field input[type="text"]:focus {
+.duplicate-sidebar-search input:focus {
   outline: none;
   border-color: var(--accent);
 }
 
-.duplicate-sidebar-inline {
+.duplicate-sidebar-field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
-  align-items: center;
+  gap: 6px;
+}
+
+.duplicate-sidebar-field-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 8px;
-}
-
-.duplicate-sidebar-inline input[type="range"] {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
-.duplicate-sidebar-inline strong {
   color: var(--text-secondary);
   font-size: 12px;
-  text-align: right;
+}
+
+.duplicate-sidebar-field-heading strong {
+  color: var(--text-primary);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.duplicate-sidebar-field input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 /* Buttons */
@@ -1317,6 +1399,19 @@
   font-size: 13px;
 }
 
+/* In place of the review button, beside the preferences gear: the gear already fills the icon's spot. */
+.sidebar-footer-row .sidebar-delete-card {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 4px 4px 4px 10px;
+}
+
+.sidebar-footer-row .sidebar-delete-card > svg {
+  display: none;
+}
+
 /* What is marked and how much it frees, with the destructive action kept small and to the side. */
 .sidebar-delete-card {
   display: flex;
@@ -1411,4 +1506,10 @@
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
+}
+
+.sidebar-duplicate-note {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
 }

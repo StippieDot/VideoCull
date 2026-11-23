@@ -5,7 +5,7 @@ const { CACHE_UNAVAILABLE_CODE } = require('../../electron/cache-service');
 const { normalizeDuplicateSettings } = require('../../electron/duplicate-utils');
 const { processingPause } = require('../../electron/processing-pause');
 
-const FRAME_BYTES = 32 * 32;
+const FRAME_BYTES = 64 * 96;
 const modulePaths = ['duplicates', 'media-process'].map((name) => require.resolve(`../../electron/${name}`));
 
 // FFmpeg is started through a destructured `spawn`, so the fake has to be in place while the
@@ -15,12 +15,12 @@ function loadDuplicatesWithFakeFfmpeg(onStart = (child) => {
   child.emit('close', 0, null);
 }) {
   const realSpawn = childProcess.spawn;
-  childProcess.spawn = () => {
+  childProcess.spawn = (_command, args) => {
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
     child.kill = () => setImmediate(() => child.emit('close', null, 'SIGKILL'));
-    setImmediate(() => onStart(child));
+    setImmediate(() => onStart(child, args));
     return child;
   };
   for (const modulePath of modulePaths) delete require.cache[modulePath];
@@ -36,8 +36,8 @@ function video(id) {
   return { id, filename: `${id}.mp4`, path: `P:\\${id}.mp4`, durationSecs: 100 };
 }
 
-function backfillSetup(duplicates, cacheAccess, videos = [video('a'), video('b'), video('c')]) {
-  const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', sampleCount: 1 });
+function backfillSetup(duplicates, cacheAccess, videos = [video('a'), video('b'), video('c')], settingsInput = {}) {
+  const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', sampleCount: 1, ...settingsInput });
   const duplicateState = {
     fingerprintKey: 'key',
     completeById: new Map(),
@@ -57,6 +57,19 @@ function backfillSetup(duplicates, cacheAccess, videos = [video('a'), video('b')
     {},
   );
   return { run, duplicateState, backfill };
+}
+
+// FFmpeg stand-in that answers by the requested times. The combined call returns nothing, which sends
+// extraction to one call per sample; such a call returns a frame unless `noFrameAt(seconds)` says no.
+function ffmpegByTimestamp(noFrameAt, seeks = []) {
+  return (child, args) => {
+    const times = args.flatMap((arg, index) => (arg === '-ss' ? [Number(args[index + 1])] : []));
+    if (times.length === 1) {
+      seeks.push(times[0]);
+      if (!noFrameAt(times[0])) child.stdout.emit('data', Buffer.alloc(FRAME_BYTES, 128));
+    }
+    child.emit('close', 0, null);
+  };
 }
 
 function refusedWrite() {
@@ -199,5 +212,88 @@ test('cancelling a duplicate run leaves a user pause in place', () => {
     assert.notEqual(processingPause.getState().status, 'running');
   } finally {
     processingPause.resume();
+  }
+});
+
+test('a sample position without a frame is retried nearby and otherwise stored as unreadable', async () => {
+  const seeks = [];
+  // Samples are at 25, 50 and 75 s: 50 s itself fails, and nothing decodes around 75 s.
+  const duplicates = loadDuplicatesWithFakeFfmpeg(ffmpegByTimestamp((time) => time === 50 || (time > 74 && time < 76), seeks));
+  const saved = [];
+  const failed = [];
+  const { duplicateState, backfill } = backfillSetup(duplicates, {
+    saveVideoFingerprints: async (_folder, _options, id, fingerprints) => { saved.push({ id, fingerprints }); },
+    markFingerprintFailure: async (_folder, _options, id) => { failed.push(id); },
+  }, [video('a')], { sampleCount: 3 });
+
+  await backfill();
+
+  assert.deepEqual(seeks, [25, 50, 50.25, 75, 75.25, 74.75, 75.75, 74.25]);
+  assert.deepEqual(failed, []);
+  assert.equal(saved.length, 1);
+  const [first, second, third] = saved[0].fingerprints;
+  assert.equal(first.sampleState, undefined);
+  assert.equal(second.timestampSecs, 50.25, 'a retried sample keeps the time it was read at');
+  assert.match(second.phashHex, /^[0-9a-f]{16}$/);
+  assert.deepEqual(
+    { state: third.sampleState, hash: third.phashHex, bytes: third.grayBytes.length, time: third.timestampSecs },
+    { state: 'unreadable', hash: '', bytes: 0, time: 75 },
+  );
+  assert.equal(duplicateState.completeById.get('a'), true);
+  assert.deepEqual(duplicateState.comparisonRows.map((row) => row.sample_state), [null, null, 'unreadable']);
+});
+
+test('a video without a single readable sample is recorded as failed', async () => {
+  const duplicates = loadDuplicatesWithFakeFfmpeg(ffmpegByTimestamp(() => true));
+  const saved = [];
+  const failed = [];
+  const { backfill } = backfillSetup(duplicates, {
+    saveVideoFingerprints: async (_folder, _options, id) => { saved.push(id); },
+    markFingerprintFailure: async (_folder, _options, id) => { failed.push(id); },
+  }, [video('a')], { sampleCount: 3 });
+
+  await backfill();
+
+  assert.deepEqual(saved, []);
+  assert.deepEqual(failed, ['a']);
+});
+
+test('stored samples are read again when the video is now sampled at other times', async () => {
+  const { getSamplingTimestamps } = require('../../electron/duplicate-utils');
+  const settings = normalizeDuplicateSettings({ comparisonMode: 'phash', sampleCount: 3 });
+  // Read before the frame rate was known, then at the frame-aligned times, one of them retried.
+  const withoutRate = getSamplingTimestamps(100, 3, settings, null);
+  const current = getSamplingTimestamps(100, 3, settings, 25);
+  assert.notDeepEqual(withoutRate, current);
+  for (const [times, expected] of [[withoutRate, ['a']], [[current[0], current[1] + 0.25, current[2]], []]]) {
+    const duplicates = loadDuplicatesWithFakeFfmpeg();
+    const saved = [];
+    const { duplicateState, backfill } = backfillSetup(duplicates, {
+      saveVideoFingerprints: async (_folder, _options, id) => { saved.push(id); },
+      markFingerprintFailure: async () => {},
+    }, [{ ...video('a'), fps: 25 }], { sampleCount: 3 });
+    duplicateState.completeById.set('a', true);
+    duplicateState.comparisonRows.push(...times.map((time, index) => ({ video_id: 'a', sample_index: index, timestamp_secs: time, phash_hex: '0123456789abcdef' })));
+
+    await backfill();
+
+    assert.deepEqual(saved, expected, `times ${times.join(', ')}`);
+  }
+});
+
+test('a video with an unreadable sample is read again only when retrying failed extractions', async () => {
+  for (const [retryFailedFingerprintExtraction, expected] of [[false, []], [true, ['a']]]) {
+    const duplicates = loadDuplicatesWithFakeFfmpeg();
+    const saved = [];
+    const { duplicateState, backfill } = backfillSetup(duplicates, {
+      saveVideoFingerprints: async (_folder, _options, id) => { saved.push(id); },
+      markFingerprintFailure: async () => {},
+    }, [video('a')], { retryFailedFingerprintExtraction });
+    duplicateState.completeById.set('a', true);
+    duplicateState.comparisonRows.push({ video_id: 'a', sample_index: 0, phash_hex: '', sample_state: 'unreadable' });
+
+    await backfill();
+
+    assert.deepEqual(saved, expected, `retry ${retryFailedFingerprintExtraction}`);
   }
 });

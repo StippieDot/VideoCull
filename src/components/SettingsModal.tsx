@@ -3,7 +3,7 @@ import useStore from '../store';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake, FolderOpen, Copy, Trash2, FileText } from 'lucide-react';
 import type { AppSettings, CacheLocationInfo, DistributionInfo, LegacyInstallStatus, LegalFileName, ToastInput, UpdateInfo } from '../types';
 import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
-import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
+import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, KEEPER_RULE_LABELS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
 import { isWindows as isWindowsPlatform, modKeyName } from '../utils';
 import KeybindInput from './KeybindInput';
@@ -45,14 +45,6 @@ const FEATURE_TOGGLES = [
   description: string;
 }>;
 
-const KEEPER_RULE_LABELS: Record<string, { title: string; description: string }> = {
-  resolution: { title: 'Resolution', description: 'Prefer the highest displayed resolution.' },
-  videoBitrate: { title: 'Video bitrate', description: 'Prefer the cleaner encode.' },
-  duration: { title: 'Duration', description: 'Prefer the longest version.' },
-  fps: { title: 'FPS', description: 'Prefer smoother playback.' },
-  size: { title: 'File size', description: 'Prefer the largest file.' },
-  codec: { title: 'Codec', description: 'Prefer the codec ranked higher in the codec preference.' },
-};
 
 const CODEC_FAMILY_INFO: Record<string, { title: string; description: string }> = {
   av1: { title: 'AV1', description: 'Newest and most efficient' },
@@ -179,9 +171,10 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
     }));
   };
 
-  // Visual scores run higher for unrelated footage than pHash scores, so it needs the earlier warning.
+  // Visual scores run higher for related but different footage than pHash scores, so it needs the
+  // earlier warning: below 90, clips of the same scene and different videos start to match.
   const isLowSimilarity = (mode: AppSettings['duplicates']['comparisonMode'], value: number) => (
-    mode === 'visual' ? value <= 90 : value < 80
+    mode === 'visual' ? value < 90 : value < 80
   );
 
   const renderSimilarityInput = (
@@ -212,9 +205,19 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
       : [[d.comparisonMode, d.finalSimilarityThreshold]];
     const parts = checks
       .filter(([mode, value]) => isLowSimilarity(mode, value))
-      .map(([mode]) => (mode === 'visual' ? 'visual at 90% or lower' : 'pHash below 80%'));
+      .map(([mode]) => (mode === 'visual' ? 'visual below 90%' : 'pHash below 80%'));
     return parts.length > 0 ? `Unrelated videos start to match with ${parts.join(' and ')}.` : null;
   })();
+
+  // SYNC NOTE: the conditions of nearMissVerificationEnabled in electron/pair-verifier.js.
+  const nearMissUnavailableReason = localSettings.duplicates.sampleCount < 2
+    ? 'Needs at least 2 samples.'
+    : localSettings.duplicates.comparisonMode === 'phash' && localSettings.duplicates.phashFirstSampleOnly
+      ? 'Not available with First sample scoring.'
+      : null;
+
+  const outlineCheckApplies = localSettings.duplicates.comparisonMode === 'visual';
+  const outlineCheckOff = localSettings.duplicates.visualOutlineCheck === 'off';
 
   // One select over two stored flags: first-sample-only (pHash) wins over every-sample.
   const sampleScoring = localSettings.duplicates.phashFirstSampleOnly
@@ -731,6 +734,34 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           )}
                         </SettingRow>
                         <SettingRow
+                          label="Outline check"
+                          help={!outlineCheckApplies
+                            ? 'Used by Visual similarity. pHash already compares outlines.'
+                            : 'Also compares the outlines in each frame, so clips filmed in the same place a moment earlier or later are not reported as copies.'}
+                          details={outlineCheckApplies && outlineCheckOff && (
+                            <span className="help-text duplicates-similarity-warning duplicates-outline-warning">
+                              Clips of the same scene at another moment can show up as duplicates.
+                              <button className="btn-check-updates" type="button" onClick={() => handleDuplicateChange('visualOutlineCheck', 75)}>
+                                Use 75% (recommended)
+                              </button>
+                            </span>
+                          )}
+                        >
+                          {(id) => (
+                            <select
+                              id={id}
+                              value={String(localSettings.duplicates.visualOutlineCheck)}
+                              disabled={!outlineCheckApplies}
+                              onChange={(e) => handleDuplicateChange('visualOutlineCheck', e.target.value === 'off' ? 'off' : Number(e.target.value))}
+                            >
+                              <option value="off">Off</option>
+                              {[70, 75, 80, 85, 90].map((limit) => (
+                                <option key={limit} value={limit}>At least {limit}%{limit === 75 ? ' (recommended)' : ''}</option>
+                              ))}
+                            </select>
+                          )}
+                        </SettingRow>
+                        <SettingRow
                           label="Samples"
                           help={<>
                             {sampleScoring === 'weakest' && 'Strictest: a match is scored by its weakest sample.'}
@@ -760,6 +791,50 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                                 <option value="first">First sample (pHash)</option>
                               </select>
                             </>
+                          )}
+                        </SettingRow>
+                        <SwitchRow
+                          label="Ignore black bars"
+                          help="Also matches copies that only differ by black bars above, below or beside the picture."
+                          checked={localSettings.duplicates.matchBlackBars}
+                          onChange={(checked) => handleDuplicateChange('matchBlackBars', checked)}
+                        />
+                        <SettingRow
+                          label="Double-check near misses"
+                          help={nearMissUnavailableReason ?? 'Looks again at pairs just below your similarity value, with frames around each sample, to find copies that start a moment earlier or later. A wider range finds more and reads more frames. Visual similarity uses at most 10 points.'}
+                        >
+                          {(id) => (
+                            <select
+                              id={id}
+                              value={localSettings.duplicates.verifyNearMatches === 'off' ? 'off' : String(localSettings.duplicates.nearMissRange)}
+                              disabled={nearMissUnavailableReason !== null}
+                              onChange={(e) => setLocalSettings((prev) => ({
+                                ...prev,
+                                duplicates: e.target.value === 'off'
+                                  ? { ...prev.duplicates, verifyNearMatches: 'off' }
+                                  : { ...prev.duplicates, verifyNearMatches: 'auto', nearMissRange: Number(e.target.value) as AppSettings['duplicates']['nearMissRange'] },
+                              }))}
+                            >
+                              <option value="off">Off</option>
+                              {[5, 10, 15, 20, 25, 30].map((range) => (
+                                <option key={range} value={range}>Up to {range} points below</option>
+                              ))}
+                            </select>
+                          )}
+                        </SettingRow>
+                        <SettingRow
+                          label="Partial clips"
+                          help="Finds videos that contain a part of another video, such as an excerpt of a longer recording. Reads the sound of every video once, which takes a while. Start it with Find Partial Clips in the sidebar."
+                        >
+                          {(id) => (
+                            <select
+                              id={id}
+                              value={localSettings.duplicates.partialClips}
+                              onChange={(e) => handleDuplicateChange('partialClips', e.target.value === 'sound' ? 'sound' : 'off')}
+                            >
+                              <option value="off">Off</option>
+                              <option value="sound">By sound</option>
+                            </select>
                           )}
                         </SettingRow>
                         <SwitchRow
@@ -935,17 +1010,37 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           </SettingRow>
                         )}
                         <SwitchRow
-                          label="Ignore black pixels"
-                          help="Helps with fades, black frames and letterboxing."
-                          checked={localSettings.duplicates.ignoreBlackPixels}
-                          onChange={(checked) => handleDuplicateChange('ignoreBlackPixels', checked)}
+                          label="Skip blank frames"
+                          help="Ignores frames that are a single flat colour, which would match any other blank frame."
+                          checked={localSettings.duplicates.skipBlankFrames}
+                          onChange={(checked) => handleDuplicateChange('skipBlankFrames', checked)}
                         />
                         <SwitchRow
-                          label="Ignore white pixels"
-                          help="Helps with bright flashes and white frames."
-                          checked={localSettings.duplicates.ignoreWhitePixels}
-                          onChange={(checked) => handleDuplicateChange('ignoreWhitePixels', checked)}
+                          label="Match partly unreadable videos"
+                          help="Compares a video on the samples that could be read when some could not. Finds damaged copies of good files."
+                          checked={localSettings.duplicates.matchPartlyUnreadable}
+                          onChange={(checked) => handleDuplicateChange('matchPartlyUnreadable', checked)}
                         />
+                        <SettingRow
+                          label="Samples needed for a match"
+                          help={localSettings.duplicates.phashFirstSampleOnly && localSettings.duplicates.comparisonMode === 'phash'
+                            ? 'First sample scoring always decides on one sample.'
+                            : 'How many samples must be compared before two videos can match. Fewer finds more and is less certain.'}
+                        >
+                          {(id) => (
+                            <select
+                              id={id}
+                              value={String(localSettings.duplicates.minComparedSamples)}
+                              disabled={localSettings.duplicates.phashFirstSampleOnly && localSettings.duplicates.comparisonMode === 'phash'}
+                              onChange={(e) => handleDuplicateChange('minComparedSamples', e.target.value === 'auto' ? 'auto' : Number(e.target.value))}
+                            >
+                              <option value="auto">Automatic</option>
+                              {[1, 2, 3].filter((count) => count <= localSettings.duplicates.sampleCount).map((count) => (
+                                <option key={count} value={count}>{count === 1 ? '1 sample' : `${count} samples`}</option>
+                              ))}
+                            </select>
+                          )}
+                        </SettingRow>
                         <SwitchRow
                           label="Compare flipped videos"
                           help="Also matches mirrored copies."

@@ -25,7 +25,7 @@ Exact-file checks are part of the run. The selected comparison method controls t
 | Method | Best use | Tradeoff |
 | --- | --- | --- |
 | pHash (default) | Most libraries; strict image-signature comparison with few false positives | Can miss transformations that visual similarity still recognizes. |
-| Visual similarity | Alternate encodes, resized copies, and near-identical footage | Broader matching can produce more false positives. |
+| Visual similarity | Alternate encodes, resized, dimmed or recoloured copies, and near-identical footage. It compares where light and dark lie in each frame, not how bright the frames are, so dark scenes are not matched just for being dark. | Broader matching. Clips of the same scene filmed a moment apart can look alike; the **Outline check**, on at 75% by default, keeps most of them apart. |
 
 The methods can find different results. Run them separately when coverage matters more than processing time: in duplicate groups, **Run Again with Visual Similarity** (or **with pHash**) in the sidebar, also in the **Duplicates** menu in the title bar, switches to the other method, saves it as your setting and runs detection again. **Undo** in the notice that follows switches back.
 
@@ -33,21 +33,43 @@ The methods can find different results. Run them separately when coverage matter
 
 Similarity is the minimum score required to create a match. Raise it when unrelated videos appear together; lower it when known alternate encodes are missed. Visual results below roughly 95 percent deserve especially careful review.
 
+Each group says how it matched: **Identical files** for byte-for-byte copies, or **Same content at 3 of 3 sampled moments** for similarity matches, where the first number is the fewest samples any match in the group was compared on. Notes such as **Black bars ignored**, **Mirrored**, **Partly unreadable** or **Lengths differ by 2.0 s** say what was needed to find the match. Two labels ask you to look before deleting, and such groups are listed after the others:
+
+- **Single-frame match — check before deleting**: a match rests on one sample, because the others were dark, blank or unreadable, or because first-sample scoring is on.
+- **Little movement — check before deleting**: both videos show nearly the same picture throughout, such as a slideshow or a recorded screen, so they may share only a still image.
+
+In the list view, each copy that is not the suggested keeper says why, such as **Not suggested: lower resolution**. Point at **Suggested keeper** to see the rule that decided; a decision by file size, codec or file name is marked as a tie-break, because the pictures did not differ. The gallery view shows the same label on the keeper's card and marks the best and worse values of each card.
+
 The score shown for a group is its weakest match, which is the same value the Similarity setting tests. A group shown at 91 percent therefore appears in any run at 91 percent or lower, and lowering the setting only adds matches that score below the previous value. Hover a group's score to also see the average of its matches.
 
 Sample count controls how many points in each video contribute evidence. More samples take longer but reduce the chance that one common frame, intro, or title card creates a false match.
+
+**Ignore black bars** also matches a copy that only differs by black bars above, below or beside the picture. Each video is then compared both as it is and without its bars, and the better score counts.
+
+**Partial clips** finds videos that contain a stretch of another video: an excerpt, a trimmed version, or a compilation of several clips. Set **Partial clips** to **By sound** in Settings > Duplicates and choose **Find Partial Clips** in the sidebar. The first search reads the sound of every video once, about as long as reading the files, and keeps it; later searches only read new or changed videos. Each stretch that sounds the same is checked with pictures at three moments:
+
+- When the pictures match, the video is a partial clip: **Contains 0:20 of concert.mp4, from 0:30 to 0:50 — sound and picture match**, or **highlight.mp4 is an excerpt of concert.mp4** when it covers almost all of the shorter video. A time bar shows where the stretches lie in the longer video.
+- When only the sound matches, such as two videos with the same music, the pair is listed as sharing sound. Pairs whose pictures differ are collapsed under a count; a pair whose pictures could not be checked, for example because they are dark at those moments, is shown with that note.
+
+Partial clips have no suggested keeper. Play or mark either video from the list, right-click it for more actions, or choose **Not a match** to leave the pair out of later searches. Once a search ran, the switch at the top of the sidebar moves between **Groups** and **Partial clips**; the path filter and sort below it act on the list that is shown, and partial clips sort by shared length, share of the shorter video or total size. Videos without sound, with silent or droning sound, or shorter than 10 seconds are not searched, and only the first audio track is used. Searching and checking use the same progress, pause and cancel as a duplicate run; the sound read before a cancel is kept. The picture checks are kept too, so a later search only checks stretches it has not checked before or whose files changed. The sound search runs on as many processor cores as **Parallel FFmpeg processes** allows.
+
+**Double-check near misses** catches copies that start a moment earlier or later. Such a copy is sampled a fraction of a second off and scores below your similarity value, like an unrelated video would. Pairs that score up to 20 points below it (the range is adjustable; Visual similarity uses at most 10) are compared again with frames from one second before to one second after each sample. The pair matches only when one consistent time shift brings it to your similarity value; its group then says **Starts a moment earlier or later**. The extra frames are read once per video and kept. A run reads them for at most 200 videos, those with the most near misses first; if near misses are left, the sidebar says how many and **Check remaining near misses** checks them all in one run, which you can pause or cancel like any other.
 
 Advanced controls handle harder libraries:
 
 - Sampling windows can avoid repeated intros and outros, including a custom percentage range.
 - Duration tolerance limits how different runtimes may be before comparison.
 - Requiring every sample scores each match by its weakest sample; turning it off scores and tests the average of all samples.
-- Black- or white-pixel ignoring can reduce the effect of fades, letterboxing, and flashes.
+- Blank frames, a single flat colour such as a grey card, are skipped by default, because they would match any other blank frame.
+- A video whose file is damaged at some sampled positions is compared on the samples that could be read. **Samples needed for a match** sets how many that must be; a match decided by one sample is marked for checking.
+- Black- or white-pixel ignoring can reduce the effect of fades and flashes.
 - Flipped comparison checks horizontally mirrored copies.
 - Maximum sampling duration limits work on long files; `0` uses the full duration.
 - Checkpoint intervals save progress during long runs, and retry can revisit failed fingerprints.
 
 Change one matching control at a time, then run detection again. Existing groups are results from the previous run; changing a setting does not silently rebuild them.
+
+When you reopen a session, the groups of its last run come back after the scan, together with any keepers you chose yourself. The sidebar shows when they were found and how many videos were added since. Videos deleted or changed in the meantime are taken out, and each group is rebuilt from the matches that are left, so two copies that were only linked through a deleted video no longer appear together. Changing a setting that decides which videos match, such as Similarity or the number of samples, discards the stored groups; run detection again. If part of the session could not be scanned, for example because a drive is not connected, nothing is restored until it can be.
 
 ## Read and filter results
 

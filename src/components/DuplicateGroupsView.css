@@ -182,8 +182,38 @@
   color: var(--color-skip);
 }
 
+.duplicate-match-badge.low-confidence {
+  background: var(--color-delete-dim);
+  color: var(--color-delete);
+}
+
 .duplicate-group-title strong {
   font-size: 15px;
+}
+
+.duplicate-group-title > strong,
+.duplicate-group-title > .duplicate-match-badge,
+.duplicate-group-title > .duplicate-group-fact {
+  flex-shrink: 0;
+}
+
+.duplicate-group-notes {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.duplicate-group-title .duplicate-group-notes em {
+  display: inline;
+  overflow: visible;
+}
+
+.duplicate-group-notes em + em::before {
+  content: ' · ';
 }
 
 .duplicate-group-title em {
@@ -332,6 +362,11 @@
   font-size: 11px;
 }
 
+.duplicate-row-copy .duplicate-row-reason {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
 .duplicate-inline-flag {
   display: inline-flex;
   align-items: center;
@@ -423,7 +458,20 @@
 }
 
 .duplicate-gallery-card {
+  position: relative;
   height: 100%;
+}
+
+/* Centred over the top of the thumbnail, between the select box and the status badge. */
+.duplicate-gallery-keeper {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  z-index: 3;
+  min-height: 22px;
+  padding: 0 8px;
+  transform: translateX(-50%);
+  background: rgba(16, 40, 28, 0.88);
 }
 
 .duplicate-empty {

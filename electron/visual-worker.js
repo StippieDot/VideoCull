@@ -1,14 +1,21 @@
 const { parentPort, workerData } = require('worker_threads');
 const {
   normalizeDuplicateSettings,
-  rawGraySimilarity,
-  flipGrayBytes,
-  combineSampleScores,
+  graySamplesByVideo,
+  graySampleScore,
+  scoreSamples,
+  movementClass,
+  matchConfidence,
   durationsWithinTolerance,
 } = require('./duplicate-utils');
+const {
+  PENDING_LIST_LIMIT,
+  keepBestNearMisses,
+  nearMissFloor,
+  nearMissVerificationEnabled,
+} = require('./pair-verifier');
 
 const BUCKET_SIZE_SECS = 1;
-const DARK_SAMPLE_RATIO_THRESHOLD = 0.8;
 const pauseView = workerData.pauseSignal ? new Int32Array(workerData.pauseSignal) : null;
 
 function pauseCheckpoint() {
@@ -17,27 +24,6 @@ function pauseCheckpoint() {
   parentPort.postMessage({ type: 'paused' });
   while (Atomics.load(pauseView, 0) === 1) Atomics.wait(pauseView, 0, 1);
   Atomics.store(pauseView, 1, 0);
-}
-
-function compactGraySamples(rows, sampleCount) {
-  const byVideo = new Map();
-  for (const row of rows) {
-    const list = byVideo.get(row.video_id) ?? [];
-    list.push({
-      index: Number(row.sample_index),
-      bytes: row.gray_bytes,
-      flippedBytes: null,
-      darkRatio: Number(row.frame_dark_ratio ?? 0),
-    });
-    byVideo.set(row.video_id, list);
-  }
-
-  const result = new Map();
-  for (const [videoId, samples] of byVideo) {
-    const ordered = samples.sort((a, b) => a.index - b.index).slice(0, sampleCount);
-    if (ordered.length >= sampleCount) result.set(videoId, ordered);
-  }
-  return result;
 }
 
 function getCandidateBuckets(video, settings) {
@@ -50,10 +36,6 @@ function getCandidateBuckets(video, settings) {
   const keys = [];
   for (let key = minKey; key <= maxKey; key++) keys.push(key);
   return keys;
-}
-
-function isDarkSample(sample) {
-  return Number(sample?.darkRatio ?? 0) >= DARK_SAMPLE_RATIO_THRESHOLD;
 }
 
 function forEachBucketedPair(buckets, unknownDurationCandidates, settings, callback) {
@@ -80,44 +62,15 @@ function forEachBucketedPair(buckets, unknownDurationCandidates, settings, callb
   }
 }
 
-function compareSamples(a, b, settings) {
-  const scores = [];
-  let diffSum = 0;
-  const maxDiffSum = (100 - settings.finalSimilarityThreshold) * settings.sampleCount;
-  for (let i = 0; i < settings.sampleCount; i++) {
-    const sampleA = a.samples[i];
-    const sampleB = b.samples[i];
-    if (!sampleA?.bytes || !sampleB?.bytes) continue;
-    if (isDarkSample(sampleA) || isDarkSample(sampleB)) continue;
-    const normalScore = rawGraySimilarity(sampleA.bytes, sampleB.bytes, settings);
-    let bestScore = normalScore;
-    if (settings.compareFlipped) {
-      sampleA.flippedBytes ??= flipGrayBytes(sampleA.bytes);
-      const flippedScore = rawGraySimilarity(sampleA.flippedBytes, sampleB.bytes, settings);
-      bestScore = Math.max(normalScore, flippedScore);
-    }
-    scores.push(bestScore);
-    diffSum += 100 - bestScore;
-    if (settings.requireEverySample && bestScore < settings.finalSimilarityThreshold) return null;
-    if (diffSum > maxDiffSum) return null;
-  }
-
-  if (scores.length === 0) return null;
-  if (settings.sampleCount > 1 && scores.length < 2) return null;
-  const similarity = combineSampleScores(scores, settings);
-  if (similarity < settings.finalSimilarityThreshold) return null;
-  return {
-    similarity,
-    bestSampleIndex: scores.indexOf(Math.max(...scores)),
-  };
-}
-
 function compareVisuals() {
   const settings = normalizeDuplicateSettings(workerData.settings);
-  const sampleMap = compactGraySamples(workerData.grayRows ?? [], settings.sampleCount);
+  const sampleMap = graySamplesByVideo(workerData.grayRows ?? [], settings.sampleCount, settings.matchPartlyUnreadable);
   const candidates = (workerData.videos ?? [])
     .filter((video) => sampleMap.has(video.id))
-    .map((video, index) => ({ ...video, index, samples: sampleMap.get(video.id) }));
+    .map((video, index) => {
+      const samples = sampleMap.get(video.id);
+      return { ...video, index, samples, static: movementClass(samples, settings) === 'static', partial: samples.some((sample) => sample.unreadable) };
+    });
 
   const buckets = new Map();
   const unknownDurationCandidates = [];
@@ -133,6 +86,11 @@ function compareVisuals() {
     buckets.set(key, list);
   }
 
+  // Candidates are found by correlation alone; the outline check only decides a match. A copy that
+  // starts a moment later fails it at the plain sample times and must stay a near miss, so the timing
+  // check can align it and decide with the outline check on aligned frames.
+  const sampleScore = graySampleScore(settings, { outlineCheck: false });
+  const decidingScore = settings.visualOutlineCheck === 'off' ? null : graySampleScore(settings);
   const pairs = [];
   let compared = 0;
   let lastProgressAt = 0;
@@ -142,15 +100,36 @@ function compareVisuals() {
     if ((total & 1023) === 0) pauseCheckpoint();
   });
 
+  const verify = nearMissVerificationEnabled(settings);
+  const floor = verify ? nearMissFloor(settings) : undefined;
+  let nearMisses = [];
+  let nearMissCount = 0;
   const comparePair = (a, b) => {
     if (!durationsWithinTolerance(a, b, settings)) return;
-    const result = compareSamples(a, b, settings);
-    if (!result) return;
+    const candidate = scoreSamples(a.samples, b.samples, settings, sampleScore, { stopBelowThreshold: true, floor });
+    if (!candidate) return;
+    const matches = (scored) => scored !== null && scored.similarity >= settings.finalSimilarityThreshold;
+    const result = decidingScore && matches(candidate) ? scoreSamples(a.samples, b.samples, settings, decidingScore) : candidate;
+    if (!matches(result)) {
+      // Below the threshold, or turned down by the outline check: a near miss, ranked by its correlation.
+      if (!verify || candidate.similarity < floor || candidate.compared < 2) return;
+      nearMissCount++;
+      nearMisses.push({ aId: a.id, bId: b.id, similarity: candidate.similarity });
+      // Trimmed in steps so the list never holds more than twice the limit.
+      if (nearMisses.length >= PENDING_LIST_LIMIT * 2) nearMisses = keepBestNearMisses(nearMisses);
+      return;
+    }
     pairs.push({
       aId: a.id,
       bId: b.id,
       pHashSimilarity: null,
-      bestSampleIndex: result.bestSampleIndex,
+      bestSampleIndex: result.scores.indexOf(Math.max(...result.scores)),
+      static: a.static && b.static,
+      comparedSamples: result.compared,
+      confidence: matchConfidence(result.compared, a.static && b.static),
+      borderAdjusted: result.borderAdjusted,
+      flipped: result.flipped,
+      partialFingerprint: a.partial || b.partial,
       similarity: result.similarity,
       matchType: 'visual',
     });
@@ -174,6 +153,8 @@ function compareVisuals() {
   parentPort.postMessage({
     type: 'done',
     pairs,
+    nearMisses: keepBestNearMisses(nearMisses),
+    nearMissCount,
     compared,
     total,
     bucketed: true,
