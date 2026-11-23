@@ -86,9 +86,9 @@ describe('subfolders', () => {
   });
 });
 
-test('the partial clips menu has no group or method items', () => {
-  const actions = { showDuplicateGroups: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn() } as unknown as Parameters<typeof buildPartialClipsMenu>[2];
+test('the partial clips menu steps through entries and has no method items', () => {
+  const actions = { goToGroup: vi.fn(), showDuplicateGroups: vi.fn(), openDuplicateSettings: vi.fn(), backToGrid: vi.fn() } as unknown as Parameters<typeof buildPartialClipsMenu>[2];
   const menu = buildPartialClipsMenu(1, 2, actions);
   expect(menu).toMatchObject({ title: 'Partial clips', detail: '1 entry' });
-  expect(menu.items.flatMap((item) => (item.type === 'item' ? [item.label] : []))).toEqual(['Show Duplicate Groups (2)', 'Duplicate Settings', 'Back to Grid']);
+  expect(menu.items.flatMap((item) => (item.type === 'item' ? [item.label] : []))).toEqual(['Go to Entry...', 'Show Duplicate Groups (2)', 'Duplicate Settings', 'Back to Grid']);
 });

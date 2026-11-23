@@ -40,11 +40,12 @@ export function buildDuplicateVideoMenu(actions: {
   onMarkDelete: Action;
   onMarkKeep: Action;
   onResetPending: Action;
-  onExcludeFromGroup: Action;
-  onSetSelectedKeeper: Action;
+  /** Group actions; a partial clip row has no group and leaves them out. */
+  onExcludeFromGroup?: Action;
+  onSetSelectedKeeper?: Action;
   onCopyPath: Action;
 }): ContextMenuItem[] {
-  return [
+  const items: ContextMenuItem[] = [
     { key: 'play', label: 'Play', onSelect: actions.onPlay },
     { key: 'external', label: 'Open in external player', onSelect: actions.onOpenExternal },
     { key: 'reveal', label: `Reveal in ${fileManagerName()}`, onSelect: actions.onReveal },
@@ -52,11 +53,11 @@ export function buildDuplicateVideoMenu(actions: {
     { key: 'delete', label: 'Mark Delete', onSelect: actions.onMarkDelete, tone: 'danger' },
     { key: 'keep', label: 'Mark Keep', onSelect: actions.onMarkKeep },
     { key: 'reset', label: 'Reset pending', onSelect: actions.onResetPending, tone: 'secondary' },
-    { key: 'exclude', label: 'Exclude from this group', onSelect: actions.onExcludeFromGroup, tone: 'secondary' },
-    { key: 'keeper', label: 'Mark as selected keeper', onSelect: actions.onSetSelectedKeeper },
-    separator('sep-bottom'),
-    { key: 'copy', label: 'Copy full path', onSelect: actions.onCopyPath, tone: 'secondary' },
   ];
+  if (actions.onExcludeFromGroup) items.push({ key: 'exclude', label: 'Exclude from this group', onSelect: actions.onExcludeFromGroup, tone: 'secondary' });
+  if (actions.onSetSelectedKeeper) items.push({ key: 'keeper', label: 'Mark as selected keeper', onSelect: actions.onSetSelectedKeeper });
+  items.push(separator('sep-bottom'), { key: 'copy', label: 'Copy full path', onSelect: actions.onCopyPath, tone: 'secondary' });
+  return items;
 }
 
 export function buildDuplicateGroupHeaderMenu(args: {

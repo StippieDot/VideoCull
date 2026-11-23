@@ -112,6 +112,10 @@ type DuplicateGalleryCardProps = {
   onPlayVideo: (videoId: string, scopeIds: string[]) => void;
   onOpenVideoContextMenu: (event: React.MouseEvent, groupId: string, videoId: string) => void;
   pictureSize: { width: number; height: number } | null;
+  flags: MetricFlags;
+  /** 'Suggested keeper' or 'Selected keeper' on the group's keeper; null on the others. */
+  keeperLabel: string | null;
+  keeperDecision: string | null;
   /** Reports the frame shape of a loaded thumbnail, which sets the row height. */
   onThumbnailAspect: (videoId: string, aspect: number) => void;
 };
@@ -267,7 +271,7 @@ function pairKeysForGroup(group: DuplicateGroup): string[] {
   return keys;
 }
 
-function statusBadgeContent(video: Video) {
+export function statusBadgeContent(video: Video) {
   if (video.status === 'keep') {
     return { label: 'Marked keep', icon: <Check size={12} />, className: 'keep' };
   }
@@ -372,6 +376,9 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   onPlayVideo,
   onOpenVideoContextMenu,
   pictureSize,
+  flags,
+  keeperLabel,
+  keeperDecision,
 }: DuplicateGalleryCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -389,7 +396,11 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
   }, [onThumbnailAspect, video.id]);
 
   return (
-    <div ref={cardRef} className="duplicate-gallery-card" onContextMenu={(event) => onOpenVideoContextMenu(event, groupId, video.id)}>
+    <div
+      ref={cardRef}
+      className="duplicate-gallery-card"
+      onContextMenu={(event) => onOpenVideoContextMenu(event, groupId, video.id)}
+    >
       <VideoCard
         video={video}
         showSelectionControls
@@ -397,10 +408,23 @@ const DuplicateGalleryCard = memo(function DuplicateGalleryCard({
         onToggleSelect={() => onToggleSelection(video)}
         onPlay={() => onPlayVideo(video.id, groupVideoIds)}
         resolutionTitle={formatPictureSizeNote(video.width, video.height, pictureSize)}
+        metricFlags={flags}
       />
+      {/* Over the thumbnail, so the card keeps the height the gallery rows are measured with. */}
+      {keeperLabel && (
+        <span className="duplicate-keeper-badge duplicate-gallery-keeper" title={keeperDecision ?? undefined}>
+          <CheckCircle2 size={12} />
+          {keeperLabel}
+        </span>
+      )}
     </div>
   );
 });
+
+function keeperBadgeLabel(group: DuplicateGroup, videoId: string): string | null {
+  if (group.suggestedKeeperId !== videoId) return null;
+  return group.manualSuggestedKeeperId === videoId ? 'Selected keeper' : 'Suggested keeper';
+}
 
 function keeperDecisionLabel(group: DuplicateGroup): string | null {
   if (!group.keeperRule) return null;
@@ -578,6 +602,9 @@ function DuplicateVirtualRowRenderer({
                   onPlayVideo={runtime.handlePlayVideo}
                   onOpenVideoContextMenu={runtime.handleOpenVideoContextMenu}
                   pictureSize={groupView.group.pictureSizes?.[video.id] ?? null}
+                  flags={groupView.bestFlags.get(video.id) ?? {}}
+                  keeperLabel={keeperBadgeLabel(groupView.group, video.id)}
+                  keeperDecision={groupView.group.manualSuggestedKeeperId ? null : keeperDecisionLabel(groupView.group)}
                 />
               </div>
             );

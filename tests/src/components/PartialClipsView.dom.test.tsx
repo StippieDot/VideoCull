@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import PartialClipsView, { mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
+import PartialClipsView, { filterAndSortPartialClips, mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
 import useStore from '../../../src/store';
 import type { PartialClip } from '../../../src/types';
 import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
@@ -107,6 +107,44 @@ describe('partial clips list', () => {
     useStore.setState({ partialClips: [clip({ relation: 'audioOnly', state: 'differentPicture', segments: [segment] })] });
     render(<PartialClipsView />);
     expect(screen.getByText(/Same sound as concert.mp4 from 0:00 to 0:32; pictures differ/)).toBeTruthy();
+  });
+
+  test('a row offers the video menu without group actions, and shows its mark', async () => {
+    useStore.setState({ partialClips: [clip()] });
+    render(<PartialClipsView />);
+    await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('highlight.mp4') });
+    const labels = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    expect(labels).toEqual(expect.arrayContaining(['Play', 'Mark Delete', 'Mark Keep', 'Copy full path']));
+    expect(labels).not.toContain('Exclude from this group');
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark Keep' }));
+    expect(useStore.getState().videos.find((video) => video.id === CLIP)?.status).toBe('keep');
+    expect(screen.getByText('Marked keep')).toBeTruthy();
+  });
+
+  test('the path filter matches any copy in an entry, and entries sort by the chosen field', () => {
+    const videosById = new Map(useStore.getState().videos.map((video) => [video.id, { ...video, path: `D:\\${video.filename}` }]));
+    const short = { primary: clip({ coverage: 0.9 }), others: [] };
+    const long = { primary: clip({ aId: OTHER, coverage: 0.2, segments: [{ ...clip().segments[0]!, lengthSecs: 90 }] }), others: [clip()] };
+    const sorted = (pathFilter: string, sortBy: 'sharedLength' | 'coverage', sortOrder: 'asc' | 'desc' = 'desc') =>
+      filterAndSortPartialClips([short, long], { pathFilter, sortBy, sortOrder }, videosById);
+    expect(sorted('', 'sharedLength')).toEqual([long, short]);
+    expect(sorted('', 'coverage')).toEqual([short, long]);
+    expect(sorted('', 'coverage', 'asc')).toEqual([long, short]);
+    // remix.mp4 is only in the second entry; concert.mp4 is in both, once as another copy.
+    expect(sorted('remix', 'sharedLength')).toEqual([long]);
+    expect(sorted('CONCERT', 'sharedLength')).toEqual([long, short]);
+  });
+
+  test('reports its first entry to the title bar and opens a collapsed entry it is sent to', () => {
+    useStore.setState({
+      partialClips: [clip(), clip({ bId: OTHER, shorterId: OTHER, relation: 'audioOnly', state: 'differentPicture' })],
+    });
+    const { container, unmount } = render(<PartialClipsView />);
+    expect(useStore.getState().duplicatePosition).toEqual({ group: 0, total: 2 });
+    act(() => useStore.getState().requestDuplicateGroupJump(1));
+    expect(container.querySelector('details.partial-clips-collapsed')?.hasAttribute('open')).toBe(true);
+    unmount();
+    expect(useStore.getState().duplicatePosition).toBeNull();
   });
 
   test('an empty result says so', () => {

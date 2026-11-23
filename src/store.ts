@@ -1194,6 +1194,8 @@ const useStore = create<VideoStore>((set, get) => ({
   duplicateMinSimilarity: 0,
   duplicateSortBy: 'similarity',
   duplicateSortOrder: 'desc',
+  partialClipSortBy: 'sharedLength',
+  partialClipSortOrder: 'desc',
   duplicateScrollTop: 0,
   reviewPosition: null,
   duplicatePosition: null,
@@ -1287,6 +1289,8 @@ const useStore = create<VideoStore>((set, get) => ({
       duplicateMinSimilarity: 0,
       duplicateSortBy: 'similarity',
       duplicateSortOrder: 'desc',
+      partialClipSortBy: 'sharedLength',
+      partialClipSortOrder: 'desc',
       undoStack: [],
       redoStack: [],
       gridSelectionIds: new Set(),
@@ -1328,6 +1332,8 @@ const useStore = create<VideoStore>((set, get) => ({
       duplicateMinSimilarity: 0,
       duplicateSortBy: 'similarity',
       duplicateSortOrder: 'desc',
+      partialClipSortBy: 'sharedLength',
+      partialClipSortOrder: 'desc',
       undoStack: [],
       redoStack: [],
       gridSelectionIds: new Set(),
@@ -1952,6 +1958,11 @@ const useStore = create<VideoStore>((set, get) => ({
     duplicateSortOrder: state.duplicateSortBy === duplicateSortBy ? state.duplicateSortOrder : 'desc',
   })),
   setDuplicateSortOrder: (duplicateSortOrder) => set({ duplicateSortOrder }),
+  setPartialClipSortBy: (partialClipSortBy) => set((state) => ({
+    partialClipSortBy,
+    partialClipSortOrder: state.partialClipSortBy === partialClipSortBy ? state.partialClipSortOrder : 'desc',
+  })),
+  setPartialClipSortOrder: (partialClipSortOrder) => set({ partialClipSortOrder }),
   setDuplicateScrollTop: (duplicateScrollTop) => set({ duplicateScrollTop: Math.max(0, duplicateScrollTop) }),
   setReviewPosition: (reviewPosition) => {
     const current = get().reviewPosition;
@@ -1970,6 +1981,8 @@ const useStore = create<VideoStore>((set, get) => ({
     duplicateMinSimilarity: 0,
     duplicateSortBy: 'similarity',
     duplicateSortOrder: 'desc',
+    partialClipSortBy: 'sharedLength',
+    partialClipSortOrder: 'desc',
   }),
   setGridSelectionIds: (gridSelectionIds) => set((state) => ({
     gridSelectionIds: typeof gridSelectionIds === 'function'

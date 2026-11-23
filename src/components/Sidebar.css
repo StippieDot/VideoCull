@@ -1020,6 +1020,64 @@
   gap: 12px;
 }
 
+.duplicate-sidebar-title-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.duplicate-sidebar-title-row .sidebar-section-title {
+  margin: 0;
+  justify-content: center;
+}
+
+.duplicate-sidebar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 8px 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  transition: var(--transition);
+}
+
+.duplicate-sidebar-back:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+}
+
+.duplicate-sidebar-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--bg-surface-hover);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.duplicate-sidebar-view-toggle button.active .duplicate-sidebar-count {
+  color: var(--accent);
+}
+
+/* The run buttons, last in the section: the list comes first, running again is a later step. */
+.duplicate-sidebar-actions {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.duplicate-sidebar-actions .sidebar-wide-action {
+  margin-top: 0;
+}
+
 .duplicate-mode-summary {
   display: flex;
   align-items: baseline;

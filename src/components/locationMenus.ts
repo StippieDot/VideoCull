@@ -378,14 +378,16 @@ export function reclaimableBytes(groups: DuplicateGroup[], videosById: Map<strin
   return total;
 }
 
-/** The partial clips list has no groups to step through and no comparison method to switch. */
+/** The partial clips list steps through entries and has no comparison method to switch. */
 export function buildPartialClipsMenu(entryCount: number, groupCount: number, actions: LocationActions): LocationMenu {
   return {
     kind: 'duplicates',
     title: 'Partial clips',
     detail: `${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}`,
     items: [
-      { type: 'item', key: 'groups', label: `Show Duplicate Groups (${groupCount})`, icon: ListOrdered, onSelect: actions.showDuplicateGroups },
+      { type: 'item', key: 'go-to', label: 'Go to Entry...', icon: ListOrdered, onSelect: actions.goToGroup },
+      SEPARATOR('sep-go-to'),
+      { type: 'item', key: 'groups', label: `Show Duplicate Groups (${groupCount})`, icon: LayoutGrid, onSelect: actions.showDuplicateGroups },
       { type: 'item', key: 'settings', label: 'Duplicate Settings', icon: Settings, onSelect: actions.openDuplicateSettings },
       SEPARATOR('sep-back'),
       { type: 'item', key: 'back', label: 'Back to Grid', icon: ArrowLeft, onSelect: actions.backToGrid },

@@ -318,6 +318,25 @@ describe('Sidebar recent folder behavior', () => {
     expect(onSwitchDuplicateMethod).toHaveBeenCalledTimes(1);
   });
 
+  test('while partial clips are searched, only their button says so', () => {
+    const videos = [makeVideo('a'), makeVideo('b')];
+    useStore.setState({
+      directory: 'D:\Media',
+      directories: ['D:\Media'],
+      videos,
+      filteredVideos: videos,
+      stats: { ...useStore.getState().stats, total: 2, pending: 2 },
+      settings: { ...useStore.getState().settings, duplicates: { ...useStore.getState().settings.duplicates, partialClips: 'sound' } },
+      duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })],
+      duplicateGroupsMode: true,
+      isFindingDuplicates: true,
+      duplicateProgress: { stage: 'Reading sound', current: 1, total: 2 } as never,
+    });
+    renderSidebar();
+    expect(screen.getAllByText('Finding partial clips...')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Run Again' })).toHaveProperty('disabled', true);
+  });
+
   test('unchecked near misses are named, with the action that checks them', async () => {
     const onCheckNearMisses = vi.fn();
     const videos = [makeVideo('a'), makeVideo('b')];
@@ -366,10 +385,19 @@ describe('Sidebar recent folder behavior', () => {
     expect(onFindPartialClips).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByRole('button', { name: 'Partial Clips (0)' }));
     expect(useStore.getState()).toMatchObject({ partialClipsMode: true, duplicateGroupsMode: true });
-    // The group filters do nothing for partial clips, and leaving for the grid leaves the list too.
-    expect(screen.getByText('Partial clips')).toBeTruthy();
+    // The similarity filter is for groups; partial clips sort by their own fields.
+    expect(screen.getByRole('button', { name: /Partial clips/ }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByText('Minimum similarity')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Run Again' })).toBeNull();
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'coverage');
+    expect(useStore.getState().partialClipSortBy).toBe('coverage');
+    await userEvent.click(screen.getByRole('button', { name: 'Reset duplicate filters' }));
+    expect(useStore.getState().partialClipSortBy).toBe('sharedLength');
+    // The switch goes back to the groups, and leaving for the grid leaves the list too.
+    await userEvent.click(screen.getByRole('button', { name: /Groups/ }));
+    expect(useStore.getState().partialClipsMode).toBe(false);
+    expect(screen.getByText('Minimum similarity')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: /Partial clips/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Back to Grid' }));
     expect(useStore.getState()).toMatchObject({ partialClipsMode: false, duplicateGroupsMode: false });
   });

@@ -1,7 +1,7 @@
 import { describeUncheckedNearMisses, type DuplicateRunInfo } from '../duplicateResultsPersistence';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { mergeClipsByDuplicateGroup } from './PartialClipsView';
-import type { ColorTheme, DuplicateSortField, RecentSession, StatusFilter, ToastInput, ToastKind } from '../types';
+import type { ColorTheme, DuplicateSortField, PartialClipSortField, RecentSession, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
 import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
 import { beginDevInteraction } from '../perf-dev';
@@ -22,7 +22,7 @@ import videoCullLogo from '../assets/videocull-logo.png';
 import {
   FolderOpen, Folder, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, X, Maximize2, Settings, ChevronDown,
-  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, History, FolderPlus, FolderMinus
+  Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, History, FolderPlus, FolderMinus, ArrowLeft
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -140,6 +140,10 @@ function SidebarDuplicateSection({
   const setDuplicateSortBy = useStore((s) => s.setDuplicateSortBy);
   const duplicateSortOrder = useStore((s) => s.duplicateSortOrder);
   const setDuplicateSortOrder = useStore((s) => s.setDuplicateSortOrder);
+  const partialClipSortBy = useStore((s) => s.partialClipSortBy);
+  const setPartialClipSortBy = useStore((s) => s.setPartialClipSortBy);
+  const partialClipSortOrder = useStore((s) => s.partialClipSortOrder);
+  const setPartialClipSortOrder = useStore((s) => s.setPartialClipSortOrder);
   const clearDuplicateListFilters = useStore((s) => s.clearDuplicateListFilters);
   const isFindingDuplicates = useStore((s) => s.isFindingDuplicates);
   const isGenerating = useStore((s) => s.isGenerating);
@@ -151,7 +155,9 @@ function SidebarDuplicateSection({
 
   if (statsTotal <= 0) return null;
 
-  const findingLabel = findingPartialClips ? 'Finding partial clips...' : 'Finding duplicates...';
+  // Each run button shows only its own search; the other stays disabled under its usual name.
+  const findingDuplicates = isFindingDuplicates && !findingPartialClips;
+  const partialClipsLabel = findingPartialClips ? 'Finding partial clips...' : 'Find Partial Clips';
   const metadataRunning = isGenerating && generationPhase === 'metadata';
   const duplicateDisabled = isFindingDuplicates || metadataRunning || videoCount < 2;
   const duplicateDisabledTitle = metadataRunning
@@ -159,11 +165,16 @@ function SidebarDuplicateSection({
     : videoCount < 2
       ? 'Duplicate detection needs at least two videos'
       : 'Find mostly identical whole-video duplicates';
-  const duplicateListFiltersActive =
-    duplicatePathFilter.trim() !== '' ||
-    duplicateMinSimilarity > 0 ||
-    duplicateSortBy !== 'similarity' ||
-    duplicateSortOrder !== 'desc';
+  const duplicateListFiltersActive = duplicatePathFilter.trim() !== '' || (partialClipsMode
+    ? partialClipSortBy !== 'sharedLength' || partialClipSortOrder !== 'desc'
+    : duplicateMinSimilarity > 0 || duplicateSortBy !== 'similarity' || duplicateSortOrder !== 'desc');
+  const sortOrder = partialClipsMode ? partialClipSortOrder : duplicateSortOrder;
+  const toggleSortOrder = () => {
+    beginDevInteraction('duplicates.sort');
+    const next = sortOrder === 'asc' ? 'desc' : 'asc';
+    if (partialClipsMode) setPartialClipSortOrder(next);
+    else setDuplicateSortOrder(next);
+  };
 
   if (!duplicateSettings.enabled && duplicateGroupsMode) {
     return (
@@ -196,9 +207,30 @@ function SidebarDuplicateSection({
   if (duplicateGroupsMode) {
     return (
       <section className="sidebar-section sidebar-duplicate-mode-section">
-        <h3 className="sidebar-section-title">
-          <CopyCheck size={14} /> {partialClipsMode ? 'Partial clips' : 'Duplicates'}
-        </h3>
+        <div className="duplicate-sidebar-title-row">
+          <button type="button" className="duplicate-sidebar-back" onClick={() => setDuplicateGroupsMode(false)} aria-label="Back to Grid" title="Back to Grid">
+            <ArrowLeft size={14} />
+            Grid
+          </button>
+          <h3 className="sidebar-section-title">
+            <CopyCheck size={14} /> Duplicates
+          </h3>
+          <button type="button" className="sidebar-icon-btn" onClick={onOpenDuplicateSettings} aria-label="Duplicate Settings" title="Duplicate Settings">
+            <Settings size={15} />
+          </button>
+        </div>
+
+        {/* Both result lists of the session, one at a time. */}
+        {partialClips && (
+          <div className="duplicate-sidebar-view-toggle" role="group" aria-label="Duplicate results">
+            <button type="button" className={partialClipsMode ? '' : 'active'} aria-pressed={!partialClipsMode} onClick={() => setPartialClipsMode(false)}>
+              Groups <span className="duplicate-sidebar-count">{duplicateGroupCount}</span>
+            </button>
+            <button type="button" className={partialClipsMode ? 'active' : ''} aria-pressed={partialClipsMode} onClick={() => setPartialClipsMode(true)}>
+              Partial clips <span className="duplicate-sidebar-count">{partialEntryCount}</span>
+            </button>
+          </div>
+        )}
 
         <div className="duplicate-mode-summary">
           <strong>{partialClipsMode ? partialEntryCount : duplicateGroupCount}</strong>
@@ -207,8 +239,7 @@ function SidebarDuplicateSection({
             : <span>{duplicateGroupCount === 1 ? 'group' : 'groups'} / {duplicateCount} videos</span>}
         </div>
 
-        {/* The view, filter and sort controls act on duplicate groups only. */}
-        {!partialClipsMode && <>
+        {!partialClipsMode && (
         <div className="duplicate-sidebar-view-toggle" role="tablist" aria-label="Duplicate view mode">
           <button
             type="button"
@@ -229,6 +260,7 @@ function SidebarDuplicateSection({
             Gallery
           </button>
         </div>
+        )}
 
         <div className="duplicate-sidebar-controls">
           <div className="duplicate-sidebar-heading-row">
@@ -256,101 +288,118 @@ function SidebarDuplicateSection({
             />
           </label>
 
-          <label className="duplicate-sidebar-field">
-            <span>Minimum similarity</span>
-            <div className="duplicate-sidebar-inline">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={duplicateMinSimilarity}
-                onChange={(e) => setDuplicateMinSimilarity(Number(e.target.value))}
-              />
-              <strong>{duplicateMinSimilarity}%</strong>
-            </div>
-          </label>
+          {/* Similarity belongs to groups; partial clips have their own sort fields. */}
+          {!partialClipsMode && (
+            <label className="duplicate-sidebar-field">
+              <span>Minimum similarity</span>
+              <div className="duplicate-sidebar-inline">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={duplicateMinSimilarity}
+                  onChange={(e) => setDuplicateMinSimilarity(Number(e.target.value))}
+                />
+                <strong>{duplicateMinSimilarity}%</strong>
+              </div>
+            </label>
+          )}
 
           <label className="duplicate-sidebar-field">
             <span>Sort by</span>
             <div className="sort-row">
-              <select
-                className="sidebar-select"
-                value={duplicateSortBy}
-                onChange={(e) => {
-                  beginDevInteraction('duplicates.sort');
-                  setDuplicateSortBy(e.target.value as DuplicateSortField);
-                }}
-              >
-                <option value="similarity">Similarity</option>
-                <option value="groupSize">Group count</option>
-                <option value="totalSize">Total size</option>
-              </select>
+              {partialClipsMode ? (
+                <select
+                  className="sidebar-select"
+                  value={partialClipSortBy}
+                  onChange={(e) => setPartialClipSortBy(e.target.value as PartialClipSortField)}
+                >
+                  <option value="sharedLength">Shared length</option>
+                  <option value="coverage">Share of shorter video</option>
+                  <option value="totalSize">Total size</option>
+                </select>
+              ) : (
+                <select
+                  className="sidebar-select"
+                  value={duplicateSortBy}
+                  onChange={(e) => {
+                    beginDevInteraction('duplicates.sort');
+                    setDuplicateSortBy(e.target.value as DuplicateSortField);
+                  }}
+                >
+                  <option value="similarity">Similarity</option>
+                  <option value="groupSize">Group count</option>
+                  <option value="totalSize">Total size</option>
+                </select>
+              )}
               <button
                 className="btn btn-icon"
-                onClick={() => {
-                  beginDevInteraction('duplicates.sort');
-                  setDuplicateSortOrder(duplicateSortOrder === 'asc' ? 'desc' : 'asc');
-                }}
-                title={duplicateSortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                onClick={toggleSortOrder}
+                title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                aria-label={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
               >
-                <ArrowUpDown size={14} style={{ transform: duplicateSortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
+                <ArrowUpDown size={14} style={{ transform: sortOrder === 'desc' ? 'scaleY(-1)' : 'none' }} />
               </button>
             </div>
           </label>
         </div>
-        </>}
 
         {duplicateRun?.restored && (
           <p className="sidebar-duplicate-note">{describeRestoredRun(duplicateRun, videoCount)}</p>
         )}
-        <UncheckedNearMisses run={duplicateRun} disabled={duplicateDisabled} onCheck={onCheckNearMisses} />
-        {partialClips && (
-          <button className="btn btn-outline sidebar-wide-action" onClick={() => setPartialClipsMode(!partialClipsMode)}>
-            {partialClipsMode ? `Duplicate Groups (${duplicateGroupCount})` : `Partial Clips (${partialEntryCount})`}
-          </button>
-        )}
-        {partialClipsEnabled && (
-          <button
-            className={`btn ${partialClipsMode ? 'btn-primary' : 'btn-outline'} sidebar-wide-action`}
-            onClick={onFindPartialClips}
-            disabled={duplicateDisabled}
-            title={duplicateDisabled && !isFindingDuplicates ? duplicateDisabledTitle : 'Reads the sound of every video once'}
-          >
-            {findingPartialClips ? findingLabel : 'Find Partial Clips'}
-          </button>
-        )}
-        {!partialClipsMode && <>
-        <button
-          className="btn btn-primary sidebar-wide-action"
-          onClick={onFindDuplicates}
-          disabled={duplicateDisabled}
-          title={metadataRunning ? duplicateDisabledTitle : 'Run duplicate detection again'}
-        >
-          <RefreshCw size={14} />
-          {isFindingDuplicates ? findingLabel : metadataRunning ? 'Waiting for metadata...' : 'Run Again'}
-        </button>
+        {!partialClipsMode && <UncheckedNearMisses run={duplicateRun} disabled={duplicateDisabled} onCheck={onCheckNearMisses} />}
 
-        {/* Switching the method restarts a duplicate run; it must not end a partial clip search unasked. */}
-        <button
-          className="btn btn-outline sidebar-wide-action"
-          onClick={onSwitchDuplicateMethod}
-          disabled={duplicateDisabled && (!isFindingDuplicates || findingPartialClips)}
-          title={`Switch the duplicate method to ${DUPLICATE_METHOD_NAMES[otherMethod]} and run again`}
-        >
-          Run Again with {DUPLICATE_METHOD_NAMES[otherMethod]}
-        </button>
-        </>}
+        <div className="duplicate-sidebar-actions">
+          <span className="sort-label">Search again</span>
+          {partialClipsMode ? (
+            partialClipsEnabled && (
+              <button
+                className="btn btn-primary sidebar-wide-action"
+                onClick={onFindPartialClips}
+                disabled={duplicateDisabled}
+                title={duplicateDisabled && !isFindingDuplicates ? duplicateDisabledTitle : 'Reads the sound of every video once'}
+              >
+                <RefreshCw size={14} />
+                {partialClipsLabel}
+              </button>
+            )
+          ) : (
+            <>
+              <button
+                className="btn btn-primary sidebar-wide-action"
+                onClick={onFindDuplicates}
+                disabled={duplicateDisabled}
+                title={metadataRunning ? duplicateDisabledTitle : 'Run duplicate detection again'}
+              >
+                <RefreshCw size={14} />
+                {findingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Run Again'}
+              </button>
 
-        <button className="btn btn-outline sidebar-wide-action" onClick={() => setDuplicateGroupsMode(false)}>
-          Back to Grid
-        </button>
+              {/* Switching the method restarts a duplicate run; it must not end a partial clip search unasked. */}
+              <button
+                className="btn btn-outline sidebar-wide-action"
+                onClick={onSwitchDuplicateMethod}
+                disabled={duplicateDisabled && (!isFindingDuplicates || findingPartialClips)}
+                title={`Switch the duplicate method to ${DUPLICATE_METHOD_NAMES[otherMethod]} and run again`}
+              >
+                Run Again with {DUPLICATE_METHOD_NAMES[otherMethod]}
+              </button>
 
-        <button className="btn btn-outline sidebar-wide-action" onClick={onOpenDuplicateSettings}>
-          <Settings size={14} />
-          Duplicate Settings
-        </button>
-
+              {/* Once a search ran, it is started again from its own list. */}
+              {partialClipsEnabled && !partialClips && (
+                <button
+                  className="btn btn-outline sidebar-wide-action"
+                  onClick={onFindPartialClips}
+                  disabled={duplicateDisabled}
+                  title={duplicateDisabled && !isFindingDuplicates ? duplicateDisabledTitle : 'Reads the sound of every video once'}
+                >
+                  {partialClipsLabel}
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </section>
     );
   }
@@ -364,7 +413,7 @@ function SidebarDuplicateSection({
         title={duplicateDisabledTitle}
       >
         <CopyCheck size={14} />
-        {isFindingDuplicates ? findingLabel : metadataRunning ? 'Waiting for metadata...' : 'Find Duplicates'}
+        {findingDuplicates ? 'Finding duplicates...' : metadataRunning ? 'Waiting for metadata...' : 'Find Duplicates'}
       </button>
       {duplicateGroupCount > 0 && (
         <button
@@ -396,7 +445,7 @@ function SidebarDuplicateSection({
           disabled={duplicateDisabled}
           title={duplicateDisabled && !isFindingDuplicates ? duplicateDisabledTitle : 'Reads the sound of every video once'}
         >
-          Find Partial Clips
+          {partialClipsLabel}
         </button>
       )}
     </section>

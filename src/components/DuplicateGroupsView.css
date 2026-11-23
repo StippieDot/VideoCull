@@ -458,7 +458,20 @@
 }
 
 .duplicate-gallery-card {
+  position: relative;
   height: 100%;
+}
+
+/* Centred over the top of the thumbnail, between the select box and the status badge. */
+.duplicate-gallery-keeper {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  z-index: 3;
+  min-height: 22px;
+  padding: 0 8px;
+  transform: translateX(-50%);
+  background: rgba(16, 40, 28, 0.88);
 }
 
 .duplicate-empty {

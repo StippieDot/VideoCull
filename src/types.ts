@@ -231,6 +231,7 @@ export type DuplicateMatchType = 'exact' | 'phash' | 'visual' | 'mixed' | null;
 export type DuplicateComparisonMode = 'phash' | 'visual';
 export type DuplicateViewMode = 'rows' | 'gallery';
 export type DuplicateSortField = 'similarity' | 'groupSize' | 'totalSize';
+export type PartialClipSortField = 'sharedLength' | 'coverage' | 'totalSize';
 export type DuplicateScope = 'all' | 'filtered';
 export type DuplicateSamplingWindow = 'even' | '25-75' | '20-80' | '15-85' | 'custom';
 
@@ -604,10 +605,12 @@ export interface VideoStore {
   duplicateMinSimilarity: number;
   duplicateSortBy: DuplicateSortField;
   duplicateSortOrder: SortOrder;
+  partialClipSortBy: PartialClipSortField;
+  partialClipSortOrder: SortOrder;
   duplicateScrollTop: number;
   /** Review's place in its scope, for the title bar; null outside Review and on its finished screen. */
   reviewPosition: { index: number; total: number } | null;
-  /** The duplicate group at the top of the list and how many are shown, for the title bar. */
+  /** The duplicate group, or partial clip entry, at the top of the list and how many are shown, for the title bar. */
   duplicatePosition: { group: number; total: number } | null;
   duplicateGroupJump: { index: number; id: number } | null;
   /** The method the last duplicate run this session used; the setting may have changed since. */
@@ -708,10 +711,12 @@ export interface VideoStore {
   setDuplicateMinSimilarity: (similarity: number) => void;
   setDuplicateSortBy: (sortBy: DuplicateSortField) => void;
   setDuplicateSortOrder: (order: SortOrder) => void;
+  setPartialClipSortBy: (sortBy: PartialClipSortField) => void;
+  setPartialClipSortOrder: (order: SortOrder) => void;
   setDuplicateScrollTop: (scrollTop: number) => void;
   setReviewPosition: (position: { index: number; total: number } | null) => void;
   setDuplicatePosition: (position: { group: number; total: number } | null) => void;
-  /** Scrolls the duplicate list to the group at this index among the shown groups. */
+  /** Scrolls the duplicate list to the group (or partial clip entry) at this index among the shown ones. */
   requestDuplicateGroupJump: (index: number) => void;
   setLastDuplicateMethod: (method: DuplicateComparisonMode) => void;
   clearDuplicateListFilters: () => void;

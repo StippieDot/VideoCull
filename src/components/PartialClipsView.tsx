@@ -1,9 +1,12 @@
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Play, Trash2 } from 'lucide-react';
 import useStore from '../store';
-import type { DuplicateGroup, PartialClip, PartialClipSegment, Video } from '../types';
+import type { DuplicateGroup, PartialClip, PartialClipSegment, PartialClipSortField, SortOrder, Video } from '../types';
 import { formatDuration, formatSize } from '../utils';
-import { parentPath } from './DuplicateGroupsView';
+import { openVideoExternally, revealInExplorer } from '../appCommands';
+import ContextMenu, { copyTextToClipboard } from './ContextMenu';
+import { buildCopyPathSuccessDetail, buildDuplicateVideoMenu } from './contextMenuBuilders';
+import { parentPath, statusBadgeContent } from './DuplicateGroupsView';
 import './DuplicateGroupsView.css';
 import './PartialClipsView.css';
 
@@ -41,6 +44,27 @@ export function mergeClipsByDuplicateGroup(clips: PartialClip[], groups: Duplica
     ));
     return { primary: sorted[0]!, others: sorted.slice(1) };
   });
+}
+
+const sharedSeconds = (clip: PartialClip) => clip.segments.reduce((sum, segment) => sum + segment.lengthSecs, 0);
+
+/** The sidebar's path filter (any copy in the entry may match) and sort, applied to the merged entries. */
+export function filterAndSortPartialClips(
+  entries: PartialClipEntry[],
+  options: { pathFilter: string; sortBy: PartialClipSortField; sortOrder: SortOrder },
+  videosById: Map<string, Video>,
+): PartialClipEntry[] {
+  const query = options.pathFilter.trim().toLowerCase();
+  const matches = (entry: PartialClipEntry) => [entry.primary, ...entry.others]
+    .some((clip) => [clip.aId, clip.bId].some((id) => videosById.get(id)?.path.toLowerCase().includes(query)));
+  const size = (id: string) => videosById.get(id)?.sizeBytes ?? 0;
+  const value = ({ primary }: PartialClipEntry) => {
+    if (options.sortBy === 'coverage') return primary.coverage ?? 0;
+    if (options.sortBy === 'totalSize') return size(primary.aId) + size(primary.bId);
+    return sharedSeconds(primary);
+  };
+  const direction = options.sortOrder === 'asc' ? 1 : -1;
+  return entries.filter((entry) => !query || matches(entry)).sort((x, y) => (value(x) - value(y)) * direction);
 }
 
 function thumbSrc(video: Video): string | null {
@@ -108,18 +132,30 @@ function TimeBar({ clip, longer }: { clip: PartialClip; longer: Video }) {
   );
 }
 
-function ClipVideoRow({ video, role, scopeIds }: { video: Video; role: string; scopeIds: string[] }) {
+type OpenVideoMenu = (event: React.MouseEvent, videoId: string, scopeIds: string[]) => void;
+
+function ClipVideoRow({ video, role, scopeIds, onContextMenu }: { video: Video; role: string; scopeIds: string[]; onContextMenu: OpenVideoMenu }) {
   const setVideoStatus = useStore((s) => s.setVideoStatus);
   const enterReviewAndPlay = useStore((s) => s.enterReviewAndPlay);
   const thumbnail = thumbSrc(video);
+  const badge = statusBadgeContent(video);
   const toggle = (status: 'keep' | 'delete') => setVideoStatus(video.id, video.status === status ? 'pending' : status);
   return (
-    <div className={`partial-clip-video ${video.status !== 'pending' ? `status-${video.status}` : ''}`}>
+    <div
+      className={`partial-clip-video ${video.status !== 'pending' ? `status-${video.status}` : ''}`}
+      onContextMenu={(event) => onContextMenu(event, video.id, scopeIds)}
+    >
       {thumbnail ? <img src={thumbnail} alt="" /> : <span className="partial-clip-thumb-placeholder" />}
       <div className="duplicate-row-copy">
         <div className="duplicate-row-title">
           <strong title={video.path}>{video.filename}</strong>
           <span className="partial-clip-role">{role}</span>
+          {badge && (
+            <span className={`duplicate-inline-flag ${badge.className}`}>
+              {badge.icon}
+              {badge.label}
+            </span>
+          )}
         </div>
         <span className="duplicate-row-path" title={video.path}>{parentPath(video.path)}</span>
         <span className="duplicate-meta-chips">
@@ -159,7 +195,13 @@ function ClipVideoRow({ video, role, scopeIds }: { video: Video; role: string; s
   );
 }
 
-const ClipCard = memo(function ClipCard({ entry, videosById }: { entry: PartialClipEntry; videosById: Map<string, Video> }) {
+const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoContextMenu }: {
+  entry: PartialClipEntry;
+  /** Place in the list, for the title bar's entry stepper. */
+  index: number;
+  videosById: Map<string, Video>;
+  onVideoContextMenu: OpenVideoMenu;
+}) {
   const dismissPartialClips = useStore((s) => s.dismissPartialClips);
   const { primary: clip, others } = entry;
   const shorter = videosById.get(clip.shorterId);
@@ -185,7 +227,7 @@ const ClipCard = memo(function ClipCard({ entry, videosById }: { entry: PartialC
     });
   };
   return (
-    <article className={`partial-clip-card ${clip.relation}`}>
+    <article className={`partial-clip-card ${clip.relation}`} data-entry-index={index}>
       <header className="partial-clip-header">
         <div className="partial-clip-summary">
           {describePartialClip(clip, shorter, longer).map((line) => <p key={line}>{line}</p>)}
@@ -196,8 +238,8 @@ const ClipCard = memo(function ClipCard({ entry, videosById }: { entry: PartialC
         </button>
       </header>
       <TimeBar clip={clip} longer={longer} />
-      <ClipVideoRow video={shorter} role="Shorter" scopeIds={scopeIds} />
-      <ClipVideoRow video={longer} role="Longer" scopeIds={scopeIds} />
+      <ClipVideoRow video={shorter} role="Shorter" scopeIds={scopeIds} onContextMenu={onVideoContextMenu} />
+      <ClipVideoRow video={longer} role="Longer" scopeIds={scopeIds} onContextMenu={onVideoContextMenu} />
       {others.length > 0 && (
         <details className="partial-clip-copies">
           <summary>Also found in {others.length} other {others.length === 1 ? 'copy' : 'copies'} of these videos</summary>
@@ -229,17 +271,75 @@ function PartialClipsView() {
   const clips = useStore((s) => s.partialClips);
   const groups = useStore((s) => s.duplicateGroups);
   const videos = useStore((s) => s.videos);
+  const pathFilter = useStore((s) => s.duplicatePathFilter);
+  const sortBy = useStore((s) => s.partialClipSortBy);
+  const sortOrder = useStore((s) => s.partialClipSortOrder);
+  const [menu, setMenu] = useState<{ x: number; y: number; videoId: string; scopeIds: string[] } | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const videosById = useMemo(() => new Map(videos.map((video) => [video.id, video])), [videos]);
-  const { shown, differentPicture } = useMemo(() => {
+  const { allCount, shown, differentPicture } = useMemo(() => {
     const entries = mergeClipsByDuplicateGroup(clips ?? [], groups);
+    const visible = filterAndSortPartialClips(entries, { pathFilter, sortBy, sortOrder }, videosById);
     return {
-      shown: entries.filter((entry) => entry.primary.state !== 'differentPicture'),
-      differentPicture: entries.filter((entry) => entry.primary.state === 'differentPicture'),
+      allCount: entries.length,
+      shown: visible.filter((entry) => entry.primary.state !== 'differentPicture'),
+      differentPicture: visible.filter((entry) => entry.primary.state === 'differentPicture'),
     };
-  }, [clips, groups]);
+  }, [clips, groups, pathFilter, sortBy, sortOrder, videosById]);
+  const visibleCount = shown.length + differentPicture.length;
   const partialCount = shown.filter((entry) => entry.primary.relation === 'partial').length;
-  const soundOnlyCount = shown.length - partialCount + differentPicture.length;
+  const soundOnlyCount = visibleCount - partialCount;
   const entryKey = (entry: PartialClipEntry) => `${entry.primary.aId}|${entry.primary.bId}`;
+
+  const openVideoMenu = useCallback<OpenVideoMenu>((event, videoId, scopeIds) => {
+    event.preventDefault();
+    setMenu({ x: event.clientX, y: event.clientY, videoId, scopeIds });
+  }, []);
+
+  // The title bar's stepper: the first entry whose card reaches below the top of the list.
+  const updatePosition = useCallback(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const top = list.getBoundingClientRect().top;
+    const first = [...list.querySelectorAll<HTMLElement>('[data-entry-index]')]
+      // Cards in the closed "different pictures" section have no boxes and are skipped.
+      .find((card) => card.getClientRects().length > 0 && card.getBoundingClientRect().bottom > top + 1);
+    useStore.getState().setDuplicatePosition({ group: Number(first?.dataset.entryIndex ?? 0), total: visibleCount });
+  }, [visibleCount]);
+  useEffect(updatePosition, [updatePosition, shown, differentPicture]);
+  useEffect(() => () => useStore.getState().setDuplicatePosition(null), []);
+
+  const jump = useStore((s) => s.duplicateGroupJump);
+  const handledJumpRef = useRef(jump?.id ?? 0);
+  useEffect(() => {
+    if (!jump || handledJumpRef.current === jump.id) return;
+    handledJumpRef.current = jump.id;
+    const card = listRef.current?.querySelector<HTMLElement>(`[data-entry-index="${jump.index}"]`);
+    const section = card?.closest('details');
+    if (section) section.open = true;
+    card?.scrollIntoView?.({ block: 'start' });
+  }, [jump]);
+
+  const menuVideo = menu ? videosById.get(menu.videoId) : undefined;
+  const menuItems = menu && menuVideo ? buildDuplicateVideoMenu({
+    onPlay: () => useStore.getState().enterReviewAndPlay(menuVideo.id, menu.scopeIds),
+    onOpenExternal: () => openVideoExternally(menuVideo.path),
+    onReveal: () => revealInExplorer(menuVideo.path),
+    onMarkDelete: () => useStore.getState().setVideoStatus(menuVideo.id, 'delete'),
+    onMarkKeep: () => useStore.getState().setVideoStatus(menuVideo.id, 'keep'),
+    onResetPending: () => useStore.getState().setVideoStatus(menuVideo.id, 'pending'),
+    onCopyPath: () => {
+      const { pushToast } = useStore.getState();
+      copyTextToClipboard(menuVideo.path).then(
+        () => pushToast({ title: 'Path copied', detail: buildCopyPathSuccessDetail(menuVideo.path), kind: 'success' }),
+        () => pushToast({ title: 'Copy failed', detail: 'The path could not be copied to the clipboard.', kind: 'error' }),
+      );
+    },
+  }) : [];
+
+  const card = (entry: PartialClipEntry, index: number) => (
+    <ClipCard key={entryKey(entry)} entry={entry} index={index} videosById={videosById} onVideoContextMenu={openVideoMenu} />
+  );
 
   // shortcut: every entry is rendered, upgrade to a virtual list when libraries report thousands.
   return (
@@ -250,23 +350,29 @@ function PartialClipsView() {
           <span>
             {partialCount} {partialCount === 1 ? 'video contains' : 'videos contain'} part of another
             {soundOnlyCount > 0 ? ` · ${soundOnlyCount} other ${soundOnlyCount === 1 ? 'pair shares' : 'pairs share'} sound` : ''}
+            {visibleCount < allCount ? ` · ${visibleCount} of ${allCount} entries match the filter` : ''}
           </span>
         </div>
       </div>
-      <div className="partial-clips-list">
-        {shown.length === 0 && differentPicture.length === 0 && (
-          <p className="partial-clips-empty">No video contains part of another.</p>
+      <div className="partial-clips-list" ref={listRef} onScroll={updatePosition}>
+        {visibleCount === 0 && (
+          <p className="partial-clips-empty">
+            {allCount === 0 ? 'No video contains part of another.' : 'No entries match the path filter.'}
+          </p>
         )}
-        {shown.map((entry) => <ClipCard key={entryKey(entry)} entry={entry} videosById={videosById} />)}
+        {shown.map((entry, index) => card(entry, index))}
         {differentPicture.length > 0 && (
           <details className="partial-clips-collapsed">
             <summary>
               {differentPicture.length} {differentPicture.length === 1 ? 'pair shares' : 'pairs share'} the same sound with different pictures
             </summary>
-            {differentPicture.map((entry) => <ClipCard key={entryKey(entry)} entry={entry} videosById={videosById} />)}
+            {differentPicture.map((entry, index) => card(entry, shown.length + index))}
           </details>
         )}
       </div>
+      {menu && menuVideo && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
+      )}
     </div>
   );
 }

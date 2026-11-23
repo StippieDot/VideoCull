@@ -18,9 +18,12 @@ interface VideoCardProps {
   onContextMenu?: (video: Video, event: React.MouseEvent) => void;
   /** Tooltip of the resolution badge, for a duplicate group that knows the picture inside black bars. */
   resolutionTitle?: string;
+  /** In a duplicate group: which of size, duration, resolution and fps are the group's best or worse. */
+  metricFlags?: Record<string, 'best' | 'equal' | 'worse'>;
 }
 
-export default function VideoCard({ video, style, isSelected = false, showSelectionControls = false, onClick, onPlay, onToggleSelect, onContextMenu, resolutionTitle }: VideoCardProps) {
+export default function VideoCard({ video, style, isSelected = false, showSelectionControls = false, onClick, onPlay, onToggleSelect, onContextMenu, resolutionTitle, metricFlags }: VideoCardProps) {
+  const metric = (key: string) => (metricFlags?.[key] ? `metric-${metricFlags[key]}` : undefined);
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -160,15 +163,15 @@ export default function VideoCard({ video, style, isSelected = false, showSelect
           {video.filename}
         </p>
         <div className="card-meta">
-          <span>{formatSize(video.sizeBytes)}</span>
+          <span className={metric('size')}>{formatSize(video.sizeBytes)}</span>
           <span className="meta-sep">•</span>
-          <span>{formatDuration(video.durationSecs)}</span>
+          <span className={metric('duration')}>{formatDuration(video.durationSecs)}</span>
         </div>
         {features.codecBadges && (resolutionLabel || codecLabel || fpsLabel) && (
           <div className="card-badges">
-            {resolutionLabel && <span className="card-badge" title={resolutionTitle}>{resolutionLabel}</span>}
+            {resolutionLabel && <span className={`card-badge ${metric('resolution') ?? ''}`} title={resolutionTitle}>{resolutionLabel}</span>}
             {codecLabel && <span className="card-badge">{codecLabel}</span>}
-            {fpsLabel && <span className="card-badge">{fpsLabel}</span>}
+            {fpsLabel && <span className={`card-badge ${metric('fps') ?? ''}`}>{fpsLabel}</span>}
             {video.duplicateGroupId && <span className="card-badge">Dup{video.duplicateSimilarity != null ? ` ${Math.floor(video.duplicateSimilarity)}%` : ''}</span>}
           </div>
         )}

@@ -43,7 +43,9 @@ vi.mock('react-window', () => ({
 }));
 
 vi.mock('../../../src/components/VideoCard', () => ({
-  default: ({ video }: { video: { filename: string } }) => <div>{video.filename}</div>,
+  default: ({ video, metricFlags }: { video: { filename: string }; metricFlags?: Record<string, string> }) => (
+    <div data-size-flag={metricFlags?.size}>{video.filename}</div>
+  ),
 }));
 
 vi.mock('../../../src/components/ContextMenu', () => ({
@@ -351,6 +353,18 @@ describe('DuplicateGroupsView behavior', () => {
     render(<DuplicateGroupsView />);
     expect(await screen.findByText('Selected keeper')).toBeTruthy();
     expect(screen.queryByText(/Not suggested/)).toBeNull();
+  });
+
+  test('the gallery shows the suggested keeper and marks the best values', async () => {
+    useStore.setState({
+      videos: ['a', 'b'].map((id) => makeVideo(id, { duplicateGroupId: 'g', sizeBytes: id === 'a' ? 2000 : 1000 })),
+      duplicateGroups: [makeDuplicateGroup({ id: 'g', videoIds: ['a', 'b'], suggestedKeeperId: 'a', keeperRule: 'size', keeperTieBreak: false })],
+      duplicateViewMode: 'gallery',
+    });
+    const { container } = render(<DuplicateGroupsView />);
+    expect((await screen.findByText('Suggested keeper')).closest('span')?.getAttribute('title')).toBe('Decided by File size');
+    expect(screen.getAllByText('Suggested keeper')).toHaveLength(1);
+    expect([...container.querySelectorAll('[data-size-flag]')].map((card) => card.getAttribute('data-size-flag'))).toEqual(['best', 'worse']);
   });
 
   test('dismisses a duplicate group from the current duplicate review', async () => {

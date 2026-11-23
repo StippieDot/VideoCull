@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import useStore from '../store';
 
-/** "Group 3 of 40" beside the duplicates part of the title bar: step through groups or type one to go to. */
+/** "Group 3 of 40" (or "Entry 3 of 12" for partial clips) beside the duplicates part of the title bar. */
 export default function DuplicateStepper() {
   const position = useStore((s) => s.duplicatePosition);
+  const unit = useStore((s) => (s.partialClipsMode ? 'Entry' : 'Group'));
   const [draft, setDraft] = useState<string | null>(null);
   if (!position || position.total === 0) return null;
   const { group, total } = position;
@@ -20,8 +21,8 @@ export default function DuplicateStepper() {
       <button
         type="button"
         className="location-bar-chevron"
-        title="Previous group"
-        aria-label="Previous group"
+        title={`Previous ${unit.toLowerCase()}`}
+        aria-label={`Previous ${unit.toLowerCase()}`}
         disabled={group === 0}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => go(group - 1)}
@@ -29,10 +30,10 @@ export default function DuplicateStepper() {
         <ChevronUp size={12} aria-hidden="true" />
       </button>
       <span className="duplicate-stepper-text">
-        Group
+        {unit}
         <input
           className="duplicate-stepper-input"
-          aria-label={`Go to group, 1 to ${total}`}
+          aria-label={`Go to ${unit.toLowerCase()}, 1 to ${total}`}
           inputMode="numeric"
           value={draft ?? String(group + 1)}
           style={{ width: `calc(${String(total).length}ch + 8px)` }}
@@ -58,8 +59,8 @@ export default function DuplicateStepper() {
       <button
         type="button"
         className="location-bar-chevron"
-        title="Next group"
-        aria-label="Next group"
+        title={`Next ${unit.toLowerCase()}`}
+        aria-label={`Next ${unit.toLowerCase()}`}
         disabled={group >= total - 1}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => go(group + 1)}
