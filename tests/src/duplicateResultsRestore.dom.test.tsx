@@ -79,6 +79,22 @@ describe('stored duplicate results in the store', () => {
     expect(api.loadDuplicateResults).not.toHaveBeenCalled();
   });
 
+  test('a partial-clips run that finishes while the file is read is not replaced by the stored result', async () => {
+    const clip = {
+      aId: A, bId: C, relation: 'partial' as const, state: 'confirmed' as const, shorterId: C, coverage: 1, soundSimilarity: 96, pictureSimilarity: 99,
+      segments: [{ startA: 10, startB: 0, lengthSecs: 20, soundSimilarity: 96, pictureState: 'confirmed' as const, pictureSimilarity: 99 }],
+    };
+    const videos = useStore.getState().videos;
+    api.loadDuplicateResults.mockImplementation(async () => {
+      useStore.getState().applyPartialClips([clip], { videos, scope: 'all', settingsKey: 'newer' });
+      return { status: 'ok', results: storedResults() };
+    });
+    expect(await useStore.getState().restoreDuplicateResults()).toBe('skipped');
+    expect(useStore.getState().duplicateGroups).toEqual([]);
+    expect(useStore.getState().duplicateRun?.settingsKey).toBe('newer');
+    expect(useStore.getState().partialClips).toEqual([clip]);
+  });
+
   test('partial clips found under other matching settings replace the outdated groups and are stored under them', async () => {
     const clip = {
       aId: A, bId: C, relation: 'partial' as const, state: 'confirmed' as const, shorterId: C, coverage: 1, soundSimilarity: 96, pictureSimilarity: 99,

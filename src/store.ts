@@ -1854,7 +1854,13 @@ const useStore = create<VideoStore>((set, get) => ({
     if (loaded.status !== 'ok') return loaded.status;
     const state = get();
     // A run, another folder or a new session while the file was read wins over the stored result.
-    if (state.duplicateGroups.length > 0 || state.directories.join('\n') !== session.folders.join('\n')) return 'skipped';
+    // A partial-clips run leaves duplicateGroups empty, so also compare the run and clips by reference.
+    if (
+      state.duplicateGroups.length > 0
+      || state.duplicateRun !== before.duplicateRun
+      || state.partialClips !== before.partialClips
+      || state.directories.join('\n') !== session.folders.join('\n')
+    ) return 'skipped';
     const { groups, partialClips, run } = restoreStoredResults(loaded.results, state.videos, state.settings.duplicates.ignoredDuplicatePairs ?? []);
     const groupsWithKeepers = applyKeeperOrderToGroups(groups, state.videos, state.settings.duplicates.keeperOrder, state.settings.duplicates.codecOrder);
     const videos = applyDuplicateGroupsToVideos(state.videos, groupsWithKeepers);
