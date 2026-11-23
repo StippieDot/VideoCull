@@ -340,7 +340,7 @@ describe('Sidebar recent folder behavior', () => {
   test('unchecked near misses are named, with the action that checks them', async () => {
     const onCheckNearMisses = vi.fn();
     const videos = [makeVideo('a'), makeVideo('b')];
-    const verification = { candidates: 4, accepted: 1, rejected: 0, unverifiable: 0, pending: 3, complete: false, manyNearMisses: false };
+    const verification = { candidates: 4, accepted: 1, rejected: 0, unverifiable: 0, pending: 3, unlisted: 0, complete: false, manyNearMisses: false };
     useStore.setState({
       directory: 'D:\Media',
       directories: ['D:\Media'],
@@ -360,6 +360,24 @@ describe('Sidebar recent folder behavior', () => {
     rerender(<></>);
     renderSidebar();
     expect(screen.queryByText(/not yet checked/)).toBeNull();
+  });
+
+  test('near misses beyond the list a run keeps are named without an action that cannot reach them', () => {
+    const videos = [makeVideo('a'), makeVideo('b')];
+    const verification = { candidates: 50_004, accepted: 0, rejected: 50_000, unverifiable: 0, pending: 0, unlisted: 4, complete: false, manyNearMisses: true };
+    useStore.setState({
+      directory: 'D:\Media',
+      directories: ['D:\Media'],
+      videos,
+      filteredVideos: videos,
+      stats: { ...useStore.getState().stats, total: 2, pending: 2 },
+      duplicateGroups: [makeDuplicateGroup({ videoIds: ['a', 'b'] })],
+      duplicateGroupsMode: true,
+      duplicateRun: { createdAt: 1, settingsKey: 'k', scope: 'all', videos: [], restored: false, addedSince: 0, verification },
+    });
+    renderSidebar();
+    expect(screen.getByText(/4 weaker near misses are beyond what one run checks/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check remaining near misses' })).toBeNull();
   });
 
   test('Find Partial Clips is offered only when the setting is on, and its list opens from the sidebar', async () => {

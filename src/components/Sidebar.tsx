@@ -479,16 +479,27 @@ function SidebarDuplicateSection({
 /** While near misses of the last run are unchecked, the result is not complete; says so, with the action. */
 function UncheckedNearMisses({ run, disabled, onCheck }: { run: DuplicateRunInfo | null; disabled: boolean; onCheck: () => void }) {
   const verification = run?.verification;
-  if (!verification || verification.pending === 0) return null;
+  const unlisted = verification?.unlisted ?? 0;
+  if (!verification || (verification.pending === 0 && unlisted === 0)) return null;
   return (
     <>
-      <p className="sidebar-duplicate-note">
-        {describeUncheckedNearMisses(verification.pending)}
-        {verification.manyNearMisses ? ' — many videos in this library look alike, so checking them all takes a while' : ''}
-      </p>
-      <button className="btn btn-outline sidebar-wide-action" onClick={onCheck} disabled={disabled}>
-        Check remaining near misses
-      </button>
+      {verification.pending > 0 && (
+        <>
+          <p className="sidebar-duplicate-note">
+            {describeUncheckedNearMisses(verification.pending)}
+            {verification.manyNearMisses ? ' — many videos in this library look alike, so checking them all takes a while' : ''}
+          </p>
+          <button className="btn btn-outline sidebar-wide-action" onClick={onCheck} disabled={disabled}>
+            Check remaining near misses
+          </button>
+        </>
+      )}
+      {/* No action: Check remaining reads the same list again, so it cannot reach these. */}
+      {unlisted > 0 && (
+        <p className="sidebar-duplicate-note">
+          {unlisted.toLocaleString()} weaker near {unlisted === 1 ? 'miss is' : 'misses are'} beyond what one run checks; a smaller near-miss range in Duplicate Settings leaves {unlisted === 1 ? 'it' : 'them'} out
+        </p>
+      )}
     </>
   );
 }

@@ -458,7 +458,7 @@ export default function App() {
     setIsFindingDuplicates(true);
     setDuplicateProgress({ stage: 'Reading sound', current: 0, total: scopeVideos.length });
     try {
-      const result = await window.electronAPI.findPartialClips(scopeVideos, { settings: duplicateSettings, skipPairKeys });
+      const result = await window.electronAPI.findPartialClips(scopeVideos, { settings: duplicateSettings, skipPairKeys, skipPairsSettingsKey: state.duplicateRun?.settingsKey });
       if (runId !== duplicateRunIdRef.current) return;
       if (result.status === 'ok') {
         const clips = result.clips ?? [];

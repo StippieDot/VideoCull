@@ -2646,7 +2646,10 @@ ipcMain.handle('find-partial-clips', (_event, videos, options = {}) => powerMana
   const appConfig = await readJsonFile(CONFIG_FILE, {});
   const settings = normalizeDuplicateSettings({ ...appConfig.duplicates, ...(options?.settings ?? {}) });
   const skipPairKeys = skipPairKeysFor([], settings.ignoredDuplicatePairs);
-  const requestedSkips = Array.isArray(options?.skipPairKeys) ? options.skipPairKeys.slice(0, MAX_SKIPPED_PAIRS) : [];
+  // The shown groups' pairs are skipped only when those groups were found under these matching
+  // settings; groups from other settings are replaced by this search and must not hide its pairs.
+  const groupsMatchSettings = options?.skipPairsSettingsKey === getDuplicateResultsSettingsKey(settings);
+  const requestedSkips = groupsMatchSettings && Array.isArray(options?.skipPairKeys) ? options.skipPairKeys.slice(0, MAX_SKIPPED_PAIRS) : [];
   for (const key of requestedSkips) if (typeof key === 'string' && PAIR_KEY_PATTERN.test(key)) skipPairKeys.add(key);
 
   const run = createDuplicateRun();

@@ -446,6 +446,8 @@ export interface DuplicateVerificationStats {
   unverifiable: number;
   /** Not checked yet; a later run, or Check remaining near misses, checks them. */
   pending: number;
+  /** Weaker near misses beyond the list a run keeps; no run checks them, a smaller near-miss range drops them. */
+  unlisted: number;
   complete: boolean;
   /** More near misses than five per video: many videos in this library resemble each other. */
   manyNearMisses: boolean;
@@ -921,7 +923,8 @@ export interface ElectronAPI {
   onThumbReadyBatch: (callback: (batch: ThumbReadyEvent[]) => void) => () => void;
   findDuplicates: (videos: Video[], options?: { settings?: Partial<DuplicateSettings>; checkAllNearMisses?: boolean }) => Promise<DuplicateResult>;
   /** Pairs in `skipPairKeys` (already duplicates) are not searched. Uses the duplicate run's progress and cancel. */
-  findPartialClips: (videos: Video[], options?: { settings?: Partial<DuplicateSettings>; skipPairKeys?: string[] }) => Promise<PartialClipResult>;
+  /** `skipPairKeys` are the shown groups' pairs; they apply only when `skipPairsSettingsKey` names the search's matching settings. */
+  findPartialClips: (videos: Video[], options?: { settings?: Partial<DuplicateSettings>; skipPairKeys?: string[]; skipPairsSettingsKey?: string }) => Promise<PartialClipResult>;
   cancelDuplicateDetection: () => Promise<boolean>;
   onDuplicateProgress: (callback: (data: DuplicateProgress) => void) => () => void;
   onMenuAction: (callback: (action: MenuAction) => void) => () => void;

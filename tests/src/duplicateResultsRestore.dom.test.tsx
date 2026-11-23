@@ -98,6 +98,19 @@ describe('stored duplicate results in the store', () => {
     expect(stored).toMatchObject({ settingsKey: 'newer', groups: [], partialClips: [clip] });
   });
 
+  test('a narrower run under the same settings keeps the clips and the snapshots of their videos', () => {
+    const clip = {
+      aId: A, bId: C, relation: 'partial' as const, state: 'confirmed' as const, shorterId: C, coverage: 1, soundSimilarity: 96, pictureSimilarity: 99,
+      segments: [{ startA: 10, startB: 0, lengthSecs: 20, soundSimilarity: 96, pictureState: 'confirmed' as const, pictureSimilarity: 99 }],
+    };
+    const videos = useStore.getState().videos;
+    useStore.getState().applyPartialClips([clip], { videos, scope: 'all', settingsKey: 'key' });
+    // Only B takes part in the next run; A and C stay known, so a change to their files is noticed on restore.
+    useStore.getState().applyDuplicateResult({ status: 'ok', groups: [], settingsKey: 'key' }, { videos: videos.filter((video) => video.id === B), scope: 'filtered' });
+    expect(useStore.getState().partialClips).toEqual([clip]);
+    expect(useStore.getState().duplicateRun?.videos.map((video) => video.id).sort()).toEqual([A, B, C].sort());
+  });
+
   test('a result from a run without run details is not stored', async () => {
     useStore.getState().applyDuplicateResult({ status: 'ok', groups: [], settingsKey: 'key' });
     await vi.advanceTimersByTimeAsync(1500);

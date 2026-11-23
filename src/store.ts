@@ -1821,15 +1821,23 @@ const useStore = create<VideoStore>((set, get) => ({
     const videos = result.groups
       ? applyDuplicateGroupsToVideos(stateBefore.videos, groupsWithKeepers)
       : applyDuplicateGroupsToVideos(stateBefore.videos, []);
+    // Clips found under other matching settings are not shown or stored as current.
+    const partialClips = duplicateRun && stateBefore.duplicateRun?.settingsKey === duplicateRun.settingsKey ? stateBefore.partialClips : null;
+    // A narrower run must not drop the snapshots of kept clips' videos, or a later change to one of
+    // their files would go unnoticed on restore and bring back a stale clip.
+    const clipVideoIds = new Set((partialClips ?? []).flatMap((clip) => [clip.aId, clip.bId]));
+    const keptSnapshots = (stateBefore.duplicateRun?.videos ?? []).filter((video) => clipVideoIds.has(video.id));
     set({
       ...buildVideoStateUpdate(stateBefore, videos, ['duplicate'], {
         duplicateGroups: groupsWithKeepers,
         duplicateGroupsMode: groupsWithKeepers.length > 0,
       }),
-      duplicateRun,
+      duplicateRun: duplicateRun && keptSnapshots.length > 0
+        // The new run's snapshot wins for a video in both.
+        ? { ...duplicateRun, videos: [...new Map([...keptSnapshots, ...duplicateRun.videos].map((video) => [video.id, video])).values()] }
+        : duplicateRun,
       partialClipsMode: false,
-      // Clips found under other matching settings are not shown or stored as current.
-      partialClips: duplicateRun && stateBefore.duplicateRun?.settingsKey === duplicateRun.settingsKey ? stateBefore.partialClips : null,
+      partialClips,
     });
   },
   restoreDuplicateResults: async () => {

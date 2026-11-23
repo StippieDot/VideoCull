@@ -792,14 +792,16 @@ async function extractBursts(videos, rowsByVideo, bursts, burstKey, kind, run, s
 async function verifyNearMisses({ comparison, videos, rows, settings, videoCount, checkAll, run, sendProgress, maxConcurrency, executionOptions, cacheAccess, cacheOptions }) {
   const ignored = new Set(settings.ignoredDuplicatePairs ?? []);
   const nearMisses = comparison.nearMisses.filter((pair) => !ignored.has(storedPairKey(pair.aId, pair.bId)));
-  // Pairs beyond the pending list are counted, not kept; a later run lists them again.
+  // Pairs beyond the pending list are counted, not kept. Every run lists the same best-scoring ones, so
+  // Check remaining cannot reach these: they are reported apart from `pending`, which it can finish.
   const unlisted = Math.max(0, comparison.nearMissCount - comparison.nearMisses.length);
   const stats = {
     candidates: nearMisses.length + unlisted,
     accepted: 0,
     rejected: 0,
     unverifiable: 0,
-    pending: unlisted,
+    pending: 0,
+    unlisted,
     complete: false,
     manyNearMisses: comparison.nearMissCount > MANY_NEAR_MISSES_PER_VIDEO * videoCount,
   };
@@ -856,7 +858,7 @@ async function verifyNearMisses({ comparison, videos, rows, settings, videoCount
       timingAdjusted: true,
     });
   }
-  stats.complete = stats.pending === 0;
+  stats.complete = stats.pending === 0 && stats.unlisted === 0;
   duplicateLog('Near-miss verification complete', { ...stats, bursts: selected.length, burstFailures: failed });
   return { acceptedPairs, stats };
 }

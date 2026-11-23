@@ -144,7 +144,7 @@ describe('double-checking near misses', () => {
     expect(calls).toHaveLength(callsAfterTwoRuns);
   });
 
-  test('pairs marked as not a match are not checked, and pairs beyond the list count as pending', async () => {
+  test('pairs marked as not a match are not checked, and pairs beyond the list count apart from pending', async () => {
     const { duplicates, calls } = loadDuplicates();
     const a = '000000000000000a';
     const b = '000000000000000b';
@@ -154,7 +154,8 @@ describe('double-checking near misses', () => {
       nearMissCount: 3,
     });
     expect(calls).toHaveLength(0);
-    expect(result.stats).toMatchObject({ candidates: 2, pending: 2, complete: false });
+    // Check remaining reads the same list again, so these two are not offered as pending.
+    expect(result.stats).toMatchObject({ candidates: 2, pending: 0, unlisted: 2, complete: false });
   });
 
   test('a group of three with one verified link keeps every member at or above the threshold', () => {
