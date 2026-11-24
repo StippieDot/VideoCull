@@ -553,7 +553,7 @@ planned from the start; 1.3–1.7 are user requests (issues
 [#35](https://github.com/StippieDot/VideoCull/issues/35), [#36](https://github.com/StippieDot/VideoCull/issues/36),
 [#37](https://github.com/StippieDot/VideoCull/issues/37) and [#38](https://github.com/StippieDot/VideoCull/issues/38)).
 
-### 1.1 Configurable Skip Length in Review
+### 1.1 Configurable Skip Length in Review (done)
 
 **Decision:** Setting `seekStepSecs` with presets 2/5/10/15/30 (default 5). Every seek path and every
 displayed shortcut text uses it.
@@ -591,7 +591,12 @@ filtered view**, with protections. One undo entry.
 await persistence → reload → statuses restored**; recheck at Apply; undo cost goes into the performance
 diagnostics instead of a machine-dependent timing assertion.
 
-### 1.3 Rating and Favourite Keys, Complete Shortcut Help
+### 1.3 Rating and Favourite Keys, Complete Shortcut Help (done)
+
+**Shipped:** `V` toggles the favourite; `=` raises and `-` lowers the rating by one star, stopping at 5 and
+clearing when lowered from 1 (one key per star and a cycling key were rejected: slower to reach 5 stars, or
+five new bindings). `F` was not used: `findConflict` ignores player keys, but `F` is the player's fullscreen
+key and a Review binding would take it over. The notes below record the plan.
 
 **Decision:** Star rating and favourite get configurable keybinds in Review, and the shortcut help lists
 every key that works. Requested in issue #32, tracked in #35.
@@ -1596,7 +1601,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 | P0 — Media toolchain & licence compliance | ✅ Merged to main | `2.4.0` | 2026-10-16 |
 | PS — Saved sessions & linked folders | ✅ Merged to main | `2.5.0` | 2026-10-31 |
 | PM — macOS & Linux (beta) | ✅ Merged to main | `2.5.0` | 2026-11-03 |
-| P1 — Quick wins | 🔄 In progress (1.4, 1.6 and the 1.3 shortcut help are done) | `2.6.0` | — |
+| P1 — Quick wins | 🔄 In progress (1.1, 1.3, 1.4, 1.5, 1.6 and 1.7 are done; 1.2 remains) | `2.6.0` | — |
 | P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.7.0` | — |
 | PL — Persistent library | ⬜ Not started | `2.8.0` | — |
 | P3 — Reliable settings & tags | ⬜ Not started | `2.9.0` | — |
