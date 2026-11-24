@@ -379,6 +379,37 @@ describe('ReviewMode behavior', () => {
     expect(root?.classList.contains('review-controls-persistent')).toBe(true);
   });
 
+  test('seeks by the configured step with the app keys and the player hotkeys', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    const current = useStore.getState();
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha'],
+      settings: { ...current.settings, seekStepSecs: 15 },
+    });
+
+    const { container } = render(<ReviewMode />);
+    await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    const video = container.querySelector('video')!;
+    video.currentTime = 20;
+
+    await act(async () => fireEvent.keyDown(window, { key: 'ArrowRight' }));
+    expect(video.currentTime).toBe(35);
+    await act(async () => fireEvent.keyDown(window, { key: 'ArrowLeft' }));
+    expect(video.currentTime).toBe(20);
+
+    const hotkeyValues = Object.fromEntries(
+      playerHotkeyRender.mock.calls
+        .map(([props]) => props as { keys: string; action: string; value?: number })
+        .filter((props) => props.action === 'seekStep')
+        .map((props) => [props.keys, props.value]),
+    );
+    expect(hotkeyValues).toEqual({ ArrowRight: 15, l: 15, ArrowLeft: -15, j: -15 });
+  });
+
   test('keeps review shortcuts active after the video player receives focus', async () => {
     const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
     const beta = makeVideo('beta', { path: 'D:\\Media\\beta.mp4' });

@@ -502,6 +502,7 @@ export interface AppSettings {
   defaultSortOrder: SortOrder;
   defaultGroupByFolder: boolean;
   keepReviewControlsVisible: boolean;
+  seekStepSecs: number;
   maxConcurrent: number | 'auto';
   cpuThreadsLimited: boolean;
   skipIntroDelaySecs: number;

@@ -42,11 +42,16 @@ const PLAYER_HOTKEYS = [
   { keys: 'i', action: 'togglePictureInPicture' },
 ] satisfies HotkeyProps[];
 
+const SEEK_BACK_KEYS = new Set(['ArrowLeft', 'j']);
+
 function PlayerHotkeys() {
   const blocked = useContext(ReviewShortcutsBlocked);
-  return PLAYER_HOTKEYS.map((props) => (
-    <Hotkey key={props.keys} {...props} target="document" disabled={blocked} />
-  ));
+  const seekStepSecs = useStore((s) => s.settings.seekStepSecs);
+  return PLAYER_HOTKEYS.map((props) => {
+    // Without a value the player seeks 10 s, which would disagree with the app's own seek keys.
+    const value = props.action === 'seekStep' ? (SEEK_BACK_KEYS.has(props.keys) ? -seekStepSecs : seekStepSecs) : undefined;
+    return <Hotkey key={props.keys} {...props} {...(value === undefined ? {} : { value })} target="document" disabled={blocked} />;
+  });
 }
 
 function getReviewMediaWidth(viewportWidth: number, viewportHeight: number, isPlaying: boolean): number {
@@ -516,12 +521,12 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       if (isPlaying) {
         if (matchesKeybind(e, s.keySeekBack)) {
           e.preventDefault();
-          if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
+          if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - s.seekStepSecs);
           return;
         }
         if (matchesKeybind(e, s.keySeekForward)) {
           e.preventDefault();
-          if (videoRef.current) videoRef.current.currentTime += 5;
+          if (videoRef.current) videoRef.current.currentTime += s.seekStepSecs;
           return;
         }
         if (matchesKeybind(e, s.keySpeedDown)) {

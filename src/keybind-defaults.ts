@@ -15,6 +15,8 @@ export const DEFAULT_FEATURES: FeatureSettings = {
 
 export const OPTIONAL_FEATURE_KEYS = ['ratings', 'favorites'] as const;
 
+export const SEEK_STEP_PRESETS = [2, 5, 10, 15, 30] as const;
+
 export function normalizeFeatureSettings(raw: unknown): FeatureSettings {
   const rawFeatures = raw && typeof raw === 'object' && !Array.isArray(raw)
     ? raw as Record<string, unknown>
@@ -257,6 +259,10 @@ export function migrateSettings(raw: Record<string, unknown>): Partial<AppSettin
 
   if (typeof result.keepReviewControlsVisible !== 'boolean') {
     result.keepReviewControlsVisible = false;
+  }
+
+  if (!(SEEK_STEP_PRESETS as readonly unknown[]).includes(result.seekStepSecs)) {
+    result.seekStepSecs = 5;
   }
 
   if (!['centralised', 'per-drive', 'distributed'].includes(result.cacheLocation as string)) {

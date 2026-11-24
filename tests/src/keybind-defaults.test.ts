@@ -121,6 +121,16 @@ describe('migrateSettings', () => {
     expect(migrateSettings({ keepReviewControlsVisible: false }).keepReviewControlsVisible).toBe(false);
   });
 
+  test('keeps a preset skip length and falls back to 5 seconds for anything else', () => {
+    for (const secs of [2, 5, 10, 15, 30]) {
+      expect(migrateSettings({ seekStepSecs: secs }).seekStepSecs).toBe(secs);
+    }
+    for (const invalid of [0, 7, -5, '10', null, undefined, Number.NaN]) {
+      expect(migrateSettings({ seekStepSecs: invalid }).seekStepSecs).toBe(5);
+    }
+    expect(migrateSettings({}).seekStepSecs).toBe(5);
+  });
+
   test('preserves explicit empty-folder cleanup preference', () => {
     expect(migrateSettings({ removeEmptyFoldersAfterDelete: true }).removeEmptyFoldersAfterDelete).toBe(true);
     expect(migrateSettings({ removeEmptyFoldersAfterDelete: false }).removeEmptyFoldersAfterDelete).toBe(false);
