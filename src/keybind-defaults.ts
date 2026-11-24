@@ -49,6 +49,7 @@ export const DEFAULT_KEYBINDS: Record<KeybindSettingKey, Keybind> = {
   keySpeedDown:          kb('['),
   keySpeedUp:            kb(']'),
   keyBookmark:           kb('b'),
+  keyFavorite:           kb('v'),
   keyShowHelp:           kb('?', { shift: true }),
   keyGlobalMute:         kb('m'),
   keyToggleTheme:        kb('l', { ctrl: true, shift: true }),

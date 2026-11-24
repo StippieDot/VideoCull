@@ -379,6 +379,30 @@ describe('ReviewMode behavior', () => {
     expect(root?.classList.contains('review-controls-persistent')).toBe(true);
   });
 
+  test('the favorite key toggles the favorite like a click, and does nothing while the feature is hidden', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    const current = useStore.getState();
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha'],
+    });
+    render(<ReviewMode />);
+
+    await act(async () => fireEvent.keyDown(window, { key: 'v' }));
+    expect(useStore.getState().videos[0].favorite).toBe(true);
+    await act(async () => fireEvent.keyDown(window, { key: 'v' }));
+    expect(useStore.getState().videos[0].favorite).toBeFalsy();
+
+    useStore.setState({ settings: { ...current.settings, features: { ...current.settings.features, favorites: false } } });
+    const event = new KeyboardEvent('keydown', { key: 'v', cancelable: true });
+    await act(async () => { window.dispatchEvent(event); });
+    expect(useStore.getState().videos[0].favorite).toBeFalsy();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   test('seeks by the configured step with the app keys and the player hotkeys', async () => {
     const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
     const current = useStore.getState();

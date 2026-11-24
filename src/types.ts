@@ -538,6 +538,7 @@ export interface AppSettings {
   keySpeedDown: Keybind;
   keySpeedUp: Keybind;
   keyBookmark: Keybind;
+  keyFavorite: Keybind;
   // Global
   keyShowHelp: Keybind;
   keyGlobalMute: Keybind;

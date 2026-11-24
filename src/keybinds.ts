@@ -30,7 +30,7 @@ export type KeybindSettingKey =
   | 'keyPrevVideo' | 'keyNextVideo' | 'keyEnterPlay' | 'keyExternalPlayer'
   | 'keyNextUndecided'
   | 'keySeekBack' | 'keySeekForward' | 'keySpeedDown' | 'keySpeedUp'
-  | 'keyBookmark' | 'keyShowHelp'
+  | 'keyBookmark' | 'keyFavorite' | 'keyShowHelp'
   | 'keyGlobalMute' | 'keyToggleTheme' | 'keySearch';
 
 export const ALL_SHORTCUTS: ShortcutDef[] = [
@@ -42,6 +42,7 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   { id: 'keySkip',               description: 'Skip (no decision)',        group: 'Review mode', section: 'Decisions' },
   { id: 'keyReset',              description: 'Reset to Pending',          group: 'Review mode', section: 'Decisions' },
   { id: 'keyUndo',               description: 'Undo last action',          group: 'Review mode', section: 'Decisions' },
+  { id: 'keyFavorite',           description: 'Toggle favorite',           group: 'Review mode', section: 'Decisions' },
   { id: 'keyPlay',               description: 'Play / Pause',              group: 'Review mode', section: 'Playback' },
   { id: 'keyEnterPlay',          description: 'Play / Back to thumbnails', group: 'Review mode', section: 'Playback' },
   { id: 'keyExternalPlayer',     description: 'Open in external player',   group: 'Review mode', section: 'Playback' },

@@ -11,6 +11,7 @@ import {
   type Keybind,
   type KeybindSettingKey,
 } from '../../src/keybinds';
+import { DEFAULT_KEYBINDS } from '../../src/keybind-defaults';
 
 function makeEvent(overrides: Partial<KeyboardEvent> & { key: string }): KeyboardEvent {
   return {
@@ -134,6 +135,13 @@ describe('findConflict with fixed shortcuts', () => {
   test('no default binding collides with a fixed shortcut', () => {
     const allBinds = makeAllBinds();
     for (const shortcut of ALL_SHORTCUTS) expect(findConflict(shortcut.id, allBinds[shortcut.id], allBinds)).toBeNull();
+  });
+});
+
+describe('default Review keys', () => {
+  test('the favorite key collides with no other default shortcut', () => {
+    expect(DEFAULT_KEYBINDS.keyFavorite).toEqual(kb('v'));
+    expect(findConflict('keyFavorite', DEFAULT_KEYBINDS.keyFavorite, DEFAULT_KEYBINDS)).toBeNull();
   });
 });
 
