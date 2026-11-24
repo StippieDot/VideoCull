@@ -502,6 +502,7 @@ export interface AppSettings {
   defaultSortOrder: SortOrder;
   defaultGroupByFolder: boolean;
   keepReviewControlsVisible: boolean;
+  seekStepSecs: number;
   maxConcurrent: number | 'auto';
   cpuThreadsLimited: boolean;
   skipIntroDelaySecs: number;
@@ -537,6 +538,9 @@ export interface AppSettings {
   keySpeedDown: Keybind;
   keySpeedUp: Keybind;
   keyBookmark: Keybind;
+  keyFavorite: Keybind;
+  keyRatingUp: Keybind;
+  keyRatingDown: Keybind;
   // Global
   keyShowHelp: Keybind;
   keyGlobalMute: Keybind;

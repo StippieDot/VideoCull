@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import useStore from '../store';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, X, RotateCcw, RefreshCw, FileDown, Database, Code2, ExternalLink, HeartHandshake, FolderOpen, Copy, Trash2, FileText } from 'lucide-react';
 import type { AppSettings, CacheLocationInfo, DistributionInfo, LegacyInstallStatus, LegalFileName, ToastInput, UpdateInfo } from '../types';
-import { ALL_SHORTCUTS, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
-import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, KEEPER_RULE_LABELS, OPTIONAL_FEATURE_KEYS } from '../keybind-defaults';
+import { ALL_SHORTCUTS, describeShortcut, findConflict, type KeybindSettingKey, type ShortcutGroup } from '../keybinds';
+import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, KEEPER_RULE_LABELS, OPTIONAL_FEATURE_KEYS, SEEK_STEP_PRESETS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
 import { isWindows as isWindowsPlatform, modKeyName } from '../utils';
 import KeybindInput from './KeybindInput';
@@ -653,6 +653,13 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                       checked={localSettings.keepReviewControlsVisible}
                       onChange={(checked) => handleChange('keepReviewControlsVisible', checked)}
                     />
+                    <SettingRow label="Skip length" help="How far the rewind and forward keys jump while a video plays, including the player's J and L keys.">
+                      {(id) => (
+                        <select id={id} value={localSettings.seekStepSecs} onChange={(e) => handleChange('seekStepSecs', Number(e.target.value))}>
+                          {SEEK_STEP_PRESETS.map((secs) => <option key={secs} value={secs}>{secs} seconds</option>)}
+                        </select>
+                      )}
+                    </SettingRow>
                   </div>
                 </section>
 
@@ -1403,11 +1410,11 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           <h4 className="keybind-group-title">{section}</h4>
                           {shortcuts.filter((s) => s.section === section).map((shortcut) => {
                             const bind = (localSettings[shortcut.id] ?? DEFAULT_KEYBINDS[shortcut.id]) as Keybind;
-                            const conflict = findConflict(shortcut.id, bind, currentBinds);
+                            const conflict = findConflict(shortcut.id, bind, currentBinds, localSettings.seekStepSecs);
                             return (
                               <div key={shortcut.id} className="form-group row keybind-row">
                                 <label className="keybind-label">
-                                  {shortcut.description}
+                                  {describeShortcut(shortcut.description, localSettings.seekStepSecs)}
                                   {shortcut.context === 'not-playing' && (
                                     <span className="keybind-context-tag">not playing</span>
                                   )}

@@ -1228,6 +1228,7 @@ const useStore = create<VideoStore>((set, get) => ({
     defaultSortOrder: 'asc',
     defaultGroupByFolder: true,
     keepReviewControlsVisible: false,
+    seekStepSecs: 5,
     maxConcurrent: 'auto',
     cpuThreadsLimited: true,
     skipIntroDelaySecs: 3,

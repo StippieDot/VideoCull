@@ -850,6 +850,9 @@
   --media-control-radius: var(--radius-sm);
   /* The skin fades the controls in 0.1s, which reads as a snap. */
   --media-duration-controls: 0.2s;
+  /* @videojs/react 10.4+ hides the controls until playback has started. A video paused at 0:00
+     (pause in place) must still show its seek bar and volume. */
+  --media-controls-before-start: visible;
   /* The skin dims the whole video behind the controls, and always does with persistent controls.
      There is no title overlay in Review, so only the strip behind the control bar needs a scrim. */
   --media-controls-gradient: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent calc(var(--media-spacing) * 28));

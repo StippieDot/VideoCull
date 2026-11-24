@@ -379,6 +379,94 @@ describe('ReviewMode behavior', () => {
     expect(root?.classList.contains('review-controls-persistent')).toBe(true);
   });
 
+  test('the favorite key toggles the favorite like a click, and does nothing while the feature is hidden', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    const current = useStore.getState();
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha'],
+    });
+    render(<ReviewMode />);
+
+    await act(async () => fireEvent.keyDown(window, { key: 'v' }));
+    expect(useStore.getState().videos[0].favorite).toBe(true);
+    await act(async () => fireEvent.keyDown(window, { key: 'v' }));
+    expect(useStore.getState().videos[0].favorite).toBeFalsy();
+
+    useStore.setState({ settings: { ...current.settings, features: { ...current.settings.features, favorites: false } } });
+    const event = new KeyboardEvent('keydown', { key: 'v', cancelable: true });
+    await act(async () => { window.dispatchEvent(event); });
+    expect(useStore.getState().videos[0].favorite).toBeFalsy();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  test('the rating keys raise and lower one star, stop at both ends, and do nothing while ratings are hidden', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    const current = useStore.getState();
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha'],
+    });
+    render(<ReviewMode />);
+    const rating = () => useStore.getState().videos[0].rating ?? 0;
+    const press = async (key: string) => act(async () => fireEvent.keyDown(window, { key }));
+
+    await press('-');
+    expect(rating()).toBe(0);
+    for (const expected of [1, 2, 3, 4, 5, 5]) {
+      await press('=');
+      expect(rating()).toBe(expected);
+    }
+    await press('-');
+    expect(rating()).toBe(4);
+    for (let i = 0; i < 5; i += 1) await press('-');
+    expect(rating()).toBe(0);
+
+    await press('=');
+    useStore.setState({ settings: { ...current.settings, features: { ...current.settings.features, ratings: false } } });
+    const event = new KeyboardEvent('keydown', { key: '=', cancelable: true });
+    await act(async () => { window.dispatchEvent(event); });
+    expect(rating()).toBe(1);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  test('seeks by the configured step with the app keys and the player hotkeys', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    const current = useStore.getState();
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha'],
+      settings: { ...current.settings, seekStepSecs: 15 },
+    });
+
+    const { container } = render(<ReviewMode />);
+    await userEvent.click(screen.getByRole('button', { name: /^Play/ }));
+    const video = container.querySelector('video')!;
+    video.currentTime = 20;
+
+    await act(async () => fireEvent.keyDown(window, { key: 'ArrowRight' }));
+    expect(video.currentTime).toBe(35);
+    await act(async () => fireEvent.keyDown(window, { key: 'ArrowLeft' }));
+    expect(video.currentTime).toBe(20);
+
+    const hotkeyValues = Object.fromEntries(
+      playerHotkeyRender.mock.calls
+        .map(([props]) => props as { keys: string; action: string; value?: number })
+        .filter((props) => props.action === 'seekStep')
+        .map((props) => [props.keys, props.value]),
+    );
+    expect(hotkeyValues).toEqual({ ArrowRight: 15, l: 15, ArrowLeft: -15, j: -15 });
+  });
+
   test('keeps review shortcuts active after the video player receives focus', async () => {
     const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
     const beta = makeVideo('beta', { path: 'D:\\Media\\beta.mp4' });

@@ -1,6 +1,7 @@
 import {
   ALL_SHORTCUTS,
   FIXED_SHORTCUTS,
+  describeShortcut,
   findConflict,
   formatKeybind,
   kb,
@@ -10,6 +11,7 @@ import {
   type Keybind,
   type KeybindSettingKey,
 } from '../../src/keybinds';
+import { DEFAULT_KEYBINDS } from '../../src/keybind-defaults';
 
 function makeEvent(overrides: Partial<KeyboardEvent> & { key: string }): KeyboardEvent {
   return {
@@ -133,6 +135,36 @@ describe('findConflict with fixed shortcuts', () => {
   test('no default binding collides with a fixed shortcut', () => {
     const allBinds = makeAllBinds();
     for (const shortcut of ALL_SHORTCUTS) expect(findConflict(shortcut.id, allBinds[shortcut.id], allBinds)).toBeNull();
+  });
+});
+
+describe('default Review keys', () => {
+  test('the favorite and rating keys collide with no other default shortcut', () => {
+    expect(DEFAULT_KEYBINDS.keyFavorite).toEqual(kb('v'));
+    expect(DEFAULT_KEYBINDS.keyRatingUp).toEqual(kb('='));
+    expect(DEFAULT_KEYBINDS.keyRatingDown).toEqual(kb('-'));
+    for (const id of ['keyFavorite', 'keyRatingUp', 'keyRatingDown'] as const) {
+      expect(findConflict(id, DEFAULT_KEYBINDS[id], DEFAULT_KEYBINDS)).toBeNull();
+    }
+  });
+});
+
+describe('skip length in shortcut texts', () => {
+  test('fills in the chosen length for every skip shortcut and leaves other texts alone', () => {
+    const skipTexts = [
+      ...ALL_SHORTCUTS.filter((s) => s.id === 'keySeekBack' || s.id === 'keySeekForward'),
+      ...FIXED_SHORTCUTS.filter((s) => s.playerKey && s.keys.includes('J')),
+    ].map((s) => s.description);
+    expect(skipTexts).toHaveLength(3);
+    expect(skipTexts.map((text) => describeShortcut(text, 15))).toEqual(['Rewind 15s', 'Forward 15s', 'Back / forward 15s']);
+    expect(describeShortcut('Toggle global mute', 15)).toBe('Toggle global mute');
+  });
+
+  test('a conflict with a skip shortcut names the chosen length', () => {
+    const binds = Object.fromEntries(ALL_SHORTCUTS.map((shortcut) => [shortcut.id, kb(shortcut.id)])) as Record<KeybindSettingKey, Keybind>;
+    binds.keySeekBack = kb('q');
+    binds.keyKeep = kb('q');
+    expect(findConflict('keyKeep', kb('q'), binds, 10)).toBe('Rewind 10s');
   });
 });
 
