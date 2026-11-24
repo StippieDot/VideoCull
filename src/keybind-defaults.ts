@@ -85,6 +85,8 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   nearMissRange: 20,
   visualOutlineCheck: 75,
   partialClips: 'off',
+  partialClipMinShare: 40,
+  partialClipCommonLimit: 25,
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,

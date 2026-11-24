@@ -1009,6 +1009,26 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                             )}
                           </SettingRow>
                         )}
+                        {localSettings.duplicates.partialClips === 'sound' && (
+                          <>
+                            <SettingRow label="Partial clips: shared part" help="A pair is checked only when the shared sound covers at least this much of the shorter video, or five minutes. Keeps out videos that only share an intro or outro. Lower finds shorter shared parts and checks more pairs.">
+                              {(id) => (
+                                <div className="flex-row duplicates-inline-value">
+                                  <input id={id} type="number" min="0" max="100" step="5" value={localSettings.duplicates.partialClipMinShare} onChange={(e) => handleDuplicateChange('partialClipMinShare', Number(e.target.value))} className="number-input" />
+                                  <span>% of shorter video</span>
+                                </div>
+                              )}
+                            </SettingRow>
+                            <SettingRow label="Common sound limit" help="Sound found in more than this many videos counts as an intro, jingle or music and is not searched. Higher finds clips reused in many videos and checks more pairs.">
+                              {(id) => (
+                                <div className="flex-row duplicates-inline-value">
+                                  <input id={id} type="number" min="2" max="1000" value={localSettings.duplicates.partialClipCommonLimit} onChange={(e) => handleDuplicateChange('partialClipCommonLimit', Number(e.target.value))} className="number-input" />
+                                  <span>videos</span>
+                                </div>
+                              )}
+                            </SettingRow>
+                          </>
+                        )}
                         <SwitchRow
                           label="Skip blank frames"
                           help="Ignores frames that are a single flat colour, which would match any other blank frame."

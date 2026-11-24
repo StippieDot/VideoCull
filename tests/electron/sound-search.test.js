@@ -28,7 +28,7 @@ describe('shared sound search', () => {
       { id: 'other', words: randomWords(seconds(90), 2) },
     ]);
     expect(rest).toEqual([]);
-    expect(relation).toMatchObject({ aId: 'source', bId: 'clip', fullCoverage: false });
+    expect(relation).toMatchObject({ aId: 'source', bId: 'clip' });
     expect(relation.segments).toHaveLength(1);
     const [segment] = relation.segments;
     expect(near(segment.startA, 40) && near(segment.startB, 0) && near(segment.lengthSecs, 30)).toBe(true);
@@ -65,19 +65,44 @@ describe('shared sound search', () => {
     expect(findSharedSound([{ id: 'a', words: source }, { id: 'b', words: clip }], { skipPairKeys: new Set(['a|b']) })).toEqual([]);
   });
 
-  test('two tracks with the same sound throughout are marked as fully covered', () => {
+  test('two tracks with the same sound throughout give one segment over all of it', () => {
     const sound = randomWords(seconds(40), 10);
-    const [relation] = findSharedSound([{ id: 'a', words: sound }, { id: 'b', words: reencoded(sound) }]);
-    expect(relation.fullCoverage).toBe(true);
+    const [relation] = findSharedSound([{ id: 'a', words: sound }, { id: 'b', words: reencoded(sound) }], { minShare: 0.4 });
+    expect(relation.segments).toHaveLength(1);
+    expect(near(relation.segments[0].lengthSecs, 40)).toBe(true);
   });
 
-  test('a clip that occurs twice in a longer video does not cover that video', () => {
+  test('a clip that occurs twice in a longer video is found at both places', () => {
     const clip = randomWords(seconds(40), 21);
     const longer = concat(reencoded(clip), randomWords(seconds(5), 22), reencoded(clip, 5));
     const [relation] = findSharedSound([{ id: 'clip', words: clip }, { id: 'longer', words: longer }]);
     expect(relation.segments).toHaveLength(2);
-    expect(relation.fullCoverage).toBe(false);
     expect(unionLength([[0, 10], [5, 12], [20, 21]])).toBe(13);
+  });
+
+  test('a shared intro is too small a part of either video, an excerpt or a long overlap is not', () => {
+    const intro = randomWords(seconds(15), 40);
+    const withIntro = (seed) => concat(intro, randomWords(seconds(120), seed));
+    const shareOnly = { minShare: 0.4 };
+    expect(findSharedSound([{ id: 'a', words: withIntro(41) }, { id: 'b', words: withIntro(42) }], shareOnly)).toEqual([]);
+
+    const source = randomWords(seconds(120), 43);
+    expect(findSharedSound([{ id: 's', words: source }, { id: 'c', words: reencoded(source.subarray(seconds(30), seconds(60))) }], shareOnly)).toHaveLength(1);
+
+    // Six shared minutes are a fifth of each 30-minute recording, and still reported.
+    const overlap = randomWords(seconds(360), 44);
+    const first = concat(randomWords(seconds(1440), 45), overlap);
+    const second = concat(reencoded(overlap), randomWords(seconds(1440), 46));
+    expect(findSharedSound([{ id: 'x', words: first }, { id: 'y', words: second }], shareOnly)).toHaveLength(1);
+  });
+
+  test('sound found in more tracks than the common limit is skipped and counted', () => {
+    const jingle = randomWords(seconds(20), 50);
+    const tracks = [51, 52, 53, 54].map((seed) => ({ id: `t${seed}`, words: concat(jingle, randomWords(seconds(40), seed)) }));
+    const index = searchIndex(tracks, buildIndex(tracks));
+    expect(matchingWindows(tracks, index, { commonLimit: 2 })).toMatchObject({ pairs: [], commonTracks: 4 });
+    // At the limit it is still searched: three other tracks, limit three.
+    expect(matchingWindows(tracks, index, { commonLimit: 3 }).pairs).toHaveLength(6);
   });
 
   test('a search split into shards over a shared index finds what one search finds', () => {
@@ -90,7 +115,7 @@ describe('shared sound search', () => {
       { id: 'c3', words: reencoded(source.subarray(seconds(150), seconds(190)), 7) },
     ];
     const index = searchIndex(tracks, buildIndex(tracks, { shared: true }));
-    const sharded = relationsFromWindows(tracks, [0, 1, 2].map((i) => matchingWindows(tracks, index, { shard: [i, 3] })));
+    const sharded = relationsFromWindows(tracks, [0, 1, 2].map((i) => matchingWindows(tracks, index, { shard: [i, 3] }).pairs));
     expect(sharded.length).toBe(3);
     expect(sharded).toEqual(findSharedSound(tracks));
   });

@@ -17,7 +17,7 @@ const {
   wordsFromBuffer,
   wordsToBuffer,
 } = require('./audio-fingerprint');
-const { calculateDctPHash, flipGrayBytes, frameDarkRatio, parsePHashWords, pHashSimilarity, popcount32 } = require('./duplicate-utils');
+const { calculateDctPHash, flipGrayBytes, frameDarkRatio, normalizeDuplicateSettings, parsePHashWords, pHashSimilarity, popcount32 } = require('./duplicate-utils');
 const { cropToPrimary, detectBorder, lumaRange } = require('./duplicate-frames');
 const { buildIndex, pairKey, relationsFromWindows, unionLength } = require('./sound-search');
 const { pictureCheckKey } = require('./picture-check-store');
@@ -158,7 +158,7 @@ async function readSound(videos, settings, run, sendProgress, maxConcurrency, ex
   return { sound, read: missing.length };
 }
 
-/** One shard of the sound search in a worker; resolves with its matching windows. */
+/** One shard of the sound search in a worker; resolves with `{ pairs, commonTracks }` (`matchingWindows`). */
 function runSearchShard(workerData, run, onProgress) {
   return new Promise((resolve, reject) => {
     const pauseHandle = processingPause.createWorkerPauseHandle();
@@ -177,7 +177,7 @@ function runSearchShard(workerData, run, onProgress) {
     worker.on('message', (message) => {
       if (message.type === 'progress') onProgress(message.done);
       else if (message.type === 'paused') pauseHandle.markPaused();
-      else if (message.type === 'done') finish(null, message.pairs);
+      else if (message.type === 'done') finish(null, { pairs: message.pairs, commonTracks: message.commonTracks });
       else if (message.type === 'error') finish(new Error(message.message));
     });
     worker.on('error', (err) => finish(run.cancelled ? new duplicates.DuplicateCancelledError() : err));
@@ -192,9 +192,9 @@ function runSearchShard(workerData, run, onProgress) {
 /**
  * The shared-sound search, split over `workerCount` workers that read one copy of the words and the
  * index in shared memory. Each shard searches every n-th video; together they find the same pairs as
- * one search.
+ * one search. Resolves with the relations and how many videos had common sound skipped.
  */
-async function searchSharedSound(tracks, skipPairKeys, workerCount, run, sendProgress) {
+async function searchSharedSound(tracks, skipPairKeys, workerCount, run, sendProgress, { minShare, commonLimit }) {
   const words = new Uint32Array(new SharedArrayBuffer(tracks.reduce((sum, track) => sum + track.words.length, 0) * 4));
   const layout = [];
   let start = 0;
@@ -214,18 +214,22 @@ async function searchSharedSound(tracks, skipPairKeys, workerCount, run, sendPro
   run.worker = { terminate: () => { for (const worker of run.searchWorkers) worker.terminate(); } };
   try {
     const shards = await Promise.all(doneByShard.map((_, i) => runSearchShard(
-      { words: words.buffer, layout, index, shard: [i, shardCount] },
+      { words: words.buffer, layout, index, shard: [i, shardCount], commonLimit },
       run,
       (done) => {
         doneByShard[i] = done;
         report();
       },
-    ).then((pairs) => {
+    ).then((result) => {
       doneByShard[i] = Math.ceil((tracks.length - i) / shardCount);
       report();
-      return pairs;
+      return result;
     })));
-    return relationsFromWindows(shared, shards, skipPairKeys);
+    return {
+      relations: relationsFromWindows(shared, shards.map((shard) => shard.pairs), skipPairKeys, { minShare }),
+      // Each track is searched by one shard, so the counts add up.
+      commonTracks: shards.reduce((sum, shard) => sum + shard.commonTracks, 0),
+    };
   } finally {
     // After a failed shard the others are stopped too.
     run.worker.terminate();
@@ -377,11 +381,9 @@ async function checkRelations(found, byId, settings, run, sendProgress, maxConcu
             pictureSimilarity: picture.pictureSimilarity,
           });
         }
-        const clip = describeRelation(relation, shorter, segments);
-        // The same footage and sound throughout is a duplicate, which the duplicate run reports. One stretch
-        // with other pictures makes the pair something the duplicate run does not find, so it stays.
-        const sameThroughout = segments.every((segment) => segment.pictureState === 'confirmed');
-        if (!(relation.fullCoverage && sameThroughout)) clips.push(clip);
+        // Also kept when sound and pictures match throughout: pairs of the duplicate groups are skipped
+        // before the search, so such a pair is a copy the duplicate run missed.
+        clips.push(describeRelation(relation, shorter, segments));
         checked++;
         progress(sendProgress, 'Checking pictures', checked, found.length);
         if (Date.now() - lastCheckpoint >= checkpointEveryMs) {
@@ -428,7 +430,10 @@ async function findPartialClips({ videos, settings, skipPairKeys = new Set(), ca
   started = Date.now();
   // Pure computation, so as many workers as the processing setting allows, but not more than cores.
   const searchWorkers = Math.min(maxConcurrency, os.cpus().length || 1);
-  const found = tracks.length >= 2 ? await searchSharedSound(tracks, skipPairKeys, searchWorkers, run, sendProgress) : [];
+  const { partialClipMinShare, partialClipCommonLimit } = normalizeDuplicateSettings(settings);
+  const { relations: found, commonTracks } = tracks.length >= 2
+    ? await searchSharedSound(tracks, skipPairKeys, searchWorkers, run, sendProgress, { minShare: partialClipMinShare / 100, commonLimit: partialClipCommonLimit })
+    : { relations: [], commonTracks: 0 };
   timings.searchMs = Date.now() - started;
   duplicates.assertNotCancelled(run);
 
@@ -448,6 +453,8 @@ async function findPartialClips({ videos, settings, skipPairKeys = new Set(), ca
       soundBytes: storedWords * 4,
       soundSeconds: Math.round(storedWords / WORDS_PER_SECOND),
       candidates: found.length,
+      // Videos with sound found in more than partialClipCommonLimit others, which was not searched.
+      commonSoundVideos: commonTracks,
       partial: clips.filter((clip) => clip.relation === 'partial').length,
       audioOnly: clips.filter((clip) => clip.relation === 'audioOnly').length,
       ...timings,

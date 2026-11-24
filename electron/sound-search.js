@@ -26,8 +26,9 @@ const MERGE_OFFSET_WORDS = 4;
 const EDGE_BLOCK_WORDS = 16;
 const EDGE_SIMILARITY = 0.8;
 const MIN_SEGMENT_WORDS = WINDOW_WORDS;
-// Segments covering this much of both videos make them duplicates, which the duplicate run handles.
-const FULL_COVERAGE = 0.95;
+// Shared sound this long is reported whatever share of the shorter video it is: two long recordings
+// that overlap. A shared intro or outro is far shorter.
+const LONG_SHARED_WORDS = Math.round(5 * 60 * WORDS_PER_SECOND);
 
 function popcount(x) {
   let v = x - ((x >>> 1) & 0x55555555);
@@ -174,24 +175,35 @@ function candidateOffsets(tracks, index, a, start) {
 
 /**
  * Matching windows of every pair, oriented from the lower to the higher track index, as
- * `[{ lo, hi, windows }]`. With `shard: [i, n]` only the windows of every n-th track from i are searched;
- * the windows of all n shards together are those of one full search.
+ * `{ pairs: [{ lo, hi, windows }], commonTracks }`. With `shard: [i, n]` only the windows of every n-th
+ * track from i are searched; the windows of all n shards together are those of one full search.
+ * A window that matches more than `commonLimit` other tracks is common sound (an intro, a jingle, a
+ * song) and is skipped like silence; `commonTracks` counts the tracks that had such a window.
  */
-function matchingWindows(tracks, index, { onProgress, shard = [0, 1] } = {}) {
+function matchingWindows(tracks, index, { onProgress, shard = [0, 1], commonLimit = Infinity } = {}) {
   const [first, step] = shard;
   const byPair = new Map();
   let done = 0;
+  let commonTracks = 0;
   for (let a = first; a < tracks.length; a += step) {
     const track = tracks[a];
+    let hadCommon = false;
     for (let start = 0; start + WINDOW_WORDS <= track.words.length; start += WINDOW_STEP) {
       if (!usableWindow(track.words, start)) continue;
+      const matches = [];
       for (const { t, offset } of candidateOffsets(tracks, index, a, start)) {
         let best = { similarity: 0, offset };
         for (let r = -REFINE_WORDS; r <= REFINE_WORDS; r++) {
           const similarity = similarityAt(track.words, tracks[t].words, start, offset + r, WINDOW_WORDS, WINDOW_WORDS * 0.6);
           if (similarity > best.similarity) best = { similarity, offset: offset + r };
         }
-        if (best.similarity < MATCH_SIMILARITY) continue;
+        if (best.similarity >= MATCH_SIMILARITY) matches.push({ t, best });
+      }
+      if (matches.length > commonLimit) {
+        hadCommon = true;
+        continue;
+      }
+      for (const { t, best } of matches) {
         const [lo, hi] = a < t ? [a, t] : [t, a];
         // Positions in the lower track, offset from it to the higher one.
         const window = a < t
@@ -202,9 +214,10 @@ function matchingWindows(tracks, index, { onProgress, shard = [0, 1] } = {}) {
         byPair.get(key).windows.push(window);
       }
     }
+    if (hadCommon) commonTracks++;
     onProgress?.(++done);
   }
-  return [...byPair.values()];
+  return { pairs: [...byPair.values()], commonTracks };
 }
 
 function mergeWindows(windows) {
@@ -281,10 +294,10 @@ const LAST_WORD_SPAN_SECS = (4096 + 4 * 1365) / 11025;
 /**
  * The pairs that share sound, from the matching windows of every shard (`matchingWindows`), each with
  * its segments in seconds (start in a, start in b, length) and their average bit similarity. Pairs in
- * `skipPairKeys` (duplicates, pairs marked as not a match) are left out; `fullCoverage` marks pairs whose
- * segments cover almost all of both videos.
+ * `skipPairKeys` (duplicates, pairs marked as not a match) are left out, and so are pairs whose shared
+ * sound is less than `minShare` of the shorter video and shorter than five minutes: a shared intro.
  */
-function relationsFromWindows(tracks, shardPairs, skipPairKeys = new Set()) {
+function relationsFromWindows(tracks, shardPairs, skipPairKeys = new Set(), { minShare = 0 } = {}) {
   const byPair = new Map();
   for (const pairs of shardPairs) {
     for (const { lo, hi, windows } of pairs) {
@@ -316,12 +329,12 @@ function relationsFromWindows(tracks, shardPairs, skipPairKeys = new Set()) {
     // Counted per video: a clip that occurs twice in a longer video covers the clip, not the video.
     const coveredA = unionLength(segments.map((segment) => [segment.startWord, segment.startWord + segment.words]));
     const coveredB = unionLength(segments.map((segment) => [segment.startWord + segment.offset, segment.startWord + segment.offset + segment.words]));
+    // The higher of the two shares is the shorter video's.
+    const share = Math.max(coveredA / a.words.length, coveredB / b.words.length);
+    if (share < minShare && Math.max(coveredA, coveredB) < LONG_SHARED_WORDS) continue;
     relations.push({
       aId: a.id,
       bId: b.id,
-      // With matching pictures such a pair is a duplicate, which the duplicate run reports; with other
-      // pictures it is shared sound worth reporting. The caller decides after the picture check.
-      fullCoverage: coveredA >= FULL_COVERAGE * a.words.length && coveredB >= FULL_COVERAGE * b.words.length,
       segments: segments.map(({ words: _words, startWord: _startWord, offset: _offset, ...segment }) => segment),
       soundSimilarity: segments.reduce((sum, segment) => sum + segment.similarity * segment.words, 0) / covered,
     });
@@ -330,9 +343,9 @@ function relationsFromWindows(tracks, shardPairs, skipPairKeys = new Set()) {
 }
 
 /** `tracks`: `{ id, words }` of videos whose sound is usable. The whole search on this thread. */
-function findSharedSound(tracks, { skipPairKeys = new Set(), onProgress } = {}) {
+function findSharedSound(tracks, { skipPairKeys = new Set(), onProgress, minShare, commonLimit } = {}) {
   const index = searchIndex(tracks, buildIndex(tracks));
-  return relationsFromWindows(tracks, [matchingWindows(tracks, index, { onProgress })], skipPairKeys);
+  return relationsFromWindows(tracks, [matchingWindows(tracks, index, { onProgress, commonLimit }).pairs], skipPairKeys, { minShare });
 }
 
 module.exports = { buildIndex, findSharedSound, matchingWindows, pairKey, relationsFromWindows, searchIndex, unionLength };

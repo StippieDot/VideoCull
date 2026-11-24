@@ -120,6 +120,7 @@ function SidebarDuplicateSection({
   onOpenDuplicateSettings,
 }: Pick<SidebarProps, 'onFindDuplicates' | 'onSwitchDuplicateMethod' | 'onCheckNearMisses' | 'onFindPartialClips' | 'onOpenDuplicateSettings'>) {
   const partialClips = useStore((s) => s.partialClips);
+  const partialClipsCommonSound = useStore((s) => s.partialClipsCommonSound);
   const partialClipsMode = useStore((s) => s.partialClipsMode);
   const setPartialClipsMode = useStore((s) => s.setPartialClipsMode);
   const partialClipsEnabled = useStore((s) => s.settings.duplicates.partialClips !== 'off');
@@ -373,6 +374,14 @@ function SidebarDuplicateSection({
         </div>
 
         {!partialClipsMode && <UncheckedNearMisses run={duplicateRun} disabled={duplicateDisabled} onCheck={onCheckNearMisses} />}
+        {/* Skipped sound can hide a clip reused in many videos, so the list says it is not everything. */}
+        {partialClipsMode && partialClipsCommonSound > 0 && (
+          <p className="sidebar-duplicate-note">
+            Sound found in more than {duplicateSettings.partialClipCommonLimit} videos (intros, jingles, music) was skipped
+            in {partialClipsCommonSound.toLocaleString()} {partialClipsCommonSound === 1 ? 'video' : 'videos'}. A clip reused
+            that often is not listed; raise Common sound limit in Duplicate Settings to search it.
+          </p>
+        )}
 
         <div className="duplicate-sidebar-actions">
           <span className="sort-label">Search again</span>
@@ -462,7 +471,8 @@ function SidebarDuplicateSection({
           Partial Clips ({partialEntryCount})
         </button>
       )}
-      {partialClipsEnabled && (
+      {/* The duplicate view offers it; only shown here while there is no group or clip list to open that view. */}
+      {partialClipsEnabled && duplicateGroupCount === 0 && !partialClips && (
         <button
           className="btn btn-outline sidebar-wide-action"
           onClick={onFindPartialClips}

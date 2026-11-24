@@ -396,11 +396,16 @@ describe('Sidebar recent folder behavior', () => {
 
     useStore.setState({
       settings: { ...useStore.getState().settings, duplicates: { ...useStore.getState().settings.duplicates, partialClips: 'sound' } },
-      partialClips: [],
     });
-    renderSidebar({ onFindPartialClips });
+    const second = renderSidebar({ onFindPartialClips });
     await userEvent.click(screen.getByRole('button', { name: 'Find Partial Clips' }));
     expect(onFindPartialClips).toHaveBeenCalledTimes(1);
+    second.unmount();
+
+    // Once a list exists, the search is offered in the duplicate view, not in the grid.
+    useStore.setState({ partialClips: [] });
+    renderSidebar({ onFindPartialClips });
+    expect(screen.queryByRole('button', { name: 'Find Partial Clips' })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Partial Clips (0)' }));
     expect(useStore.getState()).toMatchObject({ partialClipsMode: true, duplicateGroupsMode: true });
     // The similarity filter is for groups; partial clips sort by their own fields.

@@ -462,7 +462,7 @@ export default function App() {
       if (runId !== duplicateRunIdRef.current) return;
       if (result.status === 'ok') {
         const clips = result.clips ?? [];
-        useStore.getState().applyPartialClips(clips, { videos: scopeVideos, scope, settingsKey: result.settingsKey });
+        useStore.getState().applyPartialClips(clips, { videos: scopeVideos, scope, settingsKey: result.settingsKey }, result.stats?.commonSoundVideos ?? 0);
         // Counted as the list shows them: copies of the same videos are one entry.
         const entries = mergeClipsByDuplicateGroup(clips, useStore.getState().duplicateGroups);
         const partial = entries.filter((entry) => entry.primary.relation === 'partial').length;

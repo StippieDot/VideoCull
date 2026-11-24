@@ -199,6 +199,30 @@ describe('finding partial clips', () => {
     expect(result.clips[0].segments.map((segment) => segment.pictureState)).toEqual(['differentPicture', 'confirmed']);
   });
 
+  test('the same sound and pictures throughout are kept: a copy the duplicate run did not group', async () => {
+    const { duplicates, partialClips } = loadModules((child, args) => {
+      const count = Number(args[args.indexOf('-frames:v') + 1]) || 1;
+      const seconds = Number(args[args.indexOf('-ss') + 1]);
+      const stacked = Buffer.alloc(FRAME_BYTES, 128);
+      // A scene per 5 seconds, so a burst starting 0.4 s before a check time shows the same scene.
+      const { primary } = picture(1 + (Math.round(seconds / 5) % 7));
+      for (let row = 0; row < 32; row++) primary.copy(stacked, row * 64, row * 32, row * 32 + 32);
+      child.stdout.emit('data', Buffer.concat(Array.from({ length: count }, () => stacked)));
+      child.emit('close', 0, null);
+    });
+    const source = words(60, 12);
+    const result = await partialClips.findPartialClips({
+      videos: [video('src', 60), video('copy', 60)],
+      settings: { compareFlipped: false },
+      cacheAccess: storedSound({ src: source, copy: source }),
+      cacheOptions: {},
+      run: duplicates.createDuplicateRun(),
+    });
+    expect(result.clips).toHaveLength(1);
+    expect(result.clips[0]).toMatchObject({ relation: 'partial', state: 'confirmed', coverage: 1 });
+    expect(result.stats.commonSoundVideos).toBe(0);
+  });
+
   test('pairs to skip are not searched, and a cancelled run stops', async () => {
     const { duplicates, partialClips } = loadModules((child) => child.emit('close', 0, null));
     const source = words(60, 2);

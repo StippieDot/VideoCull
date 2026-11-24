@@ -40,6 +40,11 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   visualOutlineCheck: 75,
   // 'sound': Find partial clips reads the sound of every video once; started by hand only.
   partialClips: 'off',
+  // Shared sound below this percentage of the shorter video (and under five minutes) is a shared intro,
+  // not a partial clip; an excerpt, a trim or a clip inside a compilation covers nearly all of it.
+  partialClipMinShare: 40,
+  // Sound found in more than this many other videos is an intro, a jingle or a song, and is not searched.
+  partialClipCommonLimit: 25,
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,
@@ -87,6 +92,8 @@ function normalizeDuplicateSettings(input = {}) {
     minComparedSamples: [1, 2, 3].includes(Number(input.minComparedSamples)) ? Number(input.minComparedSamples) : 'auto',
     verifyNearMatches: input.verifyNearMatches === 'off' ? 'off' : 'auto',
     partialClips: input.partialClips === 'sound' ? 'sound' : 'off',
+    partialClipMinShare: Math.round(clamp(input.partialClipMinShare ?? DEFAULT_DUPLICATE_SETTINGS.partialClipMinShare, 0, 100)),
+    partialClipCommonLimit: Math.round(clamp(input.partialClipCommonLimit ?? DEFAULT_DUPLICATE_SETTINGS.partialClipCommonLimit, 2, 1000)),
     nearMissRange: NEAR_MISS_RANGES.has(Number(input.nearMissRange)) ? Number(input.nearMissRange) : DEFAULT_DUPLICATE_SETTINGS.nearMissRange,
     visualOutlineCheck: input.visualOutlineCheck === 'off'
       ? 'off'
@@ -232,7 +239,7 @@ const NON_MATCHING_SETTING_KEYS = [
   'separateSimilarityThresholds', 'phashSimilarityThreshold', 'visualSimilarityThreshold',
   'retryFailedFingerprintExtraction', 'checkpointIntervalMinutes',
   // Partial clips are a separate result with its own run; duplicate matching does not depend on it.
-  'partialClips',
+  'partialClips', 'partialClipMinShare', 'partialClipCommonLimit',
   // Applied to stored results when they are loaded: an ignored pair is removed and its group rebuilt.
   'ignoredDuplicatePairs',
   'phashDefaultApplied', 'averageSamplesDefaultApplied', 'visualCorrelationDefaultApplied',

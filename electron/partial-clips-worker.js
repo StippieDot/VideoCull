@@ -16,14 +16,15 @@ function pauseCheckpoint() {
 try {
   const words = new Uint32Array(workerData.words);
   const tracks = workerData.layout.map(({ start, length }) => ({ words: words.subarray(start, start + length) }));
-  const pairs = matchingWindows(tracks, searchIndex(tracks, workerData.index), {
+  const { pairs, commonTracks } = matchingWindows(tracks, searchIndex(tracks, workerData.index), {
     shard: workerData.shard,
+    commonLimit: workerData.commonLimit,
     onProgress: (done) => {
       pauseCheckpoint();
       if (done % 50 === 0) parentPort.postMessage({ type: 'progress', done });
     },
   });
-  parentPort.postMessage({ type: 'done', pairs });
+  parentPort.postMessage({ type: 'done', pairs, commonTracks });
 } catch (err) {
   parentPort.postMessage({ type: 'error', message: err?.message || String(err) });
 }

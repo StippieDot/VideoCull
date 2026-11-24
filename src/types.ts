@@ -277,6 +277,10 @@ export interface DuplicateSettings {
   visualOutlineCheck: 'off' | 70 | 75 | 80 | 85 | 90;
   /** 'sound': the sidebar offers Find partial clips, which reads the sound of every video once. */
   partialClips: 'off' | 'sound';
+  /** Percent of the shorter video the shared sound must cover (or five minutes) to be checked. */
+  partialClipMinShare: number;
+  /** Sound found in more than this many other videos is common sound and is not searched. */
+  partialClipCommonLimit: number;
   maxSamplingDuration: number;
   retryFailedFingerprintExtraction: boolean;
   checkpointIntervalMinutes: number;
@@ -433,6 +437,8 @@ export interface PartialClipResult {
     videos: number;
     soundRead: number;
     candidates: number;
+    /** Videos with sound found in more than partialClipCommonLimit others, which was not searched. */
+    commonSoundVideos: number;
     partial: number;
     audioOnly: number;
   } | null;
@@ -598,6 +604,8 @@ export interface VideoStore {
   duplicateRun: DuplicateRunInfo | null;
   /** Result of the last Find partial clips in this session; null before one ran. */
   partialClips: PartialClip[] | null;
+  /** Videos whose common sound the last Find partial clips of this session skipped; 0 after a restore. */
+  partialClipsCommonSound: number;
   /** The duplicate view shows the partial clips instead of the groups. */
   partialClipsMode: boolean;
   duplicateProgress: DuplicateProgress | null;
@@ -700,7 +708,7 @@ export interface VideoStore {
   restoreDuplicateResults: () => Promise<LoadedDuplicateResults['status'] | 'skipped'>;
   addIgnoredDuplicatePairs: (pairKeys: string[]) => void;
   /** Shows the result of Find partial clips; `run` describes it for storage when no duplicate run did. */
-  applyPartialClips: (clips: PartialClip[], run?: { videos: Video[]; scope: 'all' | 'filtered'; settingsKey?: string }) => void;
+  applyPartialClips: (clips: PartialClip[], run?: { videos: Video[]; scope: 'all' | 'filtered'; settingsKey?: string }, commonSoundVideos?: number) => void;
   setPartialClipsMode: (mode: boolean) => void;
   /** Marks each pair as not a match and takes it off the partial clip list. */
   dismissPartialClips: (pairs: Array<{ aId: string; bId: string }>) => void;

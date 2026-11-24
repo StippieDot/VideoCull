@@ -1186,6 +1186,7 @@ const useStore = create<VideoStore>((set, get) => ({
   duplicateGroups: [],
   duplicateRun: null,
   partialClips: null,
+  partialClipsCommonSound: 0,
   partialClipsMode: false,
   duplicateProgress: null,
   isFindingDuplicates: false,
@@ -1865,10 +1866,10 @@ const useStore = create<VideoStore>((set, get) => ({
     const groupsWithKeepers = applyKeeperOrderToGroups(groups, state.videos, state.settings.duplicates.keeperOrder, state.settings.duplicates.codecOrder);
     const videos = applyDuplicateGroupsToVideos(state.videos, groupsWithKeepers);
     // The grid stays in front; the sidebar offers the restored groups with their date.
-    set({ ...buildVideoStateUpdate(state, videos, ['duplicate'], { duplicateGroups: groupsWithKeepers }), duplicateRun: run, partialClips });
+    set({ ...buildVideoStateUpdate(state, videos, ['duplicate'], { duplicateGroups: groupsWithKeepers }), duplicateRun: run, partialClips, partialClipsCommonSound: 0 });
     return 'ok';
   },
-  applyPartialClips: (partialClips, run) => {
+  applyPartialClips: (partialClips, run, commonSoundVideos = 0) => {
     const state = get();
     // Groups found under other matching settings are outdated next to these clips, as clips are next to
     // a newer duplicate run; keeping them would store both under the older settings, and restoring
@@ -1877,6 +1878,7 @@ const useStore = create<VideoStore>((set, get) => ({
       set({
         ...buildVideoStateUpdate(state, applyDuplicateGroupsToVideos(state.videos, []), ['duplicate'], { duplicateGroups: [] }),
         partialClips,
+        partialClipsCommonSound: commonSoundVideos,
         partialClipsMode: true,
         duplicateGroupsMode: true,
         duplicateRun: describeDuplicateRun(run.videos, run.settingsKey, run.scope),
@@ -1885,6 +1887,7 @@ const useStore = create<VideoStore>((set, get) => ({
     }
     set({
       partialClips,
+      partialClipsCommonSound: commonSoundVideos,
       partialClipsMode: true,
       duplicateGroupsMode: true,
       // Stored results are kept per duplicate run; a session without one gets a record for the clips.

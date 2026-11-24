@@ -12,6 +12,8 @@ import './PartialClipsView.css';
 
 // An excerpt covering this much of the shorter video is described as an excerpt of the longer one.
 const EXCERPT_COVERAGE = 0.9;
+// ...and as the same video when the shorter one is at least this share of the longer one's length.
+const SAME_LENGTH_SHARE = 0.95;
 const STATE_ORDER: Record<PartialClip['state'], number> = { confirmed: 0, unconfirmed: 1, differentPicture: 2 };
 
 /** One entry of the list: the pair shown, and the same finding for other copies of the same videos. */
@@ -86,6 +88,10 @@ function inLonger(clip: PartialClip, segment: PartialClipSegment): { start: numb
 export function describePartialClip(clip: PartialClip, shorter: Video, longer: Video): string[] {
   if (clip.relation === 'partial') {
     if ((clip.coverage ?? 0) >= EXCERPT_COVERAGE && clip.segments.length === 1) {
+      // Pairs of duplicate groups are not searched, so this is a copy the duplicate search did not group.
+      if ((shorter.durationSecs ?? 0) >= SAME_LENGTH_SHARE * (longer.durationSecs ?? Infinity)) {
+        return [`${shorter.filename} and ${longer.filename} are the same video — sound and picture match`];
+      }
       return [`${shorter.filename} is an excerpt of ${longer.filename} — sound and picture match`];
     }
     return clip.segments.map((segment) => {

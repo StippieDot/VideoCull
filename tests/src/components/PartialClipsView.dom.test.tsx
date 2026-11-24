@@ -3,7 +3,7 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import PartialClipsView, { filterAndSortPartialClips, mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
+import PartialClipsView, { describePartialClip, filterAndSortPartialClips, mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
 import useStore from '../../../src/store';
 import type { PartialClip } from '../../../src/types';
 import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
@@ -65,6 +65,13 @@ describe('partial clips list', () => {
     useStore.getState().toasts[useStore.getState().toasts.length - 1]?.action?.();
     expect(useStore.getState().partialClips?.map((entry) => `${entry.aId}|${entry.bId}`)).toEqual([`${SOURCE}|${CLIP}`, `${SOURCE}|${OTHER}`, `${OTHER}|${CLIP}`]);
     expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).not.toContain(`${SOURCE}|${CLIP}`);
+  });
+
+  test('a full match between videos of the same length is described as the same video', () => {
+    const concert = makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600 });
+    const reencode = makeVideo(OTHER, { filename: 'concert-reencode.mp4', durationSecs: 598 });
+    expect(describePartialClip(clip({ bId: OTHER, shorterId: OTHER, coverage: 1 }), reencode, concert))
+      .toEqual(['concert-reencode.mp4 and concert.mp4 are the same video — sound and picture match']);
   });
 
   test('one clip found in several copies of a video is one entry, and Not a match covers them all', async () => {
