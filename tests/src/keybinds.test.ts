@@ -139,9 +139,13 @@ describe('findConflict with fixed shortcuts', () => {
 });
 
 describe('default Review keys', () => {
-  test('the favorite key collides with no other default shortcut', () => {
+  test('the favorite and rating keys collide with no other default shortcut', () => {
     expect(DEFAULT_KEYBINDS.keyFavorite).toEqual(kb('v'));
-    expect(findConflict('keyFavorite', DEFAULT_KEYBINDS.keyFavorite, DEFAULT_KEYBINDS)).toBeNull();
+    expect(DEFAULT_KEYBINDS.keyRatingUp).toEqual(kb('='));
+    expect(DEFAULT_KEYBINDS.keyRatingDown).toEqual(kb('-'));
+    for (const id of ['keyFavorite', 'keyRatingUp', 'keyRatingDown'] as const) {
+      expect(findConflict(id, DEFAULT_KEYBINDS[id], DEFAULT_KEYBINDS)).toBeNull();
+    }
   });
 });
 

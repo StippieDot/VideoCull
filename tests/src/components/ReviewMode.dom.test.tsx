@@ -403,6 +403,39 @@ describe('ReviewMode behavior', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
+  test('the rating keys raise and lower one star, stop at both ends, and do nothing while ratings are hidden', async () => {
+    const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
+    const current = useStore.getState();
+    useStore.setState({
+      videos: [alpha],
+      filteredVideos: [alpha],
+      reviewMode: true,
+      reviewIndex: 0,
+      reviewScopeIds: ['alpha'],
+    });
+    render(<ReviewMode />);
+    const rating = () => useStore.getState().videos[0].rating ?? 0;
+    const press = async (key: string) => act(async () => fireEvent.keyDown(window, { key }));
+
+    await press('-');
+    expect(rating()).toBe(0);
+    for (const expected of [1, 2, 3, 4, 5, 5]) {
+      await press('=');
+      expect(rating()).toBe(expected);
+    }
+    await press('-');
+    expect(rating()).toBe(4);
+    for (let i = 0; i < 5; i += 1) await press('-');
+    expect(rating()).toBe(0);
+
+    await press('=');
+    useStore.setState({ settings: { ...current.settings, features: { ...current.settings.features, ratings: false } } });
+    const event = new KeyboardEvent('keydown', { key: '=', cancelable: true });
+    await act(async () => { window.dispatchEvent(event); });
+    expect(rating()).toBe(1);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   test('seeks by the configured step with the app keys and the player hotkeys', async () => {
     const alpha = makeVideo('alpha', { path: 'D:\\Media\\alpha.mp4' });
     const current = useStore.getState();

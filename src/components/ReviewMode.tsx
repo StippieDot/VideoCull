@@ -578,6 +578,16 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
       }
       // A hidden feature must not change data the person cannot see.
       if (s.features.favorites && video && matchesKeybind(e, s.keyFavorite)) { e.preventDefault(); toggleFavorite(video.id); return; }
+      if (s.features.ratings && video) {
+        const step = matchesKeybind(e, s.keyRatingUp) ? 1 : matchesKeybind(e, s.keyRatingDown) ? -1 : 0;
+        if (step !== 0) {
+          e.preventDefault();
+          // Clamped, not wrapped: five stars is as high as it goes, and lowering from one clears it.
+          const next = Math.min(5, Math.max(0, (video.rating ?? 0) + step)) as Parameters<typeof setVideoRating>[1];
+          if (next !== (video.rating ?? 0)) setVideoRating(video.id, next);
+          return;
+        }
+      }
       if (matchesKeybind(e, s.keyKeep))      { e.preventDefault(); markKeep(); return; }
       if (matchesKeybind(e, s.keyDelete))    { e.preventDefault(); markDelete(); return; }
       if (matchesKeybind(e, s.keySkip))      { e.preventDefault(); skip(); return; }
@@ -590,7 +600,7 @@ export default function ReviewMode({ keyboardBlocked = false }: { keyboardBlocke
     // cannot be consumed by the player's own keyboard bindings first.
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [markKeep, markDelete, skip, resetStatus, handleUndo, close, goBack, advance, handlePlay, isPlaying, video, addBookmarkNow, jumpToNextUndecided, shortcutsBlocked, toggleFavorite]);
+  }, [markKeep, markDelete, skip, resetStatus, handleUndo, close, goBack, advance, handlePlay, isPlaying, video, addBookmarkNow, jumpToNextUndecided, shortcutsBlocked, toggleFavorite, setVideoRating]);
 
   if (!video) {
     return (
