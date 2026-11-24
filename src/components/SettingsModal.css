@@ -310,6 +310,27 @@ input[type="range"] {
   gap: 10px;
 }
 
+.duplicates-section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.duplicates-advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.duplicates-advanced-toggle:hover {
+  color: var(--accent);
+}
+
 
 
 .duplicates-inline-value {

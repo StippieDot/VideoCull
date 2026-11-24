@@ -231,6 +231,23 @@ describe('SettingsModal integration behavior', () => {
     expect(useStore.getState().settings.duplicates.keeperOrder).toEqual(['health', 'resolution', 'videoBitrate', 'duration', 'fps', 'size', 'codec', 'audio']);
   });
 
+  test('duplicate settings are grouped, partial clip limits show with the search, and Advanced opens on request', async () => {
+    render(<SettingsModal initialTab="duplicates" />);
+
+    for (const title of ['Searching', 'Matching', 'Copies that differ', 'Partial clips', 'Keeping and deleting']) {
+      expect(screen.getByRole('heading', { name: title })).toBeTruthy();
+    }
+    expect(screen.queryByRole('spinbutton', { name: /minimum shared part/i })).toBeNull();
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /find partial clips/i }), 'sound');
+    expect(screen.getByRole('spinbutton', { name: /minimum shared part/i })).toBeTruthy();
+
+    const advanced = screen.getByRole('button', { name: 'Advanced' });
+    expect(advanced.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('combobox', { name: /sampling window/i })).toBeNull();
+    await userEvent.click(advanced);
+    expect(screen.getByRole('combobox', { name: /sampling window/i })).toBeTruthy();
+  });
+
   test('the outline check applies to Visual similarity, recommends 75% and offers it back when turned off', async () => {
     render(<SettingsModal initialTab="duplicates" />);
 

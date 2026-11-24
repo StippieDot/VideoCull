@@ -95,24 +95,59 @@ For migration choices, rebuild behavior, and the difference between cache modes,
 
 Duplicate detection is best treated as a suggestion engine, not an auto-delete system.
 
-### Matching
+The Duplicates tab is grouped by what you are deciding: when to search, how videos are compared, which changed copies also count, the separate partial clip search, and which copy to keep. **Advanced** is folded away; the defaults suit most libraries.
 
 | Setting | What it does | Suggested default use |
 | --- | --- | --- |
-| Enable duplicate detection | Turns on duplicate finding and stores duplicate cache data. | Leave it on if duplicates are a normal part of your workflow. |
+| Enable duplicate detection | Turns on duplicate finding and stores duplicate cache data. Nothing is deleted until you confirm it. | Leave it on if duplicates are a normal part of your workflow. |
+
+### Searching
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
 | Run after each scan | Starts duplicate detection after scanning. | Leave this off unless duplicates are the main job. |
+| Videos to search | Chooses between all loaded videos or the current filtered view. | Use the filtered view when you want tighter, more deliberate duplicate passes. |
+
+### Matching
+
+Changes apply to the next search.
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
 | Comparison method | Switches between `pHash` and `Visual similarity`. | Start with `pHash`, the default, which produces few false positives. Try visual similarity when known alternate encodes are missed. |
 | Similarity | Sets the minimum score needed to group videos as duplicates. A group's displayed score is its weakest match, so every result meets this value. | New installs use one value, `90%`, for both methods; turn on **Separate value per method** to keep one value for pHash and another for visual similarity. Raise it when results are noisy. Lower it when real duplicates are being missed. Any value from `0%` to `100%` works, but unrelated videos start to match below `80%` with pHash and below `90%` with visual similarity. |
 | Outline check | Visual similarity only: a sampled frame also needs this pHash similarity, so clips filmed in the same place a moment earlier or later are not reported as copies. Frames that match at 97% or more pass without it, and a copy that starts a moment later is checked after its timing is lined up. | Keep **At least 75% (recommended)**. It is what lets visual similarity use `90%` without grouping different videos. Turn it off only when it keeps apart copies you know are the same. |
-| Samples | Controls how many sampled frames are compared and how they are scored: by their average, by the weakest sample so every sample must match, or with pHash by the first sample where neither frame is dark. | Keep 3 samples scored by average. Choose **Weakest sample** when results are noisy, or **First sample (pHash)** to find more duplicates at the cost of more false positives. |
-| Ignore black bars | Also matches copies that only differ by black bars above, below or beside the picture, such as a letterboxed copy of a full-frame video. It can add matches but never removes one. | Leave it on. Turn it off only when it groups videos you consider different. |
-| Partial clips | **By sound** shows **Find Partial Clips** in the sidebar, which finds videos that contain part of another video. It reads the sound of every video once and keeps it, about 115 KB per hour of sound; each match is checked with pictures. | Turn it on when your library has excerpts, trimmed versions or compilations of other videos. |
+| Samples per video | Controls how many sampled frames are compared and how they are scored: by their average, by the weakest sample so every sample must match, or with pHash by the first sample where neither frame is dark. | Keep 3 samples scored by average. Choose **Weakest sample** when results are noisy, or **First sample (pHash)** to find more duplicates at the cost of more false positives. |
+
+### Copies that differ
+
+Each of these can add matches; none removes one. Changes apply to the next search.
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
+| Ignore black bars | Also matches copies that only differ by black bars above, below or beside the picture, such as a letterboxed copy of a full-frame video. | Leave it on. Turn it off only when it groups videos you consider different. |
+| Compare flipped videos | Also checks horizontally mirrored copies. | Turn it on only when mirrored duplicates are a real possibility. |
+| Match partly unreadable videos | Compares a video on the samples that could be read when some sampled positions could not be decoded, so a damaged or cut-off copy can still match a good file. | Leave it on. |
 | Double-check near misses | Compares pairs that score up to the chosen number of points below your similarity value again, with frames around each sample, and matches copies that start a moment earlier or later. A pair still has to reach your similarity value. Needs at least 2 samples and does not work with First sample scoring. Visual similarity looks at most 10 points down. The extra frames are read for at most 200 videos per run and kept for later runs. | Keep **Up to 20 points below**. Choose 25 when you use 5 or more samples and still miss shifted copies; turn it off to skip the extra reading. |
-| Default scope | Chooses between all loaded videos or the current filtered view. | Use the filtered view when you want tighter, more deliberate duplicate passes. |
+
+### Partial clips
+
+A separate search, started with **Find Partial Clips** in the sidebar, for videos that contain part of another video.
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
+| Find partial clips | **By sound** shows **Find Partial Clips** in the sidebar. It reads the sound of every video once and keeps it, about 115 KB per hour of sound; each match is checked with pictures. | Turn it on when your library has excerpts, trimmed versions or compilations of other videos. |
+| Minimum shared part | Shown while Find partial clips is on. A pair that shares sound is checked with pictures only when the shared sound covers at least this share of the shorter video (40% by default) or lasts five minutes. Keeps out videos that only share an intro or outro. | Lower it to find shorter shared parts; more pairs are then checked. |
+| Common sound limit | Shown while Find partial clips is on. Sound found in more than this many videos (25 by default) counts as an intro, jingle or music and is not searched; the sidebar says in how many videos it was skipped. | Raise it when a clip is reused in many videos; more pairs are then checked. |
+
+### Keeping and deleting
+
+Changes update the current results right away.
+
+| Setting | What it does | Suggested default use |
+| --- | --- | --- |
 | Protect marked keep videos | Stops already-kept videos from becoming delete suggestions. | Leave it on. |
 | Protect skipped videos | Leaves skipped videos out of automatic delete suggestions. | Leave it off when Skip means undecided and should still compete. Turn it on when skipped clips must never be suggested for deletion. |
-
-### Keeper suggestions
 
 Suggested keeper priority decides which file is preferred inside a duplicate group.
 
@@ -129,28 +164,24 @@ Duration ignores differences of up to 2 seconds or 1 percent of the longest copy
 
 Higher items decide first. Reset the order unless you have a strong reason to prefer a different kind of source file.
 
-### Ignored matches
-
-Pairs marked **Not a match** stay hidden in future duplicate runs.
+**Ignored matches** counts the pairs marked **Not a match**; they stay apart in later duplicate and partial clip searches.
 
 - Leave ignored matches alone if the rule was correct.
 - Clear them only after you change matching behavior enough that old ignores are no longer trustworthy.
 
-### Advanced duplicate settings
+### Advanced
+
+Folded away by default; open it with **Advanced** at the bottom of the tab.
 
 | Setting | What it does | Suggested default use |
 | --- | --- | --- |
 | Sampling window | Chooses which part of each video gets sampled. | Leave it on evenly spaced. Move inward only when intros, outros, or watermarks are skewing results. |
-| Duration tolerance | Limits how much two durations may differ and still be compared. | Raise it only when alternate encodes differ slightly in runtime. |
-| Max sampling duration | Caps how much of a long video is sampled. `0` means full length. | Leave it at the default unless very long videos make runs too expensive. |
-| Checkpoint interval | Controls how often long runs save progress. | Change it only for very large duplicate passes. |
-| Partial clips: shared part | Shown while Partial clips is on. A pair that shares sound is checked with pictures only when the shared sound covers at least this share of the shorter video (40% by default) or lasts five minutes. Keeps out videos that only share an intro or outro. | Lower it to find shorter shared parts; more pairs are then checked. |
-| Common sound limit | Shown while Partial clips is on. Sound found in more than this many videos (25 by default) counts as an intro, jingle or music and is not searched; the sidebar says in how many videos it was skipped. | Raise it when a clip is reused in many videos; more pairs are then checked. |
+| Length difference | Limits how much two durations may differ and still be compared. | Raise it only when alternate encodes differ slightly in runtime. |
+| Max sampling duration | Samples only the first this many seconds of each video. `0` means full length. | Leave it at the default unless very long videos make runs too expensive. |
 | Skip blank frames | Ignores sampled frames that are a single flat colour, such as a black screen, a grey card or a fade, which would match any other blank frame. Frames that are mostly black are always ignored. A pair whose remaining frames are too few is not matched. | Leave it on. |
-| Match partly unreadable videos | Compares a video on the samples that could be read when some sampled positions could not be decoded, so a damaged or cut-off copy can still match a good file. | Leave it on. |
 | Samples needed for a match | How many samples must be compared before two videos can match. **Automatic** needs 2, or 1 with one sample or first-sample scoring. A match decided by one sample is marked for checking. | Leave it on Automatic. Choose 1 only to find damaged copies when you use many samples, and check those matches before deleting. |
-| Compare flipped videos | Also checks horizontally mirrored copies. | Turn it on only when mirrored duplicates are a real possibility. |
-| Retry failed fingerprints | Retries videos that failed before. | Turn it on when a previous run hit processing failures. |
+| Retry failed fingerprints | Reads videos that could not be read in an earlier search again. | Turn it on when a previous run hit processing failures. |
+| Checkpoint interval | How often a long search saves its progress, so a cancel or crash keeps it. `0` saves only at the end. | Change it only for very large duplicate passes. |
 
 ## Processing
 

@@ -67,6 +67,19 @@ interface SettingsModalProps {
   tabRequestId?: number;
 }
 
+/** One titled group of the Duplicates tab, with a line saying what it covers and when changes apply. */
+function DuplicateSection({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+  return (
+    <section className="duplicates-section">
+      <div className="duplicates-section-heading">
+        <h3 className="settings-subsection-title">{title}</h3>
+        {note && <span className="help-text">{note}</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export default function SettingsModal({ initialTab = 'general', tabRequestId = 0 }: SettingsModalProps) {
   const isWindows = isWindowsPlatform();
   const isOpen = useStore((s) => s.isSettingsModalOpen);
@@ -86,6 +99,7 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
   const [appVersion, setAppVersion] = useState<string>('');
   // Collapsed by default: most people never change the codec preference.
   const [codecListOpen, setCodecListOpen] = useState(false);
+  const [duplicateAdvancedOpen, setDuplicateAdvancedOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ status: 'idle' });
   const [exportMessage, setExportMessage] = useState<string>('');
   const [cacheMessage, setCacheMessage] = useState<string>('');
@@ -661,12 +675,10 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
 
             {activeTab === 'duplicates' && (
               <div className="settings-form duplicates-settings">
-                <div className="form-group">
-                  <span className="help-text">Matching changes apply to the next duplicate run. Protection and keeper priority update the current results right away.</span>
-                </div>
                 <div className="settings-card">
                   <SwitchRow
                     label="Enable duplicate detection"
+                    help="Finds copies of the same video and suggests which one to keep. Nothing is deleted until you confirm it."
                     checked={localSettings.duplicates.enabled}
                     onChange={(checked) => handleDuplicateChange('enabled', checked)}
                   />
@@ -674,15 +686,15 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
 
                 {localSettings.duplicates.enabled && (
                   <>
-                    <div className="duplicates-section settings-section-divider">
-                      <h3 className="settings-subsection-title">Matching</h3>
+                    <DuplicateSection title="Searching">
                       <div className="settings-card settings-card-grid">
                         <SwitchRow
                           label="Run after each scan"
+                          help="Starts a duplicate search when a folder scan finishes."
                           checked={localSettings.duplicates.runAfterScan}
                           onChange={(checked) => handleDuplicateChange('runAfterScan', checked)}
                         />
-                        <SettingRow label="Default scope">
+                        <SettingRow label="Videos to search" help="Every loaded video, or only the ones the current filters show.">
                           {(id) => (
                             <select id={id} value={localSettings.duplicates.defaultScope} onChange={(e) => handleDuplicateChange('defaultScope', e.target.value)}>
                               <option value="all">All loaded videos</option>
@@ -690,6 +702,11 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                             </select>
                           )}
                         </SettingRow>
+                      </div>
+                    </DuplicateSection>
+
+                    <DuplicateSection title="Matching" note="How two videos are compared. Changes apply to the next search.">
+                      <div className="settings-card settings-card-grid">
                         <SettingRow
                           wide
                           label="Comparison method"
@@ -762,7 +779,7 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           )}
                         </SettingRow>
                         <SettingRow
-                          label="Samples"
+                          label="Samples per video"
                           help={<>
                             {sampleScoring === 'weakest' && 'Strictest: a match is scored by its weakest sample.'}
                             {sampleScoring === 'average' && 'One differing frame, such as a trimmed intro, does not hide a match.'}
@@ -793,15 +810,32 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                             </>
                           )}
                         </SettingRow>
+                      </div>
+                    </DuplicateSection>
+
+                    <DuplicateSection title="Copies that differ" note="Also finds copies that were changed a little. Each of these can add matches; none removes one.">
+                      <div className="settings-card settings-card-grid">
                         <SwitchRow
                           label="Ignore black bars"
-                          help="Also matches copies that only differ by black bars above, below or beside the picture."
+                          help="Matches copies that only differ by black bars above, below or beside the picture."
                           checked={localSettings.duplicates.matchBlackBars}
                           onChange={(checked) => handleDuplicateChange('matchBlackBars', checked)}
                         />
+                        <SwitchRow
+                          label="Compare flipped videos"
+                          help="Matches mirrored copies."
+                          checked={localSettings.duplicates.compareFlipped}
+                          onChange={(checked) => handleDuplicateChange('compareFlipped', checked)}
+                        />
+                        <SwitchRow
+                          label="Match partly unreadable videos"
+                          help="Compares a damaged or cut-off copy on the samples that could be read, so it still matches the good file."
+                          checked={localSettings.duplicates.matchPartlyUnreadable}
+                          onChange={(checked) => handleDuplicateChange('matchPartlyUnreadable', checked)}
+                        />
                         <SettingRow
                           label="Double-check near misses"
-                          help={nearMissUnavailableReason ?? 'Looks again at pairs just below your similarity value, with frames around each sample, to find copies that start a moment earlier or later. A wider range finds more and reads more frames. Visual similarity uses at most 10 points.'}
+                          help={nearMissUnavailableReason ?? 'Finds copies that start a moment earlier or later: pairs just below your similarity value are compared again with frames around each sample. A wider range finds more and reads more frames. Visual similarity uses at most 10 points.'}
                         >
                           {(id) => (
                             <select
@@ -822,9 +856,17 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                             </select>
                           )}
                         </SettingRow>
+                      </div>
+                    </DuplicateSection>
+
+                    <DuplicateSection
+                      title="Partial clips"
+                      note="A separate search for videos that contain part of another video, such as an excerpt or a compilation. Start it with Find Partial Clips in the sidebar."
+                    >
+                      <div className="settings-card settings-card-grid">
                         <SettingRow
-                          label="Partial clips"
-                          help="Finds videos that contain a part of another video, such as an excerpt of a longer recording. Reads the sound of every video once, which takes a while. Start it with Find Partial Clips in the sidebar."
+                          label="Find partial clips"
+                          help="Reads the sound of every video once, which takes about as long as reading the files, and keeps it for later searches."
                         >
                           {(id) => (
                             <select
@@ -837,6 +879,31 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                             </select>
                           )}
                         </SettingRow>
+                        {localSettings.duplicates.partialClips === 'sound' && (
+                          <>
+                            <SettingRow label="Minimum shared part" help="Videos that only share an intro or outro are left out: the shared sound must cover at least this much of the shorter video, or five minutes. Lower finds shorter shared parts and checks more pairs.">
+                              {(id) => (
+                                <div className="flex-row duplicates-inline-value">
+                                  <input id={id} type="number" min="0" max="100" step="5" value={localSettings.duplicates.partialClipMinShare} onChange={(e) => handleDuplicateChange('partialClipMinShare', Number(e.target.value))} className="number-input" />
+                                  <span>% of shorter video</span>
+                                </div>
+                              )}
+                            </SettingRow>
+                            <SettingRow label="Common sound limit" help="Sound found in more than this many videos, such as a channel jingle or a popular song, is not searched. Higher finds clips reused in many videos and checks more pairs.">
+                              {(id) => (
+                                <div className="flex-row duplicates-inline-value">
+                                  <input id={id} type="number" min="2" max="1000" value={localSettings.duplicates.partialClipCommonLimit} onChange={(e) => handleDuplicateChange('partialClipCommonLimit', Number(e.target.value))} className="number-input" />
+                                  <span>videos</span>
+                                </div>
+                              )}
+                            </SettingRow>
+                          </>
+                        )}
+                      </div>
+                    </DuplicateSection>
+
+                    <DuplicateSection title="Keeping and deleting" note="Which copy is suggested to keep. Changes update the current results right away.">
+                      <div className="settings-card settings-card-grid">
                         <SwitchRow
                           label="Protect marked keep videos"
                           help="Videos marked Keep are never suggested for deletion."
@@ -935,14 +1002,10 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           })}
                         </div>
                       </div>
-                    </div>
-
-                    <div className="duplicates-section settings-section-divider">
-                      <h3 className="settings-subsection-title">Ignored matches</h3>
                       <div className="settings-card">
                         <SettingRow
-                          label={`${ignoredDuplicatePairCount} ${ignoredDuplicatePairCount === 1 ? 'ignored pair' : 'ignored pairs'}`}
-                          help="Pairs marked Not a match stay hidden in future duplicate runs."
+                          label="Ignored matches"
+                          help={`${ignoredDuplicatePairCount} ${ignoredDuplicatePairCount === 1 ? 'pair' : 'pairs'} marked Not a match ${ignoredDuplicatePairCount === 1 ? 'stays' : 'stay'} apart in later duplicate and partial clip searches.`}
                         >
                           {(id) => (
                             <button
@@ -957,12 +1020,26 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           )}
                         </SettingRow>
                       </div>
-                    </div>
+                    </DuplicateSection>
 
-                    <div className="duplicates-section settings-section-divider">
-                      <h3 className="settings-subsection-title">Advanced</h3>
+                    <section className="duplicates-section">
+                      <h3 className="settings-subsection-title">
+                        <button
+                          type="button"
+                          className="duplicates-advanced-toggle"
+                          aria-expanded={duplicateAdvancedOpen}
+                          onClick={() => setDuplicateAdvancedOpen((open) => !open)}
+                        >
+                          {duplicateAdvancedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          Advanced
+                        </button>
+                      </h3>
+                      <span className="help-text">
+                        Sampling window, length differences, blank frames, retries and checkpoints. The defaults suit most libraries.
+                      </span>
+                      {duplicateAdvancedOpen && (
                       <div className="settings-card settings-card-grid">
-                        <SettingRow label="Sampling window" help="Which part of each video is sampled.">
+                        <SettingRow label="Sampling window" help="Which part of each video is sampled. Move inward when repeated intros, outros or watermarks cause wrong matches.">
                           {(id) => (
                             <select id={id} value={localSettings.duplicates.samplingWindow} onChange={(e) => handleDuplicateChange('samplingWindow', e.target.value)}>
                               <option value="even">Evenly spaced</option>
@@ -973,7 +1050,7 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                             </select>
                           )}
                         </SettingRow>
-                        <SettingRow label="Duration tolerance" help="How much two videos may differ in length and still be compared.">
+                        <SettingRow label="Length difference" help="How much two videos may differ in length and still be compared.">
                           {(id) => (
                             <div className="flex-row duplicates-inline-value">
                               <input id={id} type="number" min="0" max="100" value={localSettings.duplicates.durationTolerancePercent} onChange={(e) => handleDuplicateChange('durationTolerancePercent', Number(e.target.value))} className="number-input" />
@@ -981,19 +1058,11 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                             </div>
                           )}
                         </SettingRow>
-                        <SettingRow label="Max sampling duration" help="0 samples the whole video.">
+                        <SettingRow label="Max sampling duration" help="Samples only the first this many seconds of each video. 0 samples the whole video.">
                           {(id) => (
                             <div className="flex-row duplicates-inline-value">
                               <input id={id} type="number" min="0" max="86400" value={localSettings.duplicates.maxSamplingDuration} onChange={(e) => handleDuplicateChange('maxSamplingDuration', Number(e.target.value))} className="number-input" />
                               <span>seconds</span>
-                            </div>
-                          )}
-                        </SettingRow>
-                        <SettingRow label="Checkpoint interval" help="How often long runs save their progress.">
-                          {(id) => (
-                            <div className="flex-row duplicates-inline-value">
-                              <input id={id} type="number" min="0" max="60" value={localSettings.duplicates.checkpointIntervalMinutes} onChange={(e) => handleDuplicateChange('checkpointIntervalMinutes', Number(e.target.value))} className="number-input" />
-                              <span>minutes</span>
                             </div>
                           )}
                         </SettingRow>
@@ -1009,37 +1078,11 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                             )}
                           </SettingRow>
                         )}
-                        {localSettings.duplicates.partialClips === 'sound' && (
-                          <>
-                            <SettingRow label="Partial clips: shared part" help="A pair is checked only when the shared sound covers at least this much of the shorter video, or five minutes. Keeps out videos that only share an intro or outro. Lower finds shorter shared parts and checks more pairs.">
-                              {(id) => (
-                                <div className="flex-row duplicates-inline-value">
-                                  <input id={id} type="number" min="0" max="100" step="5" value={localSettings.duplicates.partialClipMinShare} onChange={(e) => handleDuplicateChange('partialClipMinShare', Number(e.target.value))} className="number-input" />
-                                  <span>% of shorter video</span>
-                                </div>
-                              )}
-                            </SettingRow>
-                            <SettingRow label="Common sound limit" help="Sound found in more than this many videos counts as an intro, jingle or music and is not searched. Higher finds clips reused in many videos and checks more pairs.">
-                              {(id) => (
-                                <div className="flex-row duplicates-inline-value">
-                                  <input id={id} type="number" min="2" max="1000" value={localSettings.duplicates.partialClipCommonLimit} onChange={(e) => handleDuplicateChange('partialClipCommonLimit', Number(e.target.value))} className="number-input" />
-                                  <span>videos</span>
-                                </div>
-                              )}
-                            </SettingRow>
-                          </>
-                        )}
                         <SwitchRow
                           label="Skip blank frames"
-                          help="Ignores frames that are a single flat colour, which would match any other blank frame."
+                          help="Ignores frames that are a single flat colour, such as a black screen or a fade, which would match any other blank frame."
                           checked={localSettings.duplicates.skipBlankFrames}
                           onChange={(checked) => handleDuplicateChange('skipBlankFrames', checked)}
-                        />
-                        <SwitchRow
-                          label="Match partly unreadable videos"
-                          help="Compares a video on the samples that could be read when some could not. Finds damaged copies of good files."
-                          checked={localSettings.duplicates.matchPartlyUnreadable}
-                          onChange={(checked) => handleDuplicateChange('matchPartlyUnreadable', checked)}
                         />
                         <SettingRow
                           label="Samples needed for a match"
@@ -1062,19 +1105,22 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                           )}
                         </SettingRow>
                         <SwitchRow
-                          label="Compare flipped videos"
-                          help="Also matches mirrored copies."
-                          checked={localSettings.duplicates.compareFlipped}
-                          onChange={(checked) => handleDuplicateChange('compareFlipped', checked)}
-                        />
-                        <SwitchRow
                           label="Retry failed fingerprints"
-                          help="Tries videos that failed before again."
+                          help="Reads videos that could not be read in an earlier search again."
                           checked={localSettings.duplicates.retryFailedFingerprintExtraction}
                           onChange={(checked) => handleDuplicateChange('retryFailedFingerprintExtraction', checked)}
                         />
+                        <SettingRow label="Checkpoint interval" help="How often a long search saves its progress, so a cancel or crash keeps it. 0 saves only at the end.">
+                          {(id) => (
+                            <div className="flex-row duplicates-inline-value">
+                              <input id={id} type="number" min="0" max="60" value={localSettings.duplicates.checkpointIntervalMinutes} onChange={(e) => handleDuplicateChange('checkpointIntervalMinutes', Number(e.target.value))} className="number-input" />
+                              <span>minutes</span>
+                            </div>
+                          )}
+                        </SettingRow>
                       </div>
-                    </div>
+                      )}
+                    </section>
                   </>
                 )}
               </div>
