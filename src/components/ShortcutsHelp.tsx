@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { X } from 'lucide-react';
 import useStore from '../store';
-import { ALL_SHORTCUTS, FIXED_SHORTCUTS, formatKeybind, type ShortcutGroup } from '../keybinds';
+import { ALL_SHORTCUTS, FIXED_SHORTCUTS, describeShortcut, formatKeybind, type ShortcutGroup } from '../keybinds';
 import type { Keybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import './Dialog.css';
@@ -47,7 +47,7 @@ export default function ShortcutsHelp({ onClose, onOpenShortcutSettings }: Props
                       {configurable.filter((s) => s.section === section).map((s) => (
                         <div key={s.id} className="shortcuts-row">
                           <span className="shortcuts-desc">
-                            {s.description}
+                            {describeShortcut(s.description, settings.seekStepSecs)}
                             {s.context === 'not-playing' && <span className="shortcut-context">not playing</span>}
                           </span>
                           <span className="shortcuts-keys">
@@ -57,7 +57,7 @@ export default function ShortcutsHelp({ onClose, onOpenShortcutSettings }: Props
                       ))}
                       {fixed.filter((s) => s.section === section).map((s) => (
                         <div key={s.description} className="shortcuts-row">
-                          <span className="shortcuts-desc">{s.description}</span>
+                          <span className="shortcuts-desc">{describeShortcut(s.description, settings.seekStepSecs)}</span>
                           <span className="shortcuts-keys shortcuts-keys-fixed">
                             {s.keys.map((k) => <kbd key={k}>{k}</kbd>)}
                           </span>

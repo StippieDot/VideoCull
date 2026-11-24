@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { ExternalLink, Search, X } from 'lucide-react';
-import { ALL_SHORTCUTS, FIXED_SHORTCUTS, formatKeybind, type Keybind } from '../keybinds';
+import { ALL_SHORTCUTS, FIXED_SHORTCUTS, describeShortcut, formatKeybind, type Keybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import useStore from '../store';
 import {
@@ -315,7 +315,7 @@ export default function DocumentationModal({
                   <tr key={shortcut.id}>
                     <td><code>{formatKeybind((settings[shortcut.id] ?? DEFAULT_KEYBINDS[shortcut.id]) as Keybind)}</code></td>
                     <td>
-                      {shortcut.description}
+                      {describeShortcut(shortcut.description, settings.seekStepSecs)}
                       {shortcut.context === 'playing' ? ' (playing)' : shortcut.context === 'not-playing' ? ' (not playing)' : ''}
                     </td>
                   </tr>
@@ -323,7 +323,7 @@ export default function DocumentationModal({
                 {fixed.map((shortcut) => (
                   <tr key={`${node.group}-${shortcut.description}`}>
                     <td><code>{shortcut.keys.join(' / ')}</code></td>
-                    <td>{shortcut.description}</td>
+                    <td>{describeShortcut(shortcut.description, settings.seekStepSecs)}</td>
                   </tr>
                 ))}
               </tbody>

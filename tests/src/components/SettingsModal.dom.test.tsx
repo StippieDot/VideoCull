@@ -201,6 +201,20 @@ describe('SettingsModal integration behavior', () => {
     expect(useStore.getState().settings.keepReviewControlsVisible).toBe(true);
   });
 
+  test('saves the skip length', async () => {
+    render(<SettingsModal initialTab="view" />);
+
+    const skipLength = screen.getByRole('combobox', { name: /skip length/i }) as HTMLSelectElement;
+    expect(skipLength.value).toBe('5');
+    expect([...skipLength.options].map((option) => option.value)).toEqual(['2', '5', '10', '15', '30']);
+
+    await userEvent.selectOptions(skipLength, '15');
+    await userEvent.click(screen.getByRole('button', { name: /save preferences/i }));
+
+    await waitFor(() => expect(electronAPI.saveConfig).toHaveBeenCalled());
+    expect(useStore.getState().settings.seekStepSecs).toBe(15);
+  });
+
   test('warns when Codec is ranked below bitrate, and one click moves it above them', async () => {
     render(<SettingsModal initialTab="duplicates" />);
 

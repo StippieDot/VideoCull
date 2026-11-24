@@ -45,8 +45,8 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   { id: 'keyPlay',               description: 'Play / Pause',              group: 'Review mode', section: 'Playback' },
   { id: 'keyEnterPlay',          description: 'Play / Back to thumbnails', group: 'Review mode', section: 'Playback' },
   { id: 'keyExternalPlayer',     description: 'Open in external player',   group: 'Review mode', section: 'Playback' },
-  { id: 'keySeekBack',           description: 'Rewind 5s',                 group: 'Review mode', section: 'While playing', context: 'playing' },
-  { id: 'keySeekForward',        description: 'Forward 5s',                group: 'Review mode', section: 'While playing', context: 'playing' },
+  { id: 'keySeekBack',           description: 'Rewind {seek}s',            group: 'Review mode', section: 'While playing', context: 'playing' },
+  { id: 'keySeekForward',        description: 'Forward {seek}s',           group: 'Review mode', section: 'While playing', context: 'playing' },
   { id: 'keySpeedDown',          description: 'Decrease speed',            group: 'Review mode', section: 'While playing', context: 'playing' },
   { id: 'keySpeedUp',            description: 'Increase speed',            group: 'Review mode', section: 'While playing', context: 'playing' },
   { id: 'keyBookmark',           description: 'Bookmark current position', group: 'Review mode', section: 'While playing', context: 'playing' },
@@ -70,7 +70,7 @@ const MOD = modKeyName();
 
 export const FIXED_SHORTCUTS: FixedShortcut[] = [
   { keys: ['Esc'], description: 'Stop playing / Exit review', group: 'Review mode', section: 'Playback' },
-  { keys: ['J', 'L'], description: 'Back / forward 10s', group: 'Review mode', section: 'While playing', playerKey: true },
+  { keys: ['J', 'L'], description: 'Back / forward {seek}s', group: 'Review mode', section: 'While playing', playerKey: true },
   { keys: ['0-9'], description: 'Jump to 0-90% of the video', group: 'Review mode', section: 'While playing', playerKey: true },
   { keys: ['Home', 'End'], description: 'Jump to start / end', group: 'Review mode', section: 'While playing', playerKey: true },
   { keys: ['↑', '↓'], description: 'Volume up / down', group: 'Review mode', section: 'While playing', playerKey: true },
@@ -168,10 +168,16 @@ function formatKeyName(key: string): string {
 // ── Conflict detection ─────────────────────────────────────────────
 // Two shortcuts conflict if they share a keybind and could fire at the same time.
 // Shortcuts with different contexts (playing vs not-playing) in the same group do NOT conflict.
+/** Fills in the skip length in a shortcut description (`{seek}` is the number of seconds). */
+export function describeShortcut(description: string, seekStepSecs: number): string {
+  return description.replace('{seek}', String(seekStepSecs));
+}
+
 export function findConflict(
   currentId: KeybindSettingKey,
   currentBind: Keybind,
-  allBinds: Record<KeybindSettingKey, Keybind>
+  allBinds: Record<KeybindSettingKey, Keybind>,
+  seekStepSecs = 5
 ): string | null {
   const currentDef = ALL_SHORTCUTS.find((s) => s.id === currentId)!;
 
@@ -187,7 +193,7 @@ export function findConflict(
     // Within the same group: context-separated binds are fine (e.g. ArrowLeft = prev/seek)
     if (sameGroup && def.context && currentDef.context && def.context !== currentDef.context) continue;
 
-    return def.description;
+    return describeShortcut(def.description, seekStepSecs);
   }
 
   // Fixed shortcuts are taken by the menu or the window before a configurable binding can fire.
@@ -197,5 +203,5 @@ export function findConflict(
     && (shortcut.group === 'Global' || shortcut.group === currentDef.group)
     && shortcut.keys.some((keys) => keys.toLowerCase() === pressed)
   ));
-  return fixed?.description ?? null;
+  return fixed ? describeShortcut(fixed.description, seekStepSecs) : null;
 }
