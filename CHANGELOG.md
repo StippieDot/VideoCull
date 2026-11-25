@@ -4,6 +4,8 @@ All notable changes to VideoCull will be documented here.
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-25
+
 ### Added
 - **Mark Short Videos for Deletion...** in the Actions menu, and a small button beside the sidebar's Duration filter, marks the videos in the current view that are shorter than a length you choose as Delete. The length starts at the Duration filter's maximum when one is set, otherwise at 10 seconds, with buttons for common lengths. The dialog previews how many videos and how much space that is, and can show them in the grid first. Videos marked Keep or Skipped, rated, favorited, bookmarked or already marked Delete are left alone, as are videos whose length is unknown, and one Undo reverses the batch.
 - Review has keys for favorites and ratings: `V` toggles the favorite, and `=` and `-` raise and lower the rating by one star, stopping at 5 stars and clearing the rating when lowered from 1. They can be changed in Settings > Keyboard shortcuts, are listed in the shortcut help, and do nothing while the favorites or ratings feature is turned off.

@@ -1606,7 +1606,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 | P0 — Media toolchain & licence compliance | ✅ Merged to main | `2.4.0` | 2026-10-16 |
 | PS — Saved sessions & linked folders | ✅ Merged to main | `2.5.0` | 2026-10-31 |
 | PM — macOS & Linux (beta) | ✅ Merged to main | `2.5.0` | 2026-11-03 |
-| P1 — Quick wins | 🔄 All items done; 1.1 and 1.3 are on main, 1.2 is on its own branch awaiting merge and the version bump | `2.6.0` | — |
+| P1 — Quick wins | ✅ Merged to main | `2.6.0` | 2026-11-25 |
 | P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.7.0` | — |
 | PL — Persistent library | ⬜ Not started | `2.8.0` | — |
 | P3 — Reliable settings & tags | ⬜ Not started | `2.9.0` | — |
