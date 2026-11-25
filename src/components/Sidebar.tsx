@@ -1,6 +1,6 @@
 import { describeUncheckedNearMisses, type DuplicateRunInfo } from '../duplicateResultsPersistence';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { mergeClipsByDuplicateGroup } from './PartialClipsView';
+import { groupIntoFamilies, mergeClipsByDuplicateGroup } from './PartialClipsView';
 import { reclaimableBytes } from './locationMenus';
 import type { ColorTheme, DuplicateSortField, PartialClipSortField, RecentSession, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
@@ -154,10 +154,13 @@ function SidebarDuplicateSection({
   const isGenerating = useStore((s) => s.isGenerating);
   const generationPhase = useStore((s) => s.genProgress.phase);
   const duplicateGroups = useStore((s) => s.duplicateGroups);
-  // Counted as the list shows them: copies of the same videos are one entry.
-  const partialEntryCount = useMemo(() => mergeClipsByDuplicateGroup(partialClips ?? [], duplicateGroups).length, [partialClips, duplicateGroups]);
   const findingPartialClips = useStore((s) => s.isFindingDuplicates && PARTIAL_CLIP_STAGES.has(s.duplicateProgress?.stage ?? ''));
   const videos = useStore((s) => s.videos);
+  // Counted as the list shows them: copies of the same videos are one entry, a family of copies one card.
+  const partialEntryCount = useMemo(() => groupIntoFamilies(
+    mergeClipsByDuplicateGroup(partialClips ?? [], duplicateGroups),
+    new Map(videos.map((video) => [video.id, video])),
+  ).length, [partialClips, duplicateGroups, videos]);
   const summaryStats = useMemo(() => {
     if (partialClipsMode) {
       const clipVideoCount = new Set((partialClips ?? []).flatMap((clip) => [clip.aId, clip.bId])).size;

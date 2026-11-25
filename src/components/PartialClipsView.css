@@ -43,6 +43,33 @@
   white-space: nowrap;
 }
 
+.partial-clip-relations {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 14px 10px;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.partial-clip-relations li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.partial-clip-relations span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.partial-clip-relations .duplicate-action-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .partial-clip-timeline {
   display: flex;
   align-items: center;

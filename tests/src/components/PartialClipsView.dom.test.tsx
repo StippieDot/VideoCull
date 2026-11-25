@@ -111,6 +111,39 @@ describe('partial clips list', () => {
     expect(screen.queryByText('Both copies are marked keep.')).toBeNull();
   });
 
+  test('copies and excerpts of one video become one card; a weaker pair stays apart', async () => {
+    const COPY = '00000000000000dd';
+    const WEAK = '00000000000000ee';
+    const whole = (lengthSecs: number) => [{ startA: 0, startB: 0, lengthSecs, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
+    useStore.setState({
+      videos: [
+        makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600 }),
+        makeVideo(COPY, { filename: 'concert-copy.mp4', durationSecs: 598 }),
+        makeVideo(CLIP, { filename: 'highlight.mp4', durationSecs: 40 }),
+        makeVideo(WEAK, { filename: 'mashup.mp4', durationSecs: 300 }),
+      ],
+      partialClips: [
+        clip({ bId: COPY, shorterId: COPY, segments: whole(598) }),
+        clip({ segments: whole(40) }),
+        // 20 s of a 5-minute video: not a copy or an excerpt, so it does not join the family.
+        clip({ aId: COPY, bId: WEAK, shorterId: WEAK }),
+      ],
+    });
+    const { container } = render(<PartialClipsView />);
+    expect(container.querySelectorAll('article')).toHaveLength(2);
+    const family = screen.getByText('3 videos with the same footage').closest('article')!;
+    expect(within(family).getByText('concert-copy.mp4 and concert.mp4 are the same video')).toBeTruthy();
+    expect(within(family).getByText('highlight.mp4 is an excerpt of concert.mp4')).toBeTruthy();
+    // Longest first, each video once.
+    expect([...family.querySelectorAll('.partial-clip-video strong')].map((name) => name.textContent)).toEqual(['concert.mp4', 'concert-copy.mp4', 'highlight.mp4']);
+    expect(useStore.getState().duplicatePosition?.total).toBe(2);
+
+    // Not a match takes out one pair; the other stays as a card of its own.
+    await userEvent.click(within(family).getAllByRole('button', { name: 'Not a match' })[1]!);
+    expect(screen.queryByText('3 videos with the same footage')).toBeNull();
+    expect(screen.getByText('Same video')).toBeTruthy();
+  });
+
   test('an excerpt offers no keep-one action', () => {
     useStore.setState({ partialClips: [clip()] });
     render(<PartialClipsView />);

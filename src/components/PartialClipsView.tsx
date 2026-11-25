@@ -175,6 +175,115 @@ function TimeBar({ clip, longer }: { clip: PartialClip; longer: Video }) {
 
 type OpenVideoMenu = (event: React.MouseEvent, videoId: string, scopeIds: string[]) => void;
 
+/** A card of the list: one pair, or a family of videos that are copies or excerpts of each other. */
+export type PartialClipCard =
+  | { kind: 'pair'; entry: PartialClipEntry }
+  | { kind: 'family'; entries: PartialClipEntry[]; videoIds: string[] };
+
+/**
+ * Copies and excerpts that share a video become one card, placed where its first pair is in the
+ * sorted list. Weaker pairs ("contains 2:00 of") stay apart: joining through them would put
+ * unrelated videos together because they share one scene.
+ */
+export function groupIntoFamilies(entries: PartialClipEntry[], videosById: Map<string, Video>): PartialClipCard[] {
+  const strong = new Set(entries.filter(({ primary }) => {
+    const shorter = videosById.get(primary.shorterId);
+    const longer = videosById.get(primary.shorterId === primary.aId ? primary.bId : primary.aId);
+    const kind = shorter && longer ? clipKind(primary, shorter, longer) : null;
+    return kind === 'sameVideo' || kind === 'excerpt';
+  }));
+  const parent = new Map<string, string>();
+  const find = (id: string): string => {
+    const up = parent.get(id) ?? id;
+    if (up === id) return id;
+    const root = find(up);
+    parent.set(id, root);
+    return root;
+  };
+  for (const entry of strong) parent.set(find(entry.primary.aId), find(entry.primary.bId));
+  const families = new Map<string, PartialClipEntry[]>();
+  for (const entry of strong) {
+    const root = find(entry.primary.aId);
+    families.set(root, [...(families.get(root) ?? []), entry]);
+  }
+  const placed = new Set<string>();
+  const cards: PartialClipCard[] = [];
+  for (const entry of entries) {
+    const root = strong.has(entry) ? find(entry.primary.aId) : null;
+    const members = root ? families.get(root)! : [entry];
+    if (members.length < 2) {
+      cards.push({ kind: 'pair', entry });
+    } else if (!placed.has(root!)) {
+      placed.add(root!);
+      cards.push({ kind: 'family', entries: members, videoIds: [...new Set(members.flatMap(({ primary }) => [primary.aId, primary.bId]))] });
+    }
+  }
+  return cards;
+}
+
+/** Hides an entry, with the copies listed under it, and keeps it out of later searches; undoable. */
+function dismissEntry(entry: PartialClipEntry, shorter: Video, longer: Video) {
+  const { dismissPartialClips, pushToast } = useStore.getState();
+  // The copies too, so the finding does not come back through another copy.
+  const pairs = [entry.primary, ...entry.others];
+  const before = useStore.getState().partialClips ?? [];
+  dismissPartialClips(pairs);
+  pushToast({
+    title: 'Marked as not a match',
+    detail: `${shorter.filename} and ${longer.filename} stay out of later searches.`,
+    kind: 'info',
+    durationMs: 8000,
+    actionLabel: 'Undo',
+    action: () => {
+      useStore.getState().removeIgnoredDuplicatePairs(pairs.map((pair) => (pair.aId < pair.bId ? `${pair.aId}|${pair.bId}` : `${pair.bId}|${pair.aId}`)));
+      // The entries return at their old place; anything dismissed since stays out.
+      useStore.setState((state) => ({ partialClips: before.filter((clip) => pairs.includes(clip) || state.partialClips?.includes(clip)) }));
+    },
+  });
+}
+
+const FamilyCard = memo(function FamilyCard({ entries, videoIds, index, videosById, onVideoContextMenu }: {
+  entries: PartialClipEntry[];
+  videoIds: string[];
+  index: number;
+  videosById: Map<string, Video>;
+  onVideoContextMenu: OpenVideoMenu;
+}) {
+  const members = videoIds
+    .map((id) => videosById.get(id))
+    .filter((video): video is Video => Boolean(video))
+    .sort((x, y) => (Number(y.durationSecs) || 0) - (Number(x.durationSecs) || 0));
+  return (
+    <article className="partial-clip-card partial" data-entry-index={index}>
+      <header className="partial-clip-header">
+        <p className="partial-clip-summary">{members.length} videos with the same footage</p>
+      </header>
+      <ul className="partial-clip-relations">
+        {entries.map((entry) => {
+          const { primary } = entry;
+          const shorter = videosById.get(primary.shorterId);
+          const longer = videosById.get(primary.shorterId === primary.aId ? primary.bId : primary.aId);
+          if (!shorter || !longer) return null;
+          const line = clipKind(primary, shorter, longer) === 'sameVideo'
+            ? `${shorter.filename} and ${longer.filename} are the same video`
+            : `${shorter.filename} is an excerpt of ${longer.filename}`;
+          return (
+            <li key={`${primary.aId}|${primary.bId}`}>
+              <span title={evidenceLabel(primary)}>{line}</span>
+              <button className="duplicate-action-btn secondary" onClick={() => dismissEntry(entry, shorter, longer)} title="Hide this pair and keep it out of later searches">
+                Not a match
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {members.map((video) => (
+        <ClipVideoRow key={video.id} video={video} flags={{}} scopeIds={videoIds} onContextMenu={onVideoContextMenu} />
+      ))}
+    </article>
+  );
+});
+
 function ClipVideoRow({ video, flags, scopeIds, onContextMenu, onKeepOnly }: {
   video: Video;
   /** Better / worse marks, only between two copies of the same video. */
@@ -260,7 +369,6 @@ const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoConte
   videosById: Map<string, Video>;
   onVideoContextMenu: OpenVideoMenu;
 }) {
-  const dismissPartialClips = useStore((s) => s.dismissPartialClips);
   const setVideoStatus = useStore((s) => s.setVideoStatus);
   const { primary: clip, others } = entry;
   const shorter = videosById.get(clip.shorterId);
@@ -274,24 +382,7 @@ const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoConte
     setVideoStatus(keep.id, 'keep');
     setVideoStatus(other.id, 'delete');
   };
-  const notAMatch = () => {
-    // Applies to the copies listed below too, so they do not come back through another copy.
-    const pairs = [clip, ...others];
-    const before = useStore.getState().partialClips ?? [];
-    dismissPartialClips(pairs);
-    useStore.getState().pushToast({
-      title: 'Marked as not a match',
-      detail: `${shorter.filename} and ${longer.filename} stay out of later searches.`,
-      kind: 'info',
-      durationMs: 8000,
-      actionLabel: 'Undo',
-      action: () => {
-        useStore.getState().removeIgnoredDuplicatePairs(pairs.map((pair) => (pair.aId < pair.bId ? `${pair.aId}|${pair.bId}` : `${pair.bId}|${pair.aId}`)));
-        // The entries return at their old place; anything dismissed since stays out.
-        useStore.setState((state) => ({ partialClips: before.filter((entry) => pairs.includes(entry) || state.partialClips?.includes(entry)) }));
-      },
-    });
-  };
+  const notAMatch = () => dismissEntry(entry, shorter, longer);
   return (
     <article className={`partial-clip-card ${clip.relation}`} data-entry-index={index}>
       <header className="partial-clip-header">
@@ -342,18 +433,21 @@ function PartialClipsView() {
   const [menu, setMenu] = useState<{ x: number; y: number; videoId: string; scopeIds: string[] } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const videosById = useMemo(() => new Map(videos.map((video) => [video.id, video])), [videos]);
-  const { allCount, shown, differentPicture } = useMemo(() => {
+  const { allCount, shown, shownCards, differentPicture } = useMemo(() => {
     const entries = mergeClipsByDuplicateGroup(clips ?? [], groups);
     const visible = filterAndSortPartialClips(entries, { pathFilter, sortBy, sortOrder }, videosById);
+    const withPicture = visible.filter((entry) => entry.primary.state !== 'differentPicture');
     return {
       allCount: entries.length,
-      shown: visible.filter((entry) => entry.primary.state !== 'differentPicture'),
+      shown: withPicture,
+      shownCards: groupIntoFamilies(withPicture, videosById),
       differentPicture: visible.filter((entry) => entry.primary.state === 'differentPicture'),
     };
   }, [clips, groups, pathFilter, sortBy, sortOrder, videosById]);
-  const visibleCount = shown.length + differentPicture.length;
+  // Cards, as the title bar's stepper counts them; the line under the title counts pairs.
+  const visibleCount = shownCards.length + differentPicture.length;
   const partialCount = shown.filter((entry) => entry.primary.relation === 'partial').length;
-  const soundOnlyCount = visibleCount - partialCount;
+  const soundOnlyCount = shown.length + differentPicture.length - partialCount;
   const entryKey = (entry: PartialClipEntry) => `${entry.primary.aId}|${entry.primary.bId}`;
 
   const openVideoMenu = useCallback<OpenVideoMenu>((event, videoId, scopeIds) => {
@@ -371,7 +465,7 @@ function PartialClipsView() {
       .find((card) => card.getClientRects().length > 0 && card.getBoundingClientRect().bottom > top + 1);
     useStore.getState().setDuplicatePosition({ group: Number(first?.dataset.entryIndex ?? 0), total: visibleCount });
   }, [visibleCount]);
-  useEffect(updatePosition, [updatePosition, shown, differentPicture]);
+  useEffect(updatePosition, [updatePosition, shownCards, differentPicture]);
   useEffect(() => () => useStore.getState().setDuplicatePosition(null), []);
 
   const jump = useStore((s) => s.duplicateGroupJump);
@@ -425,13 +519,22 @@ function PartialClipsView() {
             {allCount === 0 ? 'No video contains part of another.' : 'No entries match the path filter.'}
           </p>
         )}
-        {shown.map((entry, index) => card(entry, index))}
+        {shownCards.map((item, index) => (item.kind === 'pair' ? card(item.entry, index) : (
+          <FamilyCard
+            key={entryKey(item.entries[0]!)}
+            entries={item.entries}
+            videoIds={item.videoIds}
+            index={index}
+            videosById={videosById}
+            onVideoContextMenu={openVideoMenu}
+          />
+        )))}
         {differentPicture.length > 0 && (
           <details className="partial-clips-collapsed">
             <summary>
               {differentPicture.length.toLocaleString()} {differentPicture.length === 1 ? 'pair' : 'pairs'} with the same sound and a different picture
             </summary>
-            {differentPicture.map((entry, index) => card(entry, shown.length + index))}
+            {differentPicture.map((entry, index) => card(entry, shownCards.length + index))}
           </details>
         )}
       </div>
