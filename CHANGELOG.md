@@ -6,6 +6,15 @@ All notable changes to VideoCull will be documented here.
 
 ## [2.6.0] - 2026-11-25
 
+A big update for finding duplicates, with faster ways to review.
+
+- **Find clips cut from longer videos.** The new, optional Find Partial Clips finds excerpts and compilations of other videos by comparing their sound and then their pictures.
+- **Duplicates are matched more reliably.** Copies with black bars, a start shifted by a moment or damaged stretches are now found, and different scenes that only look alike, such as two dark shots, are no longer grouped. Groups come back when you reopen a session, and the list says why a copy is not the suggested keeper.
+- **Duplicate searches are lighter.** Comparing with pHash is much faster in large libraries, and Visual similarity needs about half the memory.
+- **Quicker culling in Review.** Keys for favorites and ratings, a skip length you can choose, a clear decision badge, Reset everything, and Undo and Redo for every edit.
+- **Clear out short clips in one step.** Mark Short Videos for Deletion marks everything under a length you choose, with a preview and one Undo.
+- **Duplicate settings are easier to follow.** They are grouped by what you decide, with clearer names.
+
 ### Added
 - **Mark Short Videos for Deletion...** in the Actions menu, and a small button beside the sidebar's Duration filter, marks the videos in the current view that are shorter than a length you choose as Delete. The length starts at the Duration filter's maximum when one is set, otherwise at 10 seconds, with buttons for common lengths. The dialog previews how many videos and how much space that is, and can show them in the grid first. Videos marked Keep or Skipped, rated, favorited, bookmarked or already marked Delete are left alone, as are videos whose length is unknown, and one Undo reverses the batch.
 - Review has keys for favorites and ratings: `V` toggles the favorite, and `=` and `-` raise and lower the rating by one star, stopping at 5 stars and clearing the rating when lowered from 1. They can be changed in Settings > Keyboard shortcuts, are listed in the shortcut help, and do nothing while the favorites or ratings feature is turned off.
