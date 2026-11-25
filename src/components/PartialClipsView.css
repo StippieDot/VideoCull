@@ -16,122 +16,102 @@
   font-size: 13px;
 }
 
+/* A card is a duplicate group: the same header, rows, marks and hover, plus a timeline column. */
 .partial-clip-card {
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: var(--bg-surface);
   overflow: hidden;
 }
 
 .partial-clip-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px 8px;
+  height: auto;
+  min-height: 40px;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.partial-clip-summary {
-  min-width: 0;
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.partial-clip-header .duplicate-action-btn {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.partial-clip-relations {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0 14px 10px;
-  list-style: none;
-  font-size: 12px;
+.partial-clip-count {
   color: var(--text-secondary);
+  font-size: 12px;
 }
 
-.partial-clip-relations li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.partial-clip-card .partial-clip-video {
+  grid-template-columns: 82px minmax(0, 1fr) minmax(180px, 1fr) auto;
+  height: auto;
+  padding: 8px 12px;
 }
 
-.partial-clip-relations span {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.partial-clip-card .partial-clip-video:last-child {
+  border-bottom: 0;
 }
 
-.partial-clip-relations .duplicate-action-btn {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.partial-clip-timeline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 14px 10px;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.partial-clip-timebar {
-  position: relative;
-  flex: 1;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--bg-surface-hover);
-}
-
-.partial-clip-segment {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: 3px;
-  background: var(--accent);
-}
-
-.partial-clip-segment.differentPicture,
-.partial-clip-segment.unconfirmed {
-  background: var(--text-tertiary);
-}
-
-.partial-clip-video {
-  display: grid;
-  grid-template-columns: 82px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border-color);
-}
-
-.partial-clip-video img,
 .partial-clip-thumb-placeholder {
   width: 82px;
   height: 46px;
-  object-fit: cover;
   border-radius: 5px;
   background: #0b0a10;
 }
 
-/* The row's "Marked keep / delete" label carries the mark; a faint tint is enough for delete. */
-.partial-clip-video.status-delete {
-  background: rgba(255, 87, 107, 0.06);
+.partial-clip-role {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.partial-clip-role.master {
+  color: var(--text-secondary);
+}
+
+/* All lanes of a card share one scale: the master's length, from left to right. */
+.partial-lane {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.partial-lane-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-surface-hover);
+}
+
+.partial-lane-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.partial-lane-segment.master {
+  background: var(--text-tertiary);
+}
+
+.partial-lane-segment.differentPicture,
+.partial-lane-segment.unconfirmed {
+  background: repeating-linear-gradient(90deg, var(--text-tertiary) 0 3px, transparent 3px 5px);
+}
+
+.partial-lane-label {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .partial-clip-actions {
   display: flex;
+  align-items: center;
   gap: 6px;
 }
 
-.partial-clip-actions .duplicate-play-btn {
+.partial-clip-actions .duplicate-play-btn,
+.partial-clip-action-gap {
   width: 30px;
   height: 30px;
+  flex-shrink: 0;
 }
 
 .partial-clip-actions .duplicate-play-btn.active {
@@ -145,14 +125,6 @@
   white-space: nowrap;
 }
 
-.partial-clip-warning {
-  margin: 0;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
 .partial-clips-collapsed {
   display: grid;
   gap: 12px;
@@ -163,28 +135,4 @@
   color: var(--text-secondary);
   font-size: 13px;
   padding: 6px 0;
-}
-
-.partial-clip-copies {
-  border-top: 1px solid var(--border-color);
-  padding: 8px 14px 10px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.partial-clip-copies > summary {
-  cursor: pointer;
-}
-
-.partial-clip-copies ul {
-  display: grid;
-  gap: 6px;
-  margin: 8px 0 0;
-  padding: 0 0 0 16px;
-}
-
-.partial-clip-copies li {
-  display: grid;
-  gap: 2px;
-  overflow-wrap: anywhere;
 }

@@ -3,7 +3,7 @@
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import PartialClipsView, { describePartialClip, filterAndSortPartialClips, matchedSeconds, mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
+import PartialClipsView, { filterAndSortPartialClips, matchBadge, matchedSeconds, mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
 import useStore from '../../../src/store';
 import type { PartialClip } from '../../../src/types';
 import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
@@ -49,16 +49,17 @@ describe('partial clips list', () => {
     });
     render(<PartialClipsView />);
 
-    expect(screen.getByText('Contains 0:20 of the longer video, 0:30 to 0:50')).toBeTruthy();
-    // The time bar runs from the start to the end of the longer video.
-    expect(screen.getAllByText('10:00').length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle('0:30 to 0:50').length).toBeGreaterThan(0);
-    expect(screen.getByText('Excerpt of the longer video')).toBeTruthy();
+    const card = screen.getByText('Shares 0:20').closest('article')!;
+    // The longer video is the master; the clip sits on its timeline where it matches, with its scores.
+    expect(within(card).getByText('Master')).toBeTruthy();
+    expect(within(card).getByText('0:00 to 10:00')).toBeTruthy();
+    expect(within(card).getByTitle('0:30 to 0:50')).toBeTruthy();
+    expect(within(card).getByText('sound 96% · picture 99%')).toBeTruthy();
+    expect(screen.getAllByText('Excerpt').length).toBeGreaterThan(0);
     expect(screen.getByText('1 pair with the same sound and a different picture')).toBeTruthy();
-    expect(screen.getByText('Same sound, different picture')).toBeTruthy();
+    expect(screen.getByText('Same sound, other picture')).toBeTruthy();
 
-    const card = screen.getByText('Contains 0:20 of the longer video, 0:30 to 0:50').closest('article')!;
-    await userEvent.click(within(card).getByRole('button', { name: 'Not a match' }));
+    await userEvent.click(within(card).getByRole('button', { name: 'Not a match: highlight.mp4 and concert.mp4' }));
     expect(useStore.getState().partialClips).toHaveLength(2);
     expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).toContain(`${SOURCE}|${CLIP}`);
 
@@ -72,8 +73,8 @@ describe('partial clips list', () => {
     const concert = makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600 });
     const reencode = makeVideo(OTHER, { filename: 'concert-reencode.mp4', durationSecs: 598 });
     const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
-    expect(describePartialClip(clip({ bId: OTHER, shorterId: OTHER, coverage: 1, segments: whole }), reencode, concert))
-      .toBe('Same video');
+    expect(matchBadge(clip({ bId: OTHER, shorterId: OTHER, coverage: 1, segments: whole }), reencode, concert))
+      .toEqual({ label: 'Same video', tone: 'exact' });
   });
 
   test('two copies of the same video show which has the better picture; other pairs mark nothing', () => {
@@ -94,7 +95,7 @@ describe('partial clips list', () => {
     expect(excerpt!.querySelectorAll('.meta-chip.best, .meta-chip.worse')).toHaveLength(0);
   });
 
-  test('keeps one copy of the same video and marks the other, and warns when both are kept', async () => {
+  test('keeps one copy of the same video and marks the other', async () => {
     const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
     useStore.setState({
       videos: [
@@ -104,11 +105,9 @@ describe('partial clips list', () => {
       partialClips: [clip({ bId: OTHER, shorterId: OTHER, segments: whole })],
     });
     render(<PartialClipsView />);
-    expect(screen.getByText('Both copies are marked keep.')).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: 'Keep concert.mp4, delete the other copy' }));
     const status = (id: string) => useStore.getState().videos.find((video) => video.id === id)?.status;
     expect([status(SOURCE), status(OTHER)]).toEqual(['keep', 'delete']);
-    expect(screen.queryByText('Both copies are marked keep.')).toBeNull();
   });
 
   test('copies and excerpts of one video become one card; a weaker pair stays apart', async () => {
@@ -123,24 +122,29 @@ describe('partial clips list', () => {
         makeVideo(WEAK, { filename: 'mashup.mp4', durationSecs: 300 }),
       ],
       partialClips: [
-        clip({ bId: COPY, shorterId: COPY, segments: whole(598) }),
-        clip({ segments: whole(40) }),
+        // The copy starts 2 s into the master.
+        clip({ bId: COPY, shorterId: COPY, segments: [{ startA: 2, startB: 0, lengthSecs: 596, soundSimilarity: 97, pictureState: 'confirmed', pictureSimilarity: 98 }] }),
+        // The clip is found in the copy only, 100 s in.
+        clip({ aId: COPY, segments: [{ startA: 100, startB: 0, lengthSecs: 40, soundSimilarity: 95, pictureState: 'confirmed', pictureSimilarity: 97 }] }),
         // 20 s of a 5-minute video: not a copy or an excerpt, so it does not join the family.
         clip({ aId: COPY, bId: WEAK, shorterId: WEAK }),
       ],
     });
     const { container } = render(<PartialClipsView />);
     expect(container.querySelectorAll('article')).toHaveLength(2);
-    const family = screen.getByText('3 videos with the same footage').closest('article')!;
-    expect(within(family).getByText('concert-copy.mp4 and concert.mp4 are the same video')).toBeTruthy();
-    expect(within(family).getByText('highlight.mp4 is an excerpt of concert.mp4')).toBeTruthy();
-    // Longest first, each video once.
-    expect([...family.querySelectorAll('.partial-clip-video strong')].map((name) => name.textContent)).toEqual(['concert.mp4', 'concert-copy.mp4', 'highlight.mp4']);
+    const family = screen.getByText('Same footage').closest('article')!;
+    expect(within(family).getByText('3 videos')).toBeTruthy();
+    // Longest first, each video once, with its part in the family.
+    const rows = [...family.querySelectorAll('.partial-clip-video')];
+    expect(rows.map((row) => [row.querySelector('strong')?.textContent, row.querySelector('.partial-clip-role')?.textContent]))
+      .toEqual([['concert.mp4', 'Master'], ['concert-copy.mp4', 'Copy'], ['highlight.mp4', 'Excerpt']]);
+    // Placed through the copy: 100 s into the copy is 102 s into the master.
+    expect(within(rows[2] as HTMLElement).getByTitle('1:42 to 2:22')).toBeTruthy();
     expect(useStore.getState().duplicatePosition?.total).toBe(2);
 
     // Not a match takes out one pair; the other stays as a card of its own.
-    await userEvent.click(within(family).getAllByRole('button', { name: 'Not a match' })[1]!);
-    expect(screen.queryByText('3 videos with the same footage')).toBeNull();
+    await userEvent.click(within(family).getByRole('button', { name: 'Not a match: highlight.mp4 and concert-copy.mp4' }));
+    expect(screen.queryByText('Same footage')).toBeNull();
     expect(screen.getByText('Same video')).toBeTruthy();
   });
 
@@ -157,7 +161,7 @@ describe('partial clips list', () => {
       { startA, startB, lengthSecs, soundSimilarity: 96, pictureState, pictureSimilarity: 90 }
     );
     const recutClip = clip({ bId: OTHER, shorterId: OTHER, segments: [segment(0, 0, 300, 'confirmed'), segment(310, 300, 290, 'confirmed'), segment(400, 20, 15, 'differentPicture')] });
-    expect(describePartialClip(recutClip, recut, concert)).toBe('Same video');
+    expect(matchBadge(recutClip, recut, concert).label).toBe('Same video');
     expect(matchedSeconds(recutClip)).toBe(590);
 
     // Many sound-only stretches do not lift a pair above one with more matching picture.
@@ -174,12 +178,12 @@ describe('partial clips list', () => {
       duplicateGroups: [makeDuplicateGroup({ id: 'g', videoIds: [SOURCE, COPY], suggestedKeeperId: SOURCE })],
       partialClips: [clip({ aId: COPY }), clip()],
     });
-    render(<PartialClipsView />);
-    // The keeper's pair leads; the copy is listed under it.
-    expect(screen.getByText('Contains 0:20 of the longer video, 0:30 to 0:50')).toBeTruthy();
-    expect(screen.getByText('Also found in 1 other copy of these videos')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Not a match' })).toHaveLength(1);
-    await userEvent.click(screen.getByRole('button', { name: 'Not a match' }));
+    const { container } = render(<PartialClipsView />);
+    // One card: the keeper is the master, its copy and the clip each get a row.
+    expect(container.querySelectorAll('article')).toHaveLength(1);
+    expect([...container.querySelectorAll('.partial-clip-video strong')].map((name) => name.textContent)).toEqual(['concert.mp4', 'concert-copy.mp4', 'highlight.mp4']);
+    // The clip's Not a match also covers the copy's pair, so it does not come back through the copy.
+    await userEvent.click(screen.getByRole('button', { name: 'Not a match: highlight.mp4 and concert.mp4' }));
     expect(useStore.getState().partialClips).toEqual([]);
     expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).toEqual(expect.arrayContaining([`${SOURCE}|${CLIP}`, `${CLIP}|${COPY}`]));
   });

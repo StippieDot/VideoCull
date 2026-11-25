@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Play, Trash2 } from 'lucide-react';
+import { Ban, Check, Play, Trash2 } from 'lucide-react';
 import useStore from '../store';
 import type { DuplicateGroup, PartialClip, PartialClipSegment, PartialClipSortField, SortOrder, Video } from '../types';
 import { formatDuration, formatFps, formatResolutionLabel, formatSize } from '../utils';
@@ -75,13 +75,6 @@ function thumbSrc(video: Video): string | null {
 // A position, unlike a duration, can be 0: the start of the video.
 const formatPosition = (seconds: number) => (seconds < 1 ? '0:00' : formatDuration(seconds));
 
-/** Segment positions in the longer video, where the time bar and the wording place them. */
-function inLonger(clip: PartialClip, segment: PartialClipSegment): { start: number; end: number } {
-  const longerIsA = clip.shorterId !== clip.aId;
-  const start = longerIsA ? segment.startA : segment.startB;
-  return { start, end: start + segment.lengthSecs };
-}
-
 /** Seconds of the shorter video inside `segments`, a stretch found twice counted once. */
 function shorterSeconds(clip: PartialClip, segments: PartialClipSegment[]): number {
   const spans = segments
@@ -98,11 +91,6 @@ function shorterSeconds(clip: PartialClip, segments: PartialClipSegment[]): numb
   }
   return total;
 }
-
-const span = (clip: PartialClip, segment: PartialClipSegment) => {
-  const { start, end } = inLonger(clip, segment);
-  return `${formatPosition(start)} to ${formatPosition(end)}`;
-};
 
 const confirmedSegments = (clip: PartialClip) => clip.segments.filter((segment) => segment.pictureState === 'confirmed');
 
@@ -126,51 +114,13 @@ export function clipKind(clip: PartialClip, shorter: Video, longer: Video): Clip
   return shorterSecs >= SAME_LENGTH_SHARE * (Number(longer.durationSecs) || Infinity) ? 'sameVideo' : 'excerpt';
 }
 
-export function describePartialClip(clip: PartialClip, shorter: Video, longer: Video): string {
+/** The card's badge, in the duplicate groups' badge colours: strong, partial, or sound only. */
+export function matchBadge(clip: PartialClip, shorter: Video, longer: Video): { label: string; tone: 'exact' | 'potential' | 'low-confidence' } {
   const kind = clipKind(clip, shorter, longer);
-  if (kind === 'sameSound') return clip.state === 'differentPicture' ? 'Same sound, different picture' : 'Same sound, picture not checked';
-  if (kind === 'sameVideo') return 'Same video';
-  if (kind === 'excerpt') return 'Excerpt of the longer video';
-  const confirmed = confirmedSegments(clip);
-  const matched = shorterSeconds(clip, confirmed);
-  return confirmed.length === 1
-    ? `Contains ${formatDuration(matched)} of the longer video, ${span(clip, confirmed[0]!)}`
-    : `Contains ${formatDuration(matched)} of the longer video in ${confirmed.length} parts`;
-}
-
-function evidenceLabel(clip: PartialClip): string {
-  return clip.pictureSimilarity === null
-    ? `Sound ${Math.round(clip.soundSimilarity)}% similar`
-    : `Sound ${Math.round(clip.soundSimilarity)}%, picture ${Math.round(clip.pictureSimilarity)}% similar`;
-}
-
-function TimeBar({ clip, longer }: { clip: PartialClip; longer: Video }) {
-  const duration = Number(longer.durationSecs) || 0;
-  if (duration <= 0) return null;
-  const matches = confirmedSegments(clip).map((segment) => span(clip, segment));
-  return (
-    <div
-      className="partial-clip-timeline"
-      role="img"
-      aria-label={matches.length > 0 ? `Matching parts of the longer video: ${matches.join(', ')}` : 'Shared sound in the longer video'}
-    >
-      <span>0:00</span>
-      <div className="partial-clip-timebar">
-        {clip.segments.map((segment, index) => {
-          const { start, end } = inLonger(clip, segment);
-          return (
-            <span
-              key={index}
-              className={`partial-clip-segment ${segment.pictureState}`}
-              title={span(clip, segment)}
-              style={{ left: `${(start / duration) * 100}%`, width: `${Math.max(0.5, ((end - start) / duration) * 100)}%` }}
-            />
-          );
-        })}
-      </div>
-      <span>{formatDuration(duration)}</span>
-    </div>
-  );
+  if (kind === 'sameVideo') return { label: 'Same video', tone: 'exact' };
+  if (kind === 'excerpt') return { label: 'Excerpt', tone: 'exact' };
+  if (kind === 'contains') return { label: `Shares ${formatDuration(matchedSeconds(clip))}`, tone: 'potential' };
+  return { label: clip.state === 'differentPicture' ? 'Same sound, other picture' : 'Same sound', tone: 'low-confidence' };
 }
 
 type OpenVideoMenu = (event: React.MouseEvent, videoId: string, scopeIds: string[]) => void;
@@ -221,11 +171,9 @@ export function groupIntoFamilies(entries: PartialClipEntry[], videosById: Map<s
   return cards;
 }
 
-/** Hides an entry, with the copies listed under it, and keeps it out of later searches; undoable. */
-function dismissEntry(entry: PartialClipEntry, shorter: Video, longer: Video) {
+/** Hides pairs and keeps them out of later searches; undoable. */
+function dismissPairs(pairs: PartialClip[], shorter: Video, longer: Video) {
   const { dismissPartialClips, pushToast } = useStore.getState();
-  // The copies too, so the finding does not come back through another copy.
-  const pairs = [entry.primary, ...entry.others];
   const before = useStore.getState().partialClips ?? [];
   dismissPartialClips(pairs);
   pushToast({
@@ -242,57 +190,120 @@ function dismissEntry(entry: PartialClipEntry, shorter: Video, longer: Video) {
   });
 }
 
-const FamilyCard = memo(function FamilyCard({ entries, videoIds, index, videosById, onVideoContextMenu }: {
-  entries: PartialClipEntry[];
-  videoIds: string[];
-  index: number;
-  videosById: Map<string, Video>;
-  onVideoContextMenu: OpenVideoMenu;
-}) {
-  const members = videoIds
+export type LaneRole = 'master' | 'copy' | 'excerpt' | 'part' | 'sound';
+
+const ROLE_LABELS: Record<LaneRole, string> = { master: 'Master', copy: 'Copy', excerpt: 'Excerpt', part: 'Part', sound: 'Sound only' };
+
+export interface Lane {
+  video: Video;
+  role: LaneRole;
+  /** Where the video's matching stretches sit on the master, in master seconds. */
+  segments: { start: number; end: number; state: PartialClipSegment['pictureState'] | 'master' }[];
+  /** The pair that placed this video, and what Not a match on its row hides. */
+  via: { clip: PartialClip; dismiss: PartialClip[]; partner: Video } | null;
+}
+
+/**
+ * Every video of a card on one timeline: the longest is the master, and each other video is placed
+ * through the pair that links it to a video already placed, so an excerpt of a copy lands where
+ * that copy sits on the master. The offset between two videos comes from their longest matching
+ * stretch.
+ */
+export function placeOnMaster(entries: PartialClipEntry[], videosById: Map<string, Video>): Lane[] {
+  const pairs = entries.flatMap((entry) => [
+    { clip: entry.primary, dismiss: [entry.primary, ...entry.others] },
+    ...entry.others.map((other) => ({ clip: other, dismiss: [other] })),
+  ]);
+  const videos = [...new Set(pairs.flatMap(({ clip }) => [clip.aId, clip.bId]))]
     .map((id) => videosById.get(id))
     .filter((video): video is Video => Boolean(video))
     .sort((x, y) => (Number(y.durationSecs) || 0) - (Number(x.durationSecs) || 0));
+  const master = videos[0];
+  if (!master) return [];
+  const offsets = new Map([[master.id, 0]]);
+  const lanes: Lane[] = [{ video: master, role: 'master', segments: [{ start: 0, end: Number(master.durationSecs) || 0, state: 'master' }], via: null }];
+  for (let placedOne = true; placedOne;) {
+    placedOne = false;
+    for (const pair of pairs) {
+      const { clip } = pair;
+      const known = offsets.has(clip.aId) ? clip.aId : offsets.has(clip.bId) ? clip.bId : null;
+      const otherId = known === clip.aId ? clip.bId : clip.aId;
+      const other = videosById.get(otherId);
+      const partner = known ? videosById.get(known) : undefined;
+      if (!known || !other || !partner || offsets.has(otherId)) continue;
+      const at = (segment: PartialClipSegment, id: string) => (id === clip.aId ? segment.startA : segment.startB);
+      const base = offsets.get(known)!;
+      const anchor = [...clip.segments].sort((x, y) => Number(y.pictureState === 'confirmed') - Number(x.pictureState === 'confirmed') || y.lengthSecs - x.lengthSecs)[0];
+      if (!anchor) continue;
+      offsets.set(otherId, base + at(anchor, known) - at(anchor, otherId));
+      const otherIsShorter = clip.shorterId === otherId;
+      const kind = otherIsShorter ? clipKind(clip, other, partner) : clipKind(clip, partner, other);
+      const role: LaneRole = kind === 'sameVideo' ? 'copy' : kind === 'sameSound' ? 'sound' : kind === 'excerpt' && otherIsShorter ? 'excerpt' : 'part';
+      lanes.push({
+        video: other,
+        role,
+        segments: clip.segments.map((segment) => {
+          const start = base + at(segment, known);
+          return { start, end: start + segment.lengthSecs, state: segment.pictureState };
+        }),
+        via: { clip, dismiss: pair.dismiss, partner },
+      });
+      placedOne = true;
+    }
+  }
+  // Below the master in the order they occur in it (scene 1, 2, 3), the longer first at one place.
+  const startOf = (lane: Lane) => Math.min(...lane.segments.map((segment) => segment.start));
+  const [masterLane, ...rest] = lanes;
+  return [masterLane!, ...rest.sort((x, y) => startOf(x) - startOf(y) || (Number(y.video.durationSecs) || 0) - (Number(x.video.durationSecs) || 0))];
+}
+
+function matchLabel(clip: PartialClip): string {
+  return clip.pictureSimilarity === null
+    ? `sound ${Math.round(clip.soundSimilarity)}%`
+    : `sound ${Math.round(clip.soundSimilarity)}% · picture ${Math.round(clip.pictureSimilarity)}%`;
+}
+
+/** The row's place on the master: one bar per matching stretch, on the scale of the master's length. */
+function LaneBar({ lane, masterSecs }: { lane: Lane; masterSecs: number }) {
+  if (masterSecs <= 0) return <div className="partial-lane" />;
+  const where = (start: number, end: number) => `${formatPosition(Math.max(0, start))} to ${formatPosition(Math.min(masterSecs, end))}`;
+  const matching = lane.segments.filter((segment) => segment.state === 'confirmed');
+  const label = lane.via
+    ? `${matching.length > 0 ? `In the master ${matching.map((segment) => where(segment.start, segment.end)).join(', ')}` : 'Same sound as the master'}; ${matchLabel(lane.via.clip)}`
+    : `Master, ${formatDuration(masterSecs)}`;
   return (
-    <article className="partial-clip-card partial" data-entry-index={index}>
-      <header className="partial-clip-header">
-        <p className="partial-clip-summary">{members.length} videos with the same footage</p>
-      </header>
-      <ul className="partial-clip-relations">
-        {entries.map((entry) => {
-          const { primary } = entry;
-          const shorter = videosById.get(primary.shorterId);
-          const longer = videosById.get(primary.shorterId === primary.aId ? primary.bId : primary.aId);
-          if (!shorter || !longer) return null;
-          const line = clipKind(primary, shorter, longer) === 'sameVideo'
-            ? `${shorter.filename} and ${longer.filename} are the same video`
-            : `${shorter.filename} is an excerpt of ${longer.filename}`;
+    <div className="partial-lane" role="img" aria-label={label}>
+      <div className="partial-lane-track">
+        {lane.segments.map((segment, index) => {
+          const start = Math.max(0, segment.start);
+          const end = Math.min(masterSecs, segment.end);
+          if (end <= start) return null;
           return (
-            <li key={`${primary.aId}|${primary.bId}`}>
-              <span title={evidenceLabel(primary)}>{line}</span>
-              <button className="duplicate-action-btn secondary" onClick={() => dismissEntry(entry, shorter, longer)} title="Hide this pair and keep it out of later searches">
-                Not a match
-              </button>
-            </li>
+            <span
+              key={index}
+              className={`partial-lane-segment ${segment.state}`}
+              title={where(segment.start, segment.end)}
+              style={{ left: `${(start / masterSecs) * 100}%`, width: `${Math.max(0.5, ((end - start) / masterSecs) * 100)}%` }}
+            />
           );
         })}
-      </ul>
-      {members.map((video) => (
-        <ClipVideoRow key={video.id} video={video} flags={{}} scopeIds={videoIds} onContextMenu={onVideoContextMenu} />
-      ))}
-    </article>
+      </div>
+      <span className="partial-lane-label">{lane.via ? matchLabel(lane.via.clip) : `0:00 to ${formatDuration(masterSecs)}`}</span>
+    </div>
   );
-});
+}
 
-function ClipVideoRow({ video, flags, scopeIds, onContextMenu, onKeepOnly }: {
-  video: Video;
-  /** Better / worse marks, only between two copies of the same video. */
+function ClipVideoRow({ lane, masterSecs, flags, scopeIds, onContextMenu, onKeepOnly }: {
+  lane: Lane;
+  masterSecs: number;
+  /** Better / worse marks, only between copies of the same video. */
   flags: MetricFlags;
   scopeIds: string[];
   onContextMenu: OpenVideoMenu;
-  /** Two copies of the same video: keep this one and mark the other for deletion. */
+  /** Copies of the same video: keep this one and mark the other copies for deletion. */
   onKeepOnly?: () => void;
 }) {
+  const { video, via } = lane;
   // An unknown value (no resolution read yet) is left out rather than shown as an empty chip.
   const chip = (key: string, label: string) => label && <span className={`meta-chip ${flags[key] ?? 'equal'}`}>{label}</span>;
   const setVideoStatus = useStore((s) => s.setVideoStatus);
@@ -302,13 +313,14 @@ function ClipVideoRow({ video, flags, scopeIds, onContextMenu, onKeepOnly }: {
   const toggle = (status: 'keep' | 'delete') => setVideoStatus(video.id, video.status === status ? 'pending' : status);
   return (
     <div
-      className={`partial-clip-video ${video.status !== 'pending' ? `status-${video.status}` : ''}`}
+      className={`duplicate-row partial-clip-video ${video.status !== 'pending' ? `status-${video.status}` : ''}`}
       onContextMenu={(event) => onContextMenu(event, video.id, scopeIds)}
     >
       {thumbnail ? <img src={thumbnail} alt="" /> : <span className="partial-clip-thumb-placeholder" />}
       <div className="duplicate-row-copy">
         <div className="duplicate-row-title">
           <strong title={video.path}>{video.filename}</strong>
+          <span className={`partial-clip-role ${lane.role}`}>{ROLE_LABELS[lane.role]}</span>
           {badge && (
             <span className={`duplicate-inline-flag ${badge.className}`}>
               {badge.icon}
@@ -325,6 +337,7 @@ function ClipVideoRow({ video, flags, scopeIds, onContextMenu, onKeepOnly }: {
           {chip('size', formatSize(video.sizeBytes))}
         </span>
       </div>
+      <LaneBar lane={lane} masterSecs={masterSecs} />
       <div className="partial-clip-actions">
         {onKeepOnly && (
           <button className="duplicate-action-btn secondary" onClick={onKeepOnly} aria-label={`Keep ${video.filename}, delete the other copy`}>
@@ -357,63 +370,67 @@ function ClipVideoRow({ video, flags, scopeIds, onContextMenu, onKeepOnly }: {
         >
           <Play size={14} />
         </button>
+        {via ? (
+          <button
+            className="duplicate-play-btn"
+            onClick={() => dismissPairs(via.dismiss, video, via.partner)}
+            title="Not a match: hide this pair and keep it out of later searches"
+            aria-label={`Not a match: ${video.filename} and ${via.partner.filename}`}
+          >
+            <Ban size={14} />
+          </button>
+        ) : (
+          // Keeps the master's buttons in line with the rows below it.
+          <span className="partial-clip-action-gap" aria-hidden="true" />
+        )}
       </div>
     </div>
   );
 }
 
-const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoContextMenu }: {
-  entry: PartialClipEntry;
+const ClipCard = memo(function ClipCard({ entries, index, videosById, onVideoContextMenu }: {
+  entries: PartialClipEntry[];
   /** Place in the list, for the title bar's entry stepper. */
   index: number;
   videosById: Map<string, Video>;
   onVideoContextMenu: OpenVideoMenu;
 }) {
   const setVideoStatus = useStore((s) => s.setVideoStatus);
-  const { primary: clip, others } = entry;
-  const shorter = videosById.get(clip.shorterId);
-  const longer = videosById.get(clip.shorterId === clip.aId ? clip.bId : clip.aId);
-  if (!shorter || !longer) return null;
-  const scopeIds = [shorter.id, longer.id];
-  const headline = describePartialClip(clip, shorter, longer);
-  const sameVideo = clipKind(clip, shorter, longer) === 'sameVideo';
-  const flags = sameVideo ? computeBestFlags([shorter, longer]) : new Map<string, MetricFlags>();
-  const keepOnly = (keep: Video, other: Video) => () => {
-    setVideoStatus(keep.id, 'keep');
-    setVideoStatus(other.id, 'delete');
+  const lanes = placeOnMaster(entries, videosById);
+  const master = lanes[0];
+  const first = entries[0]?.primary;
+  if (!master || !first) return null;
+  const masterSecs = Number(master.video.durationSecs) || 0;
+  const scopeIds = lanes.map((lane) => lane.video.id);
+  const shorter = videosById.get(first.shorterId);
+  const longer = videosById.get(first.shorterId === first.aId ? first.bId : first.aId);
+  const badge = entries.length === 1 && shorter && longer
+    ? matchBadge(first, shorter, longer)
+    : { label: 'Same footage', tone: 'exact' };
+  const copies = lanes.filter((lane) => lane.role === 'master' || lane.role === 'copy');
+  const flags = copies.length > 1 ? computeBestFlags(copies.map((lane) => lane.video)) : new Map<string, MetricFlags>();
+  const keepOnly = (keep: Video) => () => {
+    for (const lane of copies) setVideoStatus(lane.video.id, lane.video.id === keep.id ? 'keep' : 'delete');
   };
-  const notAMatch = () => dismissEntry(entry, shorter, longer);
   return (
-    <article className={`partial-clip-card ${clip.relation}`} data-entry-index={index}>
-      <header className="partial-clip-header">
-        <p className="partial-clip-summary" title={evidenceLabel(clip)}>{headline}</p>
-        <button className="duplicate-action-btn secondary" onClick={notAMatch} title="Hide this entry and keep it out of later searches">
-          Not a match
-        </button>
+    <article className={`partial-clip-card ${first.relation}`} data-entry-index={index}>
+      <header className="duplicate-group-header partial-clip-header">
+        <div className="duplicate-group-title">
+          <span className={`duplicate-match-badge ${badge.tone}`}>{badge.label}</span>
+          <span className="partial-clip-count">{lanes.length} videos</span>
+        </div>
       </header>
-      <TimeBar clip={clip} longer={longer} />
-      <ClipVideoRow video={shorter} flags={flags.get(shorter.id) ?? {}} scopeIds={scopeIds} onContextMenu={onVideoContextMenu} onKeepOnly={sameVideo ? keepOnly(shorter, longer) : undefined} />
-      <ClipVideoRow video={longer} flags={flags.get(longer.id) ?? {}} scopeIds={scopeIds} onContextMenu={onVideoContextMenu} onKeepOnly={sameVideo ? keepOnly(longer, shorter) : undefined} />
-      {sameVideo && shorter.status === 'keep' && longer.status === 'keep' && (
-        <p className="partial-clip-warning">Both copies are marked keep.</p>
-      )}
-      {others.length > 0 && (
-        <details className="partial-clip-copies">
-          <summary>Also found in {others.length} other {others.length === 1 ? 'copy' : 'copies'} of these videos</summary>
-          <ul>
-            {others.map((other) => {
-              const otherShorter = videosById.get(other.shorterId);
-              const otherLonger = videosById.get(other.shorterId === other.aId ? other.bId : other.aId);
-              if (!otherShorter || !otherLonger) return null;
-              return (
-                <li key={`${other.aId}|${other.bId}`}>
-                  <span>{describePartialClip(other, otherShorter, otherLonger)}: {otherShorter.filename} and {otherLonger.filename}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      )}
+      {lanes.map((lane) => (
+        <ClipVideoRow
+          key={lane.video.id}
+          lane={lane}
+          masterSecs={masterSecs}
+          flags={flags.get(lane.video.id) ?? {}}
+          scopeIds={scopeIds}
+          onContextMenu={onVideoContextMenu}
+          onKeepOnly={copies.length > 1 && copies.includes(lane) ? keepOnly(lane.video) : undefined}
+        />
+      ))}
     </article>
   );
 });
@@ -496,8 +513,8 @@ function PartialClipsView() {
     },
   }) : [];
 
-  const card = (entry: PartialClipEntry, index: number) => (
-    <ClipCard key={entryKey(entry)} entry={entry} index={index} videosById={videosById} onVideoContextMenu={openVideoMenu} />
+  const card = (entries: PartialClipEntry[], index: number) => (
+    <ClipCard key={entryKey(entries[0]!)} entries={entries} index={index} videosById={videosById} onVideoContextMenu={openVideoMenu} />
   );
 
   // shortcut: every entry is rendered, upgrade to a virtual list when libraries report thousands.
@@ -519,22 +536,13 @@ function PartialClipsView() {
             {allCount === 0 ? 'No video contains part of another.' : 'No entries match the path filter.'}
           </p>
         )}
-        {shownCards.map((item, index) => (item.kind === 'pair' ? card(item.entry, index) : (
-          <FamilyCard
-            key={entryKey(item.entries[0]!)}
-            entries={item.entries}
-            videoIds={item.videoIds}
-            index={index}
-            videosById={videosById}
-            onVideoContextMenu={openVideoMenu}
-          />
-        )))}
+        {shownCards.map((item, index) => card(item.kind === 'pair' ? [item.entry] : item.entries, index))}
         {differentPicture.length > 0 && (
           <details className="partial-clips-collapsed">
             <summary>
               {differentPicture.length.toLocaleString()} {differentPicture.length === 1 ? 'pair' : 'pairs'} with the same sound and a different picture
             </summary>
-            {differentPicture.map((entry, index) => card(entry, shownCards.length + index))}
+            {differentPicture.map((entry, index) => card([entry], shownCards.length + index))}
           </details>
         )}
       </div>
