@@ -14,48 +14,41 @@ function handlerBody(channel) {
 }
 
 describe('handlers that throw away the loaded session also stop duplicate detection', () => {
+  // processing-runs.test.js proves invalidateSession() cancels every kind of run.
   for (const channel of ['reset-loaded-directories', 'clear-cache', 'migrate-cache-settings']) {
     test(channel, () => {
-      assert.match(handlerBody(channel), /\bcancelActiveDuplicateRun\(\)/);
+      assert.match(handlerBody(channel), /\bprocessingRuns\.invalidateSession\(\)/);
     });
   }
 });
 
-test('stopping duplicate detection cancels the run and forgets it', () => {
-  const body = mainSource.match(/function cancelActiveDuplicateRun\(\) \{\n([\s\S]*?)\n\}/)?.[1] ?? '';
-  assert.match(body, /activeDuplicateRun\.cancel\(\)/);
-  assert.match(body, /activeDuplicateRun = null/);
-  assert.doesNotMatch(body, /resume/);
+test('cancelling duplicate detection goes through the run registry', () => {
+  assert.match(handlerBody('cancel-duplicate-detection'), /processingRuns\.cancelKinds\('duplicate'\)/);
 });
 
 describe('linked folders and files', () => {
   test('a reset forgets the followed links and real paths of the old session', () => {
     const body = handlerBody('reset-loaded-directories');
-    for (const name of ['knownRealPathsByPath', 'sessionRealPathOwners', 'followedLinks']) {
-      assert.match(body, new RegExp(`\\b${name}\\.clear\\(\\)`));
-    }
+    // library-registry.test.js proves reset() forgets links and real paths.
+    assert.match(body, /\blibraryRegistry\.reset\(\)/);
   });
 
-  for (const [channel, remove] of [['batch-delete', 'shell.trashItem'], ['permanently-delete', 'fs.unlink']]) {
-    test(`${channel} checks and removes the real file, not a file link to it`, () => {
-      const body = handlerBody(channel);
-      assert.match(body, /const realPath = knownRealPathsByPath\.get\(filePath\) \?\? filePath;/);
-      assert.match(body, /filePath: realPath,/);
-      assert.match(body, new RegExp(`${remove.replace('.', '\\.')}\\(realPath\\)`));
+  // file-ops-delete.test.js proves the real file, not the link to it, is checked and removed.
+  for (const [channel, method] of [['batch-delete', 'batchDelete'], ['permanently-delete', 'permanentlyDelete']]) {
+    test(`${channel} is a one-line delegation`, () => {
+      assert.match(handlerBody(channel), new RegExp(`=> fileOpsDelete\\.${method}\\(filePaths\\)\\);`));
     });
   }
 
   test('unloading one folder forgets only that folder and keeps the session', () => {
     const body = handlerBody('unload-directory');
-    assert.match(body, /!currentScanDirs\.has\(dirPath\) \|\| currentScanDirs\.size < 2\) return false/);
+    assert.match(body, /!libraryRegistry\.isLoadedRoot\(dirPath\) \|\| libraryRegistry\.rootCount\(\) < 2\) return false/);
     assert.match(body, /cacheService\.blockFolder\(folderPath, cacheOptions\)/);
-    assert.match(body, /currentScanDirs\.delete\(dirPath\)/);
+    // removeRoot also forgets the folder's videos (library-registry.test.js).
+    assert.match(body, /libraryRegistry\.removeRoot\(dirPath\)/);
     // A video another folder reaches through a link is listed again only by a rescan.
-    assert.match(body, /if \(followedLinks\.size > 0\) return false;/);
-    for (const name of ['knownVideoPaths', 'knownVideoIdsByPath', 'knownVideoIdentitiesByPath', 'knownRealPathsByPath']) {
-      assert.ok(body.includes(`${name}.delete(videoPath)`), name);
-    }
-    assert.doesNotMatch(body, /\.clear\(\)/);
+    assert.match(body, /if \(libraryRegistry\.hasFollowedLinks\(\)\) return false;/);
+    assert.doesNotMatch(body, /\.clear\(\)|libraryRegistry\.reset\(\)/);
     assert.doesNotMatch(body, /scanGeneration/);
   });
 
@@ -82,8 +75,9 @@ describe('linked folders and files', () => {
   });
 
   test('empty-folder cleanup stays inside the loaded folders and skips links', () => {
-    const body = mainSource.match(/async function maybeRemoveEmptyDeletedVideoFolders[\s\S]*?\n\}/)?.[0] ?? '';
-    assert.match(body, /isPathWithinAnyDir\(folderPath, dirs, false\)/);
+    const deleteSource = fs.readFileSync(path.join(__dirname, '../../electron/file-ops-delete.js'), 'utf8');
+    const body = deleteSource.match(/async function maybeRemoveEmptyDeletedVideoFolders[\s\S]*?\n  \}/)?.[0] ?? '';
+    assert.match(body, /=> isPathWithinAnyDir\(folderPath, dirs, false\)/);
     assert.match(body, /isSymbolicLink\(\)/);
   });
 });

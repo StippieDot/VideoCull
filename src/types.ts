@@ -159,10 +159,24 @@ export interface ThumbReadyEvent {
 }
 
 // ── Delete Result ──────────────────────────────────────────────────
+export type DeleteFailureReason =
+  | 'changed'
+  | 'unverifiable'
+  | 'out-of-scope'
+  | 'in-use'
+  | 'permission'
+  | 'not-found'
+  | 'trash-unavailable'
+  | 'unknown';
+
 export interface DeleteResult {
   path: string;
   success: boolean;
   error?: string;
+  /** Why a failed delete failed; absent on success. Only 'trash-unavailable' may lead to a permanent delete. */
+  reason?: DeleteFailureReason;
+  /** The raw error code (for example EPERM) when the failure had one. */
+  code?: string;
   method?: 'trash' | 'permanent';
   removedFolder?: string;
 }

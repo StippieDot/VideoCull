@@ -48,3 +48,17 @@ test('createQueueCursor returns items sequentially and then null', () => {
   assert.equal(next(), null);
   assert.equal(next(), null);
 });
+
+test('a run tracks skipped and in-progress files by path, counting overlapping work', () => {
+  const files = __test.createRunFiles();
+  const path = require('node:path').resolve('/lib/a.mp4');
+  assert.equal(files.isSkipped(path), false);
+  files.skip([path]);
+  assert.equal(files.isSkipped(path), true);
+  const endFirst = files.begin(path);
+  const endSecond = files.begin(path);
+  endFirst();
+  assert.equal(files.isActive(path), true);
+  endSecond();
+  assert.equal(files.isActive(path), false);
+});

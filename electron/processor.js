@@ -3,10 +3,36 @@ const fs = require('fs/promises');
 const os = require('os');
 const { processingPause } = require('./processing-pause');
 const mediaProcess = require('./media-process');
+const { pathKey } = require('./path-key');
 const { createRunToken, cancelRun, toFfmpegInputPath } = mediaProcess;
 
 let thumbToken = null;
 let metadataToken = null;
+
+/**
+ * Which files a run must leave alone (a delete, rename or move is about to touch them) and which
+ * it is working on right now. One per run, so a new run starts with nothing skipped.
+ */
+function createRunFiles() {
+  const skipped = new Set();
+  const active = new Map();
+  return {
+    skip(paths) { for (const filePath of paths) skipped.add(pathKey(filePath)); },
+    isSkipped: (filePath) => skipped.has(pathKey(filePath)),
+    begin(filePath) {
+      const key = pathKey(filePath);
+      active.set(key, (active.get(key) ?? 0) + 1);
+      return () => {
+        const left = (active.get(key) ?? 1) - 1;
+        if (left > 0) active.set(key, left);
+        else active.delete(key);
+      };
+    },
+    isActive: (filePath) => active.has(pathKey(filePath)),
+  };
+}
+let thumbFiles = createRunFiles();
+let metadataFiles = createRunFiles();
 const METADATA_SCHEMA_VERSION = 2;
 const SINGLE_THUMBNAIL_VIDEO_DURATION_SECS = 10;
 // A single-frame seek normally takes well under a second. These limits only stop a hung decoder,
@@ -435,6 +461,7 @@ function getConcurrentLimit(config = {}) {
 async function processVideos(videos, thumbDir, config, onProgress, onVideoReady, options = {}) {
   const token = createRunToken();
   thumbToken = token;
+  const files = thumbFiles = createRunFiles();
   const total = videos.length;
   let current = 0;
   const concurrentLimit = getConcurrentLimit(config);
@@ -462,6 +489,12 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
             }
             const video = takeNextVideo();
             if (!video) break;
+            if (files.isSkipped(video.path)) {
+              current++;
+              if (onProgress) onProgress({ current, total });
+              continue;
+            }
+            const endFile = files.begin(video.path);
             try {
               const videoThumbRoot = typeof thumbDir === 'function' ? thumbDir(video) : thumbDir;
               const result = await generateThumbnailsForVideo(video, videoThumbRoot, config, token, options);
@@ -489,6 +522,8 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
               if (err.message === 'Cancelled') break;
               current++;
               if (onProgress) onProgress({ current, total });
+            } finally {
+              endFile();
             }
           }
         })()
@@ -507,6 +542,7 @@ async function processVideos(videos, thumbDir, config, onProgress, onVideoReady,
 async function processMetadata(videos, config, onProgress, onVideoReady, onVideoFailed) {
   const token = createRunToken();
   metadataToken = token;
+  const files = metadataFiles = createRunFiles();
   const total = videos.length;
   let current = 0;
   const concurrentLimit = getConcurrentLimit(config);
@@ -526,6 +562,12 @@ async function processMetadata(videos, config, onProgress, onVideoReady, onVideo
         }
         const video = takeNextVideo();
         if (!video) break;
+        if (files.isSkipped(video.path)) {
+          current++;
+          if (onProgress) onProgress({ current, total });
+          continue;
+        }
+        const endFile = files.begin(video.path);
         try {
           const result = await runProcessingActivity(token, () => readMetadataForVideo(video, token));
           if (token.cancelled) break;
@@ -541,6 +583,8 @@ async function processMetadata(videos, config, onProgress, onVideoReady, onVideo
           if (onVideoFailed) {
             await onVideoFailed(video.id, err);
           }
+        } finally {
+          endFile();
         }
       }
     })());
@@ -559,6 +603,12 @@ function cancelMetadata() {
   processingPause.wake();
 }
 
+/** Leave these files alone for the rest of the current run. */
+const skipThumbnailFiles = (paths) => thumbFiles.skip(paths);
+const skipMetadataFiles = (paths) => metadataFiles.skip(paths);
+const isThumbnailFileActive = (filePath) => thumbFiles.isActive(filePath);
+const isMetadataFileActive = (filePath) => metadataFiles.isActive(filePath);
+
 /** Cancel all pipelines — used on quit and full rescan. */
 function cancelProcessing() {
   cancelThumbnails();
@@ -572,10 +622,15 @@ module.exports = {
   cancelProcessing,
   cancelThumbnails,
   cancelMetadata,
+  skipThumbnailFiles,
+  skipMetadataFiles,
+  isThumbnailFileActive,
+  isMetadataFileActive,
   getConcurrentLimit,
   METADATA_SCHEMA_VERSION,
   __test: {
     thumbnailsMatchSource,
+    createRunFiles,
     toFfmpegInputPath,
     getVideoMetadata,
     buildFrameArgs,

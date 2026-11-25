@@ -744,6 +744,15 @@ delete prompt; `in-use` offers Retry for the failed files only.
 **Gate:** 2.1a — record the actual `shell.trashItem` errors for a locked file, a permission failure, and
 a drive without a Recycle Bin.
 
+**Status: implemented.** Gate 2.1a results (Windows 11, Electron `shell.trashItem`; errors carry a message
+and no `code`): a file open without sharing → `Operation was aborted` (`in-use`); delete denied by an ACL →
+`Failed to perform delete operation`; a missing file → `Failed to parse path` (`not-found`). The drive
+without a Recycle Bin is **not yet recorded**, and a denied delete cannot be told apart from it by message,
+so `Failed to perform delete operation` maps to `trash-unavailable` and the permanent delete that follows
+reports `permission` from the unlink code. Re-record on a USB stick or network share and macOS/Linux before
+tightening the mapping (`classifyDeleteError`). Known limit: files skipped for a delete stay skipped for
+the rest of that processing run.
+
 **Implementation notes:**
 - `DeleteResult` gets a `reason`: `changed`, `unverifiable` (stat failed; cause kept), `out-of-scope`,
   `in-use`, `permission`, `not-found`, `trash-unavailable`, `unknown`, plus the raw `code`.
