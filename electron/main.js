@@ -7,6 +7,7 @@ const { performance: nodePerformance } = require('perf_hooks');
 const { scanDirectory } = require('./scanner');
 const { pathKey } = require('./path-key');
 const { createLibraryRegistry } = require('./library-registry');
+const { createFileOpsDelete } = require('./file-ops-delete');
 const {
   processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit,
   skipThumbnailFiles, skipMetadataFiles, isThumbnailFileActive, isMetadataFileActive,
@@ -1552,65 +1553,6 @@ async function mapWithConcurrency(items, limit, worker) {
   return results;
 }
 
-async function collectDeletionCacheTargets(filePaths) {
-  const targets = [];
-  for (const filePath of filePaths) {
-    const knownId = libraryRegistry.idFor(filePath);
-    if (!knownId) continue;
-    targets.push({
-      id: knownId,
-      filePath,
-      folderPath: path.dirname(filePath),
-    });
-  }
-  return targets;
-}
-
-async function removeDeletedVideoCacheArtifacts(targets) {
-  if (targets.length === 0) return;
-  const cacheOptions = await getCacheOptions();
-  const byFolder = new Map();
-  for (const target of targets) {
-    const group = byFolder.get(target.folderPath) ?? [];
-    group.push(target.id);
-    byFolder.set(target.folderPath, group);
-  }
-
-  const thumbnailDirs = [];
-  for (const [folderPath, ids] of byFolder) {
-    const uniqueIds = Array.from(new Set(ids));
-    const cachePaths = getCachePaths(folderPath, cacheOptions);
-    thumbnailDirs.push(...uniqueIds.map((id) => path.join(cachePaths.thumbRootDir, id)));
-    try {
-      const dbExists = await fs.access(cachePaths.dbPath).then(() => true).catch(() => false);
-      if (dbExists) await cacheService.deleteVideos(folderPath, cacheOptions, uniqueIds);
-    } catch (err) {
-      log.warn(`[batch-delete] Failed to remove deleted-video cache for ${folderPath}:`, err);
-    }
-  }
-
-  await mapWithConcurrency(thumbnailDirs, CACHE_IO_CONCURRENCY, async (thumbDir) => {
-    try {
-      await fs.rm(thumbDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-    } catch (err) {
-      log.warn(`[batch-delete] Failed to remove generated thumbnail cache: ${thumbDir}`, err);
-    }
-  });
-}
-
-async function maybeRemoveEmptyDeletedVideoFolders(deletedFilePaths) {
-  if (!await shouldRemoveEmptyFoldersAfterDelete()) return new Set();
-  return removeEmptyDeletedVideoFolders({
-    deletedFilePaths,
-    loadedDirectories: libraryRegistry.loadedRoots(),
-    // Never a folder outside the loaded folders, even inside a followed link target.
-    isPathWithinAnyDir: (folderPath, dirs) => isPathWithinAnyDir(folderPath, dirs, false),
-    isLink: (folderPath) => fs.lstat(folderPath).then((stats) => stats.isSymbolicLink(), () => false),
-    removeDir: (folderPath) => fs.rmdir(folderPath),
-    onWarn: (message) => log.warn(message),
-  });
-}
-
 function buildReportHtml(videos, dirPaths) {
   const roots = normalizeReportRoots(dirPaths);
   const sortedVideos = [...videos].sort((a, b) => a.filename.localeCompare(b.filename));
@@ -2851,98 +2793,28 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
 });
 
 // 6. Delete to the OS Trash first; permanent fallback requires renderer review.
-async function finalizeDeletedFiles(results, cacheTargets) {
-  const successfulPaths = new Set(results.filter((result) => result.success).map((result) => result.path));
-  const successfulTargets = cacheTargets.filter((target) => successfulPaths.has(target.filePath));
-  await removeDeletedVideoCacheArtifacts(successfulTargets);
-  forgetDuplicateVideos(successfulTargets.map((target) => target.id));
-  for (const filePath of successfulPaths) libraryRegistry.forget(filePath);
-  const removedFolders = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successfulPaths));
-  if (removedFolders.size === 0) return results;
-  return results.map((result) => {
-    if (!result.success) return result;
-    const folder = path.resolve(path.dirname(result.path));
-    return removedFolders.has(folder) ? { ...result, removedFolder: folder } : result;
-  });
-}
-
-ipcMain.handle('batch-delete', async (_event, filePaths) => {
-  const results = [];
-
-  const validPaths = await filterLoadedDeletionPaths({
-    filePaths,
-    isValidLoadedPath,
-    onReject: (filePath) => {
-      log.warn(`[batch-delete] Rejected path outside loaded directory: ${filePath}`);
-      results.push({ path: filePath, success: false, error: 'Path is outside the loaded directory scope.' });
-    },
-  });
-
-  if (validPaths.length === 0) return results;
-  const cacheTargets = await collectDeletionCacheTargets(validPaths);
-
-  const trashResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
-    // Trashing a file link only trashes the link; the video itself must go to the Recycle Bin.
-    const realPath = libraryRegistry.scannedRealPathFor(filePath) ?? filePath;
-    const identityMatches = await matchesFileIdentityAtPath({
-      filePath: realPath,
-      expectedIdentity: libraryRegistry.identityFor(filePath),
-      statPath: fs.stat,
-    });
-    if (!identityMatches) {
-      return { path: filePath, success: false, error: 'File changed since it was scanned. Scan again before deleting.', method: 'trash' };
-    }
-    try {
-      await shell.trashItem(realPath);
-      return { path: filePath, success: true, method: 'trash' };
-    } catch (err) {
-      return { path: filePath, success: false, error: err.message, method: 'trash' };
-    }
-  });
-  results.push(...trashResults);
-
-  return finalizeDeletedFiles(results, cacheTargets);
+const fileOpsDelete = createFileOpsDelete({
+  libraryRegistry,
+  fs,
+  shell,
+  cacheService,
+  getCacheOptions,
+  getCachePaths,
+  mapWithConcurrency,
+  cacheIoConcurrency: CACHE_IO_CONCURRENCY,
+  shouldRemoveEmptyFoldersAfterDelete,
+  removeEmptyDeletedVideoFolders,
+  isPathWithinAnyDir,
+  filterLoadedDeletionPaths,
+  matchesFileIdentityAtPath,
+  isValidLoadedPath,
+  forgetDuplicateVideos,
+  log,
 });
 
-ipcMain.handle('permanently-delete', async (_event, filePaths) => {
-  const results = [];
-  const validPaths = await filterLoadedDeletionPaths({
-    filePaths,
-    isValidLoadedPath,
-    onReject: (filePath) => {
-      log.warn(`[permanently-delete] Rejected path outside loaded directory: ${filePath}`);
-      results.push({
-        path: filePath,
-        success: false,
-        error: 'Path is outside the loaded directory scope.',
-        method: 'permanent',
-      });
-    },
-  });
-  if (validPaths.length === 0) return results;
-  const cacheTargets = await collectDeletionCacheTargets(validPaths);
-  const permanentResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
-    // Unlinking a file link only removes the link; the video itself is what was reviewed.
-    const realPath = libraryRegistry.scannedRealPathFor(filePath) ?? filePath;
-    const identityMatches = await matchesFileIdentityAtPath({
-      filePath: realPath,
-      expectedIdentity: libraryRegistry.identityFor(filePath),
-      statPath: fs.stat,
-    });
-    if (!identityMatches) {
-      return { path: filePath, success: false, error: 'File changed since it was scanned. Scan again before deleting.', method: 'permanent' };
-    }
-    try {
-      await fs.unlink(realPath);
-      return { path: filePath, success: true, method: 'permanent' };
-    } catch (err) {
-      return { path: filePath, success: false, error: err.message, method: 'permanent' };
-    }
-  });
+ipcMain.handle('batch-delete', (_event, filePaths) => fileOpsDelete.batchDelete(filePaths));
 
-  results.push(...permanentResults);
-  return finalizeDeletedFiles(results, cacheTargets);
-});
+ipcMain.handle('permanently-delete', (_event, filePaths) => fileOpsDelete.permanentlyDelete(filePaths));
 
 ipcMain.handle('export-report', async (_event, videos, dirPaths) => {
   const roots = normalizeReportRoots(dirPaths);

@@ -33,12 +33,10 @@ describe('linked folders and files', () => {
     assert.match(body, /\blibraryRegistry\.reset\(\)/);
   });
 
-  for (const [channel, remove] of [['batch-delete', 'shell.trashItem'], ['permanently-delete', 'fs.unlink']]) {
-    test(`${channel} checks and removes the real file, not a file link to it`, () => {
-      const body = handlerBody(channel);
-      assert.match(body, /const realPath = libraryRegistry\.scannedRealPathFor\(filePath\) \?\? filePath;/);
-      assert.match(body, /filePath: realPath,/);
-      assert.match(body, new RegExp(`${remove.replace('.', '\\.')}\\(realPath\\)`));
+  // file-ops-delete.test.js proves the real file, not the link to it, is checked and removed.
+  for (const [channel, method] of [['batch-delete', 'batchDelete'], ['permanently-delete', 'permanentlyDelete']]) {
+    test(`${channel} is a one-line delegation`, () => {
+      assert.match(handlerBody(channel), new RegExp(`=> fileOpsDelete\\.${method}\\(filePaths\\)\\);`));
     });
   }
 
@@ -77,8 +75,9 @@ describe('linked folders and files', () => {
   });
 
   test('empty-folder cleanup stays inside the loaded folders and skips links', () => {
-    const body = mainSource.match(/async function maybeRemoveEmptyDeletedVideoFolders[\s\S]*?\n\}/)?.[0] ?? '';
-    assert.match(body, /isPathWithinAnyDir\(folderPath, dirs, false\)/);
+    const deleteSource = fs.readFileSync(path.join(__dirname, '../../electron/file-ops-delete.js'), 'utf8');
+    const body = deleteSource.match(/async function maybeRemoveEmptyDeletedVideoFolders[\s\S]*?\n  \}/)?.[0] ?? '';
+    assert.match(body, /=> isPathWithinAnyDir\(folderPath, dirs, false\)/);
     assert.match(body, /isSymbolicLink\(\)/);
   });
 });
