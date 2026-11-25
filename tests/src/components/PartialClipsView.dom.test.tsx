@@ -94,6 +94,29 @@ describe('partial clips list', () => {
     expect(excerpt!.querySelectorAll('.meta-chip.best, .meta-chip.worse')).toHaveLength(0);
   });
 
+  test('keeps one copy of the same video and marks the other, and warns when both are kept', async () => {
+    const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
+    useStore.setState({
+      videos: [
+        makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600, status: 'keep' }),
+        makeVideo(OTHER, { filename: 'concert-small.mp4', durationSecs: 598, status: 'keep' }),
+      ],
+      partialClips: [clip({ bId: OTHER, shorterId: OTHER, segments: whole })],
+    });
+    render(<PartialClipsView />);
+    expect(screen.getByText('Both copies are marked keep.')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Keep concert.mp4, delete the other copy' }));
+    const status = (id: string) => useStore.getState().videos.find((video) => video.id === id)?.status;
+    expect([status(SOURCE), status(OTHER)]).toEqual(['keep', 'delete']);
+    expect(screen.queryByText('Both copies are marked keep.')).toBeNull();
+  });
+
+  test('an excerpt offers no keep-one action', () => {
+    useStore.setState({ partialClips: [clip()] });
+    render(<PartialClipsView />);
+    expect(screen.queryByRole('button', { name: /delete the other copy/ })).toBeNull();
+  });
+
   test('a copy split into parts is the same video, and only matching pictures count toward the shared length', () => {
     const concert = makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600 });
     const recut = makeVideo(OTHER, { filename: 'concert-recut.mp4', durationSecs: 590 });

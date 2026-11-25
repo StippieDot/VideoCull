@@ -117,6 +117,19 @@
   color: var(--accent);
 }
 
+.partial-clip-actions .duplicate-action-btn {
+  height: 30px;
+  white-space: nowrap;
+}
+
+.partial-clip-warning {
+  margin: 0;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .partial-clips-collapsed {
   display: grid;
   gap: 12px;

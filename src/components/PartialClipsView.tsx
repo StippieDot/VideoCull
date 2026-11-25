@@ -175,12 +175,14 @@ function TimeBar({ clip, longer }: { clip: PartialClip; longer: Video }) {
 
 type OpenVideoMenu = (event: React.MouseEvent, videoId: string, scopeIds: string[]) => void;
 
-function ClipVideoRow({ video, flags, scopeIds, onContextMenu }: {
+function ClipVideoRow({ video, flags, scopeIds, onContextMenu, onKeepOnly }: {
   video: Video;
   /** Better / worse marks, only between two copies of the same video. */
   flags: MetricFlags;
   scopeIds: string[];
   onContextMenu: OpenVideoMenu;
+  /** Two copies of the same video: keep this one and mark the other for deletion. */
+  onKeepOnly?: () => void;
 }) {
   // An unknown value (no resolution read yet) is left out rather than shown as an empty chip.
   const chip = (key: string, label: string) => label && <span className={`meta-chip ${flags[key] ?? 'equal'}`}>{label}</span>;
@@ -215,6 +217,11 @@ function ClipVideoRow({ video, flags, scopeIds, onContextMenu }: {
         </span>
       </div>
       <div className="partial-clip-actions">
+        {onKeepOnly && (
+          <button className="duplicate-action-btn secondary" onClick={onKeepOnly} aria-label={`Keep ${video.filename}, delete the other copy`}>
+            Keep this one
+          </button>
+        )}
         <button
           className={`duplicate-play-btn ${video.status === 'keep' ? 'active' : ''}`}
           onClick={() => toggle('keep')}
@@ -254,13 +261,19 @@ const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoConte
   onVideoContextMenu: OpenVideoMenu;
 }) {
   const dismissPartialClips = useStore((s) => s.dismissPartialClips);
+  const setVideoStatus = useStore((s) => s.setVideoStatus);
   const { primary: clip, others } = entry;
   const shorter = videosById.get(clip.shorterId);
   const longer = videosById.get(clip.shorterId === clip.aId ? clip.bId : clip.aId);
   if (!shorter || !longer) return null;
   const scopeIds = [shorter.id, longer.id];
   const headline = describePartialClip(clip, shorter, longer);
-  const flags = clipKind(clip, shorter, longer) === 'sameVideo' ? computeBestFlags([shorter, longer]) : new Map<string, MetricFlags>();
+  const sameVideo = clipKind(clip, shorter, longer) === 'sameVideo';
+  const flags = sameVideo ? computeBestFlags([shorter, longer]) : new Map<string, MetricFlags>();
+  const keepOnly = (keep: Video, other: Video) => () => {
+    setVideoStatus(keep.id, 'keep');
+    setVideoStatus(other.id, 'delete');
+  };
   const notAMatch = () => {
     // Applies to the copies listed below too, so they do not come back through another copy.
     const pairs = [clip, ...others];
@@ -288,8 +301,11 @@ const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoConte
         </button>
       </header>
       <TimeBar clip={clip} longer={longer} />
-      <ClipVideoRow video={shorter} flags={flags.get(shorter.id) ?? {}} scopeIds={scopeIds} onContextMenu={onVideoContextMenu} />
-      <ClipVideoRow video={longer} flags={flags.get(longer.id) ?? {}} scopeIds={scopeIds} onContextMenu={onVideoContextMenu} />
+      <ClipVideoRow video={shorter} flags={flags.get(shorter.id) ?? {}} scopeIds={scopeIds} onContextMenu={onVideoContextMenu} onKeepOnly={sameVideo ? keepOnly(shorter, longer) : undefined} />
+      <ClipVideoRow video={longer} flags={flags.get(longer.id) ?? {}} scopeIds={scopeIds} onContextMenu={onVideoContextMenu} onKeepOnly={sameVideo ? keepOnly(longer, shorter) : undefined} />
+      {sameVideo && shorter.status === 'keep' && longer.status === 'keep' && (
+        <p className="partial-clip-warning">Both copies are marked keep.</p>
+      )}
       {others.length > 0 && (
         <details className="partial-clip-copies">
           <summary>Also found in {others.length} other {others.length === 1 ? 'copy' : 'copies'} of these videos</summary>
