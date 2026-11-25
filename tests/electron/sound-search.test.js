@@ -80,6 +80,19 @@ describe('shared sound search', () => {
     expect(unionLength([[0, 10], [5, 12], [20, 21]])).toBe(13);
   });
 
+  test('a music cue that repeats inside a film is not reported again at its other place', () => {
+    const cue = randomWords(seconds(30), 60);
+    const film = concat(randomWords(seconds(60), 61), cue, randomWords(seconds(90), 62), cue, randomWords(seconds(60), 63));
+    const copy = reencoded(film);
+    const tracks = [{ id: 'film', words: film }, { id: 'copy', words: copy }];
+    // Every window at the true offset, and the cue's windows also at the offset of its other place.
+    const along = (from, to, offset) => Array.from({ length: Math.floor((seconds(to) - seconds(from) - 81) / 40) + 1 }, (_, i) => ({ start: seconds(from) + i * 40, offset, similarity: 0.95 }));
+    const windows = [...along(0, 270, 0), ...along(60, 90, seconds(120)), ...along(180, 210, -seconds(120))];
+    const [relation] = relationsFromWindows(tracks, [[{ lo: 0, hi: 1, windows }]]);
+    expect(relation.segments).toHaveLength(1);
+    expect(near(relation.segments[0].lengthSecs, 270)).toBe(true);
+  });
+
   test('a shared intro is too small a part of either video, an excerpt or a long overlap is not', () => {
     const intro = randomWords(seconds(15), 40);
     const withIntro = (seed) => concat(intro, randomWords(seconds(120), seed));

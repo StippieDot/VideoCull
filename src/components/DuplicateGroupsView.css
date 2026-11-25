@@ -424,6 +424,8 @@
 
 .meta-chip + .meta-chip::before {
   content: ' / ';
+  /* Each chip is a flex item, which trims the leading space otherwise. */
+  white-space: pre;
   color: var(--text-tertiary);
   opacity: 0.5;
 }

@@ -287,6 +287,26 @@ function unionLength(intervals) {
   return total;
 }
 
+// Sound that repeats inside a video (a music cue, a recap) also matches at offsets other than the true
+// one. A stretch that lies, in both videos, mostly inside longer stretches already kept is such an echo.
+// A clip found twice in a longer video is not: its second place in the longer video is new.
+const ECHO_COVERED_SHARE = 0.8;
+
+function withoutEchoes(segments) {
+  const kept = [];
+  const overlap = (span, spans) => unionLength(spans) + (span[1] - span[0]) - unionLength([...spans, span]);
+  for (const segment of [...segments].sort((x, y) => y.words - x.words)) {
+    const inA = [segment.startWord, segment.startWord + segment.words];
+    const inB = [inA[0] + segment.offset, inA[1] + segment.offset];
+    const keptA = kept.map((other) => [other.startWord, other.startWord + other.words]);
+    const keptB = kept.map((other) => [other.startWord + other.offset, other.startWord + other.offset + other.words]);
+    const limit = ECHO_COVERED_SHARE * segment.words;
+    if (overlap(inA, keptA) >= limit && overlap(inB, keptB) >= limit) continue;
+    kept.push(segment);
+  }
+  return kept;
+}
+
 // A word starts at its frame and covers the frame plus the smoothing that follows it, so a stretch that
 // runs to the end of a track lasts this much past the start of its last word.
 const LAST_WORD_SPAN_SECS = (4096 + 4 * 1365) / 11025;
@@ -312,7 +332,7 @@ function relationsFromWindows(tracks, shardPairs, skipPairKeys = new Set(), { mi
     const b = tracks[hi];
     if (skipPairKeys.has(pairKey(a.id, b.id))) continue;
     const refined = mergeWindows(windows).map((segment) => ({ ...segment, ...refineEdges(a.words, b.words, segment) }));
-    const segments = mergeOverlapping(refined)
+    const segments = withoutEchoes(mergeOverlapping(refined)
       .map(({ start, end, offset, atTrackEnd }) => ({
         startA: start / WORDS_PER_SECOND,
         startB: (start + offset) / WORDS_PER_SECOND,
@@ -322,7 +342,7 @@ function relationsFromWindows(tracks, shardPairs, skipPairKeys = new Set(), { mi
         startWord: start,
         offset,
       }))
-      .filter((segment) => segment.words >= MIN_SEGMENT_WORDS)
+      .filter((segment) => segment.words >= MIN_SEGMENT_WORDS))
       .sort((x, y) => x.startA - y.startA);
     if (segments.length === 0) continue;
     const covered = segments.reduce((sum, segment) => sum + segment.words, 0);

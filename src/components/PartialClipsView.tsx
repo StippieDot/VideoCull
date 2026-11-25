@@ -84,27 +84,55 @@ function inLonger(clip: PartialClip, segment: PartialClipSegment): { start: numb
   return { start, end: start + segment.lengthSecs };
 }
 
-/** What the pair shares, in the words of the result: never "less complete", never "corrupt". */
-export function describePartialClip(clip: PartialClip, shorter: Video, longer: Video): string[] {
+/** Seconds of the shorter video inside `segments`, a stretch found twice counted once. */
+function shorterSeconds(clip: PartialClip, segments: PartialClipSegment[]): number {
+  const spans = segments
+    .map((segment) => {
+      const start = clip.shorterId === clip.aId ? segment.startA : segment.startB;
+      return [start, start + segment.lengthSecs] as const;
+    })
+    .sort((x, y) => x[0] - y[0]);
+  let total = 0;
+  let reach = -Infinity;
+  for (const [start, end] of spans) {
+    if (end > reach) total += end - Math.max(start, reach);
+    reach = Math.max(reach, end);
+  }
+  return total;
+}
+
+const span = (clip: PartialClip, segment: PartialClipSegment) => {
+  const { start, end } = inLonger(clip, segment);
+  return `from ${formatPosition(start)} to ${formatPosition(end)}`;
+};
+
+/**
+ * What the pair shares, in the words of the result: never "less complete", never "corrupt". The
+ * headline sums it up; with more than one stretch each is listed, by its place in the longer video.
+ */
+export function describePartialClip(clip: PartialClip, shorter: Video, longer: Video): { headline: string; stretches: string[] } {
+  const stretches = clip.segments.length < 2 ? [] : [...clip.segments]
+    .sort((x, y) => inLonger(clip, x).start - inLonger(clip, y).start)
+    .map((segment) => `${formatDuration(segment.lengthSecs)} ${span(clip, segment)} — ${segment.pictureState === 'confirmed' ? 'sound and picture match' : 'same sound only'}`);
   if (clip.relation === 'partial') {
-    if ((clip.coverage ?? 0) >= EXCERPT_COVERAGE && clip.segments.length === 1) {
+    const confirmed = clip.segments.filter((segment) => segment.pictureState === 'confirmed');
+    const confirmedSecs = shorterSeconds(clip, confirmed);
+    const shorterSecs = Number(shorter.durationSecs) || 0;
+    if (shorterSecs > 0 && confirmedSecs >= EXCERPT_COVERAGE * shorterSecs) {
       // Pairs of duplicate groups are not searched, so this is a copy the duplicate search did not group.
-      if ((shorter.durationSecs ?? 0) >= SAME_LENGTH_SHARE * (longer.durationSecs ?? Infinity)) {
-        return [`${shorter.filename} and ${longer.filename} are the same video — sound and picture match`];
-      }
-      return [`${shorter.filename} is an excerpt of ${longer.filename} — sound and picture match`];
+      const headline = shorterSecs >= SAME_LENGTH_SHARE * (Number(longer.durationSecs) || Infinity)
+        ? `${shorter.filename} and ${longer.filename} are the same video — sound and picture match`
+        : `${shorter.filename} is an excerpt of ${longer.filename} — sound and picture match`;
+      return { headline, stretches };
     }
-    return clip.segments.map((segment) => {
-      const { start, end } = inLonger(clip, segment);
-      return `Contains ${formatDuration(segment.lengthSecs)} of ${longer.filename}, from ${formatPosition(start)} to ${formatPosition(end)}`
-        + (segment.pictureState === 'confirmed' ? ' — sound and picture match' : ' — same sound only');
-    });
+    const where = confirmed.length === 1 ? `, ${span(clip, confirmed[0]!)}` : ` in ${confirmed.length} stretches`;
+    return { headline: `Contains ${formatDuration(confirmedSecs)} of ${longer.filename}${where} — sound and picture match`, stretches };
   }
   const ending = clip.state === 'differentPicture' ? 'pictures differ' : 'picture could not be checked';
-  return clip.segments.map((segment) => {
-    const { start, end } = inLonger(clip, segment);
-    return `Same sound as ${longer.filename} from ${formatPosition(start)} to ${formatPosition(end)}; ${ending}`;
-  });
+  const where = clip.segments.length === 1
+    ? span(clip, clip.segments[0]!)
+    : `for ${formatDuration(shorterSeconds(clip, clip.segments))} in ${clip.segments.length} stretches`;
+  return { headline: `Same sound as ${longer.filename} ${where}; ${ending}`, stretches };
 }
 
 function evidenceLabel(clip: PartialClip): string {
@@ -214,6 +242,7 @@ const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoConte
   const longer = videosById.get(clip.shorterId === clip.aId ? clip.bId : clip.aId);
   if (!shorter || !longer) return null;
   const scopeIds = [shorter.id, longer.id];
+  const { headline, stretches } = describePartialClip(clip, shorter, longer);
   const notAMatch = () => {
     // Applies to the copies listed below too, so they do not come back through another copy.
     const pairs = [clip, ...others];
@@ -236,8 +265,17 @@ const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoConte
     <article className={`partial-clip-card ${clip.relation}`} data-entry-index={index}>
       <header className="partial-clip-header">
         <div className="partial-clip-summary">
-          {describePartialClip(clip, shorter, longer).map((line) => <p key={line}>{line}</p>)}
+          <p>{headline}</p>
           <span className="partial-clip-evidence">{evidenceLabel(clip)}</span>
+          {stretches.length > 0 && (
+            <details className="partial-clip-stretches">
+              <summary>{stretches.length} stretches in {longer.filename}</summary>
+              <ul>
+                {/* Two stretches of the shorter video can sit at the same place in the longer one. */}
+                {stretches.map((line, i) => <li key={i}>{line}</li>)}
+              </ul>
+            </details>
+          )}
         </div>
         <button className="duplicate-action-btn secondary" onClick={notAMatch} title="Hide this entry and keep it out of later searches">
           Not a match
@@ -256,7 +294,7 @@ const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoConte
               if (!otherShorter || !otherLonger) return null;
               return (
                 <li key={`${other.aId}|${other.bId}`}>
-                  <span>{describePartialClip(other, otherShorter, otherLonger).join('; ')}</span>
+                  <span>{describePartialClip(other, otherShorter, otherLonger).headline}</span>
                   <span className="partial-clip-evidence">{evidenceLabel(other)}</span>
                 </li>
               );

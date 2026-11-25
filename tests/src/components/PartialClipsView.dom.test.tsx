@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import PartialClipsView, { describePartialClip, filterAndSortPartialClips, mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
@@ -44,7 +44,7 @@ describe('partial clips list', () => {
       partialClips: [
         clip(),
         clip({ bId: OTHER, shorterId: OTHER, relation: 'audioOnly', state: 'differentPicture', pictureSimilarity: 52, coverage: 1 }),
-        clip({ coverage: 0.95, aId: OTHER, bId: CLIP }),
+        clip({ coverage: 0.95, aId: OTHER, bId: CLIP, segments: [{ ...clip().segments[0]!, lengthSecs: 38 }] }),
       ],
     });
     render(<PartialClipsView />);
@@ -57,7 +57,8 @@ describe('partial clips list', () => {
     expect(screen.getByText('1 pair shares the same sound with different pictures')).toBeTruthy();
     expect(screen.getByText(/Same sound as concert.mp4 from 0:30 to 0:50; pictures differ/)).toBeTruthy();
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Not a match' })[0]);
+    const card = screen.getByText('Contains 0:20 of concert.mp4, from 0:30 to 0:50 — sound and picture match').closest('article')!;
+    await userEvent.click(within(card).getByRole('button', { name: 'Not a match' }));
     expect(useStore.getState().partialClips).toHaveLength(2);
     expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).toContain(`${SOURCE}|${CLIP}`);
 
@@ -70,8 +71,26 @@ describe('partial clips list', () => {
   test('a full match between videos of the same length is described as the same video', () => {
     const concert = makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600 });
     const reencode = makeVideo(OTHER, { filename: 'concert-reencode.mp4', durationSecs: 598 });
-    expect(describePartialClip(clip({ bId: OTHER, shorterId: OTHER, coverage: 1 }), reencode, concert))
-      .toEqual(['concert-reencode.mp4 and concert.mp4 are the same video — sound and picture match']);
+    const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
+    expect(describePartialClip(clip({ bId: OTHER, shorterId: OTHER, coverage: 1, segments: whole }), reencode, concert))
+      .toEqual({ headline: 'concert-reencode.mp4 and concert.mp4 are the same video — sound and picture match', stretches: [] });
+  });
+
+  test('a copy matched in several stretches is summed up as one, with the stretches listed', () => {
+    const concert = makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600 });
+    const recut = makeVideo(OTHER, { filename: 'concert-recut.mp4', durationSecs: 590 });
+    const segment = (startA: number, startB: number, lengthSecs: number, pictureState: 'confirmed' | 'differentPicture') => (
+      { startA, startB, lengthSecs, soundSimilarity: 96, pictureState, pictureSimilarity: 90 }
+    );
+    const recutClip = clip({ bId: OTHER, shorterId: OTHER, segments: [segment(0, 0, 300, 'confirmed'), segment(310, 300, 290, 'confirmed'), segment(400, 20, 15, 'differentPicture')] });
+    expect(describePartialClip(recutClip, recut, concert)).toEqual({
+      headline: 'concert-recut.mp4 and concert.mp4 are the same video — sound and picture match',
+      stretches: [
+        '5:00 from 0:00 to 5:00 — sound and picture match',
+        '4:50 from 5:10 to 10:00 — sound and picture match',
+        '0:15 from 6:40 to 6:55 — same sound only',
+      ],
+    });
   });
 
   test('one clip found in several copies of a video is one entry, and Not a match covers them all', async () => {
