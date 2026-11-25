@@ -571,7 +571,12 @@ displayed shortcut text uses it.
 **Tests:** default and validation; DOM: arrow keys, j/l and a remapped seek keybind all seek by the
 configured step.
 
-### 1.2 Mark Short Videos for Deletion
+### 1.2 Mark Short Videos for Deletion (done)
+
+**Shipped:** **Actions > Mark Short Videos for Deletion...** opens a dialog (default 10 seconds) that previews the
+count and size, lists what is left alone, rechecks the current view at Apply and marks in one undo step. The
+selection is the pure `selectShortVideosForDelete` in `src/short-videos.ts`. Undo no longer calls
+`videoIds.includes` per video, so the Set change below was not needed. The notes below record the plan.
 
 **Decision:** A dialog that marks videos below a duration threshold as Delete, scoped to the **current
 filtered view**, with protections. One undo entry.
@@ -1601,7 +1606,7 @@ Update the status column as work completes. Merge date recorded when phase lands
 | P0 — Media toolchain & licence compliance | ✅ Merged to main | `2.4.0` | 2026-10-16 |
 | PS — Saved sessions & linked folders | ✅ Merged to main | `2.5.0` | 2026-10-31 |
 | PM — macOS & Linux (beta) | ✅ Merged to main | `2.5.0` | 2026-11-03 |
-| P1 — Quick wins | 🔄 In progress (1.1, 1.3, 1.4, 1.5, 1.6 and 1.7 are done; 1.2 remains) | `2.6.0` | — |
+| P1 — Quick wins | 🔄 All items done; 1.1 and 1.3 are on main, 1.2 is on its own branch awaiting merge and the version bump | `2.6.0` | — |
 | P2 — Delete safety & thumbnail seeking | ⬜ Not started | `2.7.0` | — |
 | PL — Persistent library | ⬜ Not started | `2.8.0` | — |
 | P3 — Reliable settings & tags | ⬜ Not started | `2.9.0` | — |

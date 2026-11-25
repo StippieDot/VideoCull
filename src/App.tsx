@@ -11,6 +11,7 @@ import SettingsModal, { type SettingsTab } from './components/SettingsModal';
 import DuplicateGroupsView from './components/DuplicateGroupsView';
 import PartialClipsView, { mergeClipsByDuplicateGroup } from './components/PartialClipsView';
 import ShortcutsHelp from './components/ShortcutsHelp';
+import ShortVideosDialog from './components/ShortVideosDialog';
 import DocumentationModal from './components/DocumentationModal';
 import StoreTransition from './components/StoreTransition';
 import FinishActionCountdown from './components/FinishActionCountdown';
@@ -159,6 +160,7 @@ export default function App() {
   });
 
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const [showShortVideos, setShowShortVideos] = useState(false);
   /** The text the quick-open palette starts with, or null while it is closed. */
   const [paletteQuery, setPaletteQuery] = useState<string | null>(null);
   const closePalette = useCallback(() => setPaletteQuery(null), []);
@@ -980,6 +982,7 @@ export default function App() {
         case 'find-duplicates': { void menuHandlersRef.current.findDuplicates(); break; }
         case 'toggle-theme': { toggleTheme(); break; }
         case 'show-shortcuts': { setShowShortcutsHelp(true); break; }
+        case 'mark-short-videos': { setShowShortVideos(true); break; }
         case 'open-command-palette': { setPaletteQuery(''); break; }
         case 'go-to-folder': { setPaletteQuery('/'); break; }
         case 'open-about': { openSettings('about'); break; }
@@ -1421,6 +1424,7 @@ export default function App() {
           }}
         />
       )}
+      {showShortVideos && !isPrivate && <ShortVideosDialog onClose={() => setShowShortVideos(false)} />}
       {showDocumentation && (
         <DocumentationModal
           onClose={() => setShowDocumentation(false)}
@@ -1507,7 +1511,7 @@ export default function App() {
           )}
           {reviewMode && (
             <Profiler id="ReviewMode" onRender={handleMainProfiler}>
-              <ReviewMode keyboardBlocked={showShortcutsHelp || showDocumentation || isPrivate || dropModalPath !== null || permanentDeletePaths.length > 0} />
+              <ReviewMode keyboardBlocked={showShortcutsHelp || showShortVideos || showDocumentation || isPrivate || dropModalPath !== null || permanentDeletePaths.length > 0} />
             </Profiler>
           )}
           {isScanning && videoCount === 0 && (
