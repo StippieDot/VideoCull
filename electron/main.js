@@ -6,6 +6,7 @@ const os = require('os');
 const { performance: nodePerformance } = require('perf_hooks');
 const { scanDirectory } = require('./scanner');
 const { pathKey } = require('./path-key');
+const { createLibraryRegistry } = require('./library-registry');
 const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
 const cache = require('./cache');
 const { migrateCacheMoves } = require('./cache-migration');
@@ -106,7 +107,6 @@ let storeWindowReady = false;
 let autoUpdaterInstance = null;
 let mainWindow;
 let currentScanDir = null;
-let currentScanDirs = new Set();
 let defaultCentralCacheRoot = null; // set after app ready
 let activeCacheRoots = new Set();
 let isQuitting = false;
@@ -144,18 +144,9 @@ const ALLOWED_EXTERNAL_URLS = new Set([
 ]);
 const ALLOWED_EXTERNAL_HTTPS_HOSTS = new Set(['docs.videocull.app']);
 
-// Set of known valid video paths, populated on every scan-directory call.
-// All IPC handlers that accept file paths validate against this set.
-const knownVideoPaths = new Set();
-const knownVideoIdsByPath = new Map();
-const knownVideoIdentitiesByPath = new Map();
-// Videos reached through a link or junction: shown path -> the file itself, which delete acts on.
-const knownRealPathsByPath = new Map();
-// Real path key -> the shown path that owns it, so loaded folders that reach one file list it once.
-const sessionRealPathOwners = new Map();
-// Links and junctions the scans followed (path as shown -> real target); containment trusts paths
-// through these besides the loaded folders.
-const followedLinks = new Map();
+// What the session has loaded (folders, scanned videos, link targets). All IPC handlers that accept
+// file paths validate against it.
+const libraryRegistry = createLibraryRegistry();
 // Valid video ID format: 16 hex characters (MD5-derived from path+size in scanner.js)
 const VALID_VIDEO_ID = /^[0-9a-f]{16}$/;
 
@@ -172,7 +163,7 @@ class ScanSupersededError extends Error {
 
 // Links the scans followed are trusted unless a caller (empty-folder cleanup) must stay inside the loaded folders.
 function isPathWithinDir(candidate, baseDir, trustFollowedLinks = true) {
-  return isPathWithinDirHelper(candidate, baseDir, trustFollowedLinks ? followedLinks : null);
+  return isPathWithinDirHelper(candidate, baseDir, trustFollowedLinks ? libraryRegistry.followedLinks() : null);
 }
 
 function canSendToRenderer() {
@@ -260,8 +251,8 @@ async function collectIdleDiagnostics() {
       arrayBuffers: memory.arrayBuffers,
     },
     eventLoopUtilization,
-    loadedRootCount: currentScanDirs.size,
-    knownVideoCount: knownVideoPaths.size,
+    loadedRootCount: libraryRegistry.rootCount(),
+    knownVideoCount: libraryRegistry.knownPathCount(),
     activeCacheRootCount: activeCacheRoots.size,
     activeBatchIntervalCount: activeBatchIntervals.size,
     activeDuplicateRun: Boolean(activeDuplicateRun),
@@ -493,7 +484,7 @@ app.whenReady().then(async () => {
 
     if (!canServeVideoPath({
       filePath,
-      knownVideoPaths,
+      knownVideoPaths: { has: libraryRegistry.isKnownPath },
       isServableVideoPath,
     }) || !await stillLeadsToScannedFile(filePath)) {
       return new Response('Access Denied', { status: 403 });
@@ -1020,7 +1011,7 @@ async function getCurrentCacheLocationInfo() {
     defaultCentralRoot: defaultCentralCacheRoot,
     profileRoot: app.getPath('userData'),
     packageRoot: profileBootstrap?.storage?.packageRoot ?? null,
-    knownFolders: await getKnownCacheFolders(Array.from(currentScanDirs)),
+    knownFolders: await getKnownCacheFolders(Array.from(libraryRegistry.loadedRoots())),
     username: os.userInfo().username,
   });
 }
@@ -1509,7 +1500,7 @@ async function isPathWithinAnyDir(filePath, dirs, trustFollowedLinks = true) {
  * since then would otherwise play or open a file nobody reviewed. Other videos pass unchanged.
  */
 async function stillLeadsToScannedFile(filePath) {
-  const scannedRealPath = knownRealPathsByPath.get(filePath);
+  const scannedRealPath = libraryRegistry.scannedRealPathFor(filePath);
   if (!scannedRealPath) return true;
   const realPath = await fs.realpath(filePath).catch(() => null);
   return realPath !== null && pathKey(realPath) === pathKey(scannedRealPath);
@@ -1518,8 +1509,8 @@ async function stillLeadsToScannedFile(filePath) {
 async function isValidLoadedPath(filePath) {
   return await isKnownLoadedFilePath({
     filePath,
-    knownVideoPaths,
-    loadedDirectories: currentScanDirs,
+    knownVideoPaths: { has: libraryRegistry.isKnownPath },
+    loadedDirectories: libraryRegistry.loadedRoots(),
     isPathWithinAnyDir,
   }) && stillLeadsToScannedFile(filePath);
 }
@@ -1531,13 +1522,13 @@ function assertScanCurrent(token) {
 }
 
 function isKnownVideoRecord(video) {
-  return Boolean(video?.path && knownVideoIdsByPath.get(video.path) === video.id);
+  return Boolean(video?.path && libraryRegistry.idFor(video.path) === video.id);
 }
 
 async function validateCacheSavePayload(dirPath, videos) {
   return filterValidCacheSaveVideos({
     dirPath,
-    loadedDirectories: currentScanDirs,
+    loadedDirectories: libraryRegistry.loadedRoots(),
     videos,
     isKnownVideoRecord,
     isPathWithinDir,
@@ -1575,7 +1566,7 @@ async function mapWithConcurrency(items, limit, worker) {
 async function collectDeletionCacheTargets(filePaths) {
   const targets = [];
   for (const filePath of filePaths) {
-    const knownId = knownVideoIdsByPath.get(filePath);
+    const knownId = libraryRegistry.idFor(filePath);
     if (!knownId) continue;
     targets.push({
       id: knownId,
@@ -1622,7 +1613,7 @@ async function maybeRemoveEmptyDeletedVideoFolders(deletedFilePaths) {
   if (!await shouldRemoveEmptyFoldersAfterDelete()) return new Set();
   return removeEmptyDeletedVideoFolders({
     deletedFilePaths,
-    loadedDirectories: currentScanDirs,
+    loadedDirectories: libraryRegistry.loadedRoots(),
     // Never a folder outside the loaded folders, even inside a followed link target.
     isPathWithinAnyDir: (folderPath, dirs) => isPathWithinAnyDir(folderPath, dirs, false),
     isLink: (folderPath) => fs.lstat(folderPath).then((stats) => stats.isSymbolicLink(), () => false),
@@ -1817,19 +1808,13 @@ ipcMain.handle('reset-loaded-directories', async () => {
   cancelProcessing();
   cancelActiveDuplicateRun();
   const cacheOptions = await getCacheOptions();
-  const cacheFolders = await getKnownCacheFolders(Array.from(currentScanDirs));
+  const cacheFolders = await getKnownCacheFolders(Array.from(libraryRegistry.loadedRoots()));
   for (const folderPath of cacheFolders) cacheService.blockFolder(folderPath, cacheOptions);
   await cacheService.beginTransition();
   try {
     currentScanDir = null;
-    currentScanDirs = new Set();
     activeCacheRoots = new Set();
-    knownVideoPaths.clear();
-    knownVideoIdsByPath.clear();
-    knownVideoIdentitiesByPath.clear();
-    knownRealPathsByPath.clear();
-    sessionRealPathOwners.clear();
-    followedLinks.clear();
+    libraryRegistry.reset();
     clearDuplicateSessionCache();
     return true;
   } finally {
@@ -1840,28 +1825,19 @@ ipcMain.handle('reset-loaded-directories', async () => {
 // Unloads one of several loaded folders and keeps the others, without a rescan. The renderer calls it
 // only while nothing is scanning or processing, after its pending review saves are written.
 ipcMain.handle('unload-directory', async (_event, dirPath) => {
-  if (typeof dirPath !== 'string' || !currentScanDirs.has(dirPath) || currentScanDirs.size < 2) return false;
+  if (typeof dirPath !== 'string' || !libraryRegistry.isLoadedRoot(dirPath) || libraryRegistry.rootCount() < 2) return false;
   // Through links, another loaded folder can reach a video this folder listed first; only a rescan of
   // the remaining folders lists it again, so the renderer falls back to that.
-  if (followedLinks.size > 0) return false;
+  if (libraryRegistry.hasFollowedLinks()) return false;
   cancelThumbnails();
   cancelMetadata();
   cancelActiveDuplicateRun();
   const cacheOptions = await getCacheOptions();
   // Late writes for the removed folder are refused; scanning it again allows its cache once more.
   for (const folderPath of await getKnownCacheFolders([dirPath])) cacheService.blockFolder(folderPath, cacheOptions);
-  currentScanDirs.delete(dirPath);
-  if (currentScanDir === dirPath) currentScanDir = currentScanDirs.values().next().value;
+  libraryRegistry.removeRoot(dirPath);
+  if (currentScanDir === dirPath) currentScanDir = libraryRegistry.loadedRoots().values().next().value;
   activeCacheRoots = new Set([...activeCacheRoots].filter((cacheRoot) => !isFolderInsideSync(cacheRoot, dirPath)));
-  for (const videoPath of [...knownVideoPaths]) {
-    const folder = path.dirname(videoPath);
-    if (!isSameFolderSync(folder, dirPath) && !isFolderInsideSync(folder, dirPath)) continue;
-    knownVideoPaths.delete(videoPath);
-    knownVideoIdsByPath.delete(videoPath);
-    knownVideoIdentitiesByPath.delete(videoPath);
-    sessionRealPathOwners.delete(pathKey(knownRealPathsByPath.get(videoPath) ?? videoPath));
-    knownRealPathsByPath.delete(videoPath);
-  }
   return true;
 });
 
@@ -2016,29 +1992,14 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
 
   // Commit loaded-directory globals only after the scan is still current.
   currentScanDir = currentScanDir || dirPath;
-  currentScanDirs.add(dirPath);
+  libraryRegistry.addRoot(dirPath);
   publishScanCacheRoots(scanCacheRoots);
-  for (const { link, target } of scanResult?.followedLinks ?? []) followedLinks.set(link, target);
+  libraryRegistry.recordFollowedLinks(scanResult?.followedLinks);
 
   // A file another loaded folder already reaches (through a link) is listed once; a second
   // entry would be paired with itself as a duplicate, and deleting "the copy" deletes the only one.
   const realPathsByPath = new Map(videos.map((video) => [video.path, video.realPath ?? video.path]));
-  const sessionVideos = merged.filter((video) => {
-    const key = pathKey(realPathsByPath.get(video.path) ?? video.path);
-    const owner = sessionRealPathOwners.get(key);
-    if (owner && owner !== video.path) return false;
-    sessionRealPathOwners.set(key, video.path);
-    return true;
-  });
-
-  // Populate the known-paths whitelist for this loaded session.
-  sessionVideos.forEach((v) => {
-    knownVideoPaths.add(v.path);
-    knownVideoIdsByPath.set(v.path, v.id);
-    knownVideoIdentitiesByPath.set(v.path, v.fileIdentity);
-    const realPath = realPathsByPath.get(v.path);
-    if (realPath && realPath !== v.path) knownRealPathsByPath.set(v.path, realPath);
-  });
+  const sessionVideos = libraryRegistry.recordScanned(merged, realPathsByPath);
 
   const scanSnapshot = perfMetrics.finishRun(perfRun, {
     status: 'ok',
@@ -2092,7 +2053,7 @@ ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => tr
   }
   cancelMetadata();
 
-  if (!currentScanDirs.has(dirPath)) {
+  if (!libraryRegistry.isLoadedRoot(dirPath)) {
     log.warn('[process-metadata] dirPath is not loaded, rejecting');
     return false;
   }
@@ -2326,7 +2287,7 @@ ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) =>
   cancelThumbnails();
 
   // Security: validate that dirPath is one of the loaded scan directories
-  if (!currentScanDirs.has(dirPath)) {
+  if (!libraryRegistry.isLoadedRoot(dirPath)) {
     log.warn('[generate-thumbnails] dirPath is not loaded, rejecting');
     return false;
   }
@@ -2546,10 +2507,10 @@ async function comparableVideos(videos) {
   for (const video of videos) {
     if (!video || !VALID_VIDEO_ID.test(String(video.id || ''))) continue;
     if (!isKnownVideoRecord(video)) continue;
-    if (!await isPathWithinAnyDir(video.path, currentScanDirs)) continue;
+    if (!await isPathWithinAnyDir(video.path, libraryRegistry.loadedRoots())) continue;
     // A link pointed elsewhere since the scan would fingerprint a file nobody reviewed.
     if (!await stillLeadsToScannedFile(video.path)) continue;
-    const realKey = pathKey(knownRealPathsByPath.get(video.path) ?? video.path);
+    const realKey = pathKey(libraryRegistry.scannedRealPathFor(video.path) ?? video.path);
     if (seenRealPaths.has(realKey)) continue;
     seenRealPaths.add(realKey);
     safeVideos.push(video);
@@ -2562,7 +2523,7 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
     activeDuplicateRun.cancel();
     activeDuplicateRun = null;
   }
-  if (!Array.isArray(videos) || currentScanDirs.size === 0) {
+  if (!Array.isArray(videos) || libraryRegistry.rootCount() === 0) {
     return { status: 'error', error: 'No loaded videos to compare.' };
   }
 
@@ -2636,7 +2597,7 @@ ipcMain.handle('find-partial-clips', (_event, videos, options = {}) => powerMana
     activeDuplicateRun.cancel();
     activeDuplicateRun = null;
   }
-  if (!Array.isArray(videos) || currentScanDirs.size === 0) {
+  if (!Array.isArray(videos) || libraryRegistry.rootCount() === 0) {
     return { status: 'error', error: 'No loaded videos to compare.' };
   }
   const safeVideos = await comparableVideos(videos);
@@ -2814,7 +2775,7 @@ function validDuplicateResultsSession(session) {
   if (!session || typeof session !== 'object') return null;
   const { folders, includeSubfolders, scope } = session;
   if (!Array.isArray(folders) || folders.length === 0) return null;
-  if (!folders.every((folder) => typeof folder === 'string' && currentScanDirs.has(folder))) return null;
+  if (!folders.every((folder) => typeof folder === 'string' && libraryRegistry.isLoadedRoot(folder))) return null;
   if (typeof includeSubfolders !== 'boolean' || (scope !== 'all' && scope !== 'filtered')) return null;
   return { folders: [...folders], includeSubfolders, scope };
 }
@@ -2862,7 +2823,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   if (!dirPath || typeof dirPath !== 'string') return false;
 
   // Security: only allow clearing the cache of the currently scanned directory
-  if (!currentScanDirs.has(dirPath)) {
+  if (!libraryRegistry.isLoadedRoot(dirPath)) {
     log.warn('[clear-cache] dirPath is not loaded, rejecting');
     return false;
   }
@@ -2871,7 +2832,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
   cancelActiveDuplicateRun();
   scanGeneration += 1;
   clearDuplicateSessionCache();
-  await getDuplicateResultsStore().removeFolders([...currentScanDirs]).catch((error) => log.warn('[clear-cache] Could not clear duplicate results:', error?.message || error));
+  await getDuplicateResultsStore().removeFolders([...libraryRegistry.loadedRoots()]).catch((error) => log.warn('[clear-cache] Could not clear duplicate results:', error?.message || error));
   await getPictureCheckStore().clear().catch((error) => log.warn('[clear-cache] Could not clear picture checks:', error?.message || error));
 
   const cacheOptions = await getCacheOptions();
@@ -2908,13 +2869,7 @@ async function finalizeDeletedFiles(results, cacheTargets) {
   const successfulTargets = cacheTargets.filter((target) => successfulPaths.has(target.filePath));
   await removeDeletedVideoCacheArtifacts(successfulTargets);
   forgetDuplicateVideos(successfulTargets.map((target) => target.id));
-  for (const filePath of successfulPaths) {
-    knownVideoPaths.delete(filePath);
-    knownVideoIdsByPath.delete(filePath);
-    knownVideoIdentitiesByPath.delete(filePath);
-    sessionRealPathOwners.delete(pathKey(knownRealPathsByPath.get(filePath) ?? filePath));
-    knownRealPathsByPath.delete(filePath);
-  }
+  for (const filePath of successfulPaths) libraryRegistry.forget(filePath);
   const removedFolders = await maybeRemoveEmptyDeletedVideoFolders(Array.from(successfulPaths));
   if (removedFolders.size === 0) return results;
   return results.map((result) => {
@@ -2941,10 +2896,10 @@ ipcMain.handle('batch-delete', async (_event, filePaths) => {
 
   const trashResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
     // Trashing a file link only trashes the link; the video itself must go to the Recycle Bin.
-    const realPath = knownRealPathsByPath.get(filePath) ?? filePath;
+    const realPath = libraryRegistry.scannedRealPathFor(filePath) ?? filePath;
     const identityMatches = await matchesFileIdentityAtPath({
       filePath: realPath,
-      expectedIdentity: knownVideoIdentitiesByPath.get(filePath),
+      expectedIdentity: libraryRegistry.identityFor(filePath),
       statPath: fs.stat,
     });
     if (!identityMatches) {
@@ -2981,10 +2936,10 @@ ipcMain.handle('permanently-delete', async (_event, filePaths) => {
   const cacheTargets = await collectDeletionCacheTargets(validPaths);
   const permanentResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
     // Unlinking a file link only removes the link; the video itself is what was reviewed.
-    const realPath = knownRealPathsByPath.get(filePath) ?? filePath;
+    const realPath = libraryRegistry.scannedRealPathFor(filePath) ?? filePath;
     const identityMatches = await matchesFileIdentityAtPath({
       filePath: realPath,
-      expectedIdentity: knownVideoIdentitiesByPath.get(filePath),
+      expectedIdentity: libraryRegistry.identityFor(filePath),
       statPath: fs.stat,
     });
     if (!identityMatches) {
@@ -3110,7 +3065,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
     return { status: 'unchanged', migrated: 0, errors: [] };
   }
 
-  const knownFolders = await getKnownCacheFolders(Array.from(currentScanDirs));
+  const knownFolders = await getKnownCacheFolders(Array.from(libraryRegistry.loadedRoots()));
   if (knownFolders.length === 0) {
     return { status: 'no-cache', migrated: 0, errors: [] };
   }
@@ -3305,8 +3260,8 @@ ipcMain.handle('save-config', async (_event, config) => {
 ipcMain.handle('open-in-explorer', async (_event, filePath) => {
   const allowed = await canRevealInExplorerPath({
     filePath,
-    knownVideoPaths,
-    loadedDirectories: currentScanDirs,
+    knownVideoPaths: { has: libraryRegistry.isKnownPath },
+    loadedDirectories: libraryRegistry.loadedRoots(),
     isPathWithinAnyDir,
   });
   if (!allowed) return false;

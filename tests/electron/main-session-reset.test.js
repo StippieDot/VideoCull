@@ -31,15 +31,14 @@ test('stopping duplicate detection cancels the run and forgets it', () => {
 describe('linked folders and files', () => {
   test('a reset forgets the followed links and real paths of the old session', () => {
     const body = handlerBody('reset-loaded-directories');
-    for (const name of ['knownRealPathsByPath', 'sessionRealPathOwners', 'followedLinks']) {
-      assert.match(body, new RegExp(`\\b${name}\\.clear\\(\\)`));
-    }
+    // library-registry.test.js proves reset() forgets links and real paths.
+    assert.match(body, /\blibraryRegistry\.reset\(\)/);
   });
 
   for (const [channel, remove] of [['batch-delete', 'shell.trashItem'], ['permanently-delete', 'fs.unlink']]) {
     test(`${channel} checks and removes the real file, not a file link to it`, () => {
       const body = handlerBody(channel);
-      assert.match(body, /const realPath = knownRealPathsByPath\.get\(filePath\) \?\? filePath;/);
+      assert.match(body, /const realPath = libraryRegistry\.scannedRealPathFor\(filePath\) \?\? filePath;/);
       assert.match(body, /filePath: realPath,/);
       assert.match(body, new RegExp(`${remove.replace('.', '\\.')}\\(realPath\\)`));
     });
@@ -47,15 +46,13 @@ describe('linked folders and files', () => {
 
   test('unloading one folder forgets only that folder and keeps the session', () => {
     const body = handlerBody('unload-directory');
-    assert.match(body, /!currentScanDirs\.has\(dirPath\) \|\| currentScanDirs\.size < 2\) return false/);
+    assert.match(body, /!libraryRegistry\.isLoadedRoot\(dirPath\) \|\| libraryRegistry\.rootCount\(\) < 2\) return false/);
     assert.match(body, /cacheService\.blockFolder\(folderPath, cacheOptions\)/);
-    assert.match(body, /currentScanDirs\.delete\(dirPath\)/);
+    // removeRoot also forgets the folder's videos (library-registry.test.js).
+    assert.match(body, /libraryRegistry\.removeRoot\(dirPath\)/);
     // A video another folder reaches through a link is listed again only by a rescan.
-    assert.match(body, /if \(followedLinks\.size > 0\) return false;/);
-    for (const name of ['knownVideoPaths', 'knownVideoIdsByPath', 'knownVideoIdentitiesByPath', 'knownRealPathsByPath']) {
-      assert.ok(body.includes(`${name}.delete(videoPath)`), name);
-    }
-    assert.doesNotMatch(body, /\.clear\(\)/);
+    assert.match(body, /if \(libraryRegistry\.hasFollowedLinks\(\)\) return false;/);
+    assert.doesNotMatch(body, /\.clear\(\)|libraryRegistry\.reset\(\)/);
     assert.doesNotMatch(body, /scanGeneration/);
   });
 
