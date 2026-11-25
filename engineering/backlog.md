@@ -90,6 +90,20 @@ Proposed direction:
 - Issue #42 (contributor idea). A setting, on by default, that restores window size, position and maximized state, checking the saved position is still on a connected display.
 - Small and independent of everything else. Not scheduled; no demand beyond this report yet.
 
+### 25. Browse the grid by folder
+
+- A community fork (HeizoFinds/VideoCull) shows folders as cards with a cover built from cached frames, one level at a time, and restores the scroll position when going back up. Worth having; its implementation adds a navigation layer beside the existing grid instead of building on it, so reimplement rather than port.
+- Build it as a second way to show the grid's existing folder groups (the folder headers and their menu, `buildFolderHeaderMenu`), with a breadcrumb in the location bar. Filters, sorting, marking and counts stay the same in both views.
+- Decide first: selection and keyboard navigation across levels; whether a folder holding one video opens it directly (leaning no); what the cover shows for folders without processed frames.
+- Not scheduled. Make it a roadmap phase once Phase L lands, since L changes how folder rows load.
+
+### 26. Profile location for a portable build
+
+- The same fork lets a user move the profile and runtime caches to a chosen folder (`profile-move.js`, `runtime-cache.js`). A general "move my profile" option isn't wanted; a portable build is the case where profile placement matters.
+- A portable build needs the profile next to the program, not a move feature: when a portable marker (or the portable target's own flag) is present, `profile-bootstrap.js` selects a `data` folder beside the executable instead of the app-data folder. Keep the existing checks there (regular directory, no symbolic link, storage-format compatibility).
+- Optional one-time step: copy an existing installed profile into the portable folder. A plain copy of the profile selected at startup is enough; no location file outside the profile.
+- Not scheduled. Revisit when a portable build is decided.
+
 ### 7. Duplicate matching is weak for trimmed or offset copies
 
 - The duplicate engine compares samples at corresponding relative positions and applies duration tolerance.

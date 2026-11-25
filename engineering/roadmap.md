@@ -888,7 +888,9 @@ folder (`scanDirectory`, `reconcileScannedVideosByFolder` `main.js:1296`) before
 Comes after Phase 2, because it needs 2.1's `library-registry` and `processing-runs`.
 
 **Gate:** L.0 — measure with the existing scan diagnostics how long the walk and the reconcile each take
-on a large library, an HDD, USB, a network share and a **cloud-mounted drive** (shares the setup of 3.1).
+on a large library, an HDD, USB, a network share and a **cloud-mounted drive** (shares the setup of 3.1),
+and how much the walk and processing slow playback of a video on the same drive. Also check per drive type
+whether a folder's modified time changes reliably when videos are added, removed or renamed (needed by L.3).
 Record an ADR for the move from scan-based sessions to a persistent library before L.1 starts.
 
 **Requested in [issue #2](https://github.com/StippieDot/VideoCull/issues/2):** on cloud-mounted drives
@@ -914,7 +916,24 @@ reported difference is.
   If that needs 3.3's "all saves settled" signal, Phase L moves after 3.3.
 - Watching folders for changes while the app runs is an optional later step.
 
-### L.3 Offline Folders
+### L.3 Cheaper Verification
+
+Slow drives (SFTP, cloud mounts, network shares) are also where playback reads from, so the background check
+reads as little as possible and gives way to playback.
+- **Folder snapshot:** each verified folder keeps its modified time next to the `fileIdentity` of its videos.
+  The next check lists only folders whose modified time changed and stats only the videos in them; unchanged
+  folders keep their rows without touching the drive.
+- **Trusted drives only:** folder modified times are used only on drive types where L.0 shows they are
+  reliable. Other drives get the full walk, still in the background.
+- **In-place edits:** a video edited in place doesn't change its folder's time. Delete's identity check
+  still refuses it; a full walk (on request, and at most once per session per folder) picks it up.
+- **Playback first:** while a video plays, the check pauses its reads on that video's drive
+  (`getDriveKeyForPath` until 4.1's per-device classification exists). Probing and thumbnails get the same
+  rule in 4.1.
+- **Not first:** a platform change journal (NTFS USN) only if L.0 shows the above isn't enough on local
+  drives. It is Windows/NTFS-only, doesn't help cloud mounts, and needs a signed helper and its own ADR.
+
+### L.4 Offline Folders
 
 - A loaded folder that can't be reached keeps its rows and shows as offline; nothing is pruned for it.
   Pruning rules, including `autoPruneMissingSubfolderCache`, gain this case.
@@ -1068,7 +1087,10 @@ the next item in the queue. Queued HDD items never hold a worker.
   **Done when** no pipeline keeps its own concurrency counter besides the scheduler, except the GPU
   cooldown batch size.
 
-**Tests:** cap = 1 with all pipelines running; HDD-first queue followed by SSD work → SSD proceeds; pause
+- **Playback first:** while a video plays, new items on that video's storage device wait; running items
+  finish. Same rule as L.3's background check.
+
+**Tests:** cap = 1 with all pipelines running; playing a video holds new items on its device only; HDD-first queue followed by SSD work → SSD proceeds; pause
 before a slot is granted; cancel while paused; resume starts each item exactly once; a slot is held until
 the process exits; cooldown still applies.
 
@@ -1662,7 +1684,7 @@ P2  Adjustable short-clip thumbnail cut-off (Phase 2.4) ← after 2.2, needs its
 PL  Open-time measurements + library ADR (Phase L.0) ← after 2.1; moves after 3.3 if L.2 needs it
 PL  Open from the cache (Phase L.1)
 PL  Verify in the background (Phase L.2)
-PL  Offline folders (Phase L.3)
+PL  Offline folders (Phase L.4)
 
 P3  Baselines + network-cache policy (Phase 3.1) ← before tags and Phase 4
 P3  Reliable settings save (Phase 3.2) ← before tags and 6.1 stage 6
