@@ -260,7 +260,8 @@ function SidebarDuplicateSection({
               </div>
             ))}
           </div>
-          {duplicateRun?.restored && (
+          {/* The date is the duplicate run's; partial clips are searched separately, later. */}
+          {duplicateRun?.restored && !partialClipsMode && (
             <p className="duplicate-summary-caption">
               <History size={12} aria-hidden="true" />
               {describeRestoredRun(duplicateRun, videoCount)}
@@ -379,9 +380,9 @@ function SidebarDuplicateSection({
         {/* Skipped sound can hide a clip reused in many videos, so the list says it is not everything. */}
         {partialClipsMode && partialClipsCommonSound > 0 && (
           <p className="sidebar-duplicate-note">
-            Sound found in more than {duplicateSettings.partialClipCommonLimit} videos (intros, jingles, music) was skipped
-            in {partialClipsCommonSound.toLocaleString()} {partialClipsCommonSound === 1 ? 'video' : 'videos'}. A clip reused
-            that often is not listed; raise Common sound limit in Duplicate Settings to search it.
+            Sound heard in more than {duplicateSettings.partialClipCommonLimit} videos, like intros and music, was skipped
+            in {partialClipsCommonSound.toLocaleString()} {partialClipsCommonSound === 1 ? 'video' : 'videos'}. Raise Common
+            sound limit in Duplicate Settings to include it.
           </p>
         )}
 
@@ -499,7 +500,7 @@ function UncheckedNearMisses({ run, disabled, onCheck }: { run: DuplicateRunInfo
         <>
           <p className="sidebar-duplicate-note">
             {describeUncheckedNearMisses(verification.pending)}
-            {verification.manyNearMisses ? ' — many videos in this library look alike, so checking them all takes a while' : ''}
+            {verification.manyNearMisses ? '. Many videos in this library look alike, so checking them all takes a while' : ''}
           </p>
           <button className="btn btn-outline sidebar-wide-action" onClick={onCheck} disabled={disabled}>
             Check remaining near misses
@@ -516,11 +517,11 @@ function UncheckedNearMisses({ run, disabled, onCheck }: { run: DuplicateRunInfo
   );
 }
 
-/** "From 14 Nov 2026 — 3 videos added since", for groups brought back from an earlier run. */
+/** "From 14 Nov 2026, 3 videos added since", for groups brought back from an earlier run. */
 function describeRestoredRun(run: DuplicateRunInfo, videoCount: number): string {
   const date = new Date(run.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-  if (run.scope === 'filtered') return `From ${date} — covered ${run.videos.length} of ${videoCount} videos`;
-  if (run.addedSince > 0) return `From ${date} — ${run.addedSince} ${run.addedSince === 1 ? 'video' : 'videos'} added since`;
+  if (run.scope === 'filtered') return `From ${date}, covered ${run.videos.length} of ${videoCount} videos`;
+  if (run.addedSince > 0) return `From ${date}, ${run.addedSince} ${run.addedSince === 1 ? 'video' : 'videos'} added since`;
   return `From ${date}`;
 }
 
