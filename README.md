@@ -83,6 +83,7 @@ Every video gets a strip of thumbnails pulled from different points in the file.
 - Sort by name, size, duration, date, rating, resolution, or FPS
 - Codec, resolution, FPS, favorite, rating, and compatibility badges
 - `Shift`-click batch selection with range selection, Keep, Delete, Skip, Reset, Clear, and Regenerate Thumbnails and Metadata actions
+- Mark all the short videos in the current view for deletion at once, from the Actions menu or the small button beside the Duration filter, with a preview and one Undo
 - Right-click quick actions for videos and folders, including reveal/copy-path, status changes, and thumbnail regeneration
 - Per-folder Review button to scope review mode to one folder
 - Drag and drop folder opening, multi-directory sessions, and removing one folder without a rescan
@@ -96,8 +97,8 @@ Every video gets a strip of thumbnails pulled from different points in the file.
 Fullscreen, one at a time, keyboard first.
 
 - Thumbnail strip with dynamic aspect ratio
-- In-app player with scrubbing, pause and resume in place, playback speed, bookmarks, and global mute
-- Ratings and favorites directly on the current video
+- In-app player with scrubbing by a configurable skip length, pause and resume in place, playback speed, bookmarks, and global mute
+- Ratings and favorites directly on the current video, with keys for both
 - Review summary with pending counts and delete totals
 - Next-undecided navigation for skipping videos you've already handled
 - Direct card opening that starts on the chosen video while preserving the filtered navigation scope
@@ -112,7 +113,9 @@ Find likely duplicates across all loaded videos or just the current filtered vie
 - Exact-copy detection with full-file SHA-256 hashing, whatever the filenames say
 - Two visual comparison methods: pHash (strict, few false positives) and visual similarity (catches more alternate encodes and resized copies, with more false positives)
 - Adjustable similarity threshold and sample count; results below roughly 95% deserve careful review
-- Optional mirrored-copy comparison
+- Optional mirrored-copy comparison, and matches for copies with black bars, a start shifted by a moment, or damaged stretches
+- Optional **Find Partial Clips**: finds videos that contain part of another, such as an excerpt of a longer recording or a compilation, by comparing sound and then pictures, and shows where the clip lies on a time bar
+- Groups come back when you reopen a session
 - Suggested keeper priority based on resolution, bitrate, duration, FPS, file size, and codec
 - Protection rules for videos already marked Keep or Skip
 - Manual keeper overrides and "Not a match" ignored-pair handling that survives reruns
@@ -120,7 +123,7 @@ Find likely duplicates across all loaded videos or just the current filtered vie
 - Optional "run after scan" mode for duplicate detection
 - Never deletes automatically: selected copies are marked Delete and wait for the normal confirmed delete action
 
-Frames are compared at matching points in each file, so trimmed versions and clips cut from a longer video are not detected.
+Frames are compared at matching points in each file, so duplicate groups do not include clips cut from a longer video. Find Partial Clips lists those separately; it is off by default (Settings > Duplicates) and suggests no keeper, since an excerpt is not interchangeable with its source.
 
 ### Thumbnail Generation
 
@@ -177,8 +180,10 @@ On macOS, use `Cmd` where these tables say `Ctrl`.
 | `D` | Mark for deletion |
 | `S` | Skip |
 | `Z` | Undo |
+| `V` | Toggle favorite |
+| `=` / `-` | Raise / lower the rating by one star |
 | `Space` | Play / pause |
-| `Left` / `Right` | Previous / next video, or scrub 5s while playing |
+| `Left` / `Right` | Previous / next video, or scrub by the skip length (5s by default) while playing |
 | `Tab` | Next undecided video |
 | `Enter` | Play in-app, or go back to the thumbnails while playing |
 | `Ctrl + Enter` | Open in external player |
@@ -200,6 +205,7 @@ Review shortcuts are customizable in Settings.
 | Default sort | Name / Size / Date / Duration / Rating / Resolution / FPS | Name |
 | Group by folder | On / Off | On |
 | Keep Review playback controls visible | On / Off | Off |
+| Skip length in Review | 2 / 5 / 10 / 15 / 30 seconds | 5s |
 | Reopen the last session at startup | On / Off | Off |
 | Follow symbolic links (experimental) | On / Off | Off |
 | Parallel FFmpeg processes | Auto (RAM + CPU aware) / 1 / 2 / 3 / 4 / 6 / 8 / 12 / 16 / 24 / 32 | Auto |
@@ -228,7 +234,6 @@ The built-in player is intended for compatible web-playable media such as `.mp4`
 ## Known Issues and Feedback
 
 - Initial scanning can be very slow on some cloud-mounted drives, confirmed on mounted Google Drive setups. See [issue #2](https://github.com/StippieDot/VideoCull/issues/2).
-- Duplicate review does not detect clips cut from a longer video or trimmed versions of the same file.
 - macOS and Linux builds are in beta.
 
 Found a bug or something that is not obvious in the workflow? [Open an issue](https://github.com/StippieDot/VideoCull/issues). Reports from large, messy collections are especially useful.
