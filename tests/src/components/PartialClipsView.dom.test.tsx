@@ -59,7 +59,13 @@ describe('partial clips list', () => {
     expect(screen.getByText('1 pair with the same sound and a different picture')).toBeTruthy();
     expect(screen.getByText('Same sound, other picture')).toBeTruthy();
 
-    await userEvent.click(within(card).getByRole('button', { name: 'Not a match: highlight.mp4 and concert.mp4' }));
+    // Header like a duplicate group: score, size, description; no filter set, so no filter count.
+    expect(within(card).getByText('99.0%')).toBeTruthy();
+    expect(within(card).getByText('1 matching part')).toBeTruthy();
+    expect(screen.queryByText(/match the filter/)).toBeNull();
+    // A two-video card is dismissed from its header; rows have no Not a match of their own.
+    expect(within(card).queryByRole('button', { name: /^Not a match:/ })).toBeNull();
+    await userEvent.click(within(card).getByRole('button', { name: 'Not a match' }));
     expect(useStore.getState().partialClips).toHaveLength(2);
     expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).toContain(`${SOURCE}|${CLIP}`);
 

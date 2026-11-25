@@ -25,17 +25,16 @@
 
 .partial-clip-header {
   height: auto;
-  min-height: 40px;
+  min-height: 48px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.partial-clip-count {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
+/*
+ * The action column has one width in every row, whatever buttons a row has, so the timelines of
+ * all rows start and end at the same place and share the master's scale.
+ */
 .partial-clip-card .partial-clip-video {
-  grid-template-columns: 82px minmax(0, 1fr) minmax(180px, 1fr) auto;
+  grid-template-columns: 82px minmax(0, 1fr) minmax(180px, 1fr) 236px;
   height: auto;
   padding: 8px 12px;
 }
@@ -104,11 +103,11 @@
 .partial-clip-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
 }
 
-.partial-clip-actions .duplicate-play-btn,
-.partial-clip-action-gap {
+.partial-clip-actions .duplicate-play-btn {
   width: 30px;
   height: 30px;
   flex-shrink: 0;
@@ -118,11 +117,6 @@
   background: var(--bg-surface-hover);
   border-color: var(--accent);
   color: var(--accent);
-}
-
-.partial-clip-actions .duplicate-action-btn {
-  height: 30px;
-  white-space: nowrap;
 }
 
 .partial-clips-collapsed {

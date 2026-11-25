@@ -114,6 +114,18 @@ export function clipKind(clip: PartialClip, shorter: Video, longer: Video): Clip
   return shorterSecs >= SAME_LENGTH_SHARE * (Number(longer.durationSecs) || Infinity) ? 'sameVideo' : 'excerpt';
 }
 
+/** The header's description, where a duplicate group says "Identical files". */
+function describeMatch(clip: PartialClip, shorter: Video, longer: Video): string {
+  const kind = clipKind(clip, shorter, longer);
+  if (kind === 'sameVideo') return 'Same sound and picture over the full length';
+  if (kind === 'excerpt') return 'Lies entirely inside the master';
+  if (kind === 'contains') {
+    const parts = confirmedSegments(clip).length;
+    return `${parts} matching ${parts === 1 ? 'part' : 'parts'}`;
+  }
+  return clip.state === 'differentPicture' ? 'Sound matches, picture does not' : 'Sound matches, picture not checked';
+}
+
 /** The card's badge, in the duplicate groups' badge colours: strong, partial, or sound only. */
 export function matchBadge(clip: PartialClip, shorter: Video, longer: Video): { label: string; tone: 'exact' | 'potential' | 'low-confidence' } {
   const kind = clipKind(clip, shorter, longer);
@@ -171,14 +183,14 @@ export function groupIntoFamilies(entries: PartialClipEntry[], videosById: Map<s
   return cards;
 }
 
-/** Hides pairs and keeps them out of later searches; undoable. */
-function dismissPairs(pairs: PartialClip[], shorter: Video, longer: Video) {
+/** Hides pairs and keeps them out of later searches; undoable. `who` names them in the toast. */
+function dismissPairs(pairs: PartialClip[], who: string) {
   const { dismissPartialClips, pushToast } = useStore.getState();
   const before = useStore.getState().partialClips ?? [];
   dismissPartialClips(pairs);
   pushToast({
     title: 'Marked as not a match',
-    detail: `${shorter.filename} and ${longer.filename} stay out of later searches.`,
+    detail: `${who} stay out of later searches.`,
     kind: 'info',
     durationMs: 8000,
     actionLabel: 'Undo',
@@ -293,9 +305,11 @@ function LaneBar({ lane, masterSecs }: { lane: Lane; masterSecs: number }) {
   );
 }
 
-function ClipVideoRow({ lane, masterSecs, flags, scopeIds, onContextMenu, onKeepOnly }: {
+function ClipVideoRow({ lane, masterSecs, splittable, flags, scopeIds, onContextMenu, onKeepOnly }: {
   lane: Lane;
   masterSecs: number;
+  /** More than two videos: each row can take its own pair out of the card. */
+  splittable: boolean;
   /** Better / worse marks, only between copies of the same video. */
   flags: MetricFlags;
   scopeIds: string[];
@@ -340,7 +354,7 @@ function ClipVideoRow({ lane, masterSecs, flags, scopeIds, onContextMenu, onKeep
       <LaneBar lane={lane} masterSecs={masterSecs} />
       <div className="partial-clip-actions">
         {onKeepOnly && (
-          <button className="duplicate-action-btn secondary" onClick={onKeepOnly} aria-label={`Keep ${video.filename}, delete the other copy`}>
+          <button className="duplicate-group-action-btn" onClick={onKeepOnly} aria-label={`Keep ${video.filename}, delete the other copy`}>
             Keep this one
           </button>
         )}
@@ -370,18 +384,15 @@ function ClipVideoRow({ lane, masterSecs, flags, scopeIds, onContextMenu, onKeep
         >
           <Play size={14} />
         </button>
-        {via ? (
+        {splittable && via && (
           <button
             className="duplicate-play-btn"
-            onClick={() => dismissPairs(via.dismiss, video, via.partner)}
-            title="Not a match: hide this pair and keep it out of later searches"
+            onClick={() => dismissPairs(via.dismiss, `${video.filename} and ${via.partner.filename}`)}
+            title="Not a match: take this video out of the card and keep the pair out of later searches"
             aria-label={`Not a match: ${video.filename} and ${via.partner.filename}`}
           >
             <Ban size={14} />
           </button>
-        ) : (
-          // Keeps the master's buttons in line with the rows below it.
-          <span className="partial-clip-action-gap" aria-hidden="true" />
         )}
       </div>
     </div>
@@ -404,9 +415,16 @@ const ClipCard = memo(function ClipCard({ entries, index, videosById, onVideoCon
   const scopeIds = lanes.map((lane) => lane.video.id);
   const shorter = videosById.get(first.shorterId);
   const longer = videosById.get(first.shorterId === first.aId ? first.bId : first.aId);
-  const badge = entries.length === 1 && shorter && longer
-    ? matchBadge(first, shorter, longer)
-    : { label: 'Same footage', tone: 'exact' };
+  const pair = entries.length === 1 && shorter && longer ? { shorter, longer } : null;
+  const badge = pair ? matchBadge(first, pair.shorter, pair.longer) : { label: 'Same footage', tone: 'exact' };
+  const count = (role: LaneRole, one: string, many: string) => {
+    const n = lanes.filter((lane) => lane.role === role).length;
+    return n === 0 ? null : `${n} ${n === 1 ? one : many}`;
+  };
+  const description = pair ? describeMatch(first, pair.shorter, pair.longer) : [count('copy', 'copy', 'copies'), count('excerpt', 'excerpt', 'excerpts'), count('part', 'part', 'parts')].filter(Boolean).join(', ');
+  const score = first.pictureSimilarity ?? first.soundSimilarity;
+  const allPairs = entries.flatMap((entry) => [entry.primary, ...entry.others]);
+  const totalBytes = lanes.reduce((sum, lane) => sum + (lane.video.sizeBytes ?? 0), 0);
   const copies = lanes.filter((lane) => lane.role === 'master' || lane.role === 'copy');
   const flags = copies.length > 1 ? computeBestFlags(copies.map((lane) => lane.video)) : new Map<string, MetricFlags>();
   const keepOnly = (keep: Video) => () => {
@@ -417,7 +435,20 @@ const ClipCard = memo(function ClipCard({ entries, index, videosById, onVideoCon
       <header className="duplicate-group-header partial-clip-header">
         <div className="duplicate-group-title">
           <span className={`duplicate-match-badge ${badge.tone}`}>{badge.label}</span>
-          <span className="partial-clip-count">{lanes.length} videos</span>
+          <strong title={matchLabel(first)}>{score.toFixed(1)}%</strong>
+          <em className="duplicate-group-fact">{lanes.length} videos</em>
+          <em className="duplicate-group-fact">{formatSize(totalBytes)}</em>
+          <span className="duplicate-group-notes" title={description}><em>{description}</em></span>
+        </div>
+        <div className="duplicate-group-actions">
+          <button
+            className="duplicate-group-action-btn"
+            onClick={() => dismissPairs(allPairs, pair ? `${pair.shorter.filename} and ${pair.longer.filename}` : `These ${lanes.length} videos`)}
+            title="Hide this card and keep its pairs out of later searches"
+          >
+            <Ban size={13} />
+            Not a match
+          </button>
         </div>
       </header>
       {lanes.map((lane) => (
@@ -425,6 +456,7 @@ const ClipCard = memo(function ClipCard({ entries, index, videosById, onVideoCon
           key={lane.video.id}
           lane={lane}
           masterSecs={masterSecs}
+          splittable={lanes.length > 2}
           flags={flags.get(lane.video.id) ?? {}}
           scopeIds={scopeIds}
           onContextMenu={onVideoContextMenu}
@@ -526,7 +558,8 @@ function PartialClipsView() {
           <span>
             {partialCount.toLocaleString()} with matching picture
             {soundOnlyCount > 0 ? `, ${soundOnlyCount.toLocaleString()} with only the same sound` : ''}
-            {visibleCount < allCount ? `. ${visibleCount.toLocaleString()} of ${allCount.toLocaleString()} match the filter` : ''}
+            {/* Pairs, not cards: allCount counts pairs, so the two compare. */}
+            {shown.length + differentPicture.length < allCount ? `. ${(shown.length + differentPicture.length).toLocaleString()} of ${allCount.toLocaleString()} match the filter` : ''}
           </span>
         </div>
       </div>
