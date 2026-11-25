@@ -109,6 +109,9 @@
     ],
     "npmRebuild": false,
     "afterPack": "./scripts/electron-builder-hooks.js",
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
     "win": {
       "target": "nsis",
       "icon": "build/videocull.ico",

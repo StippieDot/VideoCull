@@ -51,7 +51,7 @@ Most issues are either stale thumbnails, incomplete metadata, or media compatibi
         2. Or try to open VideoCull, then allow it under **System Settings > Privacy & Security**.
       </Tab>
       <Tab title="Linux">
-        AppImages need FUSE 2, which Ubuntu 22.04 and newer do not install by default. Install it with `sudo apt install libfuse2t64`, then run the AppImage again. Make sure the file is executable (`chmod +x`).
+        Make sure the file is executable (`chmod +x`). If it still does not start, your system may lack FUSE support: run it with `--appimage-extract-and-run`.
       </Tab>
     </Tabs>
   </Accordion>

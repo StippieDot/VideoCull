@@ -82,10 +82,10 @@ sudo dnf install ./VideoCull-<version>-x86_64.rpm
 
 Make `VideoCull-<version>-x86_64.AppImage` executable (`chmod +x`) and run it.
 
-AppImages need FUSE 2, which Ubuntu 22.04 and newer do not install by default:
+If the AppImage does not start, your system may lack FUSE support. Run it without FUSE instead:
 
 ```bash
-sudo apt install libfuse2t64
+./VideoCull-<version>-x86_64.AppImage --appimage-extract-and-run
 ```
 
 <Note>

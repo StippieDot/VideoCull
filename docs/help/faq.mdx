@@ -112,7 +112,7 @@ These answers cover the short questions that come up during normal culling. For 
         The macOS app is not signed or notarized yet. Run `xattr -cr /Applications/VideoCull.app` in Terminal once, or allow the app under **System Settings > Privacy & Security**.
       </Tab>
       <Tab title="Linux">
-        Linux shows no warning. If an AppImage does not start, it probably needs FUSE 2, which Ubuntu 22.04 and newer do not install by default: run `sudo apt install libfuse2t64`.
+        Linux shows no warning. If an AppImage does not start, your system may lack FUSE support: run it with `--appimage-extract-and-run`.
       </Tab>
     </Tabs>
   </Accordion>

@@ -4,6 +4,9 @@ All notable changes to VideoCull will be documented here.
 
 ## [Unreleased]
 
+### Changed
+- The Linux AppImage no longer needs FUSE 2 to be installed.
+
 ## [2.6.0] - 2026-11-25
 
 A big update for finding duplicates, with faster ways to review.
