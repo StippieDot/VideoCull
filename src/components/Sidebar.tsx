@@ -24,7 +24,7 @@ import {
   FolderOpen, Folder, RefreshCw, Play, Trash2, Filter,
   ArrowUpDown, X, Maximize2, Settings, ChevronDown,
   Heart, Star, AlertTriangle, Volume2, VolumeX, CopyCheck, Grid3X3, List, CircleHelp, Moon, Sun, History, FolderPlus, FolderMinus, ArrowLeft,
-  Search, SlidersHorizontal
+  Search, SlidersHorizontal, ListChecks
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -42,6 +42,8 @@ interface SidebarProps {
   /** Reads the sound of every video once and finds videos that contain part of another. */
   onFindPartialClips: () => void;
   onOpenDuplicateSettings: () => void;
+  /** Opens the dialog that marks the short videos of the current view for deletion. */
+  onMarkShortVideos: () => void;
   onOpenDocumentation: () => void;
   onRequestPermanentDelete: (filePaths: string[]) => Promise<boolean>;
   globalMute: boolean;
@@ -525,9 +527,11 @@ function describeRestoredRun(run: DuplicateRunInfo, videoCount: number): string 
 function SidebarFiltersSection({
   showFilters,
   onToggleFilters,
+  onMarkShortVideos,
 }: {
   showFilters: boolean;
   onToggleFilters: () => void;
+  onMarkShortVideos: () => void;
 }) {
   const statusFilter = useStore((s) => s.statusFilter);
   const folderFilter = useStore((s) => s.folderFilter);
@@ -736,17 +740,28 @@ function SidebarFiltersSection({
           <div className="filter-field">
             <div className="filter-field-heading">
               <span className="filter-input-label">Duration</span>
-              {hasDurationFilter && (
+              <span className="filter-field-actions">
                 <button
                   type="button"
                   className="filter-reset-btn"
-                  onClick={() => setDurationFilterRange(0, null)}
-                  title="Reset duration filter"
-                  aria-label="Reset duration filter"
+                  onClick={onMarkShortVideos}
+                  title="Mark short videos for deletion…"
+                  aria-label="Mark short videos for deletion"
                 >
-                  <X size={12} />
+                  <ListChecks size={12} />
                 </button>
-              )}
+                {hasDurationFilter && (
+                  <button
+                    type="button"
+                    className="filter-reset-btn"
+                    onClick={() => setDurationFilterRange(0, null)}
+                    title="Reset duration filter"
+                    aria-label="Reset duration filter"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </span>
             </div>
             <RangeSlider
               min={durationRange.min}
@@ -813,6 +828,7 @@ export default function Sidebar({
   onCheckNearMisses,
   onFindPartialClips,
   onOpenDuplicateSettings,
+  onMarkShortVideos,
   onOpenDocumentation,
   onRequestPermanentDelete,
   globalMute,
@@ -1189,6 +1205,7 @@ export default function Sidebar({
         <SidebarFiltersSection
           showFilters={showFilters}
           onToggleFilters={() => setShowFilters((v) => !v)}
+          onMarkShortVideos={onMarkShortVideos}
         />
       )}
 

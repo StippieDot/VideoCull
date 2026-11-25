@@ -1,50 +1,64 @@
 .short-videos-modal {
-  width: min(480px, 100%);
+  width: min(680px, 100%);
+}
+
+/* A long count in the button label must not wrap, or the footer note takes the squeeze instead. */
+.short-videos-modal .btn-cancel,
+.short-videos-modal .btn-save {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .short-videos-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px;
+  padding: 20px;
 }
 
-.short-videos-field {
+.short-videos-modal .settings-row-control input[type="number"] {
+  width: 88px;
+}
+
+.short-videos-value {
+  color: var(--text-primary);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.short-videos-presets {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.short-videos-preset {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.short-videos-preset:hover {
   color: var(--text-primary);
 }
 
-.short-videos-field input {
-  width: 84px;
-}
-
-.short-videos-preview {
-  margin: 0;
-  font-weight: 600;
+.short-videos-preset[aria-pressed='true'] {
   color: var(--text-primary);
+  border-color: var(--accent);
 }
 
-.short-videos-left {
-  margin: 0;
-  padding-left: 18px;
+.short-videos-link {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.short-videos-note {
-  margin: 0;
-}
-
-.short-videos-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid var(--border);
-}
-
-/* .btn-accent fills its row elsewhere; here it sits beside Cancel. */
-.short-videos-actions .btn-accent {
-  width: auto;
+.short-videos-link:hover {
+  text-decoration: underline;
 }

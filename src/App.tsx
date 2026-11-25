@@ -1456,6 +1456,7 @@ export default function App() {
             onCheckNearMisses={() => void handleFindDuplicates({ checkAllNearMisses: true })}
             onFindPartialClips={() => void handleFindPartialClips()}
             onOpenDuplicateSettings={() => openSettings('duplicates')}
+            onMarkShortVideos={() => setShowShortVideos(true)}
             onRequestPermanentDelete={requestPermanentDelete}
             globalMute={globalMute}
             globalMuteEnabled={globalMuteEnabled && !isPrivate}

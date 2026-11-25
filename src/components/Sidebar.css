@@ -752,6 +752,12 @@
   gap: 8px;
 }
 
+.filter-field-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .filter-reset-btn {
   width: 20px;
   height: 20px;

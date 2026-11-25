@@ -36,11 +36,44 @@ describe('ShortVideosDialog', () => {
     ]);
     render(<ShortVideosDialog onClose={vi.fn()} />);
 
-    expect(screen.getByText(/1 video \(.*\) will be marked Delete\./)).toBeTruthy();
-    expect(screen.getByText('1 marked Keep, left alone')).toBeTruthy();
-    expect(screen.getByText('1 rated, left alone')).toBeTruthy();
-    expect(screen.getByText('1 video with an unknown length, left alone')).toBeTruthy();
+    expect(screen.getByText(/^1 video \(.+\)$/)).toBeTruthy();
+    expect(screen.getByText('1 marked Keep, 1 rated, 1 with an unknown length')).toBeTruthy();
     expect(screen.getByText(/Delete Marked Videos later deletes every video marked Delete/)).toBeTruthy();
+  });
+
+  test('starts from the maximum-duration filter when one is set, and from 10 seconds otherwise', () => {
+    loadVideos([makeVideo('a', { durationSecs: 3 })]);
+    const { unmount } = render(<ShortVideosDialog onClose={vi.fn()} />);
+    expect((screen.getByRole('spinbutton') as HTMLInputElement).value).toBe('10');
+    unmount();
+
+    useStore.setState({ maxDurationFilter: 42.26 });
+    render(<ShortVideosDialog onClose={vi.fn()} />);
+    expect((screen.getByRole('spinbutton') as HTMLInputElement).value).toBe('42.3');
+  });
+
+  test('a preset fills in its length and shows as selected', async () => {
+    loadVideos([makeVideo('a', { durationSecs: 40 })]);
+    render(<ShortVideosDialog onClose={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole('button', { name: '1 min' }));
+
+    expect((screen.getByRole('spinbutton') as HTMLInputElement).value).toBe('60');
+    expect(screen.getByRole('button', { name: '1 min' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: '10 s' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: 'Mark 1 video' })).toBeTruthy();
+  });
+
+  test('"Show them in the grid first" applies the length as the Duration filter without marking anything', async () => {
+    const onClose = vi.fn();
+    loadVideos([makeVideo('a', { durationSecs: 3 })]);
+    render(<ShortVideosDialog onClose={onClose} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show them in the grid first' }));
+
+    expect(useStore.getState().maxDurationFilter).toBe(10);
+    expect(onClose).toHaveBeenCalled();
+    expect(statusOf('a')).toBe('pending');
   });
 
   test('marks only the shown short videos in one undoable step', async () => {

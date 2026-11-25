@@ -63,6 +63,7 @@ function renderSidebar(props: Partial<ComponentProps<typeof Sidebar>> = {}) {
       onCheckNearMisses={vi.fn()}
       onFindPartialClips={vi.fn()}
       onOpenDuplicateSettings={vi.fn()}
+      onMarkShortVideos={vi.fn()}
       onOpenDocumentation={vi.fn()}
       onRequestPermanentDelete={vi.fn().mockResolvedValue(false)}
       globalMute={false}
@@ -86,6 +87,18 @@ describe('Sidebar recent folder behavior', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  test('offers marking short videos from the Duration filter', async () => {
+    const onMarkShortVideos = vi.fn();
+    const video = makeVideo('a', { durationSecs: 4 });
+    useStore.setState({ directory: 'D:\\Media', directories: ['D:\\Media'] });
+    useStore.getState().setVideos([video]);
+    renderSidebar({ onMarkShortVideos });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mark short videos for deletion' }));
+
+    expect(onMarkShortVideos).toHaveBeenCalledTimes(1);
   });
 
   test('offers a quick theme toggle in the header', async () => {
