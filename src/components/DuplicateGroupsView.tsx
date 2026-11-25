@@ -51,7 +51,7 @@ import { KEEPER_RULE_LABELS } from '../keybind-defaults';
 import { rebuildDuplicateGroups } from '../duplicateGroupRebuild';
 
 type MetricState = 'best' | 'equal' | 'worse';
-type MetricFlags = Record<string, MetricState>;
+export type MetricFlags = Record<string, MetricState>;
 type DuplicateGroupView = {
   group: DuplicateGroup;
   videos: Video[];
@@ -150,13 +150,13 @@ function thumbSrc(video: Video): string | null {
   return video.osThumbnail ?? null;
 }
 
-function bitrateLabel(video: Video): string {
+export function bitrateLabel(video: Video): string {
   const bitrate = video.videoBitrate ?? video.totalBitrate;
   if (!bitrate) return 'bitrate --';
   return `${Math.round(bitrate / 1000).toLocaleString()} kbps`;
 }
 
-function computeBestFlags(videos: Video[], pictureSizes: DuplicateGroup['pictureSizes'] = {}): Map<string, MetricFlags> {
+export function computeBestFlags(videos: Video[], pictureSizes: DuplicateGroup['pictureSizes'] = {}): Map<string, MetricFlags> {
   const flags = new Map<string, MetricFlags>();
   for (const v of videos) flags.set(v.id, {});
   if (videos.length < 2) return flags;

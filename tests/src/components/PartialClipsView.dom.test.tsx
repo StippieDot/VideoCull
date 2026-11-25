@@ -76,6 +76,24 @@ describe('partial clips list', () => {
       .toBe('Same video');
   });
 
+  test('two copies of the same video show which has the better picture; other pairs mark nothing', () => {
+    const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
+    useStore.setState({
+      videos: [
+        makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600, width: 1920, height: 1080 }),
+        makeVideo(OTHER, { filename: 'concert-small.mp4', durationSecs: 598, width: 640, height: 360 }),
+        makeVideo(CLIP, { filename: 'highlight.mp4', durationSecs: 40 }),
+      ],
+      partialClips: [clip({ bId: OTHER, shorterId: OTHER, segments: whole }), clip()],
+    });
+    const { container } = render(<PartialClipsView />);
+    const [sameVideo, excerpt] = [...container.querySelectorAll('article')];
+    expect(within(sameVideo!).getByText('Same video')).toBeTruthy();
+    expect(within(sameVideo!).getByText('1080p').className).toContain('best');
+    expect(within(sameVideo!).getByText('360p').className).toContain('worse');
+    expect(excerpt!.querySelectorAll('.meta-chip.best, .meta-chip.worse')).toHaveLength(0);
+  });
+
   test('a copy split into parts is the same video, and only matching pictures count toward the shared length', () => {
     const concert = makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600 });
     const recut = makeVideo(OTHER, { filename: 'concert-recut.mp4', durationSecs: 590 });

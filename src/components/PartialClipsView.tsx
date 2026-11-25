@@ -2,11 +2,11 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Play, Trash2 } from 'lucide-react';
 import useStore from '../store';
 import type { DuplicateGroup, PartialClip, PartialClipSegment, PartialClipSortField, SortOrder, Video } from '../types';
-import { formatDuration, formatSize } from '../utils';
+import { formatDuration, formatFps, formatResolutionLabel, formatSize } from '../utils';
 import { openVideoExternally, revealInExplorer } from '../appCommands';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildDuplicateVideoMenu } from './contextMenuBuilders';
-import { parentPath, statusBadgeContent } from './DuplicateGroupsView';
+import { bitrateLabel, computeBestFlags, parentPath, statusBadgeContent, type MetricFlags } from './DuplicateGroupsView';
 import './DuplicateGroupsView.css';
 import './PartialClipsView.css';
 
@@ -116,17 +116,23 @@ export const matchedSeconds = (clip: PartialClip) => shorterSeconds(clip, confir
  * One short line on what the pair shares: never "less complete", never "corrupt". The file names are
  * in the rows below it, and the time bar shows where.
  */
+export type ClipKind = 'sameVideo' | 'excerpt' | 'contains' | 'sameSound';
+
+export function clipKind(clip: PartialClip, shorter: Video, longer: Video): ClipKind {
+  if (clip.relation !== 'partial') return 'sameSound';
+  const shorterSecs = Number(shorter.durationSecs) || 0;
+  if (shorterSecs <= 0 || matchedSeconds(clip) < EXCERPT_COVERAGE * shorterSecs) return 'contains';
+  // Pairs of duplicate groups are not searched, so this is a copy the duplicate search did not group.
+  return shorterSecs >= SAME_LENGTH_SHARE * (Number(longer.durationSecs) || Infinity) ? 'sameVideo' : 'excerpt';
+}
+
 export function describePartialClip(clip: PartialClip, shorter: Video, longer: Video): string {
-  if (clip.relation !== 'partial') {
-    return clip.state === 'differentPicture' ? 'Same sound, different picture' : 'Same sound, picture not checked';
-  }
+  const kind = clipKind(clip, shorter, longer);
+  if (kind === 'sameSound') return clip.state === 'differentPicture' ? 'Same sound, different picture' : 'Same sound, picture not checked';
+  if (kind === 'sameVideo') return 'Same video';
+  if (kind === 'excerpt') return 'Excerpt of the longer video';
   const confirmed = confirmedSegments(clip);
   const matched = shorterSeconds(clip, confirmed);
-  const shorterSecs = Number(shorter.durationSecs) || 0;
-  if (shorterSecs > 0 && matched >= EXCERPT_COVERAGE * shorterSecs) {
-    // Pairs of duplicate groups are not searched, so this is a copy the duplicate search did not group.
-    return shorterSecs >= SAME_LENGTH_SHARE * (Number(longer.durationSecs) || Infinity) ? 'Same video' : 'Excerpt of the longer video';
-  }
   return confirmed.length === 1
     ? `Contains ${formatDuration(matched)} of the longer video, ${span(clip, confirmed[0]!)}`
     : `Contains ${formatDuration(matched)} of the longer video in ${confirmed.length} parts`;
@@ -169,7 +175,15 @@ function TimeBar({ clip, longer }: { clip: PartialClip; longer: Video }) {
 
 type OpenVideoMenu = (event: React.MouseEvent, videoId: string, scopeIds: string[]) => void;
 
-function ClipVideoRow({ video, scopeIds, onContextMenu }: { video: Video; scopeIds: string[]; onContextMenu: OpenVideoMenu }) {
+function ClipVideoRow({ video, flags, scopeIds, onContextMenu }: {
+  video: Video;
+  /** Better / worse marks, only between two copies of the same video. */
+  flags: MetricFlags;
+  scopeIds: string[];
+  onContextMenu: OpenVideoMenu;
+}) {
+  // An unknown value (no resolution read yet) is left out rather than shown as an empty chip.
+  const chip = (key: string, label: string) => label && <span className={`meta-chip ${flags[key] ?? 'equal'}`}>{label}</span>;
   const setVideoStatus = useStore((s) => s.setVideoStatus);
   const enterReviewAndPlay = useStore((s) => s.enterReviewAndPlay);
   const thumbnail = thumbSrc(video);
@@ -193,8 +207,11 @@ function ClipVideoRow({ video, scopeIds, onContextMenu }: { video: Video; scopeI
         </div>
         <span className="duplicate-row-path" title={video.path}>{parentPath(video.path)}</span>
         <span className="duplicate-meta-chips">
-          <span className="meta-chip equal">{formatDuration(video.durationSecs)}</span>
-          <span className="meta-chip equal">{formatSize(video.sizeBytes)}</span>
+          {chip('resolution', formatResolutionLabel(video.width, video.height))}
+          {chip('fps', formatFps(video.fps))}
+          {chip('bitrate', bitrateLabel(video))}
+          {chip('duration', formatDuration(video.durationSecs))}
+          {chip('size', formatSize(video.sizeBytes))}
         </span>
       </div>
       <div className="partial-clip-actions">
@@ -243,6 +260,7 @@ const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoConte
   if (!shorter || !longer) return null;
   const scopeIds = [shorter.id, longer.id];
   const headline = describePartialClip(clip, shorter, longer);
+  const flags = clipKind(clip, shorter, longer) === 'sameVideo' ? computeBestFlags([shorter, longer]) : new Map<string, MetricFlags>();
   const notAMatch = () => {
     // Applies to the copies listed below too, so they do not come back through another copy.
     const pairs = [clip, ...others];
@@ -270,8 +288,8 @@ const ClipCard = memo(function ClipCard({ entry, index, videosById, onVideoConte
         </button>
       </header>
       <TimeBar clip={clip} longer={longer} />
-      <ClipVideoRow video={shorter} scopeIds={scopeIds} onContextMenu={onVideoContextMenu} />
-      <ClipVideoRow video={longer} scopeIds={scopeIds} onContextMenu={onVideoContextMenu} />
+      <ClipVideoRow video={shorter} flags={flags.get(shorter.id) ?? {}} scopeIds={scopeIds} onContextMenu={onVideoContextMenu} />
+      <ClipVideoRow video={longer} flags={flags.get(longer.id) ?? {}} scopeIds={scopeIds} onContextMenu={onVideoContextMenu} />
       {others.length > 0 && (
         <details className="partial-clip-copies">
           <summary>Also found in {others.length} other {others.length === 1 ? 'copy' : 'copies'} of these videos</summary>
