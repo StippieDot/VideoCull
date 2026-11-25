@@ -215,7 +215,7 @@ export interface ToastInput {
 /** What the application menu asks the window to do; electron/app-menu.js sends these. */
 export type MenuAction =
   | 'add-folder' | 'check-updates' | 'clear-cache' | 'clear-filters' | 'close-session' | 'copy-path'
-  | 'delete-all' | 'export-report' | 'find-duplicates' | 'go-to-folder' | 'open-about'
+  | 'delete-all' | 'export-report' | 'find-duplicates' | 'go-to-folder' | 'mark-short-videos' | 'open-about'
   | 'open-command-palette' | 'open-directory' | 'open-documentation' | 'open-settings' | 'play-external'
   | 'regenerate-thumbnails' | 'rescan-directory' | 'reveal-video' | 'show-shortcuts'
   | 'toggle-group-by-folder' | 'toggle-mute' | 'toggle-privacy' | 'toggle-theme' | 'undo' | 'redo' | 'zoom-in' | 'zoom-out'

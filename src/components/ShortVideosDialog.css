@@ -1,0 +1,50 @@
+.short-videos-modal {
+  width: min(480px, 100%);
+}
+
+.short-videos-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.short-videos-field {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.short-videos-field input {
+  width: 84px;
+}
+
+.short-videos-preview {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.short-videos-left {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.short-videos-note {
+  margin: 0;
+}
+
+.short-videos-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* .btn-accent fills its row elsewhere; here it sits beside Cancel. */
+.short-videos-actions .btn-accent {
+  width: auto;
+}

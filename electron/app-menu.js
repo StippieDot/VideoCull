@@ -260,6 +260,7 @@ function actionsMenu(state, actions) {
       { label: 'Redo', accelerator: 'CmdOrCtrl+Y', visible: false, enabled: state.canRedo, click: () => send('redo') },
       { type: 'separator' },
       { label: 'Find Duplicates', enabled: state.canFindDuplicates, click: () => send('find-duplicates') },
+      { label: 'Mark Short Videos for Deletion...', enabled: state.hasSession, click: () => send('mark-short-videos') },
       {
         label: 'Pause Processing',
         type: 'checkbox',
