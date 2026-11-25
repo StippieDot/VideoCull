@@ -6,6 +6,7 @@ import { ALL_SHORTCUTS, describeShortcut, findConflict, type KeybindSettingKey, 
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_KEYBINDS, KEEPER_RULE_LABELS, OPTIONAL_FEATURE_KEYS, SEEK_STEP_PRESETS } from '../keybind-defaults';
 import type { Keybind } from '../keybinds';
 import { isWindows as isWindowsPlatform, modKeyName } from '../utils';
+import videoCullIcon from '../assets/videocull-icon.png';
 import KeybindInput from './KeybindInput';
 import { PRODUCT } from '../product';
 import { SettingRow, SwitchRow } from './SettingRow';
@@ -1542,7 +1543,7 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
             {activeTab === 'about' && (
               <div className="settings-form about-panel">
                 <div className="about-header">
-                  <div className="about-mark">VC</div>
+                  <img className="about-mark" src={videoCullIcon} alt="" draggable={false} />
                   <div>
                     <h3>{PRODUCT.displayName}</h3>
                     <span className="version-display">v{appVersionLabel}</span>
