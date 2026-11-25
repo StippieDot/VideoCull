@@ -25,46 +25,22 @@
 
 .partial-clip-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px 8px;
+  padding: 10px 14px 8px;
 }
 
 .partial-clip-summary {
   min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.partial-clip-summary p {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  overflow-wrap: anywhere;
 }
 
-.partial-clip-stretches {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.partial-clip-stretches > summary {
-  cursor: pointer;
-  width: fit-content;
-}
-
-.partial-clip-stretches ul {
-  display: grid;
-  gap: 2px;
-  margin: 6px 0 0;
-  padding: 0 0 0 16px;
-  font-variant-numeric: tabular-nums;
-}
-
-.partial-clip-evidence {
-  color: var(--text-tertiary);
-  font-size: 12px;
+.partial-clip-header .duplicate-action-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .partial-clip-timeline {
@@ -123,13 +99,6 @@
 .partial-clip-video.status-delete {
   box-shadow: inset 3px 0 0 rgba(255, 87, 107, 0.9);
   background: rgba(255, 87, 107, 0.06);
-}
-
-.partial-clip-role {
-  color: var(--text-tertiary);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .partial-clip-actions {

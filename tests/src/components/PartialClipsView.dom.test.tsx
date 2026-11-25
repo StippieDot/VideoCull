@@ -3,7 +3,7 @@
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import PartialClipsView, { describePartialClip, filterAndSortPartialClips, mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
+import PartialClipsView, { describePartialClip, filterAndSortPartialClips, matchedSeconds, mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
 import useStore from '../../../src/store';
 import type { PartialClip } from '../../../src/types';
 import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
@@ -49,15 +49,15 @@ describe('partial clips list', () => {
     });
     render(<PartialClipsView />);
 
-    expect(screen.getByText('Contains 0:20 of concert.mp4, from 0:30 to 0:50 — sound and picture match')).toBeTruthy();
+    expect(screen.getByText('Contains 0:20 of the longer video, 0:30 to 0:50')).toBeTruthy();
     // The time bar runs from the start to the end of the longer video.
     expect(screen.getAllByText('10:00').length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle('0:30 – 0:50').length).toBeGreaterThan(0);
-    expect(screen.getByText('highlight.mp4 is an excerpt of remix.mp4 — sound and picture match')).toBeTruthy();
-    expect(screen.getByText('1 pair shares the same sound with different pictures')).toBeTruthy();
-    expect(screen.getByText(/Same sound as concert.mp4 from 0:30 to 0:50; pictures differ/)).toBeTruthy();
+    expect(screen.getAllByTitle('0:30 to 0:50').length).toBeGreaterThan(0);
+    expect(screen.getByText('Excerpt of the longer video')).toBeTruthy();
+    expect(screen.getByText('1 pair with the same sound and a different picture')).toBeTruthy();
+    expect(screen.getByText('Same sound, different picture')).toBeTruthy();
 
-    const card = screen.getByText('Contains 0:20 of concert.mp4, from 0:30 to 0:50 — sound and picture match').closest('article')!;
+    const card = screen.getByText('Contains 0:20 of the longer video, 0:30 to 0:50').closest('article')!;
     await userEvent.click(within(card).getByRole('button', { name: 'Not a match' }));
     expect(useStore.getState().partialClips).toHaveLength(2);
     expect(useStore.getState().settings.duplicates.ignoredDuplicatePairs).toContain(`${SOURCE}|${CLIP}`);
@@ -73,24 +73,24 @@ describe('partial clips list', () => {
     const reencode = makeVideo(OTHER, { filename: 'concert-reencode.mp4', durationSecs: 598 });
     const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
     expect(describePartialClip(clip({ bId: OTHER, shorterId: OTHER, coverage: 1, segments: whole }), reencode, concert))
-      .toEqual({ headline: 'concert-reencode.mp4 and concert.mp4 are the same video — sound and picture match', stretches: [] });
+      .toBe('Same video');
   });
 
-  test('a copy matched in several stretches is summed up as one, with the stretches listed', () => {
+  test('a copy split into parts is the same video, and only matching pictures count toward the shared length', () => {
     const concert = makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600 });
     const recut = makeVideo(OTHER, { filename: 'concert-recut.mp4', durationSecs: 590 });
     const segment = (startA: number, startB: number, lengthSecs: number, pictureState: 'confirmed' | 'differentPicture') => (
       { startA, startB, lengthSecs, soundSimilarity: 96, pictureState, pictureSimilarity: 90 }
     );
     const recutClip = clip({ bId: OTHER, shorterId: OTHER, segments: [segment(0, 0, 300, 'confirmed'), segment(310, 300, 290, 'confirmed'), segment(400, 20, 15, 'differentPicture')] });
-    expect(describePartialClip(recutClip, recut, concert)).toEqual({
-      headline: 'concert-recut.mp4 and concert.mp4 are the same video — sound and picture match',
-      stretches: [
-        '5:00 from 0:00 to 5:00 — sound and picture match',
-        '4:50 from 5:10 to 10:00 — sound and picture match',
-        '0:15 from 6:40 to 6:55 — same sound only',
-      ],
-    });
+    expect(describePartialClip(recutClip, recut, concert)).toBe('Same video');
+    expect(matchedSeconds(recutClip)).toBe(590);
+
+    // Many sound-only stretches do not lift a pair above one with more matching picture.
+    const noisy = clip({ segments: [segment(30, 0, 20, 'confirmed'), ...Array.from({ length: 40 }, (_, i) => segment(100 + i * 12, 0, 10, 'differentPicture'))] });
+    const videosById = new Map([concert, recut, makeVideo(CLIP, { durationSecs: 40 })].map((video) => [video.id, video]));
+    const sorted = filterAndSortPartialClips([{ primary: noisy, others: [] }, { primary: recutClip, others: [] }], { pathFilter: '', sortBy: 'sharedLength', sortOrder: 'desc' }, videosById);
+    expect(sorted.map((entry) => entry.primary)).toEqual([recutClip, noisy]);
   });
 
   test('one clip found in several copies of a video is one entry, and Not a match covers them all', async () => {
@@ -102,7 +102,7 @@ describe('partial clips list', () => {
     });
     render(<PartialClipsView />);
     // The keeper's pair leads; the copy is listed under it.
-    expect(screen.getByText('Contains 0:20 of concert.mp4, from 0:30 to 0:50 — sound and picture match')).toBeTruthy();
+    expect(screen.getByText('Contains 0:20 of the longer video, 0:30 to 0:50')).toBeTruthy();
     expect(screen.getByText('Also found in 1 other copy of these videos')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Not a match' })).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: 'Not a match' }));
@@ -132,7 +132,7 @@ describe('partial clips list', () => {
     const segment = { startA: 0, startB: 0, lengthSecs: 32, soundSimilarity: 99, pictureState: 'differentPicture' as const, pictureSimilarity: 48 };
     useStore.setState({ partialClips: [clip({ relation: 'audioOnly', state: 'differentPicture', segments: [segment] })] });
     render(<PartialClipsView />);
-    expect(screen.getByText(/Same sound as concert.mp4 from 0:00 to 0:32; pictures differ/)).toBeTruthy();
+    expect(screen.getByTitle('0:00 to 0:32')).toBeTruthy();
   });
 
   test('a row offers the video menu without group actions, and shows its mark', async () => {
