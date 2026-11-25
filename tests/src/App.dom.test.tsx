@@ -817,7 +817,7 @@ describe('App renderer behavior', () => {
       stats: { total: 1, pending: 0, skipped: 0, keep: 0, delete: 1, totalSize: 100, deleteSize: 100 },
     }, true);
     electron.api.batchDelete.mockResolvedValue([
-      { path: deleteVideo.path, success: false, method: 'trash' },
+      { path: deleteVideo.path, success: false, method: 'trash', reason: 'trash-unavailable' },
     ]);
     electron.api.permanentlyDelete.mockResolvedValue([
       { path: deleteVideo.path, success: true, method: 'permanent' },

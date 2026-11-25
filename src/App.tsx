@@ -21,9 +21,9 @@ import ToastStack from './components/ToastStack';
 import { copyTextToClipboard } from './components/ContextMenu';
 import useAppMenuState from './hooks/useAppMenuState';
 import privacyScreenDashboardCover from './assets/privacy-screen-dashboard-cover.png';
-import type { DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, MenuAction, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
+import type { DeleteResult, DuplicateComparisonMode, FolderFilter, MediaProbeVideoInput, MenuAction, ScanDirectoryResult, ScanSummary, SortField, UpdateInfo, Video } from './types';
 import { describeThumbnailWork, detectVideoCompatibility, formatDeleteConfirmation, formatRecentPath, isFolderInside, normalizeFolder, trashName } from './utils';
-import { deleteWithPermanentReview } from './deletion';
+import { deleteMarkedVideos, summarizeDeleteResults } from './deletion';
 import { completeDevInteractionOnNextPaint, recordDevPerf, recordReactCommit } from './perf-dev';
 import { Volume2, VolumeX } from 'lucide-react';
 import { applyDocumentTheme } from './theme';
@@ -1044,9 +1044,9 @@ export default function App() {
           }));
           if (confirmed) {
             state.setIsDeleting(true);
-            let results: Awaited<ReturnType<typeof deleteWithPermanentReview>>;
+            let results: DeleteResult[];
             try {
-              results = await deleteWithPermanentReview({
+              results = await deleteMarkedVideos({
                 filePaths: toDelete.map((video) => video.path),
                 moveToTrash: window.electronAPI.batchDelete,
                 permanentlyDelete: window.electronAPI.permanentlyDelete,
@@ -1055,40 +1055,8 @@ export default function App() {
             } finally {
               state.setIsDeleting(false);
             }
-            const deletedPaths = results.filter((r) => r.success).map((r) => r.path);
-            state.removeDeletedVideos(deletedPaths);
-            const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;
-            const permanentFailureCount = results.filter((r) => r.method === 'permanent' && !r.success).length;
-            const failedCount = results.filter((r) => !r.success).length;
-            const removedFolderCount = new Set(results.map((r) => r.removedFolder).filter(Boolean)).size;
-            const folderDetail = removedFolderCount > 0
-              ? ` ${removedFolderCount} empty ${removedFolderCount === 1 ? 'folder was' : 'folders were'} cleaned up.`
-              : '';
-            if (permanentSuccessCount > 0 && failedCount > 0) {
-              pushToast({
-                title: 'Delete partly failed',
-                detail: `${deletedPaths.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped ${trashName()}.${folderDetail}`,
-                kind: 'error',
-              });
-            } else if (permanentSuccessCount > 0) {
-              pushToast({
-                title: 'Permanently deleted',
-                detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped ${trashName()}.${folderDetail}`,
-                kind: 'warning',
-              });
-            } else if (permanentFailureCount > 0 || failedCount > 0) {
-              pushToast({
-                title: 'Delete failed',
-                detail: `${failedCount} ${failedCount === 1 ? 'file could' : 'files could'} not be removed.`,
-                kind: 'error',
-              });
-            } else {
-              pushToast({
-                title: `Moved to ${trashName()}`,
-                detail: `${deletedPaths.length} ${deletedPaths.length === 1 ? 'video' : 'videos'} removed from the session.${folderDetail}`,
-                kind: 'success',
-              });
-            }
+            state.removeDeletedVideos(results.filter((r) => r.success).map((r) => r.path));
+            pushToast(summarizeDeleteResults(results));
           }
           break;
         }

@@ -14,8 +14,8 @@ import RangeSlider from './RangeSlider';
 import { formatKeybind } from '../keybinds';
 import { DEFAULT_KEYBINDS } from '../keybind-defaults';
 import { runAppCommand } from '../appCommands';
-import { formatDeleteConfirmation, formatSize, formatRecentPath, modKeyName, trashName } from '../utils';
-import { deleteWithPermanentReview } from '../deletion';
+import { formatDeleteConfirmation, formatSize, formatRecentPath, modKeyName } from '../utils';
+import { deleteMarkedVideos, summarizeDeleteResults } from '../deletion';
 import AppMenu, { type AppMenuItem } from './AppMenu';
 import ContextMenu from './ContextMenu';
 import { PRODUCT } from '../product';
@@ -937,46 +937,14 @@ export default function Sidebar({
 
     setIsDeleting(true);
     try {
-      const results = await deleteWithPermanentReview({
+      const results = await deleteMarkedVideos({
         filePaths: toDelete.map((video) => video.path),
         moveToTrash: window.electronAPI.batchDelete,
         permanentlyDelete: window.electronAPI.permanentlyDelete,
         confirmPermanentDelete: onRequestPermanentDelete,
       });
-      const succeeded = results.filter((r) => r.success).map((r) => r.path);
-      useStore.getState().removeDeletedVideos(succeeded);
-      const permanentSuccessCount = results.filter((r) => r.method === 'permanent' && r.success).length;
-      const permanentFailureCount = results.filter((r) => r.method === 'permanent' && !r.success).length;
-      const failedCount = results.filter((r) => !r.success).length;
-      const removedFolderCount = new Set(results.map((r) => r.removedFolder).filter(Boolean)).size;
-      const folderDetail = removedFolderCount > 0
-        ? ` ${removedFolderCount} empty ${removedFolderCount === 1 ? 'folder was' : 'folders were'} cleaned up.`
-        : '';
-      if (permanentSuccessCount > 0 && failedCount > 0) {
-        onNotify({
-          title: 'Delete partly failed',
-          detail: `${succeeded.length} removed, ${failedCount} failed. ${permanentSuccessCount} skipped ${trashName()}.${folderDetail}`,
-          kind: 'error',
-        });
-      } else if (permanentSuccessCount > 0) {
-        onNotify({
-          title: 'Permanently deleted',
-          detail: `${permanentSuccessCount} ${permanentSuccessCount === 1 ? 'file' : 'files'} skipped ${trashName()}.${folderDetail}`,
-          kind: 'warning',
-        });
-      } else if (permanentFailureCount > 0 || failedCount > 0) {
-        onNotify({
-          title: 'Delete failed',
-          detail: `${failedCount} ${failedCount === 1 ? 'file could' : 'files could'} not be removed.`,
-          kind: 'error',
-        });
-      } else {
-        onNotify({
-          title: `Moved to ${trashName()}`,
-          detail: `${succeeded.length} ${succeeded.length === 1 ? 'video' : 'videos'} removed, ${formatSize(stats.deleteSize)} freed.${folderDetail}`,
-          kind: 'success',
-        });
-      }
+      useStore.getState().removeDeletedVideos(results.filter((r) => r.success).map((r) => r.path));
+      onNotify(summarizeDeleteResults(results, { freedBytes: stats.deleteSize }));
     } catch (err) {
       console.error('Delete failed:', err);
       onNotify({

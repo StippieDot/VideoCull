@@ -3,8 +3,49 @@ const path = require('node:path');
 
 /**
  * @typedef {{ id: string, filePath: string, folderPath: string }} CacheTarget
- * @typedef {{ path: string, success: boolean, error?: string, method?: string, removedFolder?: string }} DeleteResult
+ * @typedef {'changed'|'unverifiable'|'out-of-scope'|'in-use'|'permission'|'not-found'|'trash-unavailable'|'unknown'} DeleteFailureReason
+ * @typedef {{ path: string, success: boolean, error?: string, reason?: DeleteFailureReason, code?: string, method?: 'trash'|'permanent', removedFolder?: string }} DeleteResult
  */
+
+// How long a delete waits for thumbnail or metadata work already running on a file.
+const IN_USE_WAIT_MS = 10_000;
+
+const IDENTITY_FAILURE_MESSAGES = {
+  changed: 'File changed since it was scanned. Scan again before deleting.',
+  'not-found': 'File no longer exists.',
+  unverifiable: 'File could not be verified before deleting.',
+};
+
+/**
+ * Maps a failed trash or unlink to a reason. Only 'trash-unavailable' may lead to the permanent
+ * delete prompt, so anything unrecognised is 'unknown'.
+ *
+ * Windows `shell.trashItem` rejects with a message only, no code. Recorded on Windows 11:
+ *   locked file          -> "Operation was aborted"
+ *   delete denied (ACL)  -> "Failed to perform delete operation"
+ *   missing file         -> "Failed to parse path"
+ * A denied delete and a drive without a Recycle Bin cannot be told apart from the message, so
+ * "Failed to perform delete operation" counts as trash-unavailable; the permanent delete that
+ * follows reports 'permission' from the unlink error code if the cause was permissions.
+ *
+ * @param {any} err
+ * @param {'trash'|'permanent'} method
+ * @returns {{ reason: DeleteFailureReason, code?: string }}
+ */
+function classifyDeleteError(err, method) {
+  const code = typeof err?.code === 'string' ? err.code : undefined;
+  const message = String(err?.message ?? '');
+  const withCode = (/** @type {DeleteFailureReason} */ reason) => (code ? { reason, code } : { reason });
+  if (code === 'ENOENT') return withCode('not-found');
+  if (code === 'EACCES' || code === 'EPERM') return withCode('permission');
+  if (code === 'EBUSY' || code === 'ETXTBSY') return withCode('in-use');
+  if (method === 'trash') {
+    if (/operation was aborted/i.test(message)) return withCode('in-use');
+    if (/failed to parse path/i.test(message)) return withCode('not-found');
+    if (/failed to perform delete operation|trash/i.test(message)) return withCode('trash-unavailable');
+  }
+  return withCode('unknown');
+}
 
 /**
  * The delete workflow: the Recycle Bin first, a permanent delete only when the renderer asks for
@@ -26,17 +67,19 @@ const path = require('node:path');
  * @param {Function} deps.removeEmptyDeletedVideoFolders
  * @param {Function} deps.isPathWithinAnyDir
  * @param {Function} deps.filterLoadedDeletionPaths
- * @param {Function} deps.matchesFileIdentityAtPath
+ * @param {(options: { filePath: string, expectedIdentity: any, statPath: Function }) => Promise<{ ok: boolean, reason?: 'changed'|'not-found'|'unverifiable', code?: string, message?: string }>} deps.checkFileIdentityAtPath
  * @param {(filePath: string) => Promise<boolean>} deps.isValidLoadedPath
  * @param {(ids: string[]) => void} deps.forgetDuplicateVideos
+ * @param {{ skipFiles: (paths: string[]) => void, waitUntilIdle: (paths: string[], timeoutMs: number) => Promise<string[]> }} deps.processingRuns
  * @param {{ warn: (...args: any[]) => void }} deps.log
+ * @param {number} [deps.inUseWaitMs]
  */
 function createFileOpsDelete(deps) {
   const {
     libraryRegistry, fs, shell, cacheService, getCacheOptions, getCachePaths, mapWithConcurrency,
     cacheIoConcurrency, shouldRemoveEmptyFoldersAfterDelete, removeEmptyDeletedVideoFolders,
-    isPathWithinAnyDir, filterLoadedDeletionPaths, matchesFileIdentityAtPath, isValidLoadedPath,
-    forgetDuplicateVideos, log,
+    isPathWithinAnyDir, filterLoadedDeletionPaths, checkFileIdentityAtPath, isValidLoadedPath,
+    forgetDuplicateVideos, processingRuns, log, inUseWaitMs = IN_USE_WAIT_MS,
   } = deps;
 
   /** @param {string[]} filePaths @returns {Promise<CacheTarget[]>} */
@@ -118,89 +161,71 @@ function createFileOpsDelete(deps) {
     });
   }
 
-  /** @param {string[]} filePaths @returns {Promise<DeleteResult[]>} */
-  async function batchDelete(filePaths) {
-    /** @type {DeleteResult[]} */
-    const results = [];
-
-    const validPaths = await filterLoadedDeletionPaths({
-      filePaths,
-      isValidLoadedPath,
-      onReject: (/** @type {string} */ filePath) => {
-        log.warn(`[batch-delete] Rejected path outside loaded directory: ${filePath}`);
-        results.push({ path: filePath, success: false, error: 'Path is outside the loaded directory scope.' });
-      },
-    });
-
-    if (validPaths.length === 0) return results;
-    const cacheTargets = await collectDeletionCacheTargets(validPaths);
-
-    const trashResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
-      // Trashing a file link only trashes the link; the video itself must go to the Recycle Bin.
-      const realPath = libraryRegistry.scannedRealPathFor(filePath) ?? filePath;
-      const identityMatches = await matchesFileIdentityAtPath({
-        filePath: realPath,
-        expectedIdentity: libraryRegistry.identityFor(filePath),
-        statPath: fs.stat,
-      });
-      if (!identityMatches) {
-        return { path: filePath, success: false, error: 'File changed since it was scanned. Scan again before deleting.', method: 'trash' };
-      }
-      try {
-        await shell.trashItem(realPath);
-        return { path: filePath, success: true, method: 'trash' };
-      } catch (err) {
-        return { path: filePath, success: false, error: /** @type {Error} */ (err).message, method: 'trash' };
-      }
-    });
-    results.push(...trashResults);
-
-    return finalizeDeletedFiles(results, cacheTargets);
-  }
-
-  /** @param {string[]} filePaths @returns {Promise<DeleteResult[]>} */
-  async function permanentlyDelete(filePaths) {
+  /**
+   * The shared delete flow: scope check, stand processing down, identity check, then `remove`.
+   * A retry is just another call, so scope and identity are re-checked every time.
+   * @param {string[]} filePaths
+   * @param {'trash'|'permanent'} method
+   * @param {(realPath: string) => Promise<void>} remove
+   * @returns {Promise<DeleteResult[]>}
+   */
+  async function deleteFiles(filePaths, method, remove) {
     /** @type {DeleteResult[]} */
     const results = [];
     const validPaths = await filterLoadedDeletionPaths({
       filePaths,
       isValidLoadedPath,
       onReject: (/** @type {string} */ filePath) => {
-        log.warn(`[permanently-delete] Rejected path outside loaded directory: ${filePath}`);
-        results.push({
-          path: filePath,
-          success: false,
-          error: 'Path is outside the loaded directory scope.',
-          method: 'permanent',
-        });
+        log.warn(`[delete:${method}] Rejected path outside loaded directory: ${filePath}`);
+        results.push({ path: filePath, success: false, error: 'Path is outside the loaded directory scope.', reason: 'out-of-scope', method });
       },
     });
     if (validPaths.length === 0) return results;
-    const cacheTargets = await collectDeletionCacheTargets(validPaths);
-    const permanentResults = await mapWithConcurrency(validPaths, 5, async (filePath) => {
-      // Unlinking a file link only removes the link; the video itself is what was reviewed.
+
+    // Queued thumbnail and metadata work for these files is dropped; work already running gets a
+    // moment to finish. Whatever is still busy is reported, not killed, so it can be retried.
+    processingRuns.skipFiles(validPaths);
+    const busy = new Set(await processingRuns.waitUntilIdle(validPaths, inUseWaitMs));
+    for (const filePath of busy) {
+      results.push({ path: filePath, success: false, error: 'File is still being processed.', reason: 'in-use', method });
+    }
+    const ready = validPaths.filter((/** @type {string} */ filePath) => !busy.has(filePath));
+    const cacheTargets = await collectDeletionCacheTargets(ready);
+
+    const outcomes = await mapWithConcurrency(ready, 5, async (/** @type {string} */ filePath) => {
+      // A file link only removes the link; the video that was reviewed is the real file.
       const realPath = libraryRegistry.scannedRealPathFor(filePath) ?? filePath;
-      const identityMatches = await matchesFileIdentityAtPath({
+      const identity = await checkFileIdentityAtPath({
         filePath: realPath,
         expectedIdentity: libraryRegistry.identityFor(filePath),
         statPath: fs.stat,
       });
-      if (!identityMatches) {
-        return { path: filePath, success: false, error: 'File changed since it was scanned. Scan again before deleting.', method: 'permanent' };
+      if (!identity.ok) {
+        const reason = identity.reason ?? 'unverifiable';
+        const detail = reason === 'unverifiable' && identity.message ? ` (${identity.message})` : '';
+        return {
+          path: filePath, success: false, error: `${IDENTITY_FAILURE_MESSAGES[reason]}${detail}`, reason, method,
+          ...(identity.code ? { code: identity.code } : {}),
+        };
       }
       try {
-        await fs.unlink(realPath);
-        return { path: filePath, success: true, method: 'permanent' };
+        await remove(realPath);
+        return { path: filePath, success: true, method };
       } catch (err) {
-        return { path: filePath, success: false, error: /** @type {Error} */ (err).message, method: 'permanent' };
+        return { path: filePath, success: false, error: /** @type {Error} */ (err).message, method, ...classifyDeleteError(err, method) };
       }
     });
-
-    results.push(...permanentResults);
+    results.push(...outcomes);
     return finalizeDeletedFiles(results, cacheTargets);
   }
+
+  /** @param {string[]} filePaths */
+  const batchDelete = (filePaths) => deleteFiles(filePaths, 'trash', (realPath) => shell.trashItem(realPath));
+
+  /** @param {string[]} filePaths */
+  const permanentlyDelete = (filePaths) => deleteFiles(filePaths, 'permanent', (realPath) => fs.unlink(realPath));
 
   return { batchDelete, permanentlyDelete };
 }
 
-module.exports = { createFileOpsDelete };
+module.exports = { createFileOpsDelete, classifyDeleteError };

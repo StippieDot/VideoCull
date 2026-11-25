@@ -47,13 +47,20 @@ function matchesFileIdentity(expectedIdentity, stats) {
   return true;
 }
 
-async function matchesFileIdentityAtPath({ filePath, expectedIdentity, statPath }) {
-  if (!filePath || !expectedIdentity || typeof statPath !== 'function') return false;
+// Why a file cannot be confirmed as the scanned one: 'changed' (it differs), 'not-found', or
+// 'unverifiable' (the stat itself failed; `code`/`message` keep the cause). Deletion needs ok:true.
+async function checkFileIdentityAtPath({ filePath, expectedIdentity, statPath }) {
+  if (!filePath || !expectedIdentity || typeof statPath !== 'function') return { ok: false, reason: 'unverifiable' };
   try {
-    return matchesFileIdentity(expectedIdentity, await statPath(filePath));
-  } catch {
-    return false;
+    return matchesFileIdentity(expectedIdentity, await statPath(filePath)) ? { ok: true } : { ok: false, reason: 'changed' };
+  } catch (err) {
+    const code = err?.code;
+    return { ok: false, reason: code === 'ENOENT' ? 'not-found' : 'unverifiable', code, message: err?.message };
   }
+}
+
+async function matchesFileIdentityAtPath(options) {
+  return (await checkFileIdentityAtPath(options)).ok;
 }
 
 function hasAnyCompatFormat(containerFormat, tokens) {
@@ -586,6 +593,7 @@ module.exports = {
   isSqliteCorruptionError,
   listExistingMigrationTargets,
   listMissingDescendantCacheFolders,
+  checkFileIdentityAtPath,
   matchesFileIdentityAtPath,
   mergeScannedVideoWithCache,
   normalizeReportRoots,

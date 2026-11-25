@@ -80,7 +80,7 @@ const {
   isServableVideoPath,
   isSqliteCorruptionError,
   listMissingDescendantCacheFolders,
-  matchesFileIdentityAtPath,
+  checkFileIdentityAtPath,
   mergeScannedVideoWithCache,
   normalizeReportRoots,
   normalizeReviewStateChanges,
@@ -2806,9 +2806,10 @@ const fileOpsDelete = createFileOpsDelete({
   removeEmptyDeletedVideoFolders,
   isPathWithinAnyDir,
   filterLoadedDeletionPaths,
-  matchesFileIdentityAtPath,
+  checkFileIdentityAtPath,
   isValidLoadedPath,
   forgetDuplicateVideos,
+  processingRuns,
   log,
 });
 

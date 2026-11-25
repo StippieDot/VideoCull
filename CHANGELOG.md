@@ -5,6 +5,7 @@ All notable changes to VideoCull will be documented here.
 ## [Unreleased]
 
 ### Changed
+- A failed delete now says why: a file that is in use, protected, already gone, changed since the scan or outside the session. Only a missing Recycle Bin or Trash offers the permanent delete, and a file in use offers Retry for just those files. Thumbnail and metadata work on files being deleted is stopped first, and Review is left so the player lets go of the file.
 - The Linux AppImage no longer needs FUSE 2 to be installed.
 
 ## [2.6.0] - 2026-11-25
