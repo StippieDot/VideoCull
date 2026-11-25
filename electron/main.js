@@ -7,11 +7,15 @@ const { performance: nodePerformance } = require('perf_hooks');
 const { scanDirectory } = require('./scanner');
 const { pathKey } = require('./path-key');
 const { createLibraryRegistry } = require('./library-registry');
-const { processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit } = require('./processor');
+const {
+  processVideos, processMetadata, cancelProcessing, cancelThumbnails, cancelMetadata, getConcurrentLimit,
+  skipThumbnailFiles, skipMetadataFiles, isThumbnailFileActive, isMetadataFileActive,
+} = require('./processor');
 const cache = require('./cache');
 const { migrateCacheMoves } = require('./cache-migration');
 const { createCacheService } = require('./cache-service');
-const { createGracefulShutdown, createProducerTracker } = require('./graceful-shutdown');
+const { createGracefulShutdown } = require('./graceful-shutdown');
+const { createProcessingRuns } = require('./processing-runs');
 const {
   clearDuplicateSessionCache,
   createDuplicateRun,
@@ -109,24 +113,15 @@ let mainWindow;
 let currentScanDir = null;
 let defaultCentralCacheRoot = null; // set after app ready
 let activeCacheRoots = new Set();
-let isQuitting = false;
 const activeBatchIntervals = new Set();
-let scanGeneration = 0;
 let updateReadyToInstall = false;
 let downloadedUpdateVersion = null;
 let updateInstallOnQuitScheduled = false;
 let updateInstallInProgress = false;
 let pendingUpdateInstallOptions = null;
-let activeDuplicateRun = null;
-
-// Only cancels. A user's pause is lifted by cancelProcessing(), which the callers that throw the
-// whole session away run as well; a targeted cancel must not undo it.
-function cancelActiveDuplicateRun() {
-  if (!activeDuplicateRun) return;
-  activeDuplicateRun.cancel();
-  activeDuplicateRun = null;
-}
-const { track: trackCacheProducer, drain: drainCacheProducers } = createProducerTracker();
+// The one owner of running pipelines, the scan generation and the shutdown drain. A user's pause is
+// lifted when the whole session is thrown away, never by a targeted cancel.
+const processingRuns = createProcessingRuns({ liftPause: () => processingPause.resume() });
 let lastEventLoopUtilization = typeof nodePerformance.eventLoopUtilization === 'function'
   ? nodePerformance.eventLoopUtilization()
   : null;
@@ -255,7 +250,7 @@ async function collectIdleDiagnostics() {
     knownVideoCount: libraryRegistry.knownPathCount(),
     activeCacheRootCount: activeCacheRoots.size,
     activeBatchIntervalCount: activeBatchIntervals.size,
-    activeDuplicateRun: Boolean(activeDuplicateRun),
+    activeDuplicateRun: processingRuns.isRunning('duplicate'),
     windowVisible: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
     windowMinimized: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()),
     rendererProcessId,
@@ -643,17 +638,11 @@ app.on('window-all-closed', () => app.quit());
 
 const gracefulShutdown = createGracefulShutdown({
   prepare: () => {
-    isQuitting = true;
-    scanGeneration += 1;
-    cancelProcessing();
-    if (activeDuplicateRun) {
-      activeDuplicateRun.cancel();
-      activeDuplicateRun = null;
-    }
+    processingRuns.beginShutdown();
     for (const interval of activeBatchIntervals) clearInterval(interval);
     activeBatchIntervals.clear();
   },
-  drain: drainCacheProducers,
+  drain: processingRuns.drain,
   closeCache: () => cacheService.shutdown(),
   quit: () => app.quit(),
   installUpdate: ({ isSilent, isForceRunAfter }) => {
@@ -1516,7 +1505,7 @@ async function isValidLoadedPath(filePath) {
 }
 
 function assertScanCurrent(token) {
-  if (token !== scanGeneration) {
+  if (!processingRuns.isScanCurrent(token)) {
     throw new ScanSupersededError();
   }
 }
@@ -1804,9 +1793,7 @@ ipcMain.handle('validate-dropped-path', async (_event, droppedPath) => {
 });
 
 ipcMain.handle('reset-loaded-directories', async () => {
-  scanGeneration += 1;
-  cancelProcessing();
-  cancelActiveDuplicateRun();
+  processingRuns.invalidateSession();
   const cacheOptions = await getCacheOptions();
   const cacheFolders = await getKnownCacheFolders(Array.from(libraryRegistry.loadedRoots()));
   for (const folderPath of cacheFolders) cacheService.blockFolder(folderPath, cacheOptions);
@@ -1829,9 +1816,7 @@ ipcMain.handle('unload-directory', async (_event, dirPath) => {
   // Through links, another loaded folder can reach a video this folder listed first; only a rescan of
   // the remaining folders lists it again, so the renderer falls back to that.
   if (libraryRegistry.hasFollowedLinks()) return false;
-  cancelThumbnails();
-  cancelMetadata();
-  cancelActiveDuplicateRun();
+  processingRuns.cancelKinds('thumbnails', 'metadata', 'duplicate');
   const cacheOptions = await getCacheOptions();
   // Late writes for the removed folder are refused; scanning it again allows its cache once more.
   for (const folderPath of await getKnownCacheFolders([dirPath])) cacheService.blockFolder(folderPath, cacheOptions);
@@ -1843,7 +1828,7 @@ ipcMain.handle('unload-directory', async (_event, dirPath) => {
 
 // 2. Scan directory for video files
 ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerManager.trackWork(async () => {
-  const scanToken = ++scanGeneration;
+  const scanToken = processingRuns.beginScan();
   const scanCacheRoots = new Set();
   log.info(`[scan-directory] called for: ${dirPath}`);
   // Security: Validate dirPath
@@ -1952,7 +1937,7 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
 
   stageStartedAt = performance.now();
   const scanResult = await scanDirectory(dirPath, includeSubfolders, (progress) => {
-    if (scanToken !== scanGeneration) return;
+    if (!processingRuns.isScanCurrent(scanToken)) return;
     perfMetrics.recordRunCounter(perfRun, 'scanProgressEventCount');
     perfMetrics.recordRunCounter(perfRun, 'scanProgressPayloadBytes', measurePayloadBytes(progress));
     sendToRenderer('scan-progress', progress);
@@ -2045,13 +2030,13 @@ ipcMain.handle('scan-directory', (_event, dirPath, includeSubfolders) => powerMa
 }));
 
 // 3. Probe metadata for videos that are missing or stale.
-ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => trackCacheProducer(() => powerManager.trackWork(async () => {
-  if (isQuitting) return false;
+ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => processingRuns.trackWork(() => powerManager.trackWork(async () => {
+  if (processingRuns.isShuttingDown()) return false;
   if (!Array.isArray(videos)) {
     log.warn('[process-metadata] videos must be an array, rejecting');
     return false;
   }
-  cancelMetadata();
+  processingRuns.cancelKinds('metadata');
 
   if (!libraryRegistry.isLoadedRoot(dirPath)) {
     log.warn('[process-metadata] dirPath is not loaded, rejecting');
@@ -2205,6 +2190,12 @@ ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => tr
   let failed = 0;
   const failureExamples = [];
 
+  const pipelineRun = processingRuns.register({
+    kind: 'metadata',
+    cancel: cancelMetadata,
+    skipFiles: skipMetadataFiles,
+    isFileActive: isMetadataFileActive,
+  });
   try {
     await processMetadata(videosToProcess, config, (progress) => {
       lastProgress = progress;
@@ -2263,8 +2254,9 @@ ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => tr
   } finally {
     clearInterval(batchInterval);
     activeBatchIntervals.delete(batchInterval);
+    pipelineRun.finish();
     await flushAllMetadataWrites();
-    if (!isQuitting) flushBatch();
+    if (!processingRuns.isShuttingDown()) flushBatch();
   }
   log.info('[process-metadata] complete', {
     queued: videosToProcess.length,
@@ -2277,14 +2269,14 @@ ipcMain.handle('process-metadata', (_event, videos, dirPath, options = {}) => tr
 })));
 
 // 4. Generate thumbnails for videos that don't have them
-ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) => trackCacheProducer(() => powerManager.trackWork(async () => {
-  if (isQuitting) return false;
+ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) => processingRuns.trackWork(() => powerManager.trackWork(async () => {
+  if (processingRuns.isShuttingDown()) return false;
   if (!Array.isArray(videos)) {
     log.warn('[generate-thumbnails] videos must be an array, rejecting');
     return false;
   }
   // Cancel any in-progress generation before starting a new one
-  cancelThumbnails();
+  processingRuns.cancelKinds('thumbnails');
 
   // Security: validate that dirPath is one of the loaded scan directories
   if (!libraryRegistry.isLoadedRoot(dirPath)) {
@@ -2435,6 +2427,12 @@ ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) =>
   const batchInterval = setInterval(flushBatch, 250);
   activeBatchIntervals.add(batchInterval);
 
+  const pipelineRun = processingRuns.register({
+    kind: 'thumbnails',
+    cancel: cancelThumbnails,
+    skipFiles: skipThumbnailFiles,
+    isFileActive: isThumbnailFileActive,
+  });
   try {
     await processVideos(needThumbs, (video) => thumbRootByFolder.get(getVideoFolderPath(video)), config, (progress) => {
       lastProgress = progress;
@@ -2484,8 +2482,9 @@ ipcMain.handle('generate-thumbnails', (_event, videos, dirPath, options = {}) =>
   } finally {
     clearInterval(batchInterval);
     activeBatchIntervals.delete(batchInterval);
+    pipelineRun.finish();
     await flushAllThumbnailWrites();
-    if (!isQuitting) flushBatch();
+    if (!processingRuns.isShuttingDown()) flushBatch();
   }
 
   if (thumbnailPersistenceFailed) {
@@ -2519,10 +2518,7 @@ async function comparableVideos(videos) {
 }
 
 ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager.trackWork(async () => {
-  if (activeDuplicateRun) {
-    activeDuplicateRun.cancel();
-    activeDuplicateRun = null;
-  }
+  processingRuns.cancelKinds('duplicate');
   if (!Array.isArray(videos) || libraryRegistry.rootCount() === 0) {
     return { status: 'error', error: 'No loaded videos to compare.' };
   }
@@ -2549,7 +2545,7 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
     maxConcurrency: duplicateConcurrency,
   });
   const run = createDuplicateRun();
-  activeDuplicateRun = run;
+  const runHandle = processingRuns.register({ kind: 'duplicate', cancel: () => run.cancel() });
   try {
     const result = await findDuplicates({
       videos: safeVideos,
@@ -2563,7 +2559,7 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
       // "Check remaining near misses": no limit on how many videos get a burst this run.
       checkAllNearMisses: options?.checkAllNearMisses === true,
     });
-    if (activeDuplicateRun === run) activeDuplicateRun = null;
+    runHandle.finish();
     sendToRenderer('duplicate-progress', { stage: 'Done', current: result.stats.duplicateVideoCount, total: result.stats.duplicateVideoCount });
     perfMetrics.finishRun(perfRun, {
       status: 'ok',
@@ -2572,7 +2568,7 @@ ipcMain.handle('find-duplicates', (_event, videos, options = {}) => powerManager
     });
     return { status: 'ok', ...result };
   } catch (err) {
-    if (activeDuplicateRun === run) activeDuplicateRun = null;
+    runHandle.finish();
     if (err instanceof DuplicateCancelledError || run.cancelled) {
       sendToRenderer('duplicate-progress', { stage: 'Cancelled', current: 0, total: 0 });
       perfMetrics.finishRun(perfRun, { status: 'cancelled' });
@@ -2593,10 +2589,7 @@ const MAX_SKIPPED_PAIRS = 1_000_000;
 
 // Shares the duplicate run's slot, progress channel and cancel action: starting one stops the other.
 ipcMain.handle('find-partial-clips', (_event, videos, options = {}) => powerManager.trackWork(async () => {
-  if (activeDuplicateRun) {
-    activeDuplicateRun.cancel();
-    activeDuplicateRun = null;
-  }
+  processingRuns.cancelKinds('duplicate');
   if (!Array.isArray(videos) || libraryRegistry.rootCount() === 0) {
     return { status: 'error', error: 'No loaded videos to compare.' };
   }
@@ -2614,7 +2607,7 @@ ipcMain.handle('find-partial-clips', (_event, videos, options = {}) => powerMana
   for (const key of requestedSkips) if (typeof key === 'string' && PAIR_KEY_PATTERN.test(key)) skipPairKeys.add(key);
 
   const run = createDuplicateRun();
-  activeDuplicateRun = run;
+  const runHandle = processingRuns.register({ kind: 'duplicate', cancel: () => run.cancel() });
   try {
     const result = await findPartialClips({
       videos: safeVideos,
@@ -2628,12 +2621,12 @@ ipcMain.handle('find-partial-clips', (_event, videos, options = {}) => powerMana
       run,
       sendProgress: (payload) => sendToRenderer('duplicate-progress', payload),
     });
-    if (activeDuplicateRun === run) activeDuplicateRun = null;
+    runHandle.finish();
     sendToRenderer('duplicate-progress', { stage: 'Done', current: result.clips.length, total: result.clips.length });
     log.info('[find-partial-clips] Done', result.stats);
     return { status: 'ok', settingsKey: getDuplicateResultsSettingsKey(settings), ...result };
   } catch (err) {
-    if (activeDuplicateRun === run) activeDuplicateRun = null;
+    runHandle.finish();
     if (err instanceof DuplicateCancelledError || run.cancelled) {
       sendToRenderer('duplicate-progress', { stage: 'Cancelled', current: 0, total: 0 });
       return { status: 'cancelled' };
@@ -2645,9 +2638,7 @@ ipcMain.handle('find-partial-clips', (_event, videos, options = {}) => powerMana
 }));
 
 ipcMain.handle('cancel-duplicate-detection', async () => {
-  if (!activeDuplicateRun) return false;
-  activeDuplicateRun.cancel();
-  activeDuplicateRun = null;
+  if (!processingRuns.cancelKinds('duplicate')) return false;
   sendToRenderer('duplicate-progress', { stage: 'Cancelled', current: 0, total: 0 });
   return true;
 });
@@ -2706,8 +2697,7 @@ ipcMain.handle('save-cache', async (event, dirPath, videos) => {
 });
 
 ipcMain.handle('save-review-state', (_event, dirPath, updates) => {
-  if (isQuitting) return false;
-  return trackCacheProducer(async () => {
+  return processingRuns.trackProducer(async () => {
     if (!dirPath || typeof dirPath !== 'string') return false;
     try {
       const safeUpdates = await validateCacheSavePayload(dirPath, updates);
@@ -2733,8 +2723,7 @@ ipcMain.handle('save-review-state', (_event, dirPath, updates) => {
 // Part of the scan pipeline (between scanning and metadata), so it counts as processing: a chosen
 // sleep or shutdown must wait for it, and quitting drains it before the cache closes.
 ipcMain.handle('save-cache-atomic', (_event, dirPath, videos) => {
-  if (isQuitting) return false;
-  return trackCacheProducer(() => powerManager.trackWork(async () => {
+  return processingRuns.trackProducer(() => powerManager.trackWork(async () => {
     if (!dirPath || typeof dirPath !== 'string') return false;
     try {
       const safeVideos = await validateCacheSavePayload(dirPath, videos);
@@ -2828,9 +2817,7 @@ ipcMain.handle('clear-cache', async (event, dirPath) => {
     return false;
   }
 
-  cancelProcessing();
-  cancelActiveDuplicateRun();
-  scanGeneration += 1;
+  processingRuns.invalidateSession();
   clearDuplicateSessionCache();
   await getDuplicateResultsStore().removeFolders([...libraryRegistry.loadedRoots()]).catch((error) => log.warn('[clear-cache] Could not clear duplicate results:', error?.message || error));
   await getPictureCheckStore().clear().catch((error) => log.warn('[clear-cache] Could not clear picture checks:', error?.message || error));
@@ -3089,9 +3076,7 @@ ipcMain.handle('migrate-cache-settings', async (_event, _oldSettings, newSetting
     return { status: 'cancelled', migrated: 0, errors: [] };
   }
 
-  scanGeneration += 1;
-  cancelProcessing();
-  cancelActiveDuplicateRun();
+  processingRuns.invalidateSession();
   clearDuplicateSessionCache();
   for (const folderPath of knownFolders) cacheService.blockFolder(folderPath, fromOptions);
   let transitionStarted = false;

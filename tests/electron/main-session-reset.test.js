@@ -14,18 +14,16 @@ function handlerBody(channel) {
 }
 
 describe('handlers that throw away the loaded session also stop duplicate detection', () => {
+  // processing-runs.test.js proves invalidateSession() cancels every kind of run.
   for (const channel of ['reset-loaded-directories', 'clear-cache', 'migrate-cache-settings']) {
     test(channel, () => {
-      assert.match(handlerBody(channel), /\bcancelActiveDuplicateRun\(\)/);
+      assert.match(handlerBody(channel), /\bprocessingRuns\.invalidateSession\(\)/);
     });
   }
 });
 
-test('stopping duplicate detection cancels the run and forgets it', () => {
-  const body = mainSource.match(/function cancelActiveDuplicateRun\(\) \{\n([\s\S]*?)\n\}/)?.[1] ?? '';
-  assert.match(body, /activeDuplicateRun\.cancel\(\)/);
-  assert.match(body, /activeDuplicateRun = null/);
-  assert.doesNotMatch(body, /resume/);
+test('cancelling duplicate detection goes through the run registry', () => {
+  assert.match(handlerBody('cancel-duplicate-detection'), /processingRuns\.cancelKinds\('duplicate'\)/);
 });
 
 describe('linked folders and files', () => {
