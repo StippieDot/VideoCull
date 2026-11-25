@@ -764,16 +764,10 @@ input[type="range"] {
 }
 
 .about-mark {
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--text-on-accent);
-  font-size: 15px;
-  font-weight: 800;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 
 .about-header h3 {
