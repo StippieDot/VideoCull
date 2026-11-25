@@ -119,12 +119,8 @@
   background: #0b0a10;
 }
 
-.partial-clip-video.status-keep {
-  box-shadow: inset 3px 0 0 rgba(71, 176, 120, 0.9);
-}
-
+/* The row's "Marked keep / delete" label carries the mark; a faint tint is enough for delete. */
 .partial-clip-video.status-delete {
-  box-shadow: inset 3px 0 0 rgba(255, 87, 107, 0.9);
   background: rgba(255, 87, 107, 0.06);
 }
 
