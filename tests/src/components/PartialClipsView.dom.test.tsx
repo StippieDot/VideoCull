@@ -2,11 +2,25 @@
 
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ComponentType } from 'react';
 import { vi } from 'vitest';
-import PartialClipsView, { filterAndSortPartialClips, matchBadge, matchedSeconds, mergeClipsByDuplicateGroup } from '../../../src/components/PartialClipsView';
+import PartialClipsView, { cardFlags, filterAndSortPartialClips, placeOnMaster, laneSpans, matchBadge, matchedSeconds, mergeClipsByDuplicateGroup, type Lane } from '../../../src/components/PartialClipsView';
 import useStore from '../../../src/store';
 import type { PartialClip } from '../../../src/types';
 import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
+
+// Every row is drawn: jsdom has no layout for the list to measure.
+vi.mock('react-window', () => ({
+  List: ({ rowCount, rowComponent: Row, rowProps }: {
+    rowCount: number;
+    rowComponent: ComponentType<Record<string, unknown>>;
+    rowProps: Record<string, unknown>;
+  }) => (
+    <div>
+      {Array.from({ length: rowCount }, (_, index) => <Row key={index} index={index} style={{}} ariaAttributes={{}} {...rowProps} />)}
+    </div>
+  ),
+}));
 
 const SOURCE = '00000000000000aa';
 const CLIP = '00000000000000bb';
@@ -49,19 +63,25 @@ describe('partial clips list', () => {
     });
     render(<PartialClipsView />);
 
-    const card = screen.getByText('Shares 0:20').closest('article')!;
+    const card = screen.getAllByText('Shares 0:20')[0]!.closest('article')!;
     // The longer video is the master; the clip sits on its timeline where it matches, with its scores.
-    expect(within(card).getByText('Master')).toBeTruthy();
-    expect(within(card).getByText('0:00 to 10:00')).toBeTruthy();
+    expect(within(card).getByText('Longest')).toBeTruthy();
+    // The master's row is the time scale; the clip's bar and times say where it sits on it.
+    expect(within(card).getByText('Timeline of the longest video')).toBeTruthy();
+    expect(within(card).getByRole('img', { name: 'Time scale of the longest video, 0:00 to 10:00' })).toBeTruthy();
     expect(within(card).getByTitle('0:30 to 0:50')).toBeTruthy();
-    expect(within(card).getByText('sound 96% · picture 99%')).toBeTruthy();
-    expect(screen.getAllByText('Excerpt').length).toBeGreaterThan(0);
-    expect(screen.getByText('1 pair with the same sound and a different picture')).toBeTruthy();
+    expect(within(card).getByText('0:30 to 0:50')).toBeTruthy();
+    expect(within(card).getByTitle('Sound matches 96%')).toBeTruthy();
+    expect(within(card).getByTitle('Picture matches 99%')).toBeTruthy();
+    expect(screen.getAllByText('Fully inside').length).toBeGreaterThan(0);
+    // The pair with another picture is behind a switch below the list.
+    expect(screen.queryByText('Same sound, other picture')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '1 pair with the same sound and a different picture' }));
     expect(screen.getByText('Same sound, other picture')).toBeTruthy();
 
     // Header like a duplicate group: score, size, description; no filter set, so no filter count.
     expect(within(card).getByText('99.0%')).toBeTruthy();
-    expect(within(card).getByText('1 matching part')).toBeTruthy();
+    expect(within(card).getByTitle('1 matching part')).toBeTruthy();
     expect(screen.queryByText(/match the filter/)).toBeNull();
     // A two-video card is dismissed from its header; rows have no Not a match of their own.
     expect(within(card).queryByRole('button', { name: /^Not a match:/ })).toBeNull();
@@ -83,22 +103,44 @@ describe('partial clips list', () => {
       .toEqual({ label: 'Same video', tone: 'exact' });
   });
 
-  test('two copies of the same video show which has the better picture; other pairs mark nothing', () => {
+  test('two copies of the same video show which has the better picture; other pairs mark only resolution', () => {
     const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
     useStore.setState({
       videos: [
         makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600, width: 1920, height: 1080 }),
         makeVideo(OTHER, { filename: 'concert-small.mp4', durationSecs: 598, width: 640, height: 360 }),
-        makeVideo(CLIP, { filename: 'highlight.mp4', durationSecs: 40 }),
+        makeVideo(CLIP, { filename: 'highlight.mp4', durationSecs: 40, width: 1280, height: 720 }),
       ],
       partialClips: [clip({ bId: OTHER, shorterId: OTHER, segments: whole }), clip()],
     });
     const { container } = render(<PartialClipsView />);
     const [sameVideo, excerpt] = [...container.querySelectorAll('article')];
-    expect(within(sameVideo!).getByText('Same video')).toBeTruthy();
+    expect(within(sameVideo!).getAllByText('Same video').length).toBeGreaterThan(0);
     expect(within(sameVideo!).getByText('1080p').className).toContain('best');
     expect(within(sameVideo!).getByText('360p').className).toContain('worse');
-    expect(excerpt!.querySelectorAll('.meta-chip.best, .meta-chip.worse')).toHaveLength(0);
+    // Length and size say nothing between an excerpt and its source; resolution still does.
+    expect([...excerpt!.querySelectorAll('.meta-chip.best, .meta-chip.worse')].map((chip) => chip.textContent)).toEqual(['1080p', '720p']);
+  });
+
+  test('between an excerpt and its source only a bitrate far apart is marked', () => {
+    const lane = (id: string, kbps: number, role: Lane['role']): Lane => ({ video: makeVideo(id, { videoBitrate: kbps * 1000 }), role, segments: [], via: null });
+    const bitrates = (lanes: Lane[]) => [...cardFlags(lanes).values()].map((flags) => flags.bitrate);
+    expect(bitrates([lane(SOURCE, 1500, 'master'), lane(CLIP, 1400, 'excerpt'), lane(OTHER, 1000, 'excerpt')])).toEqual(['best', 'best', 'worse']);
+    expect(bitrates([lane(SOURCE, 1500, 'master'), lane(CLIP, 1200, 'excerpt')])).toEqual(['equal', 'equal']);
+  });
+
+  test('rows follow the order their pictures appear in the longest video, not a sound every scene shares', () => {
+    const disc = makeVideo(SOURCE, { filename: 'disc.mp4', durationSecs: 3600 });
+    const scene1 = makeVideo(CLIP, { filename: 'scene1.mp4', durationSecs: 1200 });
+    const scene2 = makeVideo(OTHER, { filename: 'scene2.mp4', durationSecs: 1300 });
+    const jingle = (startA: number) => ({ startA, startB: 0, lengthSecs: 5, soundSimilarity: 99, pictureState: 'differentPicture' as const, pictureSimilarity: 40 });
+    const scene = (startA: number, lengthSecs: number) => ({ startA, startB: 0, lengthSecs, soundSimilarity: 98, pictureState: 'confirmed' as const, pictureSimilarity: 95 });
+    const entries = [
+      { primary: clip({ bId: OTHER, shorterId: OTHER, segments: [jingle(0), jingle(1200), scene(1200, 1300)] }), others: [] },
+      { primary: clip({ segments: [jingle(0), jingle(1200), scene(0, 1200)] }), others: [] },
+    ];
+    const byId = new Map([disc, scene1, scene2].map((video) => [video.id, video]));
+    expect(placeOnMaster(entries, byId).map((lane) => lane.video.filename)).toEqual(['disc.mp4', 'scene1.mp4', 'scene2.mp4']);
   });
 
   test('keeps one copy of the same video and marks the other', async () => {
@@ -143,7 +185,7 @@ describe('partial clips list', () => {
     // Longest first, each video once, with its part in the family.
     const rows = [...family.querySelectorAll('.partial-clip-video')];
     expect(rows.map((row) => [row.querySelector('strong')?.textContent, row.querySelector('.partial-clip-role')?.textContent]))
-      .toEqual([['concert.mp4', 'Master'], ['concert-copy.mp4', 'Copy'], ['highlight.mp4', 'Excerpt']]);
+      .toEqual([['concert.mp4', 'Longest'], ['concert-copy.mp4', 'Same video'], ['highlight.mp4', 'Fully inside']]);
     // Placed through the copy: 100 s into the copy is 102 s into the master.
     expect(within(rows[2] as HTMLElement).getByTitle('1:42 to 2:22')).toBeTruthy();
     expect(useStore.getState().duplicatePosition?.total).toBe(2);
@@ -151,7 +193,7 @@ describe('partial clips list', () => {
     // Not a match takes out one pair; the other stays as a card of its own.
     await userEvent.click(within(family).getByRole('button', { name: 'Not a match: highlight.mp4 and concert-copy.mp4' }));
     expect(screen.queryByText('Same footage')).toBeNull();
-    expect(screen.getByText('Same video')).toBeTruthy();
+    expect(screen.getAllByText('Same video').length).toBeGreaterThan(0);
   });
 
   test('an excerpt offers no keep-one action', () => {
@@ -212,11 +254,29 @@ describe('partial clips list', () => {
     expect(useStore.getState().videos.find((video) => video.id === CLIP)?.status).toBe('delete');
   });
 
-  test('a stretch from the start of the longer video starts at 0:00', () => {
+  test('a stretch from the start of the longer video starts at 0:00', async () => {
     const segment = { startA: 0, startB: 0, lengthSecs: 32, soundSimilarity: 99, pictureState: 'differentPicture' as const, pictureSimilarity: 48 };
     useStore.setState({ partialClips: [clip({ relation: 'audioOnly', state: 'differentPicture', segments: [segment] })] });
     render(<PartialClipsView />);
+    await userEvent.click(screen.getByRole('button', { name: /with the same sound and a different picture/ }));
     expect(screen.getByTitle('0:00 to 0:32')).toBeTruthy();
+  });
+
+  test('stretches a few seconds apart on the longest video are drawn and listed as one', () => {
+    const lane = (segments: Lane['segments']): Lane => ({ video: makeVideo(CLIP), role: 'excerpt', segments, via: null });
+    // 1% of 6000 s is 60 s: a 30 s gap joins, a 200 s gap does not, and a sound-only stretch stays apart.
+    expect(laneSpans(lane([
+      { start: 1000, end: 2000, state: 'confirmed' },
+      { start: 0, end: 500, state: 'confirmed' },
+      { start: 530, end: 900, state: 'confirmed' },
+      { start: 2010, end: 2100, state: 'unconfirmed' },
+      { start: 5900, end: 6500, state: 'confirmed' },
+    ]), 6000)).toEqual([
+      { start: 0, end: 900, state: 'confirmed' },
+      { start: 1000, end: 2000, state: 'confirmed' },
+      { start: 2010, end: 2100, state: 'unconfirmed' },
+      { start: 5900, end: 6000, state: 'confirmed' },
+    ]);
   });
 
   test('a row offers the video menu without group actions, and shows its mark', async () => {
@@ -252,7 +312,8 @@ describe('partial clips list', () => {
     const { container, unmount } = render(<PartialClipsView />);
     expect(useStore.getState().duplicatePosition).toEqual({ group: 0, total: 2 });
     act(() => useStore.getState().requestDuplicateGroupJump(1));
-    expect(container.querySelector('details.partial-clips-collapsed')?.hasAttribute('open')).toBe(true);
+    expect(container.querySelector('.partial-clips-toggle')?.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('Same sound, other picture')).toBeTruthy();
     unmount();
     expect(useStore.getState().duplicatePosition).toBeNull();
   });

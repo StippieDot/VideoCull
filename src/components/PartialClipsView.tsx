@@ -1,5 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Ban, Check, Play, Trash2 } from 'lucide-react';
+import { Ban, Check, ChevronDown, ChevronRight, Image, Play, Trash2, Volume2 } from 'lucide-react';
+import { List } from 'react-window';
+import type { ListImperativeAPI, RowComponentProps } from 'react-window';
+import { DUPLICATE_GROUP_GAP, DUPLICATE_GROUP_HEADER_HEIGHT, DUPLICATE_VIDEO_ROW_HEIGHT } from './duplicateVirtualRows';
 import useStore from '../store';
 import type { DuplicateGroup, PartialClip, PartialClipSegment, PartialClipSortField, SortOrder, Video } from '../types';
 import { formatDuration, formatFps, formatResolutionLabel, formatSize } from '../utils';
@@ -130,7 +133,7 @@ function describeMatch(clip: PartialClip, shorter: Video, longer: Video): string
 export function matchBadge(clip: PartialClip, shorter: Video, longer: Video): { label: string; tone: 'exact' | 'potential' | 'low-confidence' } {
   const kind = clipKind(clip, shorter, longer);
   if (kind === 'sameVideo') return { label: 'Same video', tone: 'exact' };
-  if (kind === 'excerpt') return { label: 'Excerpt', tone: 'exact' };
+  if (kind === 'excerpt') return { label: 'Fully inside', tone: 'exact' };
   if (kind === 'contains') return { label: `Shares ${formatDuration(matchedSeconds(clip))}`, tone: 'potential' };
   return { label: clip.state === 'differentPicture' ? 'Same sound, other picture' : 'Same sound', tone: 'low-confidence' };
 }
@@ -204,7 +207,8 @@ function dismissPairs(pairs: PartialClip[], who: string) {
 
 export type LaneRole = 'master' | 'copy' | 'excerpt' | 'part' | 'sound';
 
-const ROLE_LABELS: Record<LaneRole, string> = { master: 'Master', copy: 'Copy', excerpt: 'Excerpt', part: 'Part', sound: 'Sound only' };
+// What is true of the row against the longest video; 'part' is labelled with what it shares instead.
+const ROLE_LABELS: Record<LaneRole, string> = { master: 'Longest', copy: 'Same video', excerpt: 'Fully inside', part: 'Shares', sound: 'Same sound' };
 
 export interface Lane {
   video: Video;
@@ -264,7 +268,12 @@ export function placeOnMaster(entries: PartialClipEntry[], videosById: Map<strin
     }
   }
   // Below the master in the order they occur in it (scene 1, 2, 3), the longer first at one place.
-  const startOf = (lane: Lane) => Math.min(...lane.segments.map((segment) => segment.start));
+  // By where the picture matches: sound-only stretches (an intro jingle every scene shares) would
+  // put every row at the same place.
+  const startOf = (lane: Lane) => {
+    const confirmed = lane.segments.filter((segment) => segment.state === 'confirmed');
+    return Math.min(...(confirmed.length > 0 ? confirmed : lane.segments).map((segment) => segment.start));
+  };
   const [masterLane, ...rest] = lanes;
   return [masterLane!, ...rest.sort((x, y) => startOf(x) - startOf(y) || (Number(y.video.durationSecs) || 0) - (Number(x.video.durationSecs) || 0))];
 }
@@ -275,32 +284,82 @@ function matchLabel(clip: PartialClip): string {
     : `sound ${Math.round(clip.soundSimilarity)}% · picture ${Math.round(clip.pictureSimilarity)}%`;
 }
 
+// Stretches closer than this share of the master are drawn and listed as one: a few unmatched
+// seconds at a scene cut would otherwise split a bar into a dot and a line.
+const JOIN_GAP_SHARE = 0.01;
+
+/** The lane's stretches inside the master, each state's touching or nearly touching ones joined. */
+export function laneSpans(lane: Lane, masterSecs: number): Lane['segments'] {
+  const spans = lane.segments
+    .map((segment) => ({ ...segment, start: Math.max(0, segment.start), end: Math.min(masterSecs, segment.end) }))
+    .filter((segment) => segment.end > segment.start)
+    .sort((x, y) => x.start - y.start);
+  const joined: Lane['segments'] = [];
+  for (const span of spans) {
+    const last = [...joined].reverse().find((candidate) => candidate.state === span.state);
+    if (last && span.start - last.end <= JOIN_GAP_SHARE * masterSecs) joined[joined.indexOf(last)] = { ...last, end: Math.max(last.end, span.end) };
+    else joined.push(span);
+  }
+  return joined;
+}
+
+/** The sound and picture match as icon chips; no picture chip when the picture was not compared. */
+function MatchChips({ clip }: { clip: PartialClip }) {
+  return (
+    <span className="duplicate-meta-chips">
+      <span className="meta-chip" title={`Sound matches ${Math.round(clip.soundSimilarity)}%`}>
+        <Volume2 size={12} aria-hidden="true" />
+        {Math.round(clip.soundSimilarity)}%
+      </span>
+      {clip.pictureSimilarity !== null && (
+        <span className="meta-chip" title={`Picture matches ${Math.round(clip.pictureSimilarity)}%`}>
+          <Image size={12} aria-hidden="true" />
+          {Math.round(clip.pictureSimilarity)}%
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** The row's place on the master: one bar per matching stretch, on the scale of the master's length. */
 function LaneBar({ lane, masterSecs }: { lane: Lane; masterSecs: number }) {
   if (masterSecs <= 0) return <div className="partial-lane" />;
-  const where = (start: number, end: number) => `${formatPosition(Math.max(0, start))} to ${formatPosition(Math.min(masterSecs, end))}`;
-  const matching = lane.segments.filter((segment) => segment.state === 'confirmed');
-  const label = lane.via
-    ? `${matching.length > 0 ? `In the master ${matching.map((segment) => where(segment.start, segment.end)).join(', ')}` : 'Same sound as the master'}; ${matchLabel(lane.via.clip)}`
-    : `Master, ${formatDuration(masterSecs)}`;
+  // The master's row is the time scale the other rows are drawn on, not a match of its own.
+  if (!lane.via) {
+    return (
+      <div className="partial-lane" role="img" aria-label={`Time scale of the longest video, 0:00 to ${formatDuration(masterSecs)}`}>
+        <div className="partial-lane-axis" />
+        <span className="partial-lane-label partial-lane-axis-labels">
+          <span>0:00</span>
+          <span>Timeline of the longest video</span>
+          <span>{formatDuration(masterSecs)}</span>
+        </span>
+      </div>
+    );
+  }
+  const where = (start: number, end: number) => `${formatPosition(start)} to ${formatPosition(end)}`;
+  const spans = laneSpans(lane, masterSecs);
+  const matching = spans.filter((span) => span.state === 'confirmed');
+  const listed = matching.length > 0 ? matching : spans;
+  const times = listed.slice(0, 2).map((span) => where(span.start, span.end)).join(', ')
+    + (listed.length > 2 ? `, +${listed.length - 2} more` : '');
+  const label = `${matching.length > 0 ? 'Matches the longest video' : 'Same sound as the longest video'} at ${times}; ${matchLabel(lane.via.clip)}`;
   return (
     <div className="partial-lane" role="img" aria-label={label}>
       <div className="partial-lane-track">
-        {lane.segments.map((segment, index) => {
-          const start = Math.max(0, segment.start);
-          const end = Math.min(masterSecs, segment.end);
-          if (end <= start) return null;
-          return (
-            <span
-              key={index}
-              className={`partial-lane-segment ${segment.state}`}
-              title={where(segment.start, segment.end)}
-              style={{ left: `${(start / masterSecs) * 100}%`, width: `${Math.max(0.5, ((end - start) / masterSecs) * 100)}%` }}
-            />
-          );
-        })}
+        {spans.map((span, index) => (
+          <span
+            key={index}
+            className={`partial-lane-segment ${span.state}`}
+            title={where(span.start, span.end)}
+            style={{ left: `${(span.start / masterSecs) * 100}%`, width: `${Math.max(0.5, ((span.end - span.start) / masterSecs) * 100)}%` }}
+          />
+        ))}
       </div>
-      <span className="partial-lane-label">{lane.via ? matchLabel(lane.via.clip) : `0:00 to ${formatDuration(masterSecs)}`}</span>
+      <span className="partial-lane-label">
+        <MatchChips clip={lane.via.clip} />
+        <span className="partial-lane-times" title="Where this video appears on the timeline of the longest video">{times}</span>
+      </span>
     </div>
   );
 }
@@ -334,7 +393,9 @@ function ClipVideoRow({ lane, masterSecs, splittable, flags, scopeIds, onContext
       <div className="duplicate-row-copy">
         <div className="duplicate-row-title">
           <strong title={video.path}>{video.filename}</strong>
-          <span className={`partial-clip-role ${lane.role}`}>{ROLE_LABELS[lane.role]}</span>
+          <span className={`partial-clip-role ${lane.role}`}>
+            {lane.role === 'part' && via ? `Shares ${formatDuration(matchedSeconds(via.clip))}` : ROLE_LABELS[lane.role]}
+          </span>
           {badge && (
             <span className={`duplicate-inline-flag ${badge.className}`}>
               {badge.icon}
@@ -399,15 +460,36 @@ function ClipVideoRow({ lane, masterSecs, splittable, flags, scopeIds, onContext
   );
 }
 
-const ClipCard = memo(function ClipCard({ entries, index, videosById, onVideoContextMenu }: {
+// Between videos that are not copies, only a bitrate this many times another's is worth a mark.
+const BITRATE_GAP = 1.5;
+
+/**
+ * Better / worse marks. Copies of the same video compare everything, as duplicates do. Other rows
+ * compare only what says which file looks better: resolution, and a bitrate far apart.
+ */
+export function cardFlags(lanes: Lane[]): Map<string, MetricFlags> {
+  const copies = lanes.filter((lane) => lane.role === 'master' || lane.role === 'copy');
+  const copyFlags = copies.length > 1 ? computeBestFlags(copies.map((lane) => lane.video)) : new Map<string, MetricFlags>();
+  const all = computeBestFlags(lanes.map((lane) => lane.video));
+  const bitrate = (video: Video) => video.videoBitrate ?? video.totalBitrate ?? 0;
+  const top = Math.max(...lanes.map((lane) => bitrate(lane.video)));
+  const far = lanes.some((lane) => bitrate(lane.video) > 0 && bitrate(lane.video) * BITRATE_GAP <= top);
+  return new Map(lanes.map(({ video }) => [video.id, copyFlags.get(video.id) ?? {
+    resolution: all.get(video.id)?.resolution ?? 'equal',
+    bitrate: !far || bitrate(video) <= 0 ? 'equal' : bitrate(video) * BITRATE_GAP <= top ? 'worse' : 'best',
+  }]));
+}
+
+const ClipCard = memo(function ClipCard({ entries, lanes, index, videosById, onVideoContextMenu }: {
   entries: PartialClipEntry[];
+  /** From placeOnMaster: the list needs their count for the card's height before drawing it. */
+  lanes: Lane[];
   /** Place in the list, for the title bar's entry stepper. */
   index: number;
   videosById: Map<string, Video>;
   onVideoContextMenu: OpenVideoMenu;
 }) {
   const setVideoStatus = useStore((s) => s.setVideoStatus);
-  const lanes = placeOnMaster(entries, videosById);
   const master = lanes[0];
   const first = entries[0]?.primary;
   if (!master || !first) return null;
@@ -421,12 +503,14 @@ const ClipCard = memo(function ClipCard({ entries, index, videosById, onVideoCon
     const n = lanes.filter((lane) => lane.role === role).length;
     return n === 0 ? null : `${n} ${n === 1 ? one : many}`;
   };
-  const description = pair ? describeMatch(first, pair.shorter, pair.longer) : [count('copy', 'copy', 'copies'), count('excerpt', 'excerpt', 'excerpts'), count('part', 'part', 'parts')].filter(Boolean).join(', ');
+  const description = pair
+    ? describeMatch(first, pair.shorter, pair.longer)
+    : [count('copy', 'same video', 'same videos'), count('excerpt', 'fully inside', 'fully inside'), count('part', 'sharing a stretch', 'sharing stretches')].filter(Boolean).join(', ');
   const score = first.pictureSimilarity ?? first.soundSimilarity;
   const allPairs = entries.flatMap((entry) => [entry.primary, ...entry.others]);
   const totalBytes = lanes.reduce((sum, lane) => sum + (lane.video.sizeBytes ?? 0), 0);
   const copies = lanes.filter((lane) => lane.role === 'master' || lane.role === 'copy');
-  const flags = copies.length > 1 ? computeBestFlags(copies.map((lane) => lane.video)) : new Map<string, MetricFlags>();
+  const flags = cardFlags(lanes);
   const keepOnly = (keep: Video) => () => {
     for (const lane of copies) setVideoStatus(lane.video.id, lane.video.id === keep.id ? 'keep' : 'delete');
   };
@@ -434,11 +518,11 @@ const ClipCard = memo(function ClipCard({ entries, index, videosById, onVideoCon
     <article className={`partial-clip-card ${first.relation}`} data-entry-index={index}>
       <header className="duplicate-group-header partial-clip-header">
         <div className="duplicate-group-title">
-          <span className={`duplicate-match-badge ${badge.tone}`}>{badge.label}</span>
+          {/* The badge and the timelines say what the videos share; the sentence is in the tooltip. */}
+          <span className={`duplicate-match-badge ${badge.tone}`} title={description}>{badge.label}</span>
           <strong title={matchLabel(first)}>{score.toFixed(1)}%</strong>
           <em className="duplicate-group-fact">{lanes.length} videos</em>
           <em className="duplicate-group-fact">{formatSize(totalBytes)}</em>
-          <span className="duplicate-group-notes" title={description}><em>{description}</em></span>
         </div>
         <div className="duplicate-group-actions">
           <button
@@ -467,6 +551,47 @@ const ClipCard = memo(function ClipCard({ entries, index, videosById, onVideoCon
   );
 });
 
+/** A row of the list: a card, or the switch that shows the pairs with a different picture. */
+type ListItem =
+  | { kind: 'card'; entries: PartialClipEntry[]; lanes: Lane[]; index: number }
+  | { kind: 'toggle'; count: number; /** The card index of the first card it shows. */ index: number };
+
+interface RowData {
+  items: ListItem[];
+  videosById: Map<string, Video>;
+  onVideoContextMenu: OpenVideoMenu;
+  showDifferent: boolean;
+  onToggleDifferent: () => void;
+}
+
+const TOGGLE_ROW_HEIGHT = 36;
+const CARD_BORDERS = 2;
+
+// Sync: the header and row heights in PartialClipsView.css are these values.
+function itemHeight(index: number, { items }: RowData): number {
+  const item = items[index]!;
+  const gap = index > 0 ? DUPLICATE_GROUP_GAP : 0;
+  if (item.kind === 'toggle') return gap + TOGGLE_ROW_HEIGHT;
+  return gap + CARD_BORDERS + DUPLICATE_GROUP_HEADER_HEIGHT + item.lanes.length * DUPLICATE_VIDEO_ROW_HEIGHT;
+}
+
+function PartialClipRow({ index, style, ariaAttributes, items, videosById, onVideoContextMenu, showDifferent, onToggleDifferent }: RowComponentProps<RowData>) {
+  const item = items[index]!;
+  const shell = { ...style, boxSizing: 'border-box' as const, paddingTop: index > 0 ? DUPLICATE_GROUP_GAP : 0, paddingLeft: 20, paddingRight: 20 };
+  return (
+    <div style={shell} {...ariaAttributes}>
+      {item.kind === 'toggle' ? (
+        <button type="button" className="partial-clips-toggle" aria-expanded={showDifferent} onClick={onToggleDifferent}>
+          {showDifferent ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+          {item.count.toLocaleString()} {item.count === 1 ? 'pair' : 'pairs'} with the same sound and a different picture
+        </button>
+      ) : (
+        <ClipCard entries={item.entries} lanes={item.lanes} index={item.index} videosById={videosById} onVideoContextMenu={onVideoContextMenu} />
+      )}
+    </div>
+  );
+}
+
 /**
  * The result of Find partial clips: pairs where one video contains a stretch of the other, and pairs
  * that only share sound. No keeper and no delete suggestion: an excerpt is not interchangeable with its
@@ -480,7 +605,8 @@ function PartialClipsView() {
   const sortBy = useStore((s) => s.partialClipSortBy);
   const sortOrder = useStore((s) => s.partialClipSortOrder);
   const [menu, setMenu] = useState<{ x: number; y: number; videoId: string; scopeIds: string[] } | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  const [showDifferent, setShowDifferent] = useState(false);
+  const listRef = useRef<ListImperativeAPI | null>(null);
   const videosById = useMemo(() => new Map(videos.map((video) => [video.id, video])), [videos]);
   const { allCount, shown, shownCards, differentPicture } = useMemo(() => {
     const entries = mergeClipsByDuplicateGroup(clips ?? [], groups);
@@ -497,36 +623,48 @@ function PartialClipsView() {
   const visibleCount = shownCards.length + differentPicture.length;
   const partialCount = shown.filter((entry) => entry.primary.relation === 'partial').length;
   const soundOnlyCount = shown.length + differentPicture.length - partialCount;
-  const entryKey = (entry: PartialClipEntry) => `${entry.primary.aId}|${entry.primary.bId}`;
-
   const openVideoMenu = useCallback<OpenVideoMenu>((event, videoId, scopeIds) => {
     event.preventDefault();
     setMenu({ x: event.clientX, y: event.clientY, videoId, scopeIds });
   }, []);
 
-  // The title bar's stepper: the first entry whose card reaches below the top of the list.
-  const updatePosition = useCallback(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const top = list.getBoundingClientRect().top;
-    const first = [...list.querySelectorAll<HTMLElement>('[data-entry-index]')]
-      // Cards in the closed "different pictures" section have no boxes and are skipped.
-      .find((card) => card.getClientRects().length > 0 && card.getBoundingClientRect().bottom > top + 1);
-    useStore.getState().setDuplicatePosition({ group: Number(first?.dataset.entryIndex ?? 0), total: visibleCount });
+  // Every card's lanes up front: the list needs each card's height before it draws the card.
+  const items = useMemo<ListItem[]>(() => {
+    const cardItem = (entries: PartialClipEntry[], index: number): ListItem => ({ kind: 'card', entries, index, lanes: placeOnMaster(entries, videosById) });
+    const list = shownCards.map((item, index) => cardItem(item.kind === 'pair' ? [item.entry] : item.entries, index));
+    if (differentPicture.length === 0) return list;
+    return [
+      ...list,
+      { kind: 'toggle', count: differentPicture.length, index: shownCards.length },
+      ...(showDifferent ? differentPicture.map((entry, index) => cardItem([entry], shownCards.length + index)) : []),
+    ];
+  }, [differentPicture, shownCards, showDifferent, videosById]);
+
+  const toggleDifferent = useCallback(() => setShowDifferent((open) => !open), []);
+  const rowProps = useMemo<RowData>(() => ({ items, videosById, onVideoContextMenu: openVideoMenu, showDifferent, onToggleDifferent: toggleDifferent }), [items, openVideoMenu, showDifferent, toggleDifferent, videosById]);
+
+  // The title bar's stepper: the first card in view.
+  const handleRowsRendered = useCallback(({ startIndex }: { startIndex: number; stopIndex: number }) => {
+    useStore.getState().setDuplicatePosition({ group: items[startIndex]?.index ?? 0, total: visibleCount });
+  }, [items, visibleCount]);
+  useEffect(() => {
+    useStore.getState().setDuplicatePosition({ group: 0, total: visibleCount });
   }, [visibleCount]);
-  useEffect(updatePosition, [updatePosition, shownCards, differentPicture]);
   useEffect(() => () => useStore.getState().setDuplicatePosition(null), []);
 
   const jump = useStore((s) => s.duplicateGroupJump);
   const handledJumpRef = useRef(jump?.id ?? 0);
   useEffect(() => {
     if (!jump || handledJumpRef.current === jump.id) return;
+    // A card in the closed section: open it, and this runs again once its cards are in the list.
+    if (jump.index >= shownCards.length && !showDifferent) {
+      setShowDifferent(true);
+      return;
+    }
     handledJumpRef.current = jump.id;
-    const card = listRef.current?.querySelector<HTMLElement>(`[data-entry-index="${jump.index}"]`);
-    const section = card?.closest('details');
-    if (section) section.open = true;
-    card?.scrollIntoView?.({ block: 'start' });
-  }, [jump]);
+    const row = items.findIndex((item) => item.kind === 'card' && item.index === jump.index);
+    if (row >= 0) listRef.current?.scrollToRow({ index: row, align: 'start' });
+  }, [items, jump, shownCards.length, showDifferent]);
 
   const menuVideo = menu ? videosById.get(menu.videoId) : undefined;
   const menuItems = menu && menuVideo ? buildDuplicateVideoMenu({
@@ -545,11 +683,6 @@ function PartialClipsView() {
     },
   }) : [];
 
-  const card = (entries: PartialClipEntry[], index: number) => (
-    <ClipCard key={entryKey(entries[0]!)} entries={entries} index={index} videosById={videosById} onVideoContextMenu={openVideoMenu} />
-  );
-
-  // shortcut: every entry is rendered, upgrade to a virtual list when libraries report thousands.
   return (
     <div className="duplicate-groups-view partial-clips-view">
       <div className="duplicate-toolbar">
@@ -563,22 +696,22 @@ function PartialClipsView() {
           </span>
         </div>
       </div>
-      <div className="partial-clips-list" ref={listRef} onScroll={updatePosition}>
-        {visibleCount === 0 && (
-          <p className="partial-clips-empty">
-            {allCount === 0 ? 'No video contains part of another.' : 'No entries match the path filter.'}
-          </p>
-        )}
-        {shownCards.map((item, index) => card(item.kind === 'pair' ? [item.entry] : item.entries, index))}
-        {differentPicture.length > 0 && (
-          <details className="partial-clips-collapsed">
-            <summary>
-              {differentPicture.length.toLocaleString()} {differentPicture.length === 1 ? 'pair' : 'pairs'} with the same sound and a different picture
-            </summary>
-            {differentPicture.map((entry, index) => card([entry], shownCards.length + index))}
-          </details>
-        )}
-      </div>
+      {visibleCount === 0 ? (
+        <p className="partial-clips-empty">
+          {allCount === 0 ? 'No video contains part of another.' : 'No entries match the path filter.'}
+        </p>
+      ) : (
+        <List
+          className="partial-clips-list"
+          listRef={listRef}
+          rowCount={items.length}
+          rowComponent={PartialClipRow}
+          rowHeight={itemHeight}
+          rowProps={rowProps}
+          overscanCount={2}
+          onRowsRendered={handleRowsRendered}
+        />
+      )}
       {menu && menuVideo && (
         <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
       )}

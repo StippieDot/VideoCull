@@ -1,31 +1,29 @@
 .partial-clips-list {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  display: grid;
-  align-content: start;
-  /* Rows take their content's height; auto rows would shrink cards to fit the scroll area. */
-  grid-auto-rows: max-content;
-  gap: 12px;
-  padding: 6px 20px 20px;
 }
 
 .partial-clips-empty {
-  margin: 24px 0;
+  margin: 24px 20px;
   color: var(--text-tertiary);
   font-size: 13px;
 }
 
-/* A card is a duplicate group: the same header, rows, marks and hover, plus a timeline column. */
+/*
+ * A card is a duplicate group: the same header, rows, marks and hover, plus a timeline column.
+ * Fixed heights: the virtual list places cards by the sizes in itemHeight (PartialClipsView.tsx).
+ */
 .partial-clip-card {
+  box-sizing: border-box;
+  height: 100%;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
+  background: var(--bg-surface);
 }
 
 .partial-clip-header {
-  height: auto;
-  min-height: 48px;
+  height: 64px;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -35,8 +33,26 @@
  */
 .partial-clip-card .partial-clip-video {
   grid-template-columns: 82px minmax(0, 1fr) minmax(180px, 1fr) 236px;
-  height: auto;
-  padding: 8px 12px;
+  height: 79px;
+  padding: 0 12px;
+}
+
+.partial-clips-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.partial-clips-toggle:hover {
+  color: var(--text-primary);
 }
 
 .partial-clip-card .partial-clip-video:last-child {
@@ -69,35 +85,56 @@
   min-width: 0;
 }
 
+/* The unmatched part is an empty outline, so a filled stretch cannot be mistaken for it. */
 .partial-lane-track {
   position: relative;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--bg-surface-hover);
+  height: 10px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 .partial-lane-segment {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--accent);
-}
-
-.partial-lane-segment.master {
-  background: var(--text-tertiary);
 }
 
 .partial-lane-segment.differentPicture,
 .partial-lane-segment.unconfirmed {
-  background: repeating-linear-gradient(90deg, var(--text-tertiary) 0 3px, transparent 3px 5px);
+  background: repeating-linear-gradient(90deg, var(--accent) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* The longest video's row: a ruler with end ticks, the scale every other bar is drawn on. */
+.partial-lane-axis {
+  height: 10px;
+  border: 1px solid var(--text-tertiary);
+  border-top: 0;
+  border-radius: 0 0 2px 2px;
 }
 
 .partial-lane-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.partial-lane-times {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.partial-lane-label .meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .partial-clip-actions {
@@ -119,14 +156,3 @@
   color: var(--accent);
 }
 
-.partial-clips-collapsed {
-  display: grid;
-  gap: 12px;
-}
-
-.partial-clips-collapsed > summary {
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: 13px;
-  padding: 6px 0;
-}
