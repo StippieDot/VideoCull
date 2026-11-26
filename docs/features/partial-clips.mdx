@@ -1,0 +1,145 @@
+---
+title: Partial clips
+description: Find videos that contain part of another video, such as excerpts, trimmed versions, split recordings and compilations, and see exactly which parts they share and which they do not.
+---
+
+{/* in-app-meta
+{
+  "summary": "Find excerpts, trimmed versions and compilations, and see which footage each video shares and which only it has.",
+  "actions": ["open-settings-duplicates"]
+}
+*/}
+
+Duplicate review finds videos that are the same from start to end. Partial clips finds videos that share only part of their footage:
+
+- a short clip cut from a longer recording,
+- a trimmed or re-encoded version that lost a few minutes,
+- a long recording that was also saved as separate scenes,
+- a compilation made from pieces of several videos.
+
+For each pair it shows where the shared footage lies, how well sound and picture match, and which parts only one of the videos has. It never suggests deleting anything: an excerpt is not interchangeable with its source, so you decide which file to keep.
+
+## Run a search
+
+<Steps>
+  <Step title="Turn the search on">
+    In Settings > Duplicates > Partial clips, set **Find partial clips** to **By sound**.
+  </Step>
+  <Step title="Start it">
+    Choose **Find Partial Clips** in the sidebar of the duplicate view. Before any duplicates or partial clips have been found, the button is in the grid sidebar.
+  </Step>
+  <Step title="Switch between the two lists">
+    Once a search ran, the switch at the top of the sidebar moves between **Groups** and **Partial clips**. The path filter and sort below it act on the list that is shown.
+  </Step>
+</Steps>
+
+The first search reads the sound of every video once, which takes about as long as reading the files, and keeps it: about 115 KB per hour of sound. Later searches only read new or changed videos. Searching uses the same progress, pause and cancel as a duplicate run, and the sound read before a cancel is kept. The sound search runs on as many processor cores as **Parallel FFmpeg processes** allows.
+
+Videos without sound, with silent or droning sound, or shorter than 10 seconds are not searched, and only the first audio track is used.
+
+## How a match is found
+
+The search works in two steps, sound first and pictures second, because reading sound is cheap and comparing pictures is not.
+
+1. **Sound.** Every video's sound is turned into a compact fingerprint. Two videos whose fingerprints line up over a stretch share that stretch of sound, wherever it sits in each video.
+2. **Pictures.** Each shared stretch is then checked with frames from both videos at three moments. The pictures either match, differ, or could not be compared, for example because the frames are dark at those moments.
+
+Sound alone is not enough: two videos with the same song, or the same studio jingle, share sound but not footage. That is why every stretch is also checked with pictures, and why the list separates pairs whose pictures match from pairs that only sound alike. The picture checks are kept, so a later search only checks stretches it has not checked before or whose files changed.
+
+Two settings keep common sound out before any picture is read:
+
+- **Minimum shared part** (40% by default): a pair is only checked when the shared sound covers at least this share of the shorter video, or lasts five minutes. This drops videos that share only an intro or outro, and still finds two long recordings that overlap. A short clip that lies completely inside a long video shares 100% of itself, so it is always found.
+- **Common sound limit** (25 videos by default): sound found in more than this many videos, such as a channel jingle or a popular song, is not searched at all. The sidebar says in how many videos it was skipped. A clip reused in more videos than the limit is not found; raise the limit to search it.
+
+Both settings decide what the search finds. Change them, then search again.
+
+## Read a card
+
+Each card shows one set of related videos. Its header works like a duplicate group's: a badge that says what the videos share, the match score, how many videos the card holds and their total size.
+
+| Badge | Meaning |
+| --- | --- |
+| **Same video** | Two videos with the same sound and picture over their whole length, at least 95% as long as each other. The duplicate search missed this copy, for example because it was trimmed by a few seconds. |
+| **Fully inside** | All of the shorter video is somewhere in the longer one. |
+| **Shares 2:10** | The videos share this much footage, and the shorter one also has footage the longer one lacks. |
+| **Same footage** | A card of three or more videos that are copies of one another or fully inside one another. |
+| **Same sound** | Only the sound matches. **Same sound, other picture** means the pictures were compared and differ. |
+
+The score is the picture match of the card's first pair, or its sound match when the pictures could not be compared. Point at it to see both.
+
+### The timeline
+
+Every card is drawn against its **longest video**. Its row is a ruler, from 0:00 on the left to its length on the right, labelled **Timeline of the longest video**.
+
+Each other row is a bar on that same scale. The filled stretches are where that video's footage appears in the longest video, and the times below the bar say where, such as `43:10 to 1:00:36`. The empty outline is the part of the longest video that this video does not have. Striped stretches match in sound only: the picture differs there or could not be checked.
+
+Below the bar, two chips show how well the pair matches: the speaker for sound and the picture icon for picture, as a percentage. When the pictures were never compared, there is no picture chip.
+
+Rows are listed in the order their footage appears in the longest video, so the scenes of a recording that was also saved in parts read from top to bottom in order.
+
+### What only one video has
+
+Amber marks footage that only one side has.
+
+- **Not in the longest: first 0:12, last 0:04** on a row lists the parts of that video that the longest video does not have. These times are in that video's own playing time, because footage the longest video lacks has no place on its timeline. **0:40 at 5:10** means 40 seconds missing from 5:10 on.
+- **Not in the other videos** on the longest video's row, with amber blocks on its ruler, marks the parts that none of the other videos in the card has. It appears only in cards with three or more videos: with one other video, the gaps in that video's bar already say the same.
+
+Small differences are left out, so that only real missing footage is reported:
+
+- Gaps of up to three seconds anywhere. The search places the edges of a match about that close to the real cut.
+- Gaps at the start or end up to the **Intros and outros** setting (10 seconds by default), such as a studio logo or end credits that only one file has.
+- Gaps shorter than 1% of the video, which the bar also draws as one stretch.
+
+Neither allowance is ever more than a tenth of the video, so a 20-second clip may miss at most two seconds at either end before it is reported. Stretches whose sound matches and whose picture could not be checked count as present, not as missing.
+
+A video is called **Fully inside** or **Same video** only when nothing of it is reported missing. The label and the amber line therefore never disagree: a row with an amber line says **Shares** instead.
+
+**Intros and outros** only changes how results are labelled. Changing it relabels the list right away; there is no need to search again.
+
+### Rows in a card
+
+Each row shows the video's name, folder and details: resolution, frame rate, bitrate, length and size. The label next to the name says what the row is:
+
+| Label | Meaning |
+| --- | --- |
+| **Longest** | The longest video in the card, the one the others are drawn against. Being longest does not make it the original or the best file. |
+| **Same video** | A copy of the longest video. |
+| **Fully inside** | All of this video is in the longest video. |
+| **Shares 2:10** | This video shares 2:10 with the longest video and has footage of its own. |
+| **Same sound** | Only the sound matches. |
+
+Green and grey details compare the videos of a card. Between copies of the same video, every detail is compared, as in duplicate review. Between other videos only what says which file looks better is compared: resolution, and a bitrate at least one and a half times another. Length and size say nothing about an excerpt against its source and are not marked.
+
+### How cards are formed
+
+Copies and excerpts of one video are shown together on one card. Videos that only share a stretch stay on cards of their own: joining through them would put unrelated videos together because they share one scene.
+
+When a clip is found in several copies of a video that duplicate review already grouped, it is listed once, with the pair that has the best picture evidence, preferring the copy duplicate review suggests keeping.
+
+Pairs whose pictures differ are not mixed into the list. They are behind **pairs with the same sound and a different picture** at the end of the list.
+
+## Act on results
+
+Partial clips have no suggested keeper. On each row:
+
+- **Keep** and **Delete** mark the video, like in the grid. **Play** opens it in Review, with the videos of the card as the navigation scope.
+- **Keep this one** appears on copies of the same video. It marks that copy Keep and the other copies Delete.
+- Right-click a row for more actions, such as opening the file or showing it in its folder.
+
+**Not a match** in the card header hides the card and keeps its pairs out of later searches. In a card with three or more videos, the button on a row takes only that video out of the card. The notice that follows offers **Undo**, and **Clear ignored matches** in Settings lets all such pairs be found again.
+
+Marking a video Delete leaves the file on disk. It joins the same delete batch as marks made in the grid, Review and duplicate review; delete it from the grid after checking the batch.
+
+## Sort and filter
+
+The sidebar's path filter keeps the cards with a video whose folder or file name contains the text. Partial clips sort by:
+
+- **Shared length**: the seconds whose sound and picture both match, so a pair that only shares music does not rank above a real excerpt.
+- **Share of shorter video**: how much of the shorter video the shared stretches cover.
+- **Total size** of the videos.
+
+The title bar shows which card is at the top, such as `Entry 3 of 12`. Type a number in its place and press `Enter` to go to that card.
+
+<Tip>
+  Working through a library? Start with **Same video** and **Fully inside** cards: those are the files whose footage is already in another file. A **Shares** card is information, not a copy; check what the amber line says each video would lose before deleting either one.
+</Tip>

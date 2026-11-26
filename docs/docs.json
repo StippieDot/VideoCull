@@ -66,6 +66,7 @@
           "features/grid-view",
           "features/review-mode",
           "features/duplicate-review",
+          "features/partial-clips",
           "features/delete-and-safety"
         ]
       },

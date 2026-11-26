@@ -1,4 +1,5 @@
 import duplicateReviewSource from '../../docs/features/duplicate-review.mdx?raw';
+import partialClipsSource from '../../docs/features/partial-clips.mdx?raw';
 import deleteSafetySource from '../../docs/features/delete-and-safety.mdx?raw';
 import gridViewSource from '../../docs/features/grid-view.mdx?raw';
 import sessionsFoldersSource from '../../docs/features/sessions-and-folders.mdx?raw';
@@ -95,6 +96,7 @@ const DOCUMENTATION_SOURCES: DocumentationSource[] = [
   { id: 'grid-view', group: 'Workflows', href: '/features/grid-view', raw: gridViewSource },
   { id: 'review-mode', group: 'Workflows', href: '/features/review-mode', raw: reviewModeSource },
   { id: 'duplicate-review', group: 'Workflows', href: '/features/duplicate-review', raw: duplicateReviewSource },
+  { id: 'partial-clips', group: 'Workflows', href: '/features/partial-clips', raw: partialClipsSource },
   { id: 'delete-safety', group: 'Workflows', href: '/features/delete-and-safety', raw: deleteSafetySource },
   { id: 'settings', group: 'Reference', href: '/reference/settings', raw: settingsSource },
   { id: 'cache-processing', group: 'Reference', href: '/reference/cache-and-processing', raw: cacheProcessingSource },

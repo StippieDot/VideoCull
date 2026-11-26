@@ -133,13 +133,14 @@ Each of these can add matches; none removes one. Changes apply to the next searc
 
 ### Partial clips
 
-A separate search, started with **Find Partial Clips** in the sidebar, for videos that contain part of another video.
+A separate search, started with **Find Partial Clips** in the sidebar, for videos that contain part of another video. See [Partial clips](/features/partial-clips) for how results are found and labelled.
 
 | Setting | What it does | Suggested default use |
 | --- | --- | --- |
 | Find partial clips | **By sound** shows **Find Partial Clips** in the sidebar. It reads the sound of every video once and keeps it, about 115 KB per hour of sound; each match is checked with pictures. | Turn it on when your library has excerpts, trimmed versions or compilations of other videos. |
 | Minimum shared part | Shown while Find partial clips is on. A pair that shares sound is checked with pictures only when the shared sound covers at least this share of the shorter video (40% by default) or lasts five minutes. Keeps out videos that only share an intro or outro. | Lower it to find shorter shared parts; more pairs are then checked. |
 | Common sound limit | Shown while Find partial clips is on. Sound found in more than this many videos (25 by default) counts as an intro, jingle or music and is not searched; the sidebar says in how many videos it was skipped. | Raise it when a clip is reused in many videos; more pairs are then checked. |
+| Intros and outros | Shown while Find partial clips is on. Footage at the start or end of a video that the other video lacks, up to this long (10 seconds by default, never more than a tenth of the video), is not reported as missing and does not stop a video counting as **Fully inside**. Only changes how results are labelled, not what is found. | Raise it when studio logos or end credits keep excerpts from counting as fully inside; lower it to see every missing second. |
 
 ### Keeping and deleting
 

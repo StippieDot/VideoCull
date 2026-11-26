@@ -17,6 +17,7 @@ describe('documentation source adapter', () => {
       { id: 'grid-view', group: 'Workflows' },
       { id: 'review-mode', group: 'Workflows' },
       { id: 'duplicate-review', group: 'Workflows' },
+      { id: 'partial-clips', group: 'Workflows' },
       { id: 'delete-safety', group: 'Workflows' },
       { id: 'settings', group: 'Reference' },
       { id: 'cache-processing', group: 'Reference' },
@@ -73,6 +74,16 @@ describe('documentation source adapter', () => {
     );
     expect(grid?.searchableText).toContain('shift');
     expect(grid?.nodes.some((node) => node.type === 'steps')).toBe(true);
+  });
+
+  test('partial clips has its own page that explains matching, the timeline and missing parts', () => {
+    const page = DOCUMENTATION_PAGES.find((candidate) => candidate.id === 'partial-clips');
+    expect(page?.headings.map((heading) => heading.title)).toEqual(expect.arrayContaining([
+      'Run a search', 'How a match is found', 'The timeline', 'What only one video has', 'Act on results',
+    ]));
+    expect(page?.nodes.filter((node) => node.type === 'table')).toHaveLength(2);
+    expect(page?.nodes.some((node) => node.type === 'steps')).toBe(true);
+    expect(page?.searchableText).toContain('intros and outros');
   });
 
   test('opens bundled page links on the official documentation domain', () => {
