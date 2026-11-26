@@ -905,6 +905,15 @@ export default function SettingsModal({ initialTab = 'general', tabRequestId = 0
                                 </div>
                               )}
                             </SettingRow>
+                            {/* Sync: the tenth is EDGE_MAX_SHARE in PartialClipsView.tsx. */}
+                            <SettingRow label="Intros and outros" help="Footage at the start or end of a video that the other video lacks, up to this long, is not reported as missing and does not stop a video counting as fully inside. It is never more than a tenth of the video, so short clips stay strict. Gaps of up to three seconds anywhere are always ignored: the search places matches that close to the real cut. Only changes how results are labelled, not what is found.">
+                              {(id) => (
+                                <div className="flex-row duplicates-inline-value">
+                                  <input id={id} type="number" min="0" max="120" value={localSettings.duplicates.partialClipEdgeSecs} onChange={(e) => handleDuplicateChange('partialClipEdgeSecs', Number(e.target.value))} className="number-input" />
+                                  <span>seconds</span>
+                                </div>
+                              )}
+                            </SettingRow>
                           </>
                         )}
                       </div>

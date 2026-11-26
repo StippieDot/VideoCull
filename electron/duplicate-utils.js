@@ -45,6 +45,7 @@ const DEFAULT_DUPLICATE_SETTINGS = {
   partialClipMinShare: 40,
   // Sound found in more than this many other videos is an intro, a jingle or a song, and is not searched.
   partialClipCommonLimit: 25,
+  partialClipEdgeSecs: 10,
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,
@@ -94,6 +95,7 @@ function normalizeDuplicateSettings(input = {}) {
     partialClips: input.partialClips === 'sound' ? 'sound' : 'off',
     partialClipMinShare: Math.round(clamp(input.partialClipMinShare ?? DEFAULT_DUPLICATE_SETTINGS.partialClipMinShare, 0, 100)),
     partialClipCommonLimit: Math.round(clamp(input.partialClipCommonLimit ?? DEFAULT_DUPLICATE_SETTINGS.partialClipCommonLimit, 2, 1000)),
+    partialClipEdgeSecs: Math.round(clamp(input.partialClipEdgeSecs ?? DEFAULT_DUPLICATE_SETTINGS.partialClipEdgeSecs, 0, 120)),
     nearMissRange: NEAR_MISS_RANGES.has(Number(input.nearMissRange)) ? Number(input.nearMissRange) : DEFAULT_DUPLICATE_SETTINGS.nearMissRange,
     visualOutlineCheck: input.visualOutlineCheck === 'off'
       ? 'off'
@@ -239,7 +241,7 @@ const NON_MATCHING_SETTING_KEYS = [
   'separateSimilarityThresholds', 'phashSimilarityThreshold', 'visualSimilarityThreshold',
   'retryFailedFingerprintExtraction', 'checkpointIntervalMinutes',
   // Partial clips are a separate result with its own run; duplicate matching does not depend on it.
-  'partialClips', 'partialClipMinShare', 'partialClipCommonLimit',
+  'partialClips', 'partialClipMinShare', 'partialClipCommonLimit', 'partialClipEdgeSecs',
   // Applied to stored results when they are loaded: an ignored pair is removed and its group rebuilt.
   'ignoredDuplicatePairs',
   'phashDefaultApplied', 'averageSamplesDefaultApplied', 'visualCorrelationDefaultApplied',

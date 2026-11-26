@@ -295,6 +295,11 @@ export interface DuplicateSettings {
   partialClipMinShare: number;
   /** Sound found in more than this many other videos is common sound and is not searched. */
   partialClipCommonLimit: number;
+  /**
+   * Seconds at the start or end of a video (at most a tenth of it) that may be missing from the other
+   * video without counting: intros and outros. Only labels results; the search does not use it.
+   */
+  partialClipEdgeSecs: number;
   maxSamplingDuration: number;
   retryFailedFingerprintExtraction: boolean;
   checkpointIntervalMinutes: number;

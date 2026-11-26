@@ -92,6 +92,7 @@ export const DEFAULT_DUPLICATE_SETTINGS: DuplicateSettings = {
   partialClips: 'off',
   partialClipMinShare: 40,
   partialClipCommonLimit: 25,
+  partialClipEdgeSecs: 10,
   maxSamplingDuration: 0,
   retryFailedFingerprintExtraction: false,
   checkpointIntervalMinutes: 5,

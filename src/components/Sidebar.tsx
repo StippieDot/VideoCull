@@ -160,7 +160,8 @@ function SidebarDuplicateSection({
   const partialEntryCount = useMemo(() => groupIntoFamilies(
     mergeClipsByDuplicateGroup(partialClips ?? [], duplicateGroups),
     new Map(videos.map((video) => [video.id, video])),
-  ).length, [partialClips, duplicateGroups, videos]);
+    duplicateSettings.partialClipEdgeSecs,
+  ).length, [partialClips, duplicateGroups, videos, duplicateSettings.partialClipEdgeSecs]);
   const summaryStats = useMemo(() => {
     if (partialClipsMode) {
       const clipVideoCount = new Set((partialClips ?? []).flatMap((clip) => [clip.aId, clip.bId])).size;

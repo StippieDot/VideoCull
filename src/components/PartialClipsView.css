@@ -109,6 +109,7 @@
 
 /* The longest video's row: a ruler with end ticks, the scale every other bar is drawn on. */
 .partial-lane-axis {
+  position: relative;
   height: 10px;
   border: 1px solid var(--text-tertiary);
   border-top: 0;
@@ -123,6 +124,23 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* Footage only one side has: amber, as red already means marked for deletion. */
+.partial-lane-gap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: var(--color-skip);
+}
+
+.partial-lane-missing {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-skip);
+  font-size: 12px;
 }
 
 .partial-lane-times {

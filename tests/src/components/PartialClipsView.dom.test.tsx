@@ -4,7 +4,7 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
 import { vi } from 'vitest';
-import PartialClipsView, { cardFlags, filterAndSortPartialClips, placeOnMaster, laneSpans, matchBadge, matchedSeconds, mergeClipsByDuplicateGroup, type Lane } from '../../../src/components/PartialClipsView';
+import PartialClipsView, { cardFlags, filterAndSortPartialClips, gapsIn, placeOnMaster, laneSpans, matchBadge, matchedSeconds, mergeClipsByDuplicateGroup, type Lane } from '../../../src/components/PartialClipsView';
 import useStore from '../../../src/store';
 import type { PartialClip } from '../../../src/types';
 import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
@@ -73,6 +73,10 @@ describe('partial clips list', () => {
     expect(within(card).getByText('0:30 to 0:50')).toBeTruthy();
     expect(within(card).getByTitle('Sound matches 96%')).toBeTruthy();
     expect(within(card).getByTitle('Picture matches 99%')).toBeTruthy();
+    // The 40 s clip's last 20 s are not in the longest: half of it, far past the intro and outro
+    // allowance. What the longest lacks is the clip bar's gaps, so its row does not say it again.
+    expect(within(card).getByText('Not in the longest: last 0:20')).toBeTruthy();
+    expect(within(card).queryByText(/Not in the other videos/)).toBeNull();
     expect(screen.getAllByText('Fully inside').length).toBeGreaterThan(0);
     // The pair with another picture is behind a switch below the list.
     expect(screen.queryByText('Same sound, other picture')).toBeNull();
@@ -99,7 +103,7 @@ describe('partial clips list', () => {
     const concert = makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600 });
     const reencode = makeVideo(OTHER, { filename: 'concert-reencode.mp4', durationSecs: 598 });
     const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
-    expect(matchBadge(clip({ bId: OTHER, shorterId: OTHER, coverage: 1, segments: whole }), reencode, concert))
+    expect(matchBadge(clip({ bId: OTHER, shorterId: OTHER, coverage: 1, segments: whole }), reencode, concert, 10))
       .toEqual({ label: 'Same video', tone: 'exact' });
   });
 
@@ -123,7 +127,7 @@ describe('partial clips list', () => {
   });
 
   test('between an excerpt and its source only a bitrate far apart is marked', () => {
-    const lane = (id: string, kbps: number, role: Lane['role']): Lane => ({ video: makeVideo(id, { videoBitrate: kbps * 1000 }), role, segments: [], via: null });
+    const lane = (id: string, kbps: number, role: Lane['role']): Lane => ({ video: makeVideo(id, { videoBitrate: kbps * 1000 }), role, segments: [], via: null, missing: [] });
     const bitrates = (lanes: Lane[]) => [...cardFlags(lanes).values()].map((flags) => flags.bitrate);
     expect(bitrates([lane(SOURCE, 1500, 'master'), lane(CLIP, 1400, 'excerpt'), lane(OTHER, 1000, 'excerpt')])).toEqual(['best', 'best', 'worse']);
     expect(bitrates([lane(SOURCE, 1500, 'master'), lane(CLIP, 1200, 'excerpt')])).toEqual(['equal', 'equal']);
@@ -140,7 +144,33 @@ describe('partial clips list', () => {
       { primary: clip({ segments: [jingle(0), jingle(1200), scene(0, 1200)] }), others: [] },
     ];
     const byId = new Map([disc, scene1, scene2].map((video) => [video.id, video]));
-    expect(placeOnMaster(entries, byId).map((lane) => lane.video.filename)).toEqual(['disc.mp4', 'scene1.mp4', 'scene2.mp4']);
+    expect(placeOnMaster(entries, byId, 10).map((lane) => lane.video.filename)).toEqual(['disc.mp4', 'scene1.mp4', 'scene2.mp4']);
+  });
+
+  test('gaps leave out what the bars join, and spans past either end', () => {
+    // 1% of 1000 s is 10 s: the 5 s gap is joined, the 50 s one and the 100 s start are not.
+    expect(gapsIn([{ start: 100, end: 400 }, { start: 405, end: 600 }, { start: 650, end: 1200 }], 1000, 30))
+      .toEqual([{ start: 0, end: 100 }, { start: 600, end: 650 }]);
+    expect(gapsIn([{ start: -20, end: 1000 }], 1000, 30)).toEqual([]);
+    // A 2 s gap in the middle is the search being off; 25 s at the start is within a 30 s intro.
+    expect(gapsIn([{ start: 25, end: 500 }, { start: 502, end: 1000 }], 1000, 30)).toEqual([]);
+    // The allowance is never more than a tenth of the video: 16 s of a 160 s clip.
+    expect(gapsIn([{ start: 25, end: 160 }], 160, 30)).toEqual([{ start: 0, end: 25 }]);
+    expect(gapsIn([{ start: 15, end: 160 }], 160, 30)).toEqual([]);
+  });
+
+  test('with several videos inside the longest, its row says what none of them has', () => {
+    const scene = (startA: number) => [{ startA, startB: 0, lengthSecs: 200, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 96 }];
+    useStore.setState({
+      videos: [
+        makeVideo(SOURCE, { filename: 'disc.mp4', durationSecs: 600 }),
+        makeVideo(CLIP, { filename: 'scene1.mp4', durationSecs: 200 }),
+        makeVideo(OTHER, { filename: 'scene2.mp4', durationSecs: 200 }),
+      ],
+      partialClips: [clip({ segments: scene(0), coverage: 1 }), clip({ bId: OTHER, shorterId: OTHER, segments: scene(300), coverage: 1 })],
+    });
+    render(<PartialClipsView />);
+    expect(screen.getByText('Not in the other videos: 3:20 to 5:00, 8:20 to 10:00')).toBeTruthy();
   });
 
   test('keeps one copy of the same video and marks the other', async () => {
@@ -209,7 +239,7 @@ describe('partial clips list', () => {
       { startA, startB, lengthSecs, soundSimilarity: 96, pictureState, pictureSimilarity: 90 }
     );
     const recutClip = clip({ bId: OTHER, shorterId: OTHER, segments: [segment(0, 0, 300, 'confirmed'), segment(310, 300, 290, 'confirmed'), segment(400, 20, 15, 'differentPicture')] });
-    expect(matchBadge(recutClip, recut, concert).label).toBe('Same video');
+    expect(matchBadge(recutClip, recut, concert, 10).label).toBe('Same video');
     expect(matchedSeconds(recutClip)).toBe(590);
 
     // Many sound-only stretches do not lift a pair above one with more matching picture.
