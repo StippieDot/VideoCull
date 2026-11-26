@@ -293,7 +293,7 @@ describe('partial clips list', () => {
   });
 
   test('stretches a few seconds apart on the longest video are drawn and listed as one', () => {
-    const lane = (segments: Lane['segments']): Lane => ({ video: makeVideo(CLIP), role: 'excerpt', segments, via: null });
+    const lane = (segments: Lane['segments']): Lane => ({ video: makeVideo(CLIP), role: 'excerpt', segments, via: null, missing: [] });
     // 1% of 6000 s is 60 s: a 30 s gap joins, a 200 s gap does not, and a sound-only stretch stays apart.
     expect(laneSpans(lane([
       { start: 1000, end: 2000, state: 'confirmed' },
