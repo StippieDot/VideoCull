@@ -80,7 +80,7 @@ function validManifest(properties = '') {
 function validateFixture(manifest) {
   const fixture = createFixture(manifest);
   try {
-    return spawnSync('powershell.exe', [
+    const result = spawnSync('powershell.exe', [
       '-NoProfile',
       '-ExecutionPolicy',
       'Bypass',
@@ -91,6 +91,11 @@ function validateFixture(manifest) {
       '-ExpectedVersion',
       '2.2.1.0',
     ], { encoding: 'utf8', shell: false });
+    return {
+      ...result,
+      // PowerShell wraps uncaught exception messages to the host buffer width.
+      outputText: `${result.stderr}\n${result.stdout}`.replace(/\s+/g, ' '),
+    };
   } finally {
     fixture.cleanup();
   }
@@ -109,7 +114,7 @@ test('final APPX validation requires unvirtualizedResources', {
   const manifest = validManifest().replace('    <rescap:Capability Name="unvirtualizedResources" />\n', '');
   const result = validateFixture(manifest);
   assert.notEqual(result.status, 0);
-  assert.match(`${result.stderr}\n${result.stdout}`, /Unexpected AppX capabilities/);
+  assert.match(result.outputText, /Unexpected AppX capabilities/);
 });
 
 test('final APPX validation requires filesystem write virtualization to be disabled', {
@@ -121,7 +126,7 @@ test('final APPX validation requires filesystem write virtualization to be disab
   );
   const result = validateFixture(manifest);
   assert.notEqual(result.status, 0);
-  assert.match(`${result.stderr}\n${result.stdout}`, /must disable desktop6 filesystem write virtualization/);
+  assert.match(result.outputText, /must disable desktop6 filesystem write virtualization/);
 });
 
 test('final APPX validation rejects disabled registry write virtualization', {
@@ -131,5 +136,5 @@ test('final APPX validation rejects disabled registry write virtualization', {
     '<desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>',
   ));
   assert.notEqual(result.status, 0);
-  assert.match(`${result.stderr}\n${result.stdout}`, /must leave registry write virtualization enabled/);
+  assert.match(result.outputText, /must leave registry write virtualization enabled/);
 });
