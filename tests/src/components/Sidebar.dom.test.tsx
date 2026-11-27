@@ -435,7 +435,7 @@ describe('Sidebar recent folder behavior', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reset duplicate filters' }));
     expect(useStore.getState().partialClipSortBy).toBe('sharedLength');
     // The switch goes back to the groups, and leaving for the grid leaves the list too.
-    await userEvent.click(screen.getByRole('button', { name: /Groups/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^Duplicates/ }));
     expect(useStore.getState().partialClipsMode).toBe(false);
     expect(screen.getByText('Minimum similarity')).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: /Partial clips/ }));
