@@ -1107,6 +1107,8 @@
 }
 
 .duplicate-summary-stat .stat-value {
+  /* Three tiles share the sidebar's width; "50.8 GB" needs the smaller size to fit. */
+  font-size: 15px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

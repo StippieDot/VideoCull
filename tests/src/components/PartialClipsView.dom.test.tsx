@@ -202,8 +202,9 @@ describe('partial clips list', () => {
     const family = screen.getByText('Same footage').closest('article')!;
     const row = (name: string) => within(family).getByText(name).closest('.partial-clip-video') as HTMLElement;
     // 720p beats 480p by the default keeper order; the 1080p clip is still suggested, but says so.
-    expect(within(row('concert-720.mp4')).getByText('Suggested keeper')).toBeTruthy();
-    expect(within(row('highlight-1080.mp4')).getByText('Better picture')).toBeTruthy();
+    expect(within(row('concert-720.mp4')).getByText('Keeper')).toBeTruthy();
+    expect(within(row('concert.mp4')).queryByText('Keeper')).toBeNull();
+    expect(within(row('highlight-1080.mp4')).getByText('Better picture than the keeper')).toBeTruthy();
 
     // A video marked Keep is protected, as in duplicate review.
     await userEvent.click(screen.getByRole('button', { name: 'Select suggested deletions' }));
@@ -214,21 +215,6 @@ describe('partial clips list', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Mark selected as Delete (2)' }));
     const status = (id: string) => useStore.getState().videos.find((video) => video.id === id)?.status;
     expect([status(SOURCE), status(COPY), status(CLIP), status(WEAK)]).toEqual(['delete', 'pending', 'delete', 'pending']);
-  });
-
-  test('keeps one copy of the same video and marks the other', async () => {
-    const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
-    useStore.setState({
-      videos: [
-        makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600, status: 'keep' }),
-        makeVideo(OTHER, { filename: 'concert-small.mp4', durationSecs: 598, status: 'keep' }),
-      ],
-      partialClips: [clip({ bId: OTHER, shorterId: OTHER, segments: whole })],
-    });
-    render(<PartialClipsView />);
-    await userEvent.click(screen.getByRole('button', { name: 'Keep concert.mp4, delete the other copy' }));
-    const status = (id: string) => useStore.getState().videos.find((video) => video.id === id)?.status;
-    expect([status(SOURCE), status(OTHER)]).toEqual(['keep', 'delete']);
   });
 
   test('copies and excerpts of one video become one card; a weaker pair stays apart', async () => {
@@ -267,12 +253,6 @@ describe('partial clips list', () => {
     await userEvent.click(within(family).getByRole('button', { name: 'Not a match: highlight.mp4 and concert-copy.mp4' }));
     expect(screen.queryByText('Same footage')).toBeNull();
     expect(screen.getAllByText('Same video').length).toBeGreaterThan(0);
-  });
-
-  test('an excerpt offers no keep-one action', () => {
-    useStore.setState({ partialClips: [clip()] });
-    render(<PartialClipsView />);
-    expect(screen.queryByRole('button', { name: /delete the other copy/ })).toBeNull();
   });
 
   test('a copy split into parts is the same video, and only matching pictures count toward the shared length', () => {
@@ -361,7 +341,8 @@ describe('partial clips list', () => {
     expect(labels).not.toContain('Exclude from this group');
     await userEvent.click(screen.getByRole('menuitem', { name: 'Mark Keep' }));
     expect(useStore.getState().videos.find((video) => video.id === CLIP)?.status).toBe('keep');
-    expect(screen.getByText('Marked keep')).toBeTruthy();
+    // The pressed Keep button shows the mark; the name line has no room for it.
+    expect(screen.getByRole('button', { name: 'Unmark keep: highlight.mp4' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   test('cards filter by path and kind, and sort by shared length, score, space to free and size', () => {

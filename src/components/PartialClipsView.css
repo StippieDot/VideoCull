@@ -32,7 +32,7 @@
  * all rows start and end at the same place and share the master's scale.
  */
 .partial-clip-card .partial-clip-video {
-  grid-template-columns: 28px 82px minmax(0, 1fr) minmax(180px, 1fr) 236px;
+  grid-template-columns: 28px 82px minmax(0, 1fr) minmax(180px, 1fr) 138px;
   height: 79px;
   padding: 0 12px;
 }
@@ -48,14 +48,34 @@
   background: #0b0a10;
 }
 
-/* Accent, not green: green already says Marked keep in the same line. */
-.duplicate-inline-flag.partial-clip-keeper {
-  color: var(--accent);
+.partial-clip-thumb {
+  position: relative;
+  display: flex;
 }
 
-/* Amber like the missing-footage line: a cost to see before marking. */
-.duplicate-inline-flag.partial-clip-better {
-  color: var(--color-skip);
+/* duplicate-keeper-badge, sized to sit on an 82px thumbnail like the gallery's keeper badge. */
+.partial-clip-keeper {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  min-height: 18px;
+  padding: 0 6px;
+  gap: 3px;
+  font-size: 10px;
+  transform: translateX(-50%);
+  background: rgba(16, 40, 28, 0.88);
+}
+
+/* The details read as one line cut at its end, not as five values each cut short. */
+.partial-clip-video .duplicate-meta-chips {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.partial-clip-video .duplicate-meta-chips .meta-chip {
+  overflow: visible;
 }
 
 .partial-clip-role {
@@ -73,6 +93,8 @@
 /* All lanes of a card share one scale: the master's length, from left to right. */
 .partial-lane {
   display: grid;
+  /* Without this the lane widens to its longest label, and every row's bar ends somewhere else. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   min-width: 0;
 }
@@ -109,6 +131,8 @@
 }
 
 .partial-lane-label {
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -166,3 +190,12 @@
   color: var(--accent);
 }
 
+.partial-lane-label .duplicate-meta-chips {
+  flex: none;
+}
+
+.partial-lane-axis-labels > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

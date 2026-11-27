@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Ban, Check, CheckCircle2, Image, Play, Trash2, Volume2 } from 'lucide-react';
+import { Ban, Check, CheckCircle2, Image, Play, Trash2, Volume2 } from 'lucide-react';
 import { List } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
 import { DUPLICATE_GROUP_GAP, DUPLICATE_GROUP_HEADER_HEIGHT, DUPLICATE_VIDEO_ROW_HEIGHT } from './duplicateVirtualRows';
@@ -9,7 +9,7 @@ import { formatDuration, formatFps, formatResolutionLabel, formatSize, resolutio
 import { openVideoExternally, revealInExplorer } from '../appCommands';
 import ContextMenu, { copyTextToClipboard } from './ContextMenu';
 import { buildCopyPathSuccessDetail, buildDuplicateVideoMenu } from './contextMenuBuilders';
-import { bitrateLabel, computeBestFlags, parentPath, statusBadgeContent, type MetricFlags } from './DuplicateGroupsView';
+import { bitrateLabel, computeBestFlags, parentPath, type MetricFlags } from './DuplicateGroupsView';
 import './DuplicateGroupsView.css';
 import './PartialClipsView.css';
 
@@ -499,9 +499,11 @@ function MatchChips({ clip }: { clip: PartialClip }) {
 }
 
 /** The row's place on the master: one bar per matching stretch, on the scale of the master's length. */
-function LaneBar({ lane, masterSecs, uncovered }: {
+function LaneBar({ lane, masterSecs, uncovered, betterPicture }: {
   lane: Lane;
   masterSecs: number;
+  /** Suggested for deletion although its picture is better than the keeper's (suggestKeeper). */
+  betterPicture: boolean;
   /** On the master's row: its parts that no other video of the card matches. */
   uncovered: { start: number; end: number }[];
 }) {
@@ -558,11 +560,17 @@ function LaneBar({ lane, masterSecs, uncovered }: {
         <span className="partial-lane-times" title="Where this video appears on the timeline of the longest video">{times}</span>
       </span>
       {outsideText && <span className="partial-lane-missing" title="Parts of this video, in its own time, that the longest video does not have">Not in the longest: {outsideText}</span>}
+      {/* A fully-inside video has no missing parts, so this note never shares the line with them. */}
+      {betterPicture && !outsideText && (
+        <span className="partial-lane-missing" title="Suggested for deletion because the keeper has all its footage, but this video has the better picture: deleting it loses that quality">
+          Better picture than the keeper
+        </span>
+      )}
     </div>
   );
 }
 
-function ClipVideoRow({ lane, masterSecs, uncovered, splittable, flags, scopeIds, onContextMenu, onKeepOnly, isKeeper, betterPicture, isSelected, onToggleSelection }: {
+function ClipVideoRow({ lane, masterSecs, uncovered, splittable, flags, scopeIds, onContextMenu, isKeeper, betterPicture, isSelected, onToggleSelection }: {
   lane: Lane;
   isKeeper: boolean;
   /** Suggested for deletion although its picture is better than the keeper's. */
@@ -577,8 +585,6 @@ function ClipVideoRow({ lane, masterSecs, uncovered, splittable, flags, scopeIds
   flags: MetricFlags;
   scopeIds: string[];
   onContextMenu: OpenVideoMenu;
-  /** Copies of the same video: keep this one and mark the other copies for deletion. */
-  onKeepOnly?: () => void;
 }) {
   const { video, via } = lane;
   // An unknown value (no resolution read yet) is left out rather than shown as an empty chip.
@@ -586,7 +592,6 @@ function ClipVideoRow({ lane, masterSecs, uncovered, splittable, flags, scopeIds
   const setVideoStatus = useStore((s) => s.setVideoStatus);
   const enterReviewAndPlay = useStore((s) => s.enterReviewAndPlay);
   const thumbnail = thumbSrc(video);
-  const badge = statusBadgeContent(video);
   const toggle = (status: 'keep' | 'delete') => setVideoStatus(video.id, video.status === status ? 'pending' : status);
   return (
     <div
@@ -596,31 +601,22 @@ function ClipVideoRow({ lane, masterSecs, uncovered, splittable, flags, scopeIds
       <label className="duplicate-select-cell" title="Select video">
         <input type="checkbox" checked={isSelected} onChange={() => onToggleSelection(video.id)} aria-label={`Select ${video.filename}`} />
       </label>
-      {thumbnail ? <img src={thumbnail} alt="" /> : <span className="partial-clip-thumb-placeholder" />}
+      <div className="partial-clip-thumb">
+        {thumbnail ? <img src={thumbnail} alt="" /> : <span className="partial-clip-thumb-placeholder" />}
+        {/* Over the thumbnail, as on duplicate review's gallery cards: the row has no room beside the name. */}
+        {isKeeper && (
+          <span className="duplicate-keeper-badge partial-clip-keeper" title="Suggested keeper: all footage of the videos suggested for deletion is in this video">
+            <CheckCircle2 size={11} />
+            Keeper
+          </span>
+        )}
+      </div>
       <div className="duplicate-row-copy">
         <div className="duplicate-row-title">
           <strong title={video.path}>{video.filename}</strong>
           <span className={`partial-clip-role ${lane.role}`}>
             {lane.role === 'part' && via ? `Shares ${formatDuration(matchedSeconds(via.clip))}` : ROLE_LABELS[lane.role]}
           </span>
-          {badge && (
-            <span className={`duplicate-inline-flag ${badge.className}`}>
-              {badge.icon}
-              {badge.label}
-            </span>
-          )}
-          {isKeeper && (
-            <span className="duplicate-inline-flag partial-clip-keeper" title="All footage of the videos suggested for deletion is in this video">
-              <CheckCircle2 size={12} />
-              Suggested keeper
-            </span>
-          )}
-          {betterPicture && (
-            <span className="duplicate-inline-flag partial-clip-better" title="Suggested for deletion because the keeper has all its footage, but this video has the better picture: deleting it loses that quality">
-              <AlertTriangle size={12} />
-              Better picture
-            </span>
-          )}
         </div>
         <span className="duplicate-row-path" title={video.path}>{parentPath(video.path)}</span>
         <span className="duplicate-meta-chips">
@@ -631,13 +627,9 @@ function ClipVideoRow({ lane, masterSecs, uncovered, splittable, flags, scopeIds
           {chip('size', formatSize(video.sizeBytes))}
         </span>
       </div>
-      <LaneBar lane={lane} masterSecs={masterSecs} uncovered={uncovered} />
+      <LaneBar lane={lane} masterSecs={masterSecs} uncovered={uncovered} betterPicture={betterPicture} />
+      {/* The row's colored edge and the pressed Keep or Delete button say how it is marked. */}
       <div className="partial-clip-actions">
-        {onKeepOnly && (
-          <button className="duplicate-group-action-btn" onClick={onKeepOnly} aria-label={`Keep ${video.filename}, delete the other copy`}>
-            Keep this one
-          </button>
-        )}
         <button
           className={`duplicate-play-btn ${video.status === 'keep' ? 'active' : ''}`}
           onClick={() => toggle('keep')}
@@ -711,7 +703,6 @@ const ClipCard = memo(function ClipCard({ card, index, videosById, edgeSecs, onV
   edgeSecs: number;
   onVideoContextMenu: OpenVideoMenu;
 }) {
-  const setVideoStatus = useStore((s) => s.setVideoStatus);
   const { entries, lanes } = card;
   const master = lanes[0];
   const first = entries[0]?.primary;
@@ -730,7 +721,6 @@ const ClipCard = memo(function ClipCard({ card, index, videosById, edgeSecs, onV
     ? describeMatch(first, pair.shorter, pair.longer, edgeSecs)
     : [count('copy', 'same video', 'same videos'), count('excerpt', 'fully inside', 'fully inside'), count('part', 'sharing a stretch', 'sharing stretches')].filter(Boolean).join(', ');
   const allPairs = entries.flatMap((entry) => [entry.primary, ...entry.others]);
-  const copies = lanes.filter((lane) => lane.role === 'master' || lane.role === 'copy');
   const flags = cardFlags(lanes);
   // The longest video's parts that no other video of the card matches in picture.
   // Sound with an unchecked picture counts as present here too, as it does in missingFrom.
@@ -738,9 +728,6 @@ const ClipCard = memo(function ClipCard({ card, index, videosById, edgeSecs, onV
   // With one other video its row's gaps already say this; only several rows together leave parts
   // that none of them has. Only sound in common: nothing of the longest is matched, which says nothing.
   const uncovered = lanes.length > 2 && matched.length > 0 ? gapsIn(matched, masterSecs, edgeSecs) : [];
-  const keepOnly = (keep: Video) => () => {
-    for (const lane of copies) setVideoStatus(lane.video.id, lane.video.id === keep.id ? 'keep' : 'delete');
-  };
   return (
     <article className={`partial-clip-card ${first.relation}`} data-entry-index={index}>
       <header className="duplicate-group-header partial-clip-header">
@@ -782,7 +769,6 @@ const ClipCard = memo(function ClipCard({ card, index, videosById, edgeSecs, onV
           flags={flags.get(lane.video.id) ?? {}}
           scopeIds={scopeIds}
           onContextMenu={onVideoContextMenu}
-          onKeepOnly={copies.length > 1 && copies.includes(lane) ? keepOnly(lane.video) : undefined}
           isKeeper={lane.video.id === card.keeperId && card.deleteIds.length > 0}
           betterPicture={card.betterPictureIds.includes(lane.video.id)}
           isSelected={selectedIds.has(lane.video.id)}
