@@ -1136,6 +1136,9 @@ export function runWithUndoAction(edit: () => void): { actionLabel?: string; act
   };
 }
 
+/** One key for a set of copies of one video, whatever order they come in. */
+export const partialClipCopyKey = (copyIds: string[]) => [...copyIds].sort().join('|');
+
 /** No kind chosen: every entry is shown. Choosing kinds shows only those. */
 export const DEFAULT_PARTIAL_CLIP_KINDS: Record<PartialClipKind, boolean> = { sameVideo: false, excerpt: false, contains: false, sameSound: false };
 
@@ -1201,6 +1204,7 @@ const useStore = create<VideoStore>((set, get) => ({
   partialClipSortBy: 'sharedLength',
   partialClipSortOrder: 'desc',
   partialClipKinds: DEFAULT_PARTIAL_CLIP_KINDS,
+  partialClipKeepers: {},
   duplicateScrollTop: 0,
   reviewPosition: null,
   duplicatePosition: null,
@@ -1298,6 +1302,7 @@ const useStore = create<VideoStore>((set, get) => ({
       partialClipSortBy: 'sharedLength',
       partialClipSortOrder: 'desc',
       partialClipKinds: DEFAULT_PARTIAL_CLIP_KINDS,
+      partialClipKeepers: {},
       undoStack: [],
       redoStack: [],
       gridSelectionIds: new Set(),
@@ -1342,6 +1347,7 @@ const useStore = create<VideoStore>((set, get) => ({
       partialClipSortBy: 'sharedLength',
       partialClipSortOrder: 'desc',
       partialClipKinds: DEFAULT_PARTIAL_CLIP_KINDS,
+      partialClipKeepers: {},
       undoStack: [],
       redoStack: [],
       gridSelectionIds: new Set(),
@@ -1988,6 +1994,11 @@ const useStore = create<VideoStore>((set, get) => ({
   })),
   setPartialClipSortOrder: (partialClipSortOrder) => set({ partialClipSortOrder }),
   togglePartialClipKind: (kind) => set((state) => ({ partialClipKinds: { ...state.partialClipKinds, [kind]: !state.partialClipKinds[kind] } })),
+  setPartialClipKeeper: (copyIds, videoId) => set((state) => {
+    const key = partialClipCopyKey(copyIds);
+    const { [key]: _previous, ...rest } = state.partialClipKeepers;
+    return { partialClipKeepers: videoId ? { ...rest, [key]: videoId } : rest };
+  }),
   setDuplicateScrollTop: (duplicateScrollTop) => set({ duplicateScrollTop: Math.max(0, duplicateScrollTop) }),
   setReviewPosition: (reviewPosition) => {
     const current = get().reviewPosition;

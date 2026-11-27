@@ -48,22 +48,13 @@
   background: #0b0a10;
 }
 
-.partial-clip-thumb {
-  position: relative;
-  display: flex;
-}
-
-/* duplicate-keeper-badge, sized to sit on an 82px thumbnail like the gallery's keeper badge. */
+/* The keeper says so in the row label, in the green of duplicate review's keeper badge. */
 .partial-clip-keeper {
-  position: absolute;
-  bottom: 3px;
-  left: 50%;
-  min-height: 18px;
-  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
   gap: 3px;
-  font-size: 10px;
-  transform: translateX(-50%);
-  background: rgba(16, 40, 28, 0.88);
+  color: var(--color-keep);
+  white-space: pre;
 }
 
 /* The details read as one line cut at its end, not as five values each cut short. */

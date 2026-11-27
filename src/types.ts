@@ -644,6 +644,8 @@ export interface VideoStore {
   partialClipSortOrder: SortOrder;
   /** The kinds of partial clip card the list is limited to; none chosen shows all. */
   partialClipKinds: Record<PartialClipKind, boolean>;
+  /** Keepers chosen by hand among copies of one video, by partialClipCopyKey of those copies. */
+  partialClipKeepers: Record<string, string>;
   duplicateScrollTop: number;
   /** Review's place in its scope, for the title bar; null outside Review and on its finished screen. */
   reviewPosition: { index: number; total: number } | null;
@@ -751,6 +753,8 @@ export interface VideoStore {
   setPartialClipSortBy: (sortBy: PartialClipSortField) => void;
   setPartialClipSortOrder: (order: SortOrder) => void;
   togglePartialClipKind: (kind: PartialClipKind) => void;
+  /** Chooses the keeper among `copyIds`; null goes back to the suggested one. */
+  setPartialClipKeeper: (copyIds: string[], videoId: string | null) => void;
   setDuplicateScrollTop: (scrollTop: number) => void;
   setReviewPosition: (position: { index: number; total: number } | null) => void;
   setDuplicatePosition: (position: { group: number; total: number } | null) => void;

@@ -3,7 +3,7 @@ import { Ban, Check, CheckCircle2, Image, Play, Trash2, Volume2 } from 'lucide-r
 import { List } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
 import { DUPLICATE_GROUP_GAP, DUPLICATE_GROUP_HEADER_HEIGHT, DUPLICATE_VIDEO_ROW_HEIGHT } from './duplicateVirtualRows';
-import useStore, { chooseSuggestedKeeperId, KEEPER_RESOLUTION_MARGIN_SHARE } from '../store';
+import useStore, { chooseSuggestedKeeperId, KEEPER_RESOLUTION_MARGIN_SHARE, partialClipCopyKey } from '../store';
 import type { DuplicateGroup, PartialClip, PartialClipKind, PartialClipSegment, PartialClipSortField, SortOrder, Video } from '../types';
 import { formatDuration, formatFps, formatResolutionLabel, formatSize, resolutionTier } from '../utils';
 import { openVideoExternally, revealInExplorer } from '../appCommands';
@@ -141,7 +141,8 @@ export function matchBadge(clip: PartialClip, shorter: Video, longer: Video, edg
   return { label: clip.state === 'differentPicture' ? 'Same sound, other picture' : 'Same sound', tone: 'low-confidence' };
 }
 
-type OpenVideoMenu = (event: React.MouseEvent, videoId: string, scopeIds: string[]) => void;
+/** `onSetKeeper`: offered on a copy that is not the keeper, as Mark as selected keeper. */
+type OpenVideoMenu = (event: React.MouseEvent, videoId: string, scopeIds: string[], onSetKeeper?: () => void) => void;
 
 /** A card of the list: one pair, or a family of videos that are copies or excerpts of each other. */
 export type PartialClipCard =
@@ -294,11 +295,23 @@ export interface ClipCardData {
   kinds: ClipKind[];
   /** Its weakest match, picture where compared and sound otherwise, as a duplicate group's score is. */
   score: number;
-  /** The most seconds any of its pairs share: sound and picture both, unless they share only sound. */
+  /**
+   * The most seconds any of its pairs share in sound and picture both; 0 when they share only sound,
+   * so a shared song never ranks above a real excerpt.
+   */
   sharedSecs: number;
+  /** The most seconds any of its pairs share in sound: orders the sound-only cards among themselves. */
+  soundSecs: number;
   totalBytes: number;
-  /** The video to keep: the best copy of the longest video by the duplicate keeper order, else the longest. */
+  /**
+   * The video to keep: the copy chosen by hand, else the best copy of the longest video by the duplicate
+   * keeper order, else the longest.
+   */
   keeperId: string;
+  /** The keeper was chosen by hand (Mark as selected keeper), not suggested. */
+  keeperSelected: boolean;
+  /** The longest video and its copies: the videos that can be chosen as keeper. */
+  copyIds: string[];
   /**
    * Videos whose footage all stays in the keeper: its other copies and the videos fully inside it.
    * Videos that only share a stretch or sound are never in it.
@@ -310,11 +323,13 @@ export interface ClipCardData {
   freeBytes: number;
 }
 
-/** What buildClipCards needs from the duplicate settings. */
+/** What buildClipCards needs from the duplicate settings, and the keepers chosen by hand. */
 export interface ClipCardOptions {
   edgeSecs: number;
   keeperOrder: string[];
   codecOrder: string[];
+  /** By partialClipCopyKey; see the store's partialClipKeepers. */
+  chosenKeepers?: Record<string, string>;
 }
 
 const bitrateOf = (video: Video) => video.videoBitrate ?? video.totalBitrate ?? 0;
@@ -328,14 +343,27 @@ function hasBetterPicture(video: Video, than: Video): boolean {
 }
 
 /** The keeper of a card and what deleting would lose nothing of; see ClipCardData. */
-export function suggestKeeper(lanes: Lane[], keeperOrder: string[], codecOrder: string[]): Pick<ClipCardData, 'keeperId' | 'deleteIds' | 'betterPictureIds'> {
+export function suggestKeeper(
+  lanes: Lane[],
+  keeperOrder: string[],
+  codecOrder: string[],
+  chosenKeepers: Record<string, string> = {},
+): Pick<ClipCardData, 'keeperId' | 'keeperSelected' | 'copyIds' | 'deleteIds' | 'betterPictureIds'> {
   const copies = lanes.filter((lane) => lane.role === 'master' || lane.role === 'copy');
-  const keeperId = (copies.length > 1 ? chooseSuggestedKeeperId(copies.map((lane) => lane.video), keeperOrder, codecOrder) : null) ?? lanes[0]!.video.id;
+  const copyIds = copies.map((lane) => lane.video.id);
+  // Only a copy can be kept instead: anything else lacks footage the longest video has.
+  const chosen = chosenKeepers[partialClipCopyKey(copyIds)];
+  const keeperSelected = copies.length > 1 && Boolean(chosen) && copyIds.includes(chosen!);
+  const keeperId = keeperSelected
+    ? chosen!
+    : (copies.length > 1 ? chooseSuggestedKeeperId(copies.map((lane) => lane.video), keeperOrder, codecOrder) : null) ?? lanes[0]!.video.id;
   const keeper = lanes.find((lane) => lane.video.id === keeperId)!.video;
   // An excerpt is fully inside the copy it was placed through, and every copy is the keeper's footage.
   const deletable = lanes.filter((lane) => lane.video.id !== keeperId && (copies.includes(lane) || lane.role === 'excerpt'));
   return {
     keeperId,
+    keeperSelected,
+    copyIds,
     deleteIds: deletable.map((lane) => lane.video.id),
     // Coverage wins, but not silently: the row says the clip has the better picture.
     betterPictureIds: deletable.filter((lane) => lane.role === 'excerpt' && hasBetterPicture(lane.video, keeper)).map((lane) => lane.video.id),
@@ -345,7 +373,7 @@ export function suggestKeeper(lanes: Lane[], keeperOrder: string[], codecOrder: 
 const pairScore = (clip: PartialClip) => clip.pictureSimilarity ?? clip.soundSimilarity;
 
 /** Every card of a result, unfiltered and in no particular order. */
-export function buildClipCards(entries: PartialClipEntry[], videosById: Map<string, Video>, { edgeSecs, keeperOrder, codecOrder }: ClipCardOptions): ClipCardData[] {
+export function buildClipCards(entries: PartialClipEntry[], videosById: Map<string, Video>, { edgeSecs, keeperOrder, codecOrder, chosenKeepers }: ClipCardOptions): ClipCardData[] {
   const kindOf = (clip: PartialClip): ClipKind => {
     const shorter = videosById.get(clip.shorterId);
     const longer = videosById.get(clip.shorterId === clip.aId ? clip.bId : clip.aId);
@@ -358,13 +386,14 @@ export function buildClipCards(entries: PartialClipEntry[], videosById: Map<stri
     if (lanes.length < 2) return [];
     const primaries = list.map((entry) => entry.primary);
     const size = (lane: Lane) => lane.video.sizeBytes ?? 0;
-    const keeper = suggestKeeper(lanes, keeperOrder, codecOrder);
+    const keeper = suggestKeeper(lanes, keeperOrder, codecOrder, chosenKeepers);
     return [{
       entries: list,
       lanes,
       kinds: [...new Set(primaries.map(kindOf))],
       score: Math.min(...primaries.map(pairScore)),
-      sharedSecs: Math.max(...primaries.map((clip) => (clip.relation === 'partial' ? matchedSeconds(clip) : shorterSeconds(clip, clip.segments)))),
+      sharedSecs: Math.max(...primaries.map(matchedSeconds)),
+      soundSecs: Math.max(...primaries.map((clip) => shorterSeconds(clip, clip.segments))),
       totalBytes: lanes.reduce((sum, lane) => sum + size(lane), 0),
       ...keeper,
       freeBytes: lanes.filter((lane) => keeper.deleteIds.includes(lane.video.id)).reduce((sum, lane) => sum + size(lane), 0),
@@ -394,7 +423,9 @@ export function filterAndSortCards(
   const value = SORT_VALUES[options.sortBy];
   const direction = options.sortOrder === 'asc' ? 1 : -1;
   const anyChosen = Object.values(options.kinds).some(Boolean);
-  return cards.filter((card) => !anyChosen || card.kinds.some((kind) => options.kinds[kind])).sort((x, y) => (value(x) - value(y)) * direction);
+  return cards
+    .filter((card) => !anyChosen || card.kinds.some((kind) => options.kinds[kind]))
+    .sort((x, y) => (value(x) - value(y) || x.soundSecs - y.soundSecs) * direction);
 }
 
 /** The list as the sidebar's filters and sort leave it; the view and the sidebar's counts share it. */
@@ -405,14 +436,15 @@ export function usePartialClipCards() {
   const edgeSecs = useStore((s) => s.settings.duplicates.partialClipEdgeSecs);
   const keeperOrder = useStore((s) => s.settings.duplicates.keeperOrder);
   const codecOrder = useStore((s) => s.settings.duplicates.codecOrder);
+  const chosenKeepers = useStore((s) => s.partialClipKeepers);
   const pathFilter = useStore((s) => s.duplicatePathFilter);
   const kinds = useStore((s) => s.partialClipKinds);
   const sortBy = useStore((s) => s.partialClipSortBy);
   const sortOrder = useStore((s) => s.partialClipSortOrder);
   const videosById = useMemo(() => new Map(videos.map((video) => [video.id, video])), [videos]);
   const cards = useMemo(
-    () => buildClipCards(mergeClipsByDuplicateGroup(clips ?? [], groups), videosById, { edgeSecs, keeperOrder, codecOrder }),
-    [clips, codecOrder, edgeSecs, groups, keeperOrder, videosById],
+    () => buildClipCards(mergeClipsByDuplicateGroup(clips ?? [], groups), videosById, { edgeSecs, keeperOrder, codecOrder, chosenKeepers }),
+    [chosenKeepers, clips, codecOrder, edgeSecs, groups, keeperOrder, videosById],
   );
   const matching = useMemo(() => cards.filter((card) => matchesPathFilter(card, pathFilter)), [cards, pathFilter]);
   const shown = useMemo(() => filterAndSortCards(matching, { kinds, sortBy, sortOrder }), [kinds, matching, sortBy, sortOrder]);
@@ -570,9 +602,11 @@ function LaneBar({ lane, masterSecs, uncovered, betterPicture }: {
   );
 }
 
-function ClipVideoRow({ lane, masterSecs, uncovered, splittable, flags, scopeIds, onContextMenu, isKeeper, betterPicture, isSelected, onToggleSelection }: {
+function ClipVideoRow({ lane, masterSecs, uncovered, splittable, flags, scopeIds, onContextMenu, keeper, onSetKeeper, betterPicture, isSelected, onToggleSelection }: {
   lane: Lane;
-  isKeeper: boolean;
+  /** This row is the card's keeper: chosen by hand, or suggested. */
+  keeper: 'selected' | 'suggested' | null;
+  onSetKeeper?: () => void;
   /** Suggested for deletion although its picture is better than the keeper's. */
   betterPicture: boolean;
   isSelected: boolean;
@@ -596,26 +630,29 @@ function ClipVideoRow({ lane, masterSecs, uncovered, splittable, flags, scopeIds
   return (
     <div
       className={`duplicate-row partial-clip-video ${video.status !== 'pending' ? `status-${video.status}` : ''}`}
-      onContextMenu={(event) => onContextMenu(event, video.id, scopeIds)}
+      onContextMenu={(event) => onContextMenu(event, video.id, scopeIds, onSetKeeper)}
     >
       <label className="duplicate-select-cell" title="Select video">
         <input type="checkbox" checked={isSelected} onChange={() => onToggleSelection(video.id)} aria-label={`Select ${video.filename}`} />
       </label>
-      <div className="partial-clip-thumb">
-        {thumbnail ? <img src={thumbnail} alt="" /> : <span className="partial-clip-thumb-placeholder" />}
-        {/* Over the thumbnail, as on duplicate review's gallery cards: the row has no room beside the name. */}
-        {isKeeper && (
-          <span className="duplicate-keeper-badge partial-clip-keeper" title="Suggested keeper: all footage of the videos suggested for deletion is in this video">
-            <CheckCircle2 size={11} />
-            Keeper
-          </span>
-        )}
-      </div>
+      {thumbnail ? <img src={thumbnail} alt="" /> : <span className="partial-clip-thumb-placeholder" />}
       <div className="duplicate-row-copy">
         <div className="duplicate-row-title">
           <strong title={video.path}>{video.filename}</strong>
           <span className={`partial-clip-role ${lane.role}`}>
             {lane.role === 'part' && via ? `Shares ${formatDuration(matchedSeconds(via.clip))}` : ROLE_LABELS[lane.role]}
+            {keeper && (
+              <span
+                className="partial-clip-keeper"
+                title={keeper === 'selected'
+                  ? 'Selected keeper: chosen by hand. Mark the suggested copy as selected keeper to go back to it.'
+                  : 'Suggested keeper: all footage of the videos suggested for deletion is in this video'}
+              >
+                {' · '}
+                <CheckCircle2 size={11} aria-hidden="true" />
+                {keeper === 'selected' ? 'Selected keeper' : 'Suggested keeper'}
+              </span>
+            )}
           </span>
         </div>
         <span className="duplicate-row-path" title={video.path}>{parentPath(video.path)}</span>
@@ -704,6 +741,13 @@ const ClipCard = memo(function ClipCard({ card, index, videosById, edgeSecs, onV
   onVideoContextMenu: OpenVideoMenu;
 }) {
   const { entries, lanes } = card;
+  const setPartialClipKeeper = useStore((s) => s.setPartialClipKeeper);
+  const keeperOrder = useStore((s) => s.settings.duplicates.keeperOrder);
+  const codecOrder = useStore((s) => s.settings.duplicates.codecOrder);
+  const setKeeper = (copyIds: string[], videoId: string) => {
+    const suggested = suggestKeeper(lanes, keeperOrder, codecOrder).keeperId;
+    setPartialClipKeeper(copyIds, videoId === suggested ? null : videoId);
+  };
   const master = lanes[0];
   const first = entries[0]?.primary;
   if (!master || !first) return null;
@@ -769,7 +813,11 @@ const ClipCard = memo(function ClipCard({ card, index, videosById, edgeSecs, onV
           flags={flags.get(lane.video.id) ?? {}}
           scopeIds={scopeIds}
           onContextMenu={onVideoContextMenu}
-          isKeeper={lane.video.id === card.keeperId && card.deleteIds.length > 0}
+          keeper={lane.video.id !== card.keeperId || card.deleteIds.length === 0 ? null : card.keeperSelected ? 'selected' : 'suggested'}
+          // Choosing the suggested copy again goes back to the suggestion.
+          onSetKeeper={card.copyIds.length > 1 && card.copyIds.includes(lane.video.id) && lane.video.id !== card.keeperId
+            ? () => setKeeper(card.copyIds, lane.video.id)
+            : undefined}
           betterPicture={card.betterPictureIds.includes(lane.video.id)}
           isSelected={selectedIds.has(lane.video.id)}
           onToggleSelection={onToggleSelection}
@@ -815,7 +863,7 @@ function PartialClipsView() {
   const { videosById, edgeSecs, cards, shown } = usePartialClipCards();
   const protectKeep = useStore((s) => s.settings.duplicates.protectKeep);
   const protectSkipped = useStore((s) => s.settings.duplicates.protectSkipped);
-  const [menu, setMenu] = useState<{ x: number; y: number; videoId: string; scopeIds: string[] } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; videoId: string; scopeIds: string[]; onSetKeeper?: () => void } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   // As in duplicate review: protected videos are never suggested, and with the keeper already marked
   // Delete, selecting the rest would delete every copy of that footage.
@@ -846,9 +894,9 @@ function PartialClipsView() {
     });
   };
   const listRef = useRef<ListImperativeAPI | null>(null);
-  const openVideoMenu = useCallback<OpenVideoMenu>((event, videoId, scopeIds) => {
+  const openVideoMenu = useCallback<OpenVideoMenu>((event, videoId, scopeIds, onSetKeeper) => {
     event.preventDefault();
-    setMenu({ x: event.clientX, y: event.clientY, videoId, scopeIds });
+    setMenu({ x: event.clientX, y: event.clientY, videoId, scopeIds, onSetKeeper });
   }, []);
   const rowProps = useMemo<RowData>(() => ({
     cards: shown, videosById, edgeSecs, onVideoContextMenu: openVideoMenu, selectedIds, onToggleSelection: toggleSelection, onSelectForDeletion: selectForDeletion,
@@ -879,6 +927,7 @@ function PartialClipsView() {
     onMarkDelete: () => useStore.getState().setVideoStatus(menuVideo.id, 'delete'),
     onMarkKeep: () => useStore.getState().setVideoStatus(menuVideo.id, 'keep'),
     onResetPending: () => useStore.getState().setVideoStatus(menuVideo.id, 'pending'),
+    onSetSelectedKeeper: menu.onSetKeeper,
     onCopyPath: () => {
       const { pushToast } = useStore.getState();
       copyTextToClipboard(menuVideo.path).then(

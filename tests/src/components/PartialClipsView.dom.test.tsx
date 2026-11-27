@@ -202,8 +202,8 @@ describe('partial clips list', () => {
     const family = screen.getByText('Same footage').closest('article')!;
     const row = (name: string) => within(family).getByText(name).closest('.partial-clip-video') as HTMLElement;
     // 720p beats 480p by the default keeper order; the 1080p clip is still suggested, but says so.
-    expect(within(row('concert-720.mp4')).getByText('Keeper')).toBeTruthy();
-    expect(within(row('concert.mp4')).queryByText('Keeper')).toBeNull();
+    expect(within(row('concert-720.mp4')).getByText(/Suggested keeper/)).toBeTruthy();
+    expect(within(row('concert.mp4')).queryByText(/keeper/)).toBeNull();
     expect(within(row('highlight-1080.mp4')).getByText('Better picture than the keeper')).toBeTruthy();
 
     // A video marked Keep is protected, as in duplicate review.
@@ -215,6 +215,35 @@ describe('partial clips list', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Mark selected as Delete (2)' }));
     const status = (id: string) => useStore.getState().videos.find((video) => video.id === id)?.status;
     expect([status(SOURCE), status(COPY), status(CLIP), status(WEAK)]).toEqual(['delete', 'pending', 'delete', 'pending']);
+  });
+
+  test('another copy can be marked as selected keeper, and marking the suggested one again goes back', async () => {
+    const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
+    useStore.setState({
+      partialClipKeepers: {},
+      videos: [
+        makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600, width: 1920, height: 1080 }),
+        makeVideo(OTHER, { filename: 'concert-small.mp4', durationSecs: 598, width: 640, height: 360 }),
+      ],
+      partialClips: [clip({ bId: OTHER, shorterId: OTHER, segments: whole })],
+    });
+    render(<PartialClipsView />);
+    const label = (name: string) => screen.getByText(name).closest('.partial-clip-video')!.querySelector('.partial-clip-role')!.textContent;
+    expect(label('concert.mp4')).toBe('Longest · Suggested keeper');
+
+    await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('concert-small.mp4') });
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark as selected keeper' }));
+    expect(label('concert-small.mp4')).toBe('Same video · Selected keeper');
+    expect(label('concert.mp4')).toBe('Longest');
+    // The keeper's menu does not offer it again.
+    await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('concert-small.mp4') });
+    expect(screen.queryByRole('menuitem', { name: 'Mark as selected keeper' })).toBeNull();
+    await userEvent.keyboard('{Escape}');
+
+    await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('concert.mp4') });
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark as selected keeper' }));
+    expect(label('concert.mp4')).toBe('Longest · Suggested keeper');
+    expect(useStore.getState().partialClipKeepers).toEqual({});
   });
 
   test('copies and excerpts of one video become one card; a weaker pair stays apart', async () => {
@@ -244,7 +273,7 @@ describe('partial clips list', () => {
     // Longest first, each video once, with its part in the family.
     const rows = [...family.querySelectorAll('.partial-clip-video')];
     expect(rows.map((row) => [row.querySelector('strong')?.textContent, row.querySelector('.partial-clip-role')?.textContent]))
-      .toEqual([['concert.mp4', 'Longest'], ['concert-copy.mp4', 'Same video'], ['highlight.mp4', 'Fully inside']]);
+      .toEqual([['concert.mp4', 'Longest · Suggested keeper'], ['concert-copy.mp4', 'Same video'], ['highlight.mp4', 'Fully inside']]);
     // Placed through the copy: 100 s into the copy is 102 s into the master.
     expect(within(rows[2] as HTMLElement).getByTitle('1:42 to 2:22')).toBeTruthy();
     expect(useStore.getState().duplicatePosition?.total).toBe(2);
@@ -364,6 +393,17 @@ describe('partial clips list', () => {
     expect(order('totalSize', { ...DEFAULT_PARTIAL_CLIP_KINDS, contains: true })).toEqual([shares]);
     expect(order('totalSize', { ...DEFAULT_PARTIAL_CLIP_KINDS, contains: true, excerpt: true })).toEqual([shares, inside]);
     expect(cards.filter((card) => matchesPathFilter(card, 'LONG2')).map((card) => card.entries[0])).toEqual([inside]);
+  });
+
+  test('shared length counts matching pictures, so a long shared song sorts below a short real excerpt', () => {
+    const video = (id: string, durationSecs: number) => makeVideo(id, { filename: `${id}.mp4`, durationSecs });
+    const videosById = new Map([video('a', 600), video('b', 40), video('c', 600), video('d', 400), video('e', 600), video('f', 300)].map((v) => [v.id, v]));
+    const sound = (lengthSecs: number) => [{ startA: 0, startB: 0, lengthSecs, soundSimilarity: 99, pictureState: 'differentPicture' as const, pictureSimilarity: 40 }];
+    const excerpt = { primary: clip({ aId: 'a', bId: 'b', shorterId: 'b' }), others: [] };
+    const longSong = { primary: clip({ aId: 'c', bId: 'd', shorterId: 'd', relation: 'audioOnly', state: 'differentPicture', segments: sound(300) }), others: [] };
+    const shortSong = { primary: clip({ aId: 'e', bId: 'f', shorterId: 'f', relation: 'audioOnly', state: 'differentPicture', segments: sound(60) }), others: [] };
+    const sorted = filterAndSortCards(buildClipCards([shortSong, longSong, excerpt], videosById, CARD_OPTIONS), { kinds: DEFAULT_PARTIAL_CLIP_KINDS, sortBy: 'sharedLength', sortOrder: 'desc' });
+    expect(sorted.map((card) => card.entries[0])).toEqual([excerpt, longSong, shortSong]);
   });
 
   test('reports its first entry to the title bar and clears it when closed', () => {
