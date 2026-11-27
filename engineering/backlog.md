@@ -205,6 +205,12 @@ Proposed direction:
 - Then a local Flatpak build to test filesystem access, Trash, VAAPI and session restore on an external drive, on at least two distributions.
 - Submit to Flathub only after that. The Linux notes in the README gain a Flatpak line when it ships.
 
+### 27. Take the better footage from a fully-inside clip
+
+- Partial clips suggest keeping the longest video and deleting a clip that lies fully inside it, also when the clip has the better picture (for example a 1080p scene inside a 480p full recording). The row says so, but deleting the clip still loses that quality for its stretch.
+- Once bookmark clips can join segments into one video (roadmap: Clips), investigate replacing the longest video's stretch with the better clip's footage: the partial clip search already knows where the clip sits on the longest video's timeline, to within a word of sound (about 0.12 s).
+- Open questions: matching resolution, frame rate and audio across the joined parts (re-encode or not), and how to show the result before the originals are marked.
+
 ## Recommended order
 
 1. Add shared I/O-aware admission across media-analysis pipelines.

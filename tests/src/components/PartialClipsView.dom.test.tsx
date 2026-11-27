@@ -8,6 +8,7 @@ import PartialClipsView, { buildClipCards, cardFlags, filterAndSortCards, gapsIn
 import useStore, { DEFAULT_PARTIAL_CLIP_KINDS } from '../../../src/store';
 import type { PartialClip } from '../../../src/types';
 import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
+import { DEFAULT_DUPLICATE_SETTINGS } from '../../../src/keybind-defaults';
 
 // Every row is drawn: jsdom has no layout for the list to measure.
 vi.mock('react-window', () => ({
@@ -22,6 +23,7 @@ vi.mock('react-window', () => ({
   ),
 }));
 
+const CARD_OPTIONS = { edgeSecs: 10, keeperOrder: DEFAULT_DUPLICATE_SETTINGS.keeperOrder, codecOrder: DEFAULT_DUPLICATE_SETTINGS.codecOrder };
 const SOURCE = '00000000000000aa';
 const CLIP = '00000000000000bb';
 const OTHER = '00000000000000cc';
@@ -175,6 +177,42 @@ describe('partial clips list', () => {
     expect(screen.getByText('Not in the other videos: 3:20 to 5:00, 8:20 to 10:00')).toBeTruthy();
   });
 
+  test('the keeper is the best copy by the keeper order; what lies fully inside it is suggested, a better picture with a warning', async () => {
+    const COPY = '00000000000000dd';
+    const WEAK = '00000000000000ee';
+    const whole = (startA: number, lengthSecs: number) => [{ startA, startB: 0, lengthSecs, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
+    useStore.setState({
+      videos: [
+        makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600, width: 854, height: 480 }),
+        makeVideo(COPY, { filename: 'concert-720.mp4', durationSecs: 598, width: 1280, height: 720 }),
+        makeVideo(CLIP, { filename: 'highlight-1080.mp4', durationSecs: 40, width: 1920, height: 1080, status: 'keep' }),
+        makeVideo(WEAK, { filename: 'mashup.mp4', durationSecs: 300 }),
+      ],
+      partialClips: [
+        clip({ bId: COPY, shorterId: COPY, segments: whole(2, 596) }),
+        clip({ aId: COPY, segments: whole(100, 40) }),
+        // Shares 20 s of a 5-minute video: never suggested.
+        clip({ aId: COPY, bId: WEAK, shorterId: WEAK }),
+      ],
+    });
+    render(<PartialClipsView />);
+    const family = screen.getByText('Same footage').closest('article')!;
+    const row = (name: string) => within(family).getByText(name).closest('.partial-clip-video') as HTMLElement;
+    // 720p beats 480p by the default keeper order; the 1080p clip is still suggested, but says so.
+    expect(within(row('concert-720.mp4')).getByText('Suggested keeper')).toBeTruthy();
+    expect(within(row('highlight-1080.mp4')).getByText('Better picture')).toBeTruthy();
+
+    // A video marked Keep is protected, as in duplicate review.
+    await userEvent.click(screen.getByRole('button', { name: 'Select suggested deletions' }));
+    expect((screen.getByRole('checkbox', { name: 'Select concert.mp4' }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('checkbox', { name: 'Select highlight-1080.mp4' }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole('checkbox', { name: 'Select mashup.mp4' }) as HTMLInputElement).checked).toBe(false);
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select highlight-1080.mp4' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Mark selected as Delete (2)' }));
+    const status = (id: string) => useStore.getState().videos.find((video) => video.id === id)?.status;
+    expect([status(SOURCE), status(COPY), status(CLIP), status(WEAK)]).toEqual(['delete', 'pending', 'delete', 'pending']);
+  });
+
   test('keeps one copy of the same video and marks the other', async () => {
     const whole = [{ startA: 0, startB: 0, lengthSecs: 598, soundSimilarity: 97, pictureState: 'confirmed' as const, pictureSimilarity: 98 }];
     useStore.setState({
@@ -247,7 +285,7 @@ describe('partial clips list', () => {
     // Many sound-only stretches do not lift a pair above one with more matching picture.
     const noisy = clip({ segments: [segment(30, 0, 20, 'confirmed'), ...Array.from({ length: 40 }, (_, i) => segment(100 + i * 12, 0, 10, 'differentPicture'))] });
     const videosById = new Map([concert, recut, makeVideo(CLIP, { durationSecs: 40 })].map((video) => [video.id, video]));
-    const cards = buildClipCards([{ primary: noisy, others: [] }, { primary: recutClip, others: [] }], videosById, 10);
+    const cards = buildClipCards([{ primary: noisy, others: [] }, { primary: recutClip, others: [] }], videosById, CARD_OPTIONS);
     const sorted = filterAndSortCards(cards, { kinds: DEFAULT_PARTIAL_CLIP_KINDS, sortBy: 'sharedLength', sortOrder: 'desc' });
     expect(sorted.map((card) => card.entries[0]!.primary)).toEqual([recutClip, noisy]);
   });
@@ -331,9 +369,9 @@ describe('partial clips list', () => {
     // 20 s of a 40 s clip: it shares, and nothing could be freed. All 30 s of the other clip: fully inside.
     const shares = { primary: clip({ aId: 'long1', bId: 'clip1', shorterId: 'clip1', segments: stretch(30, 20), pictureSimilarity: 99 }), others: [] };
     const inside = { primary: clip({ aId: 'long2', bId: 'clip2', shorterId: 'clip2', segments: stretch(100, 30), pictureSimilarity: 90 }), others: [] };
-    const cards = buildClipCards([shares, inside], videosById, 10);
-    expect(cards.map((card) => [card.kinds, card.sharedSecs, card.score, card.freeBytes, card.totalBytes]))
-      .toEqual([[['contains'], 20, 99, 0, 640], [['excerpt'], 30, 90, 30, 330]]);
+    const cards = buildClipCards([shares, inside], videosById, CARD_OPTIONS);
+    expect(cards.map((card) => [card.kinds, card.sharedSecs, card.score, card.freeBytes, card.totalBytes, card.keeperId, card.deleteIds]))
+      .toEqual([[['contains'], 20, 99, 0, 640, 'long1', []], [['excerpt'], 30, 90, 30, 330, 'long2', ['clip2']]]);
     const order = (sortBy: 'sharedLength' | 'similarity' | 'spaceToFree' | 'totalSize', kinds = DEFAULT_PARTIAL_CLIP_KINDS) =>
       filterAndSortCards(cards, { kinds, sortBy, sortOrder: 'desc' }).map((card) => card.entries[0]);
     expect(order('sharedLength')).toEqual([inside, shares]);

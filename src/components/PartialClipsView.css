@@ -32,7 +32,7 @@
  * all rows start and end at the same place and share the master's scale.
  */
 .partial-clip-card .partial-clip-video {
-  grid-template-columns: 82px minmax(0, 1fr) minmax(180px, 1fr) 236px;
+  grid-template-columns: 28px 82px minmax(0, 1fr) minmax(180px, 1fr) 236px;
   height: 79px;
   padding: 0 12px;
 }
@@ -46,6 +46,16 @@
   height: 46px;
   border-radius: 5px;
   background: #0b0a10;
+}
+
+/* Accent, not green: green already says Marked keep in the same line. */
+.duplicate-inline-flag.partial-clip-keeper {
+  color: var(--accent);
+}
+
+/* Amber like the missing-footage line: a cost to see before marking. */
+.duplicate-inline-flag.partial-clip-better {
+  color: var(--color-skip);
 }
 
 .partial-clip-role {

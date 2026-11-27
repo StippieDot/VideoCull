@@ -533,7 +533,7 @@ function rankKeeperCandidates(videos: Video[], order: string[], codecOrder: stri
   return { keeper: candidates[0]!, rule, tieBreak: KEEPER_TIE_BREAK_RULES.has(rule), reasons };
 }
 
-function chooseSuggestedKeeperId(
+export function chooseSuggestedKeeperId(
   videos: Video[],
   order: string[],
   codecOrder: string[] = DEFAULT_DUPLICATE_SETTINGS.codecOrder,

@@ -47,7 +47,7 @@ documentation) shipped as `1.4.0`–`2.1.0` and is archived in git history.
 | Linked folders | Scanning can follow symbolic links and junctions to folders and files, also outside the opened folder, through an experimental setting that is off by default. Each real file is listed once. |
 | Network folders | **Supported default: videos on the network, cache local.** Network-hosted cache DBs depend on 3.1. |
 | Clips | Bookmarks define segments; you choose which segments to keep, as separate clips or joined into one; exported fast (lossless) or exact (re-encoded). Bookmarks keep working as seek points. The original can be **marked** Delete; it's never deleted directly. |
-| Clips cut from longer videos | A timeboxed spike (Phase 8). Only **directed review suggestions** showing their coverage; never a keeper or deletion suggestion. |
+| Clips cut from longer videos | Shipped as **Partial clips**. A deletion is suggested only when all of a video's footage stays in a kept video: extra copies (picked by the duplicate keeper order) and videos fully inside the longest one. Videos that only share a stretch or sound are never suggested. A fully-inside clip with the better picture is still suggested, with a warning (backlog 27). |
 | Unsupported-codec playback | Separate scope decision; not in this roadmap. |
 
 ### Defaults

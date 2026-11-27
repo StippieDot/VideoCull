@@ -17,7 +17,7 @@ Duplicate review finds videos that are the same from start to end. Partial clips
 - a long recording that was also saved as separate scenes,
 - a compilation made from pieces of several videos.
 
-For each pair it shows where the shared footage lies, how well sound and picture match, and which parts only one of the videos has. It never suggests deleting anything: an excerpt is not interchangeable with its source, so you decide which file to keep.
+For each pair it shows where the shared footage lies, how well sound and picture match, and which parts only one of the videos has. It suggests deleting a video only when all of its footage stays in a video you keep, and never deletes anything itself.
 
 ## Run a search
 
@@ -120,7 +120,25 @@ Pairs that only share sound are hidden until you turn on **Same sound** in the s
 
 ## Act on results
 
-Partial clips have no suggested keeper. On each row:
+### Suggested keeper
+
+An excerpt is not interchangeable with its source, so partial clips suggest deleting a video only when all of its footage stays in the video that is kept:
+
+- The keeper is the longest video. When the longest video has copies (**Same video**), the copy that wins your **Suggested keeper priority** in Settings > Duplicates > Keeping and deleting is kept, as in duplicate review.
+- Its other copies and the videos **Fully inside** it are suggested for deletion.
+- Videos that only **Share** a stretch, or the **Same sound**, are never suggested: each has footage of its own.
+- When a video fully inside has a better picture than the keeper, such as a 1080p scene in a 480p recording, it is still suggested, because the keeper has all its footage, but its row says **Better picture**: deleting it loses that quality for its stretch.
+- When the longest video is made of its parts, such as a disc file and its scene files, the longest is kept and the parts are suggested.
+
+As in duplicate review, videos marked Keep (and Skipped, when **Protect skipped videos** is on) are never suggested, and nothing in a card is suggested while its keeper is marked Delete.
+
+### Select and mark
+
+- **Select for deletion** in a card header selects that card's suggested videos. **Select suggested deletions** at the top selects them in every card shown.
+- Tick or untick any row's checkbox to correct the selection, also on videos that are not suggested.
+- **Mark selected as Delete** marks the selected videos. **Clear selected** empties the selection.
+
+On each row:
 
 - **Keep** and **Delete** mark the video, like in the grid. **Play** opens it in Review, with the videos of the card as the navigation scope.
 - **Keep this one** appears on copies of the same video. It marks that copy Keep and the other copies Delete.
