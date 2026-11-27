@@ -52,9 +52,10 @@
 .partial-clip-keeper {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  /* Spacing by gap: a flex box drops the spaces around the dot. */
+  gap: 5px;
+  margin-left: 5px;
   color: var(--color-keep);
-  white-space: pre;
 }
 
 /* The details read as one line cut at its end, not as five values each cut short. */

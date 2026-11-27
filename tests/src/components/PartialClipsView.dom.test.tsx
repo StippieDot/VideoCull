@@ -229,11 +229,11 @@ describe('partial clips list', () => {
     });
     render(<PartialClipsView />);
     const label = (name: string) => screen.getByText(name).closest('.partial-clip-video')!.querySelector('.partial-clip-role')!.textContent;
-    expect(label('concert.mp4')).toBe('Longest · Suggested keeper');
+    expect(label('concert.mp4')).toBe('Longest·Suggested keeper');
 
     await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('concert-small.mp4') });
     await userEvent.click(screen.getByRole('menuitem', { name: 'Mark as selected keeper' }));
-    expect(label('concert-small.mp4')).toBe('Same video · Selected keeper');
+    expect(label('concert-small.mp4')).toBe('Same video·Selected keeper');
     expect(label('concert.mp4')).toBe('Longest');
     // The keeper's menu does not offer it again.
     await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('concert-small.mp4') });
@@ -242,7 +242,7 @@ describe('partial clips list', () => {
 
     await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('concert.mp4') });
     await userEvent.click(screen.getByRole('menuitem', { name: 'Mark as selected keeper' }));
-    expect(label('concert.mp4')).toBe('Longest · Suggested keeper');
+    expect(label('concert.mp4')).toBe('Longest·Suggested keeper');
     expect(useStore.getState().partialClipKeepers).toEqual({});
   });
 
@@ -273,7 +273,7 @@ describe('partial clips list', () => {
     // Longest first, each video once, with its part in the family.
     const rows = [...family.querySelectorAll('.partial-clip-video')];
     expect(rows.map((row) => [row.querySelector('strong')?.textContent, row.querySelector('.partial-clip-role')?.textContent]))
-      .toEqual([['concert.mp4', 'Longest · Suggested keeper'], ['concert-copy.mp4', 'Same video'], ['highlight.mp4', 'Fully inside']]);
+      .toEqual([['concert.mp4', 'Longest·Suggested keeper'], ['concert-copy.mp4', 'Same video'], ['highlight.mp4', 'Fully inside']]);
     // Placed through the copy: 100 s into the copy is 102 s into the master.
     expect(within(rows[2] as HTMLElement).getByTitle('1:42 to 2:22')).toBeTruthy();
     expect(useStore.getState().duplicatePosition?.total).toBe(2);

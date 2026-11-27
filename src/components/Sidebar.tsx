@@ -257,10 +257,10 @@ function SidebarDuplicateSection({
         {partialClips && (
           <div className="duplicate-sidebar-view-toggle" role="group" aria-label="Duplicate results">
             <button type="button" className={partialClipsMode ? '' : 'active'} aria-pressed={!partialClipsMode} onClick={() => setPartialClipsMode(false)}>
-              Groups <span className="duplicate-sidebar-count">{duplicateGroupCount}</span>
+              <span className="duplicate-sidebar-toggle-label">Groups</span> <span className="duplicate-sidebar-count">{duplicateGroupCount}</span>
             </button>
             <button type="button" className={partialClipsMode ? 'active' : ''} aria-pressed={partialClipsMode} onClick={() => setPartialClipsMode(true)}>
-              Partial clips <span className="duplicate-sidebar-count">{partialEntryCount}</span>
+              <span className="duplicate-sidebar-toggle-label">Partial clips</span> <span className="duplicate-sidebar-count">{partialEntryCount}</span>
             </button>
           </div>
         )}

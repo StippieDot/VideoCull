@@ -648,7 +648,7 @@ function ClipVideoRow({ lane, masterSecs, uncovered, splittable, flags, scopeIds
                   ? 'Selected keeper: chosen by hand. Mark the suggested copy as selected keeper to go back to it.'
                   : 'Suggested keeper: all footage of the videos suggested for deletion is in this video'}
               >
-                {' · '}
+                <span aria-hidden="true">·</span>
                 <CheckCircle2 size={11} aria-hidden="true" />
                 {keeper === 'selected' ? 'Selected keeper' : 'Suggested keeper'}
               </span>
