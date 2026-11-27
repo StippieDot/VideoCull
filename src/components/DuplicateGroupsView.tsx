@@ -437,8 +437,8 @@ function keeperDecisionLabel(group: DuplicateGroup): string | null {
 function groupEvidenceNotes(group: DuplicateGroup): { warnings: string[]; notes: string[] } {
   const warnings: string[] = [];
   if (group.confidence === 'low') {
-    if (group.comparedSamples === 1) warnings.push('Single-frame match — check before deleting');
-    if (group.static) warnings.push('Little movement — check before deleting');
+    if (group.comparedSamples === 1) warnings.push('Single-frame match, check before deleting');
+    if (group.static) warnings.push('Little movement, check before deleting');
   }
   const notes: string[] = [];
   if (group.borderAdjusted) notes.push('Black bars ignored');

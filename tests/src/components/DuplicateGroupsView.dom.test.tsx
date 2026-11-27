@@ -323,11 +323,11 @@ describe('DuplicateGroupsView behavior', () => {
 
     render(<DuplicateGroupsView />);
 
-    const warning = await screen.findByText('Single-frame match — check before deleting');
+    const warning = await screen.findByText('Single-frame match, check before deleting');
     expect(screen.getByText('Partly unreadable')).toBeTruthy();
     expect(screen.getByText('Lengths differ by 2.5 s')).toBeTruthy();
     expect(screen.getByText('Starts a moment earlier or later')).toBeTruthy();
-    expect(screen.queryByText('Little movement — check before deleting')).toBeNull();
+    expect(screen.queryByText('Little movement, check before deleting')).toBeNull();
     // Sorted by similarity, highest first, the 100% group would lead; needing a check puts it last.
     const normalReason = screen.getByText('Same content at 3 of 3 sampled moments');
     expect(normalReason.compareDocumentPosition(warning) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

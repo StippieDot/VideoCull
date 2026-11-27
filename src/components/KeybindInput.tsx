@@ -63,7 +63,7 @@ export default function KeybindInput({ value, onChange, conflict }: Props) {
       onClick={startRecording}
       onBlur={handleBlur}
       title={conflict ? `Conflicts with: ${conflict}` : recording ? 'Press a key combination…' : 'Click to record'}
-      aria-label={recording ? 'Recording keybind — press any key' : formatKeybind(value)}
+      aria-label={recording ? 'Recording keybind: press any key' : formatKeybind(value)}
     >
       {recording ? (
         <span className="keybind-recording-label">Press a key…</span>
