@@ -49,7 +49,9 @@
 }
 
 /* The keeper says so in the row label, in the green of duplicate review's keeper badge. */
-.partial-clip-keeper {
+/* Two classes: beats .duplicate-row-copy span, which greys and resizes every span in the row. */
+.partial-clip-role .partial-clip-keeper {
+  font-size: inherit;
   display: inline-flex;
   align-items: center;
   /* Spacing by gap: a flex box drops the spaces around the dot. */
