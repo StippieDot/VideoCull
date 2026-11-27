@@ -425,7 +425,7 @@ describe('Sidebar recent folder behavior', () => {
     expect(screen.getByRole('button', { name: /Partial clips/ }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByText('Minimum similarity')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Run Again' })).toBeNull();
-    // Pairs that only share sound are hidden until their pill is turned on.
+    // The kind pills start off, which shows every entry; a pill limits the list to its kind.
     const sameSound = screen.getByRole('button', { name: /^Same sound/ });
     expect(sameSound.getAttribute('aria-pressed')).toBe('false');
     await userEvent.click(sameSound);

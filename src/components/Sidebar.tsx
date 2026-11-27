@@ -116,10 +116,10 @@ const PARTIAL_CLIP_STAGES = new Set(['Reading sound', 'Searching partial clips',
 
 /** The partial clip kinds, named as the cards' badges name them. */
 const PARTIAL_KIND_PILLS: { kind: PartialClipKind; label: string; title: string }[] = [
-  { kind: 'sameVideo', label: 'Same video', title: 'Copies of one video over its whole length' },
-  { kind: 'excerpt', label: 'Fully inside', title: 'Videos whose footage is all in a longer video' },
-  { kind: 'contains', label: 'Shares', title: 'Videos that share a stretch and each have footage of their own' },
-  { kind: 'sameSound', label: 'Same sound', title: 'Videos whose sound matches but whose pictures differ or could not be compared' },
+  { kind: 'sameVideo', label: 'Same video', title: 'Show only copies of one video over its whole length' },
+  { kind: 'excerpt', label: 'Fully inside', title: 'Show only videos whose footage is all in a longer video' },
+  { kind: 'contains', label: 'Shares', title: 'Show only videos that share a stretch and each have footage of their own' },
+  { kind: 'sameSound', label: 'Same sound', title: 'Show only videos whose sound matches but whose pictures differ or could not be compared' },
 ];
 
 function SidebarDuplicateSection({
@@ -345,7 +345,9 @@ function SidebarDuplicateSection({
                   title={title}
                 >
                   <span className="pill-text">{label}</span>
-                  <span className="pill-count">{partialMatching.filter((card) => card.kinds.includes(kind)).length}</span>
+                  {partialClipKinds[kind]
+                    ? <X size={11} className="pill-clear-icon" />
+                    : <span className="pill-count">{partialMatching.filter((card) => card.kinds.includes(kind)).length}</span>}
                 </button>
               ))}
             </div>

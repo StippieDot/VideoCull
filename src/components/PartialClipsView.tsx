@@ -386,14 +386,15 @@ const SORT_VALUES: Record<PartialClipSortField, (card: ClipCardData) => number> 
   totalSize: (card) => card.totalBytes,
 };
 
-/** The sidebar's kind filter and sort. */
+/** The sidebar's kind filter (none chosen shows every card) and sort. */
 export function filterAndSortCards(
   cards: ClipCardData[],
   options: { kinds: Record<ClipKind, boolean>; sortBy: PartialClipSortField; sortOrder: SortOrder },
 ): ClipCardData[] {
   const value = SORT_VALUES[options.sortBy];
   const direction = options.sortOrder === 'asc' ? 1 : -1;
-  return cards.filter((card) => card.kinds.some((kind) => options.kinds[kind])).sort((x, y) => (value(x) - value(y)) * direction);
+  const anyChosen = Object.values(options.kinds).some(Boolean);
+  return cards.filter((card) => !anyChosen || card.kinds.some((kind) => options.kinds[kind])).sort((x, y) => (value(x) - value(y)) * direction);
 }
 
 /** The list as the sidebar's filters and sort leave it; the view and the sidebar's counts share it. */

@@ -66,7 +66,7 @@ describe('partial clips list', () => {
     });
     render(<PartialClipsView />);
 
-    const card = screen.getAllByText('Shares 0:20')[0]!.closest('article')!;
+    let card = screen.getAllByText('Shares 0:20')[0]!.closest('article')!;
     // The longer video is the master; the clip sits on its timeline where it matches, with its scores.
     expect(within(card).getByText('Longest')).toBeTruthy();
     // The master's row is the time scale; the clip's bar and times say where it sits on it.
@@ -81,11 +81,14 @@ describe('partial clips list', () => {
     expect(within(card).getByText('Not in the longest: last 0:20')).toBeTruthy();
     expect(within(card).queryByText(/Not in the other videos/)).toBeNull();
     expect(screen.getAllByText('Fully inside').length).toBeGreaterThan(0);
-    // A pair that only shares sound is shown once the Same sound filter is on.
-    expect(screen.queryByText('Same sound, other picture')).toBeNull();
-    expect(screen.getByText(/2 entries of 3; the rest are filtered out/)).toBeTruthy();
-    act(() => useStore.getState().togglePartialClipKind('sameSound'));
+    // With no kind chosen every entry shows; choosing Same sound leaves only that one.
     expect(screen.getByText('Same sound, other picture')).toBeTruthy();
+    act(() => useStore.getState().togglePartialClipKind('sameSound'));
+    expect(screen.getByText(/1 entry of 3; the rest are filtered out/)).toBeTruthy();
+    expect(screen.queryByText('Shares 0:20')).toBeNull();
+    act(() => useStore.getState().togglePartialClipKind('sameSound'));
+    // The filter redrew the list, so the card is looked up again.
+    card = screen.getAllByText('Shares 0:20')[0]!.closest('article')!;
 
     // Header like a duplicate group: score, size, description; no filter set, so no filter count.
     expect(within(card).getByText('99.0%')).toBeTruthy();
@@ -328,7 +331,6 @@ describe('partial clips list', () => {
   test('a stretch from the start of the longer video starts at 0:00', async () => {
     const segment = { startA: 0, startB: 0, lengthSecs: 32, soundSimilarity: 99, pictureState: 'differentPicture' as const, pictureSimilarity: 48 };
     useStore.setState({ partialClips: [clip({ relation: 'audioOnly', state: 'differentPicture', segments: [segment] })] });
-    useStore.getState().togglePartialClipKind('sameSound');
     render(<PartialClipsView />);
     expect(screen.getByTitle('0:00 to 0:32')).toBeTruthy();
   });
@@ -378,7 +380,8 @@ describe('partial clips list', () => {
     expect(order('similarity')).toEqual([shares, inside]);
     expect(order('spaceToFree')).toEqual([inside, shares]);
     expect(order('totalSize')).toEqual([shares, inside]);
-    expect(order('totalSize', { ...DEFAULT_PARTIAL_CLIP_KINDS, excerpt: false })).toEqual([shares]);
+    expect(order('totalSize', { ...DEFAULT_PARTIAL_CLIP_KINDS, contains: true })).toEqual([shares]);
+    expect(order('totalSize', { ...DEFAULT_PARTIAL_CLIP_KINDS, contains: true, excerpt: true })).toEqual([shares, inside]);
     expect(cards.filter((card) => matchesPathFilter(card, 'LONG2')).map((card) => card.entries[0])).toEqual([inside]);
   });
 

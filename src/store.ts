@@ -1136,8 +1136,8 @@ export function runWithUndoAction(edit: () => void): { actionLabel?: string; act
   };
 }
 
-/** Pairs that only share sound (a song, a jingle) are hidden until asked for. */
-export const DEFAULT_PARTIAL_CLIP_KINDS: Record<PartialClipKind, boolean> = { sameVideo: true, excerpt: true, contains: true, sameSound: false };
+/** No kind chosen: every entry is shown. Choosing kinds shows only those. */
+export const DEFAULT_PARTIAL_CLIP_KINDS: Record<PartialClipKind, boolean> = { sameVideo: false, excerpt: false, contains: false, sameSound: false };
 
 const useStore = create<VideoStore>((set, get) => ({
   // ── Directory ──

@@ -642,7 +642,7 @@ export interface VideoStore {
   duplicateSortOrder: SortOrder;
   partialClipSortBy: PartialClipSortField;
   partialClipSortOrder: SortOrder;
-  /** The kinds of partial clip card the list shows. */
+  /** The kinds of partial clip card the list is limited to; none chosen shows all. */
   partialClipKinds: Record<PartialClipKind, boolean>;
   duplicateScrollTop: number;
   /** Review's place in its scope, for the title bar; null outside Review and on its finished screen. */
