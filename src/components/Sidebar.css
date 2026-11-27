@@ -1130,9 +1130,10 @@
   font-size: 12px;
 }
 
+/* Each button takes its content's width plus an equal share of the rest: "Partial clips 1629" needs
+   more than half of a narrow sidebar, "Groups 27" much less. */
 .duplicate-sidebar-view-toggle {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
   gap: 4px;
   padding: 3px;
   border: 1px solid var(--border);
@@ -1144,6 +1145,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 1 1 auto;
   gap: 6px;
   min-width: 0;
   min-height: 32px;
