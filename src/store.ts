@@ -6,7 +6,7 @@ import type {
   Video, VideoReviewChanges, VideoReviewUpdate, VideoStatus, VideoStats, SidebarAggregates, VideoStore, ThumbReadyEvent,
   ScanProgress, ThumbProgress, UndoEntry,
   StatusFilter, SortField, SortOrder, FolderSortField, FolderFilter, RatingFilter,
-  ToastInput, ToastKind, SavedSession,
+  ToastInput, ToastKind, SavedSession, PartialClipKind,
 } from './types';
 import { DEFAULT_DUPLICATE_SETTINGS, DEFAULT_FEATURES, DEFAULT_KEYBINDS, migrateSettings, normalizeFeatureSettings } from './keybind-defaults';
 import { checkSessionFolders, folderKey, pruneRecentSessions, rememberSession, sameSessionFolders, sessionKey } from './sessions';
@@ -1136,6 +1136,9 @@ export function runWithUndoAction(edit: () => void): { actionLabel?: string; act
   };
 }
 
+/** Pairs that only share sound (a song, a jingle) are hidden until asked for. */
+export const DEFAULT_PARTIAL_CLIP_KINDS: Record<PartialClipKind, boolean> = { sameVideo: true, excerpt: true, contains: true, sameSound: false };
+
 const useStore = create<VideoStore>((set, get) => ({
   // ── Directory ──
   directory: null,
@@ -1197,6 +1200,7 @@ const useStore = create<VideoStore>((set, get) => ({
   duplicateSortOrder: 'desc',
   partialClipSortBy: 'sharedLength',
   partialClipSortOrder: 'desc',
+  partialClipKinds: DEFAULT_PARTIAL_CLIP_KINDS,
   duplicateScrollTop: 0,
   reviewPosition: null,
   duplicatePosition: null,
@@ -1293,6 +1297,7 @@ const useStore = create<VideoStore>((set, get) => ({
       duplicateSortOrder: 'desc',
       partialClipSortBy: 'sharedLength',
       partialClipSortOrder: 'desc',
+      partialClipKinds: DEFAULT_PARTIAL_CLIP_KINDS,
       undoStack: [],
       redoStack: [],
       gridSelectionIds: new Set(),
@@ -1336,6 +1341,7 @@ const useStore = create<VideoStore>((set, get) => ({
       duplicateSortOrder: 'desc',
       partialClipSortBy: 'sharedLength',
       partialClipSortOrder: 'desc',
+      partialClipKinds: DEFAULT_PARTIAL_CLIP_KINDS,
       undoStack: [],
       redoStack: [],
       gridSelectionIds: new Set(),
@@ -1981,6 +1987,7 @@ const useStore = create<VideoStore>((set, get) => ({
     partialClipSortOrder: state.partialClipSortBy === partialClipSortBy ? state.partialClipSortOrder : 'desc',
   })),
   setPartialClipSortOrder: (partialClipSortOrder) => set({ partialClipSortOrder }),
+  togglePartialClipKind: (kind) => set((state) => ({ partialClipKinds: { ...state.partialClipKinds, [kind]: !state.partialClipKinds[kind] } })),
   setDuplicateScrollTop: (duplicateScrollTop) => set({ duplicateScrollTop: Math.max(0, duplicateScrollTop) }),
   setReviewPosition: (reviewPosition) => {
     const current = get().reviewPosition;
@@ -2001,6 +2008,7 @@ const useStore = create<VideoStore>((set, get) => ({
     duplicateSortOrder: 'desc',
     partialClipSortBy: 'sharedLength',
     partialClipSortOrder: 'desc',
+    partialClipKinds: DEFAULT_PARTIAL_CLIP_KINDS,
   }),
   setGridSelectionIds: (gridSelectionIds) => set((state) => ({
     gridSelectionIds: typeof gridSelectionIds === 'function'

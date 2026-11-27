@@ -65,7 +65,7 @@ Each card shows one set of related videos. Its header works like a duplicate gro
 | **Same footage** | A card of three or more videos that are copies of one another or fully inside one another. |
 | **Same sound** | Only the sound matches. **Same sound, other picture** means the pictures were compared and differ. |
 
-The score is the picture match of the card's first pair, or its sound match when the pictures could not be compared. Point at it to see both.
+The score is the card's weakest match: the picture match where the pictures were compared, the sound match otherwise. For a card of two videos, point at it to see both.
 
 ### The timeline
 
@@ -116,7 +116,7 @@ Copies and excerpts of one video are shown together on one card. Videos that onl
 
 When a clip is found in several copies of a video that duplicate review already grouped, it is listed once, with the pair that has the best picture evidence, preferring the copy duplicate review suggests keeping.
 
-Pairs whose pictures differ are not mixed into the list. They are behind **pairs with the same sound and a different picture** at the end of the list.
+Pairs that only share sound are hidden until you turn on **Same sound** in the sidebar.
 
 ## Act on results
 
@@ -132,11 +132,19 @@ Marking a video Delete leaves the file on disk. It joins the same delete batch a
 
 ## Sort and filter
 
-The sidebar's path filter keeps the cards with a video whose folder or file name contains the text. Partial clips sort by:
+The sidebar's path filter keeps the cards with a video whose folder or file name contains the text.
 
-- **Shared length**: the seconds whose sound and picture both match, so a pair that only shares music does not rank above a real excerpt.
-- **Share of shorter video**: how much of the shorter video the shared stretches cover.
-- **Total size** of the videos.
+Below it, four buttons choose which cards are shown, named after the badges: **Same video**, **Fully inside**, **Shares** and **Same sound**. Each shows how many cards it covers. **Same sound** is off by default: those pairs share a song or a jingle more often than footage. A card of copies and excerpts counts as both Same video and Fully inside.
+
+Partial clips sort by:
+
+- **Shared length** (the default): the seconds whose sound and picture both match, so a pair that only shares music does not rank above a real excerpt.
+- **Similarity**: the card's score, which is its weakest match.
+- **Videos in entry**: how many videos the card holds.
+- **Space to free**: the size of the card's copies and of the videos that lie fully inside its longest video, which is what deleting them would free.
+- **Total size** of the card's videos.
+
+The sidebar's **To free** adds up Space to free over the cards shown.
 
 The title bar shows which card is at the top, such as `Entry 3 of 12`. Type a number in its place and press `Enter` to go to that card.
 

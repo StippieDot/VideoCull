@@ -425,8 +425,13 @@ describe('Sidebar recent folder behavior', () => {
     expect(screen.getByRole('button', { name: /Partial clips/ }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByText('Minimum similarity')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Run Again' })).toBeNull();
-    await userEvent.selectOptions(screen.getByRole('combobox'), 'coverage');
-    expect(useStore.getState().partialClipSortBy).toBe('coverage');
+    // Pairs that only share sound are hidden until their pill is turned on.
+    const sameSound = screen.getByRole('button', { name: /^Same sound/ });
+    expect(sameSound.getAttribute('aria-pressed')).toBe('false');
+    await userEvent.click(sameSound);
+    expect(useStore.getState().partialClipKinds.sameSound).toBe(true);
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'similarity');
+    expect(useStore.getState().partialClipSortBy).toBe('similarity');
     await userEvent.click(screen.getByRole('button', { name: 'Reset duplicate filters' }));
     expect(useStore.getState().partialClipSortBy).toBe('sharedLength');
     // The switch goes back to the groups, and leaving for the grid leaves the list too.

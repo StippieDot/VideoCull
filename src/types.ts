@@ -245,7 +245,9 @@ export type DuplicateMatchType = 'exact' | 'phash' | 'visual' | 'mixed' | null;
 export type DuplicateComparisonMode = 'phash' | 'visual';
 export type DuplicateViewMode = 'rows' | 'gallery';
 export type DuplicateSortField = 'similarity' | 'groupSize' | 'totalSize';
-export type PartialClipSortField = 'sharedLength' | 'coverage' | 'totalSize';
+export type PartialClipSortField = 'sharedLength' | 'similarity' | 'videoCount' | 'spaceToFree' | 'totalSize';
+/** What a partial clip card shows, as its badge names it: Same video, Fully inside, Shares, Same sound. */
+export type PartialClipKind = 'sameVideo' | 'excerpt' | 'contains' | 'sameSound';
 export type DuplicateScope = 'all' | 'filtered';
 export type DuplicateSamplingWindow = 'even' | '25-75' | '20-80' | '15-85' | 'custom';
 
@@ -640,6 +642,8 @@ export interface VideoStore {
   duplicateSortOrder: SortOrder;
   partialClipSortBy: PartialClipSortField;
   partialClipSortOrder: SortOrder;
+  /** The kinds of partial clip card the list shows. */
+  partialClipKinds: Record<PartialClipKind, boolean>;
   duplicateScrollTop: number;
   /** Review's place in its scope, for the title bar; null outside Review and on its finished screen. */
   reviewPosition: { index: number; total: number } | null;
@@ -746,6 +750,7 @@ export interface VideoStore {
   setDuplicateSortOrder: (order: SortOrder) => void;
   setPartialClipSortBy: (sortBy: PartialClipSortField) => void;
   setPartialClipSortOrder: (order: SortOrder) => void;
+  togglePartialClipKind: (kind: PartialClipKind) => void;
   setDuplicateScrollTop: (scrollTop: number) => void;
   setReviewPosition: (position: { index: number; total: number } | null) => void;
   setDuplicatePosition: (position: { group: number; total: number } | null) => void;

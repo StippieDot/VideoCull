@@ -37,24 +37,6 @@
   padding: 0 12px;
 }
 
-.partial-clips-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.partial-clips-toggle:hover {
-  color: var(--text-primary);
-}
-
 .partial-clip-card .partial-clip-video:last-child {
   border-bottom: 0;
 }

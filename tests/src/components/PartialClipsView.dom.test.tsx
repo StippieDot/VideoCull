@@ -4,8 +4,8 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentType } from 'react';
 import { vi } from 'vitest';
-import PartialClipsView, { cardFlags, filterAndSortPartialClips, gapsIn, placeOnMaster, laneSpans, matchBadge, matchedSeconds, mergeClipsByDuplicateGroup, type Lane } from '../../../src/components/PartialClipsView';
-import useStore from '../../../src/store';
+import PartialClipsView, { buildClipCards, cardFlags, filterAndSortCards, gapsIn, matchesPathFilter, placeOnMaster, laneSpans, matchBadge, matchedSeconds, mergeClipsByDuplicateGroup, type Lane } from '../../../src/components/PartialClipsView';
+import useStore, { DEFAULT_PARTIAL_CLIP_KINDS } from '../../../src/store';
 import type { PartialClip } from '../../../src/types';
 import { makeDuplicateGroup, makeVideo } from '../../helpers/videoFactory';
 
@@ -45,6 +45,7 @@ describe('partial clips list', () => {
   beforeEach(() => {
     Object.assign(window, { electronAPI: { saveConfig: vi.fn().mockResolvedValue(true), saveSettings: vi.fn().mockResolvedValue(true) } });
     useStore.setState({
+      partialClipKinds: DEFAULT_PARTIAL_CLIP_KINDS,
       videos: [
         makeVideo(SOURCE, { filename: 'concert.mp4', durationSecs: 600 }),
         makeVideo(CLIP, { filename: 'highlight.mp4', durationSecs: 40 }),
@@ -78,15 +79,16 @@ describe('partial clips list', () => {
     expect(within(card).getByText('Not in the longest: last 0:20')).toBeTruthy();
     expect(within(card).queryByText(/Not in the other videos/)).toBeNull();
     expect(screen.getAllByText('Fully inside').length).toBeGreaterThan(0);
-    // The pair with another picture is behind a switch below the list.
+    // A pair that only shares sound is shown once the Same sound filter is on.
     expect(screen.queryByText('Same sound, other picture')).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: '1 pair with the same sound and a different picture' }));
+    expect(screen.getByText(/2 entries of 3; the rest are filtered out/)).toBeTruthy();
+    act(() => useStore.getState().togglePartialClipKind('sameSound'));
     expect(screen.getByText('Same sound, other picture')).toBeTruthy();
 
     // Header like a duplicate group: score, size, description; no filter set, so no filter count.
     expect(within(card).getByText('99.0%')).toBeTruthy();
     expect(within(card).getByTitle('1 matching part')).toBeTruthy();
-    expect(screen.queryByText(/match the filter/)).toBeNull();
+    expect(screen.queryByText(/filtered out/)).toBeNull();
     // A two-video card is dismissed from its header; rows have no Not a match of their own.
     expect(within(card).queryByRole('button', { name: /^Not a match:/ })).toBeNull();
     await userEvent.click(within(card).getByRole('button', { name: 'Not a match' }));
@@ -245,8 +247,9 @@ describe('partial clips list', () => {
     // Many sound-only stretches do not lift a pair above one with more matching picture.
     const noisy = clip({ segments: [segment(30, 0, 20, 'confirmed'), ...Array.from({ length: 40 }, (_, i) => segment(100 + i * 12, 0, 10, 'differentPicture'))] });
     const videosById = new Map([concert, recut, makeVideo(CLIP, { durationSecs: 40 })].map((video) => [video.id, video]));
-    const sorted = filterAndSortPartialClips([{ primary: noisy, others: [] }, { primary: recutClip, others: [] }], { pathFilter: '', sortBy: 'sharedLength', sortOrder: 'desc' }, videosById);
-    expect(sorted.map((entry) => entry.primary)).toEqual([recutClip, noisy]);
+    const cards = buildClipCards([{ primary: noisy, others: [] }, { primary: recutClip, others: [] }], videosById, 10);
+    const sorted = filterAndSortCards(cards, { kinds: DEFAULT_PARTIAL_CLIP_KINDS, sortBy: 'sharedLength', sortOrder: 'desc' });
+    expect(sorted.map((card) => card.entries[0]!.primary)).toEqual([recutClip, noisy]);
   });
 
   test('one clip found in several copies of a video is one entry, and Not a match covers them all', async () => {
@@ -287,8 +290,8 @@ describe('partial clips list', () => {
   test('a stretch from the start of the longer video starts at 0:00', async () => {
     const segment = { startA: 0, startB: 0, lengthSecs: 32, soundSimilarity: 99, pictureState: 'differentPicture' as const, pictureSimilarity: 48 };
     useStore.setState({ partialClips: [clip({ relation: 'audioOnly', state: 'differentPicture', segments: [segment] })] });
+    useStore.getState().togglePartialClipKind('sameSound');
     render(<PartialClipsView />);
-    await userEvent.click(screen.getByRole('button', { name: /with the same sound and a different picture/ }));
     expect(screen.getByTitle('0:00 to 0:32')).toBeTruthy();
   });
 
@@ -321,29 +324,30 @@ describe('partial clips list', () => {
     expect(screen.getByText('Marked keep')).toBeTruthy();
   });
 
-  test('the path filter matches any copy in an entry, and entries sort by the chosen field', () => {
-    const videosById = new Map(useStore.getState().videos.map((video) => [video.id, { ...video, path: `D:\\${video.filename}` }]));
-    const short = { primary: clip({ coverage: 0.9 }), others: [] };
-    const long = { primary: clip({ aId: OTHER, coverage: 0.2, segments: [{ ...clip().segments[0]!, lengthSecs: 90 }] }), others: [clip()] };
-    const sorted = (pathFilter: string, sortBy: 'sharedLength' | 'coverage', sortOrder: 'asc' | 'desc' = 'desc') =>
-      filterAndSortPartialClips([short, long], { pathFilter, sortBy, sortOrder }, videosById);
-    expect(sorted('', 'sharedLength')).toEqual([long, short]);
-    expect(sorted('', 'coverage')).toEqual([short, long]);
-    expect(sorted('', 'coverage', 'asc')).toEqual([long, short]);
-    // remix.mp4 is only in the second entry; concert.mp4 is in both, once as another copy.
-    expect(sorted('remix', 'sharedLength')).toEqual([long]);
-    expect(sorted('CONCERT', 'sharedLength')).toEqual([long, short]);
+  test('cards filter by path and kind, and sort by shared length, score, space to free and size', () => {
+    const video = (id: string, durationSecs: number, sizeBytes: number) => makeVideo(id, { filename: `${id}.mp4`, path: `D:\\${id}.mp4`, durationSecs, sizeBytes });
+    const videosById = new Map([video('long1', 600, 600), video('clip1', 40, 40), video('long2', 600, 300), video('clip2', 30, 30)].map((v) => [v.id, v]));
+    const stretch = (startA: number, lengthSecs: number) => [{ startA, startB: 0, lengthSecs, soundSimilarity: 96, pictureState: 'confirmed' as const, pictureSimilarity: 95 }];
+    // 20 s of a 40 s clip: it shares, and nothing could be freed. All 30 s of the other clip: fully inside.
+    const shares = { primary: clip({ aId: 'long1', bId: 'clip1', shorterId: 'clip1', segments: stretch(30, 20), pictureSimilarity: 99 }), others: [] };
+    const inside = { primary: clip({ aId: 'long2', bId: 'clip2', shorterId: 'clip2', segments: stretch(100, 30), pictureSimilarity: 90 }), others: [] };
+    const cards = buildClipCards([shares, inside], videosById, 10);
+    expect(cards.map((card) => [card.kinds, card.sharedSecs, card.score, card.freeBytes, card.totalBytes]))
+      .toEqual([[['contains'], 20, 99, 0, 640], [['excerpt'], 30, 90, 30, 330]]);
+    const order = (sortBy: 'sharedLength' | 'similarity' | 'spaceToFree' | 'totalSize', kinds = DEFAULT_PARTIAL_CLIP_KINDS) =>
+      filterAndSortCards(cards, { kinds, sortBy, sortOrder: 'desc' }).map((card) => card.entries[0]);
+    expect(order('sharedLength')).toEqual([inside, shares]);
+    expect(order('similarity')).toEqual([shares, inside]);
+    expect(order('spaceToFree')).toEqual([inside, shares]);
+    expect(order('totalSize')).toEqual([shares, inside]);
+    expect(order('totalSize', { ...DEFAULT_PARTIAL_CLIP_KINDS, excerpt: false })).toEqual([shares]);
+    expect(cards.filter((card) => matchesPathFilter(card, 'LONG2')).map((card) => card.entries[0])).toEqual([inside]);
   });
 
-  test('reports its first entry to the title bar and opens a collapsed entry it is sent to', () => {
-    useStore.setState({
-      partialClips: [clip(), clip({ bId: OTHER, shorterId: OTHER, relation: 'audioOnly', state: 'differentPicture' })],
-    });
-    const { container, unmount } = render(<PartialClipsView />);
+  test('reports its first entry to the title bar and clears it when closed', () => {
+    useStore.setState({ partialClips: [clip(), clip({ bId: OTHER, shorterId: OTHER })] });
+    const { unmount } = render(<PartialClipsView />);
     expect(useStore.getState().duplicatePosition).toEqual({ group: 0, total: 2 });
-    act(() => useStore.getState().requestDuplicateGroupJump(1));
-    expect(container.querySelector('.partial-clips-toggle')?.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByText('Same sound, other picture')).toBeTruthy();
     unmount();
     expect(useStore.getState().duplicatePosition).toBeNull();
   });

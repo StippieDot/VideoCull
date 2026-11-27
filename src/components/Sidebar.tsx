@@ -1,10 +1,10 @@
 import { describeUncheckedNearMisses, type DuplicateRunInfo } from '../duplicateResultsPersistence';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { groupIntoFamilies, mergeClipsByDuplicateGroup } from './PartialClipsView';
+import { usePartialClipCards } from './PartialClipsView';
 import { reclaimableBytes } from './locationMenus';
-import type { ColorTheme, DuplicateSortField, PartialClipSortField, RecentSession, StatusFilter, ToastInput, ToastKind } from '../types';
+import type { ColorTheme, DuplicateSortField, PartialClipKind, PartialClipSortField, RecentSession, StatusFilter, ToastInput, ToastKind } from '../types';
 import type { SortField } from '../types';
-import useStore, { DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
+import useStore, { DEFAULT_PARTIAL_CLIP_KINDS, DUPLICATE_METHOD_NAMES, otherDuplicateMethod } from '../store';
 import { beginDevInteraction } from '../perf-dev';
 import { usePersistedFlag } from '../hooks/usePersistedFlag';
 import useRecentSessions from '../hooks/useRecentSessions';
@@ -114,6 +114,14 @@ function getRangeTrackStyle(min: number, max: number, selectedMin: number, selec
 // SYNC NOTE: the progress stages of electron/partial-clips.js.
 const PARTIAL_CLIP_STAGES = new Set(['Reading sound', 'Searching partial clips', 'Checking pictures']);
 
+/** The partial clip kinds, named as the cards' badges name them. */
+const PARTIAL_KIND_PILLS: { kind: PartialClipKind; label: string; title: string }[] = [
+  { kind: 'sameVideo', label: 'Same video', title: 'Copies of one video over its whole length' },
+  { kind: 'excerpt', label: 'Fully inside', title: 'Videos whose footage is all in a longer video' },
+  { kind: 'contains', label: 'Shares', title: 'Videos that share a stretch and each have footage of their own' },
+  { kind: 'sameSound', label: 'Same sound', title: 'Videos whose sound matches but whose pictures differ or could not be compared' },
+];
+
 function SidebarDuplicateSection({
   onFindDuplicates,
   onSwitchDuplicateMethod,
@@ -156,18 +164,19 @@ function SidebarDuplicateSection({
   const duplicateGroups = useStore((s) => s.duplicateGroups);
   const findingPartialClips = useStore((s) => s.isFindingDuplicates && PARTIAL_CLIP_STAGES.has(s.duplicateProgress?.stage ?? ''));
   const videos = useStore((s) => s.videos);
-  // Counted as the list shows them: copies of the same videos are one entry, a family of copies one card.
-  const partialEntryCount = useMemo(() => groupIntoFamilies(
-    mergeClipsByDuplicateGroup(partialClips ?? [], duplicateGroups),
-    new Map(videos.map((video) => [video.id, video])),
-    duplicateSettings.partialClipEdgeSecs,
-  ).length, [partialClips, duplicateGroups, videos, duplicateSettings.partialClipEdgeSecs]);
+  const partialClipKinds = useStore((s) => s.partialClipKinds);
+  const togglePartialClipKind = useStore((s) => s.togglePartialClipKind);
+  // Counted as the list shows them: one card per set of related videos, after the filters.
+  const { matching: partialMatching, shown: partialShown } = usePartialClipCards();
+  const partialEntryCount = partialShown.length;
   const summaryStats = useMemo(() => {
     if (partialClipsMode) {
-      const clipVideoCount = new Set((partialClips ?? []).flatMap((clip) => [clip.aId, clip.bId])).size;
+      const clipVideoCount = new Set(partialShown.flatMap((card) => card.lanes.map((lane) => lane.video.id))).size;
+      const free = partialShown.reduce((sum, card) => sum + card.freeBytes, 0);
       return [
         { label: partialEntryCount === 1 ? 'Entry' : 'Entries', value: partialEntryCount.toLocaleString() },
         { label: 'Videos', value: clipVideoCount.toLocaleString() },
+        { label: 'To free', value: formatSize(free), title: 'Space freed by deleting, in the entries shown, the copies and the videos that lie fully inside the longest video' },
       ];
     }
     const reclaim = reclaimableBytes(duplicateGroups, new Map(videos.map((video) => [video.id, video])));
@@ -176,7 +185,7 @@ function SidebarDuplicateSection({
       { label: 'Videos', value: duplicateCount.toLocaleString() },
       { label: 'To free', value: formatSize(reclaim), title: 'Space freed by deleting every copy except each group\'s keeper' },
     ];
-  }, [duplicateCount, duplicateGroupCount, duplicateGroups, partialClips, partialClipsMode, partialEntryCount, videos]);
+  }, [duplicateCount, duplicateGroupCount, duplicateGroups, partialClipsMode, partialEntryCount, partialShown, videos]);
 
   if (statsTotal <= 0) return null;
 
@@ -192,6 +201,7 @@ function SidebarDuplicateSection({
       : 'Find mostly identical whole-video duplicates';
   const duplicateListFiltersActive = duplicatePathFilter.trim() !== '' || (partialClipsMode
     ? partialClipSortBy !== 'sharedLength' || partialClipSortOrder !== 'desc'
+      || (Object.keys(DEFAULT_PARTIAL_CLIP_KINDS) as PartialClipKind[]).some((kind) => partialClipKinds[kind] !== DEFAULT_PARTIAL_CLIP_KINDS[kind])
     : duplicateMinSimilarity > 0 || duplicateSortBy !== 'similarity' || duplicateSortOrder !== 'desc');
   const sortOrder = partialClipsMode ? partialClipSortOrder : duplicateSortOrder;
   const toggleSortOrder = () => {
@@ -323,6 +333,24 @@ function SidebarDuplicateSection({
             />
           </label>
 
+          {partialClipsMode && (
+            <div className="filter-pills filter-pills-extra" role="group" aria-label="Show entries">
+              {PARTIAL_KIND_PILLS.map(({ kind, label, title }) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={`pill ${partialClipKinds[kind] ? 'pill-active' : ''}`}
+                  aria-pressed={partialClipKinds[kind]}
+                  onClick={() => togglePartialClipKind(kind)}
+                  title={title}
+                >
+                  <span className="pill-text">{label}</span>
+                  <span className="pill-count">{partialMatching.filter((card) => card.kinds.includes(kind)).length}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Similarity belongs to groups; partial clips have their own sort fields. */}
           {!partialClipsMode && (
             <label className="duplicate-sidebar-field">
@@ -351,7 +379,9 @@ function SidebarDuplicateSection({
                   onChange={(e) => setPartialClipSortBy(e.target.value as PartialClipSortField)}
                 >
                   <option value="sharedLength">Shared length</option>
-                  <option value="coverage">Share of shorter video</option>
+                  <option value="similarity">Similarity</option>
+                  <option value="videoCount">Videos in entry</option>
+                  <option value="spaceToFree">Space to free</option>
                   <option value="totalSize">Total size</option>
                 </select>
               ) : (
